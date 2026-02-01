@@ -1,0 +1,180 @@
+[package]
+name = "belizechain-runtime"
+version = "0.1.0"
+authors = ["BelizeChain Core Team <dev@belizechain.org>"]
+description = "BelizeChain sovereign blockchain runtime"
+edition = "2021"
+license = "MIT"
+homepage = "https://belizechain.org"
+repository = "https://github.com/BelizeChain/belizechain/"
+
+[dependencies]
+# Substrate core
+frame-benchmarking = { workspace = true, default-features = false, optional = true }
+frame-executive = { workspace = true, default-features = false }
+frame-support = { workspace = true, default-features = false }
+frame-system = { workspace = true, default-features = false }
+frame-system-rpc-runtime-api = { workspace = true, default-features = false }
+frame-try-runtime = { workspace = true, default-features = false, optional = true }
+
+# Substrate primitives
+sp-api = { workspace = true, default-features = false }
+sp-block-builder = { workspace = true, default-features = false }
+sp-consensus-aura = { workspace = true, default-features = false }
+sp-consensus-grandpa = { workspace = true, default-features = false }
+sp-core = { workspace = true, default-features = false }
+sp-genesis-builder = { workspace = true, default-features = false }
+sp-inherents = { workspace = true, default-features = false }
+sp-offchain = { workspace = true, default-features = false }
+sp-runtime = { workspace = true, default-features = false }
+sp-session = { workspace = true, default-features = false }
+sp-std = { workspace = true, default-features = false }
+sp-storage = { workspace = true, default-features = false }
+sp-transaction-pool = { workspace = true, default-features = false }
+sp-version = { workspace = true, default-features = false }
+
+# Substrate pallets
+pallet-aura = { workspace = true, default-features = false }
+pallet-balances = { workspace = true, default-features = false }
+pallet-grandpa = { workspace = true, default-features = false }
+pallet-sudo = { workspace = true, default-features = false }
+pallet-timestamp = { workspace = true, default-features = false }
+pallet-transaction-payment = { workspace = true, default-features = false }
+pallet-transaction-payment-rpc-runtime-api = { workspace = true, default-features = false }
+
+# Smart Contracts (Spike Platform)
+pallet-contracts = { workspace = true, default-features = false }
+
+# BelizeChain custom pallets
+pallet-belize-economy = { path = "../pallets/economy", default-features = false }
+pallet-belize-identity = { path = "../pallets/identity", default-features = false }
+pallet-belize-governance = { path = "../pallets/governance", default-features = false }
+pallet-belize-compliance = { path = "../pallets/compliance", default-features = false }
+pallet-belize-staking = { path = "../pallets/staking", default-features = false }
+pallet-belize-interoperability = { path = "../pallets/interoperability", default-features = false }
+pallet-belize-belizex = { path = "../pallets/belizex", default-features = false }
+pallet-belize-landledger = { path = "../pallets/landledger", default-features = false }
+pallet-belize-consensus = { path = "../pallets/consensus", default-features = false }
+pallet-belize-community = { path = "../pallets/community", default-features = false }
+pallet-belize-oracle = { path = "../pallets/oracle", default-features = false }
+pallet-belize-payroll = { path = "../pallets/payroll", default-features = false }
+pallet-belize-quantum = { path = "../pallets/quantum", default-features = false }
+pallet-belize-bns = { path = "../pallets/bns", default-features = false }
+
+# Additional Substrate pallets for functionality
+pallet-insecure-randomness-collective-flip = { workspace = true, default-features = false }
+
+# General dependencies
+codec = { workspace = true, default-features = false, features = ["derive"] }
+scale-info = { workspace = true, default-features = false, features = ["derive"] }
+serde = { workspace = true, default-features = false, optional = true, features = ["derive", "alloc"] }
+smallvec = "1.11.0"
+log = { workspace = true, default-features = false }
+
+[build-dependencies]
+substrate-wasm-builder = "23.0.0"
+
+[features]
+default = ["std"]
+
+std = [
+    "frame-benchmarking?/std",
+    "frame-executive/std",
+    "frame-support/std",
+    "frame-system/std",
+    "frame-system-rpc-runtime-api/std",
+    "frame-try-runtime?/std",
+    "pallet-aura/std",
+    "pallet-balances/std",
+    "pallet-grandpa/std",
+    "pallet-sudo/std",
+    "pallet-timestamp/std",
+    "pallet-transaction-payment/std",
+    "pallet-transaction-payment-rpc-runtime-api/std",
+    "pallet-insecure-randomness-collective-flip/std",
+    "pallet-contracts/std",
+    "pallet-belize-economy/std",
+    "pallet-belize-identity/std",
+    "pallet-belize-governance/std",
+    "pallet-belize-compliance/std",
+    "pallet-belize-staking/std",
+    "pallet-belize-interoperability/std",
+    "pallet-belize-belizex/std",
+    "pallet-belize-landledger/std",
+    "pallet-belize-consensus/std",
+    "pallet-belize-community/std",
+    "pallet-belize-oracle/std",
+    "pallet-belize-payroll/std",
+    "pallet-belize-quantum/std",
+    "pallet-belize-bns/std",
+    "sp-api/std",
+    "sp-block-builder/std",
+    "sp-consensus-aura/std",
+    "sp-consensus-grandpa/std",
+    "sp-core/std",
+    "sp-genesis-builder/std",
+    "sp-inherents/std",
+    "sp-offchain/std",
+    "sp-runtime/std",
+    "sp-session/std",
+    "sp-std/std",
+    "sp-storage/std",
+    "sp-transaction-pool/std",
+    "sp-version/std",
+    "codec/std",
+    "scale-info/std",
+    "serde/std",
+    "log/std",
+]
+
+runtime-benchmarks = [
+    "frame-benchmarking/runtime-benchmarks",
+    "frame-support/runtime-benchmarks",
+    "frame-system/runtime-benchmarks",
+    "pallet-balances/runtime-benchmarks",
+    "pallet-grandpa/runtime-benchmarks",
+    "pallet-sudo/runtime-benchmarks",
+    "pallet-timestamp/runtime-benchmarks",
+    "pallet-transaction-payment/runtime-benchmarks",
+    "pallet-belize-economy/runtime-benchmarks",
+    "pallet-belize-identity/runtime-benchmarks",
+    "pallet-belize-governance/runtime-benchmarks",
+    "pallet-belize-compliance/runtime-benchmarks",
+    "pallet-belize-staking/runtime-benchmarks",
+    "pallet-belize-interoperability/runtime-benchmarks",
+    "pallet-belize-belizex/runtime-benchmarks",
+    "pallet-belize-landledger/runtime-benchmarks",
+    "pallet-belize-consensus/runtime-benchmarks",
+    "pallet-belize-oracle/runtime-benchmarks",
+    "pallet-belize-payroll/runtime-benchmarks",
+    "pallet-belize-quantum/runtime-benchmarks",
+]
+
+try-runtime = [
+    "frame-try-runtime/try-runtime",
+    "frame-executive/try-runtime",
+    "frame-support/try-runtime",
+    "frame-system/try-runtime",
+    "pallet-aura/try-runtime",
+    "pallet-balances/try-runtime",
+    "pallet-grandpa/try-runtime",
+    "pallet-sudo/try-runtime",
+    "pallet-timestamp/try-runtime",
+    "pallet-transaction-payment/try-runtime",
+    "pallet-insecure-randomness-collective-flip/try-runtime",
+    "pallet-belize-economy/try-runtime",
+    "pallet-belize-identity/try-runtime",
+    "pallet-belize-governance/try-runtime",
+    "pallet-belize-compliance/try-runtime",
+    "pallet-belize-staking/try-runtime",
+    "pallet-belize-interoperability/try-runtime",
+    "pallet-belize-belizex/try-runtime",
+    "pallet-belize-landledger/try-runtime",
+    "pallet-belize-consensus/try-runtime",
+    "pallet-belize-community/try-runtime",
+    "pallet-belize-oracle/try-runtime",
+    "pallet-belize-quantum/try-runtime",
+]
+
+# Enable benchmarking
+fast-runtime = []

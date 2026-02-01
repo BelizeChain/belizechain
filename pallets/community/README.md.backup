@@ -1,0 +1,145 @@
+# Community Pallet
+
+BelizeChain's community engagement and social responsibility system.
+
+## Overview
+
+The community pallet implements a comprehensive Social Responsibility Score (SRS) system that tracks citizen participation, enables zero-fee transactions for verified users, manages community treasury funds, and provides incentive programs.
+
+## Features
+
+### Phase 1: Social Responsibility Score (SRS) ✅
+
+- **0-10,000 point scoring system** with 5 tiers (Bronze, Silver, Gold, Platinum, Diamond)
+- **6-factor calculation**:
+  - Governance participation (25%)
+  - Education completion (15%)
+  - Sustainability contributions (15%)
+  - General participation (25%)
+  - Peer endorsements (10%)
+  - Honesty rating (10%)
+- **Time-weighted bonuses** for sustained participation (6-month milestones)
+- **Privacy controls** for public/anonymous display
+- **Automated recalculation** on participation updates
+
+### Phase 2: Zero-Fee Protocol (TODO)
+
+- Fee exemptions for verified citizens based on SRS tier
+- Monthly transaction limits (100 dBZD, governance-adjustable)
+- Treasury reimbursement for validators
+- Fee savings tracking
+
+### Phase 3: Community Fund Management (TODO)
+
+- 10% of treasury allocated to community proposals
+- 6 proposal types: local projects, education, green initiatives, cultural preservation, disaster relief, bounties
+- SRS-weighted voting (no council required)
+- 10% proposal deposit (governance-adjustable)
+- 7-day voting period
+
+### Phase 4: Ethics Filter (TODO)
+
+- Automated screening for harmful proposals
+- Sanctioned account list
+- Minimum SRS honesty rating requirements
+- Council 2/3 override mechanism
+
+### Phase 5: Incentive Programs (TODO)
+
+- **Learn-to-Earn**: Education module rewards
+- **Green Projects**: Sustainability contribution tracking
+- **Peer Endorsements**: Silver+ tier users can endorse
+- **Referral Rewards**: 100 DALLA for successful referrals
+
+### Phase 6: Cross-Pallet Integration (TODO)
+
+- Exports `CommunityRank` trait to governance pallet
+- Exports `FeeCalculator` trait to economy pallet
+- Consumes `BelizeKyc` trait from identity pallet
+- Receives PoUW updates from staking pallet
+
+## Usage
+
+### Record Participation
+
+```rust
+Community::record_participation(
+    origin,
+    account,
+    ActivityType::ProposalSubmission,
+)?;
+```
+
+### Update SRS
+
+```rust
+Community::update_srs(origin, account)?;
+```
+
+### Endorse Peer (Requires Silver+ Tier)
+
+```rust
+Community::endorse_peer(
+    origin,
+    endorsee,
+    EndorsementType::CommunityService,
+)?;
+```
+
+### Set Privacy
+
+```rust
+Community::set_srs_privacy(origin, false)?; // Anonymous
+```
+
+## Governance Parameters
+
+All adjustable via governance:
+
+- **ProposalDepositPercentage**: 10% (default)
+- **FeeExemptionMonthlyLimit**: 100 dBZD (default)
+- **EducationRewardAmount**: Governance-adjustable for inflation
+- **ReferralRewardAmount**: 100 DALLA (default)
+- **CommunityVotingPeriod**: 7 days (matching governance)
+
+## Integration
+
+### Export Community Rank
+
+```rust
+use pallet_belize_community::CommunityRank;
+
+let rank = T::CommunityRank::get_community_rank(&account);
+let tier = T::CommunityRank::get_srs_tier(&account);
+```
+
+### Require Verification
+
+All community actions require BelizeID verification via the `BelizeKyc` trait.
+
+## Testing
+
+Run tests:
+
+```bash
+cargo test -p pallet-belize-community
+```
+
+## Implementation Status
+
+- ✅ **Phase 1**: SRS System (Complete)
+  - SRS calculation algorithms
+  - Participation tracking
+  - Peer endorsements
+  - Privacy controls
+  - 27 unit tests passing
+
+- ⏳ **Phase 2**: Zero-Fee Protocol (In Progress)
+- ⏳ **Phase 3**: Community Fund Management
+- ⏳ **Phase 4**: Ethics Filter
+- ⏳ **Phase 5**: Incentive Programs
+- ⏳ **Phase 6**: Cross-Pallet Integration
+
+## License
+
+Apache-2.0

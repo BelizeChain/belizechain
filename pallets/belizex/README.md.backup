@@ -1,0 +1,315 @@
+# BelizeX - Decentralized Exchange Pallet
+
+## 📊 Overview
+
+BelizeX is BelizeChain's native decentralized exchange (DEX) implementing an Automated Market Maker (AMM) with tourism-optimized trading incentives and cross-border remittance support.
+
+### Key Features
+
+- **Automated Market Maker (AMM)**: Constant product formula (x * y = k) for price discovery
+- **Multi-Asset Support**: DALLA, bBZD, TourismDALLA, WUSDC trading pairs
+- **Liquidity Provision**: Earn fees by providing liquidity, receive LP tokens
+- **Limit Orders**: Place buy/sell orders with expiration
+- **Tourism Incentives**: Reduced fees (0.15% vs 0.30%) for verified tourism traders
+- **Oracle Integration**: Real-time price feeds for bBZD peg protection
+- **KYC Gating**: Compliance-first trading (all participants must be KYC verified)
+- **Emergency Pause**: Global circuit breaker for security incidents
+
+## 🏗️ Architecture
+
+### Trading Pairs
+
+| Base Asset | Quote Asset | Fee Rate | Purpose |
+|------------|-------------|----------|---------|
+| DALLA | bBZD | 0.30% | Primary local currency pair |
+| TourismDALLA | bBZD | 0.15% | Tourism-incentivized trading |
+| WUSDC | bBZD | 0.30% | International remittance gateway |
+
+### AMM Formula
+
+```
+Price = quote_reserve / base_reserve
+Output = (input * quote_reserve) / (base_reserve + input)
+LP Tokens = √(base_amount * quote_amount)  // Simplified geometric mean
+```
+
+### Fee Structure
+
+- **Trading Fee**: 0.30% (30 basis points) standard
+- **Tourism Discount**: 0.15% (50% reduction) for verified merchants
+- **Protocol Fee Split**: Configurable % to Treasury, remainder to liquidity providers
+- **Oracle Deviation Limit**: Maximum ±X% from Oracle price for bBZD trades (anti-manipulation)
+
+## 🔧 Configuration
+
+```rust
+pub trait Config: frame_system::Config {
+    type Currency: Currency + ReservableCurrency + LockableCurrency;
+    type Randomness: Randomness<Self::Hash, BlockNumberFor<Self>>;
+    type TourismOrigin: EnsureOrigin<Self::RuntimeOrigin>;
+    type PairListingOrigin: EnsureOrigin<Self::RuntimeOrigin>;
+    type Treasury: Get<Self::AccountId>;
+    
+    // Constants
+    type TradingFeeRate: Get<u32>;           // Default: 30 (0.30%)
+    type TourismDiscountRate: Get<u32>;      // Default: 15 (0.15%)
+    type MinLiquidityAmount: Get<Balance>;   // Minimum LP amount
+    type ProtocolFeeToTreasuryBps: Get<u32>; // % of fees to treasury
+    type MaxOracleDeviationBps: Get<u32>;    // Max ± deviation from oracle
+    
+    type WeightInfo: WeightInfo;
+    type Kyc: KycCheck<Self::AccountId>;
+    type Oracle: BelizeXOracleProvider<Self::AccountId>;
+}
+```
+
+## 📡 Extrinsics
+
+### Trading Operations
+
+#### `add_liquidity`
+```rust
+add_liquidity(
+    origin: OriginFor<T>,
+    base_asset: u8,        // AssetId (0=DALLA, 1=BBZD, 2=TourismDALLA, 3=WUSDC)
+    quote_asset: u8,
+    base_amount: Balance,
+    quote_amount: Balance,
+    min_lp_tokens: u128,   // Slippage protection
+) -> DispatchResult
+```
+**Purpose**: Add liquidity to a trading pair, receive LP tokens
+**Requirements**: KYC verified, sufficient balance, pair exists
+**Locks**: Funds locked with `LIQUIDITY_LOCK_ID`
+
+#### `execute_trade`
+```rust
+execute_trade(
+    origin: OriginFor<T>,
+    base_asset: u8,
+    quote_asset: u8,
+    amount_in: Balance,
+    min_amount_out: u128,  // Slippage protection
+    is_tourism_trade: bool,
+) -> DispatchResult
+```
+**Purpose**: Execute instant market trade via AMM
+**Fee**: 0.30% standard, 0.15% for tourism traders
+**Requirements**: KYC verified, pair active, sufficient reserves
+
+#### `place_limit_order`
+```rust
+place_limit_order(
+    origin: OriginFor<T>,
+    base_asset: u8,
+    quote_asset: u8,
+    order_type: u8,        // 0=Buy, 1=Sell, 2=TourismBuy, 3=TourismSell
+    amount: u128,
+    price: u128,
+    duration: u32,         // Blocks until expiration
+) -> DispatchResult
+```
+**Purpose**: Place limit order in order book
+**Execution**: Matched on-chain when price reaches target
+**Expiration**: Auto-canceled after duration blocks
+
+### Administration
+
+#### `create_trading_pair` (Governance Origin)
+```rust
+create_trading_pair(
+    origin: OriginFor<T>,
+    base_asset: u8,
+    quote_asset: u8,
+    initial_fee_rate: u32,
+) -> DispatchResult
+```
+**Purpose**: List new trading pair on DEX
+**Requirements**: PairListingOrigin (governance)
+
+#### `set_pair_status` (Governance Origin)
+```rust
+set_pair_status(
+    origin: OriginFor<T>,
+    base_asset: u8,
+    quote_asset: u8,
+    active: bool,
+) -> DispatchResult
+```
+**Purpose**: Activate/deactivate trading pair
+
+#### `pause_global` / `resume_global` (Root Origin)
+```rust
+pause_global(origin: OriginFor<T>) -> DispatchResult
+resume_global(origin: OriginFor<T>) -> DispatchResult
+```
+**Purpose**: Emergency circuit breaker for all DEX operations
+
+#### `register_tourism_trader` (Tourism Origin)
+```rust
+register_tourism_trader(
+    origin: OriginFor<T>,
+    trader: T::AccountId,
+) -> DispatchResult
+```
+**Purpose**: Grant tourism trading benefits (reduced fees)
+
+## 📊 Storage
+
+| Storage Item | Type | Purpose |
+|--------------|------|---------|
+| `TradingPairs` | Map<(u8, u8), TradingPair> | Pair reserves and LP tokens |
+| `LiquidityProviders` | Map<AccountId, LiquidityProvider> | LP positions and rewards |
+| `OrderBook` | Map<u32, OrderEntry> | Limit order registry |
+| `DailyVolume` | Map<(u8, u8), u128> | 24h trading volume per pair |
+| `TourismTraders` | Map<AccountId, bool> | Tourism verification status |
+| `GlobalPaused` | Value<bool> | Emergency pause flag |
+
+## 🎯 Events
+
+```rust
+TradingPairCreated { base_asset, quote_asset }
+LiquidityAdded { provider, pair, base_amount, quote_amount, lp_tokens }
+TradePairExecuted { trader, pair, amount_in, amount_out, fee, is_tourism }
+LimitOrderPlaced { order_id, creator, pair, order_type, amount, price }
+LimitOrderMatched { order_id, taker, amount, price }
+GlobalPaused
+GlobalResumed
+```
+
+## ⚠️ Errors
+
+- `PairNotFound` - Trading pair doesn't exist
+- `PairNotActive` - Pair is deactivated
+- `KycRequired` - User not KYC verified
+- `Paused` - DEX globally paused
+- `InsufficientBalance` - Not enough funds
+- `InsufficientLiquidity` - Not enough reserves for trade
+- `SlippageExceeded` - Price moved beyond tolerance
+- `OraclePriceDeviation` - bBZD trade exceeds Oracle deviation limit
+- `Unauthorized` - Not authorized for tourism benefits
+
+## 🔐 Security Features
+
+### KYC Enforcement
+- **All trading operations** require KYC verification via `Compliance` pallet
+- Prevents anonymous trading, ensures regulatory compliance
+- Protects against money laundering
+
+### Oracle Integration
+- **bBZD trades**: Verified against Oracle price feed
+- **Maximum Deviation**: Configurable limit (e.g., ±2%) to prevent manipulation
+- **Merchant Verification**: Oracle confirms tourism merchant status
+
+### Circuit Breaker
+- **Global Pause**: Root can instantly halt all DEX operations
+- **Per-Pair Toggle**: Governance can disable specific pairs
+- **Emergency Response**: Rapid incident containment
+
+### Liquidity Locks
+- Funds are **locked** with `LIQUIDITY_LOCK_ID`
+- Prevents accidental transfers while providing liquidity
+- Ensures reserve stability
+
+## 💡 Use Cases
+
+### 1. DALLA ↔ bBZD Exchange
+**Scenario**: Convert volatile DALLA to stable bBZD
+```rust
+execute_trade(alice, DALLA, BBZD, 1000 * DALLA, 990 * BZD, false)
+```
+**Fee**: 3 DALLA (0.30%)
+**Use Case**: Daily spending, price stability
+
+### 2. Tourism Merchant Trading
+**Scenario**: Verified resort converts tourist payments
+```rust
+register_tourism_trader(TourismOrigin, resort_account)
+execute_trade(resort, TourismDALLA, BBZD, 10000 * DALLA, 9950 * BZD, true)
+```
+**Fee**: 15 DALLA (0.15% - 50% discount)
+**Benefit**: Cashback rewards, incentivized tourism economy
+
+### 3. International Remittance
+**Scenario**: Diaspora sends USDC, recipient gets bBZD
+```rust
+execute_trade(sender, WUSDC, BBZD, 500 * USDC, 1450 * BZD, false)
+```
+**Advantage**: Lower fees than Western Union, instant settlement
+
+### 4. Liquidity Provision
+**Scenario**: Earn fees by providing market liquidity
+```rust
+add_liquidity(alice, DALLA, BBZD, 10000 * DALLA, 10000 * BZD, 10000 LP)
+```
+**Rewards**: Portion of all trading fees (prorated by LP share)
+
+## 🧪 Testing
+
+```bash
+# Run BelizeX tests
+cargo test -p pallet-belize-belizex
+
+# Test specific functionality
+cargo test -p pallet-belize-belizex pause_and_resume_blocks_user_flows
+cargo test -p pallet-belize-belizex per_pair_toggle_enforced
+```
+
+### Test Coverage
+- ✅ Pause/resume mechanisms
+- ✅ Per-pair activation toggle
+- ✅ KYC gating
+- ✅ Basic trading flows
+- ⚠️ **TODO**: Edge cases (extreme slippage, Oracle failures, liquidity exhaustion)
+
+## 📈 Performance Considerations
+
+### Weight Calculations
+- **add_liquidity**: ~50 million gas + 3 DB reads + 2 DB writes
+- **execute_trade**: ~75 million gas + 4 DB reads + 3 DB writes (incl. Oracle call)
+- **place_limit_order**: ~40 million gas + 2 DB reads + 2 DB writes
+
+### Optimization Opportunities
+1. **LP Token Formula**: Current sqrt is simple but could use Uniswap V2 formula for better capital efficiency
+2. **Order Matching**: On-chain matching is expensive, consider off-chain matching with on-chain settlement
+3. **Daily Volume Reset**: Could use block-based rolling window instead of global counter
+
+## 🔗 Dependencies
+
+### Runtime Integration
+```rust
+impl pallet_belize_belizex::Config for Runtime {
+    type Currency = Balances;
+    type Randomness = RandomnessCollectiveFlip;
+    type TourismOrigin = EnsureSignedBy<TourismAccount, AccountId>;
+    type PairListingOrigin = EnsureRoot<AccountId>;
+    type Treasury = TreasuryAccount;
+    type TradingFeeRate = ConstU32<30>;
+    type TourismDiscountRate = ConstU32<15>;
+    type MinLiquidityAmount = ConstU128<{ 100 * DALLA }>;
+    type ProtocolFeeToTreasuryBps = ConstU32<2000>; // 20%
+    type MaxOracleDeviationBps = ConstU32<200>; // ±2%
+    type WeightInfo = ();
+    type Kyc = Compliance;
+    type Oracle = OracleProvider;
+}
+```
+
+### Cross-Pallet Dependencies
+- **`pallet-belize-compliance`**: KYC verification (`KycCheck` trait)
+- **`pallet-belize-oracle`**: Price feeds and merchant verification (`BelizeXOracleProvider` trait)
+- **`pallet-balances`**: Currency implementation
+- **`pallet-belize-economy`**: Tourism token logic (indirect)
+
+## 🚧 Future Enhancements
+
+1. **Liquidity Mining**: Reward LP providers with extra DALLA incentives
+2. **Stop-Loss Orders**: Auto-sell when price drops below threshold
+3. **Flash Loans**: Uncollateralized loans for arbitrage (MEV capture for Treasury)
+4. **Multi-Hop Routes**: Auto-route DALLA → WUSDC → bBZD if no direct pair
+5. **Price Impact Display**: Show slippage before trade execution
+6. **LP Token Staking**: Stake LP tokens for boosted rewards
+
+## 📜 License
+
+MIT License - Copyright (c) 2024-2026 BelizeChain Core Team

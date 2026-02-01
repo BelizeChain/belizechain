@@ -1,0 +1,144 @@
+
+
++===========================================================================================================================================================================================+
+
+
+DEPRECATED: this command (`check`) has been DEPRECATED, and will be unsupported beyond 01 June 2024.
+
+
+We highly encourage switching to the new `scan` command which is easier to use, more powerful, and can be set up to mimic the deprecated command if required.
+
+
++===========================================================================================================================================================================================+
+
+
++==============================================================================+
+
+                                   /$$$$$$            /$$
+                                  /$$__  $$          | $$
+               /$$$$$$$  /$$$$$$ | $$  \__//$$$$$$  /$$$$$$   /$$   /$$
+              /$$_____/ |____  $$| $$$$   /$$__  $$|_  $$_/  | $$  | $$
+             |  $$$$$$   /$$$$$$$| $$_/  | $$$$$$$$  | $$    | $$  | $$
+              \____  $$ /$$__  $$| $$    | $$_____/  | $$ /$$| $$  | $$
+              /$$$$$$$/|  $$$$$$$| $$    |  $$$$$$$  |  $$$$/|  $$$$$$$
+             |_______/  \_______/|__/     \_______/   \___/   \____  $$
+                                                              /$$  | $$
+                                                             |  $$$$$$/
+      by safetycli.com                                        \______/
+
++==============================================================================+
+
+ REPORT 
+
+  Safety v3.7.0 is scanning for Vulnerabilities...
+  Scanning dependencies in your environment:
+
+  -> /home/wicked/belizechain-belizechain/.venv/lib/python3.13/site-packages
+
+  Using open-source vulnerability database
+  Found and scanned 197 packages
+  Timestamp 2026-01-14 21:21:06
+  6 vulnerabilities reported
+  0 vulnerabilities ignored
+
++==============================================================================+
+ VULNERABILITIES FOUND
++==============================================================================+
+
+-> Vulnerability found in pip version 25.1.1
+   Vulnerability ID: 79883
+   Affected spec: <25.2
+   ADVISORY: Affected versions of the pip package are vulnerable to
+   Arbitrary File Overwrite due to improper validation of symbolic link...
+   CVE-2025-8869
+   For more information about this vulnerability, visit
+   https://data.safetycli.com/v/79883/97c
+   To ignore this vulnerability, use PyUp vulnerability id 79883 in safety’s
+   ignore command-line argument or add the ignore to your safety policy file.
+
+
+-> Vulnerability found in urllib3 version 2.5.0
+   Vulnerability ID: 82332
+   Affected spec: >=1.0,<2.6.0
+   ADVISORY: Affected versions of the urllib3 package are vulnerable
+   to Denial of Service (DoS) due to improper handling of highly...
+   CVE-2025-66471
+   For more information about this vulnerability, visit
+   https://data.safetycli.com/v/82332/97c
+   To ignore this vulnerability, use PyUp vulnerability id 82332 in safety’s
+   ignore command-line argument or add the ignore to your safety policy file.
+
+
+-> Vulnerability found in urllib3 version 2.5.0
+   Vulnerability ID: 82331
+   Affected spec: >=1.24,<2.6.0
+   ADVISORY: Affected versions of the urllib3 package are vulnerable
+   to Denial of Service (DoS) due to allowing an unbounded number of...
+   CVE-2025-66418
+   For more information about this vulnerability, visit
+   https://data.safetycli.com/v/82331/97c
+   To ignore this vulnerability, use PyUp vulnerability id 82331 in safety’s
+   ignore command-line argument or add the ignore to your safety policy file.
+
+
+-> Vulnerability found in ecdsa version 0.19.1
+   Vulnerability ID: 64459
+   Affected spec: >=0
+   ADVISORY: The python-ecdsa library, which implements ECDSA
+   cryptography in Python, is vulnerable to the Minerva attack...
+   CVE-2024-23342
+   For more information about this vulnerability, visit
+   https://data.safetycli.com/v/64459/97c
+   To ignore this vulnerability, use PyUp vulnerability id 64459 in safety’s
+   ignore command-line argument or add the ignore to your safety policy file.
+
+
+-> Vulnerability found in ecdsa version 0.19.1
+   Vulnerability ID: 64396
+   Affected spec: >=0
+   ADVISORY: Ecdsa does not protects against side-channel attacks.
+   This is because Python does not provide side-channel secure primitives...
+   PVE-2024-64396
+   For more information about this vulnerability, visit
+   https://data.safetycli.com/v/64396/97c
+   To ignore this vulnerability, use PyUp vulnerability id 64396 in safety’s
+   ignore command-line argument or add the ignore to your safety policy file.
+
+
+-> Vulnerability found in setuptools version 70.2.0
+   Vulnerability ID: 76752
+   Affected spec: <78.1.1
+   ADVISORY: Affected versions of Setuptools are vulnerable to Path
+   Traversal via PackageIndex.download(). The impact is Arbitrary File...
+   CVE-2025-47273
+   For more information about this vulnerability, visit
+   https://data.safetycli.com/v/76752/97c
+   To ignore this vulnerability, use PyUp vulnerability id 76752 in safety’s
+   ignore command-line argument or add the ignore to your safety policy file.
+
+
++==============================================================================+
+   REMEDIATIONS
+
+  6 vulnerabilities were reported in 4 packages. For detailed remediation & 
+  fix recommendations, upgrade to a commercial license. 
+
++==============================================================================+
+
+ Scan was completed. 6 vulnerabilities were reported. 
+
++==============================================================================+
+
+
++===========================================================================================================================================================================================+
+
+
+DEPRECATED: this command (`check`) has been DEPRECATED, and will be unsupported beyond 01 June 2024.
+
+
+We highly encourage switching to the new `scan` command which is easier to use, more powerful, and can be set up to mimic the deprecated command if required.
+
+
++===========================================================================================================================================================================================+
+
+

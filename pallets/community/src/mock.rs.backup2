@@ -1,0 +1,210 @@
+//! Mock runtime for community pallet tests
+
+use crate::{self as pallet_belize_community};
+use frame_support::{
+    parameter_types,
+    traits::{ConstU32, ConstU64},
+    PalletId,
+};
+use sp_core::H256;
+use sp_runtime::{
+    traits::{BlakeTwo256, IdentityLookup},
+    BuildStorage,
+};
+
+// Configure a mock runtime to test the pallet.
+type Block = frame_system::mocking::MockBlock<Test>;
+
+construct_runtime!(
+    pub enum Test
+    {
+        System: frame_system::{Pallet, Call, Config<T>, Storage, Event<T>},
+        Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
+        Identity: pallet_belize_identity::{Pallet, Call, Storage, Event<T>},
+        Community: pallet_belize_community::{Pallet, Call, Storage, Event<T>},
+    }
+);
+
+parameter_types! {
+    pub const BlockHashCount: u64 = 250;
+}
+
+impl frame_system::Config for Test {
+    type BaseCallFilter = frame_support::traits::Everything;
+    type BlockWeights = ();
+    type BlockLength = ();
+    type DbWeight = ();
+    type RuntimeOrigin = RuntimeOrigin;
+    type RuntimeCall = RuntimeCall;
+    type Nonce = u64;
+    type Hash = H256;
+    type Hashing = BlakeTwo256;
+    type AccountId = u64;
+    type Lookup = IdentityLookup<Self::AccountId>;
+    type Block = Block;
+    type RuntimeEvent = RuntimeEvent;
+    type BlockHashCount = BlockHashCount;
+    type Version = ();
+    type PalletInfo = PalletInfo;
+    type AccountData = pallet_balances::AccountData<u64>;
+    type OnNewAccount = ();
+    type OnKilledAccount = ();
+    type SystemWeightInfo = ();
+    type SS58Prefix = ();
+    type OnSetCode = ();
+    type MaxConsumers = ConstU32<16>;
+}
+
+parameter_types! {
+    pub const ExistentialDeposit: u64 = 1;
+}
+
+impl pallet_balances::Config for Test {
+    type MaxLocks = ();
+    type MaxReserves = ();
+    type ReserveIdentifier = [u8; 8];
+    type Balance = u64;
+    type RuntimeEvent = RuntimeEvent;
+    type DustRemoval = ();
+    type ExistentialDeposit = ExistentialDeposit;
+    type AccountStore = System;
+    type WeightInfo = ();
+    type RuntimeHoldReason = ();
+    type FreezeIdentifier = ();
+    type MaxFreezes = ();
+    type RuntimeFreezeReason = ();
+}
+
+// Mock Identity pallet configuration
+parameter_types! {
+    pub const MaxNameLen: u32 = 64;
+    pub const MaxAnchorLen: u32 = 64;
+    pub const MaxAccountsPerIdentity: u32 = 10;
+    pub const IdentityDeposit: u64 = 100;
+    pub const IssuerBond: u64 = 1000;
+}
+
+parameter_types! {
+    pub const IdentityPalletId: PalletId = PalletId(*b"py/ident");
+    pub const TreasuryAccount: u64 = 888;
+    pub const KycValidityBlocks: u32 = 100000;
+    pub const KycGraceBlocks: u32 = 1000;
+    pub const MaxIssuerCount: u32 = 10;
+    pub const MaxHistoryLen: u32 = 50;
+}
+
+impl pallet_belize_identity::Config for Test {
+    type Currency = Balances;
+    type PalletId = IdentityPalletId;
+    type Treasury = TreasuryAccount;
+    type AdminOrigin = frame_system::EnsureRoot<Self::AccountId>;
+    type RevokeOrigin = frame_system::EnsureRoot<Self::AccountId>;
+    type MaxAccountsPerIdentity = MaxAccountsPerIdentity;
+    type MaxNameLen = MaxNameLen;
+    type MaxAnchorLen = MaxAnchorLen;
+    type MaxIssuerCount = MaxIssuerCount;
+    type KycValidityBlocks = KycValidityBlocks;
+    type KycGraceBlocks = KycGraceBlocks;
+    type MaxHistoryLen = MaxHistoryLen;
+    type WeightInfo = ();
+}
+
+// Community pallet configuration
+parameter_types! {
+    pub const ProposalDepositPercentage: u32 = 10;
+    pub const FeeExemptionMonthlyLimit: u32 = 100; // 100 dBZD
+    pub const EducationRewardAmount: u64 = 100;
+    pub const ReferralRewardAmount: u64 = 100;
+    pub const CommunityVotingPeriod: u64 = 7 * 24 * 60 * 10; // 7 days in blocks (~10s blocks)
+    pub const CommunityTreasuryAccount: u64 = 999; // Mock treasury account
+    pub const MaxTitleLength: u32 = 128;
+    pub const MaxDescriptionLength: u32 = 1024;
+    pub const MaxParticipationHistory: u32 = 1000;
+}
+
+impl pallet_belize_community::Config for Test {
+    type RuntimeEvent = RuntimeEvent;
+    type WeightInfo = ();
+    type Currency = Balances;
+    type BelizeKyc = Identity;
+    type ProposalDepositPercentage = ProposalDepositPercentage;
+    type FeeExemptionMonthlyLimit = FeeExemptionMonthlyLimit;
+    type EducationRewardAmount = EducationRewardAmount;
+    type ReferralRewardAmount = ReferralRewardAmount;
+    type CommunityVotingPeriod = CommunityVotingPeriod;
+    type CommunityTreasuryAccount = CommunityTreasuryAccount;
+    type MaxTitleLength = MaxTitleLength;
+    type MaxDescriptionLength = MaxDescriptionLength;
+    type MaxParticipationHistory = MaxParticipationHistory;
+}
+
+// Build genesis storage according to the mock runtime.
+pub fn new_test_ext() -> sp_io::TestExternalities {
+    let mut t = frame_system::GenesisConfig::<Test>::default()
+        .build_storage()
+        .unwrap();
+
+    pallet_balances::GenesisConfig::<Test> {
+        balances: vec![
+            (1, 10000),
+            (2, 10000),
+            (3, 10000),
+            (999, 1000000), // Treasury
+        ],
+    }
+    .assimilate_storage(&mut t)
+    .unwrap();
+
+    let mut ext = sp_io::TestExternalities::new(t);
+    ext.execute_with(|| System::set_block_number(1));
+    ext
+}
+
+// Helper functions for tests
+pub fn run_to_block(n: u64) {
+    while System::block_number() < n {
+        if System::block_number() > 1 {
+            System::on_finalize(System::block_number());
+        }
+        System::set_block_number(System::block_number() + 1);
+        System::on_initialize(System::block_number());
+    }
+}
+
+// Setup verified identity for testing
+pub fn setup_verified_identity(account: u64) {
+    let name = b"Test User".to_vec();
+    let ssn_hash = sp_core::H256::random();
+    let passport_hash = sp_core::H256::random();
+    let biometric_hash = sp_core::H256::random();
+    let anchor = b"QmTest123".to_vec();
+
+    // Register issuer
+    assert!(Identity::register_issuer(
+        RuntimeOrigin::root(),
+        account,
+        name.clone(),
+        pallet_belize_identity::IssuerType::Government,
+    )
+    .is_ok());
+
+    // Create identity
+    assert!(Identity::create_identity(
+        RuntimeOrigin::signed(account),
+        account,
+        name,
+        ssn_hash,
+        passport_hash,
+        biometric_hash,
+        anchor,
+    )
+    .is_ok());
+
+    // Issue SSN to verify
+    assert!(Identity::issue_ssn(
+        RuntimeOrigin::signed(account),
+        account,
+        ssn_hash,
+    )
+    .is_ok());
+}

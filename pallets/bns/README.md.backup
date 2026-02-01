@@ -1,0 +1,528 @@
+# BelizeChain BNS (Belize Name Service) Pallet
+
+## Overview
+
+The BNS pallet implements a comprehensive domain name system for BelizeChain, providing permanent `.bz` domain ownership, **DAG-based decentralized web hosting**, domain marketplace, and multi-chain resolution.
+
+**Core Features:**
+- **Immutable Domain Registry** - `.bz` domains (permanent ownership like ENS)
+- **Domain Resolution** - Wallet addresses, content hashes, avatars, metadata
+- **Decentralized Web Hosting** - Host websites on Pakit DAG storage (100% sovereign)
+- **Domain Marketplace** - Buy/sell domains with 5% treasury fee
+- **External Domain Support** - Link `.com/.org/.net` domains to `.bz` identity
+- **Multi-Tier Pricing** - Standard, Premium, Government, Verified tiers
+- **KYC Integration** - Prevent domain squatting and ensure compliance
+- **SSL/TLS Management** - Certificate hash storage and verification
+
+---
+
+## Architecture
+
+### Storage Backend: Pakit DAG
+
+BNS uses **Pakit's DAG (Directed Acyclic Graph) storage** for sovereign, decentralized website hosting with **zero external dependencies**:
+
+```
+┌─────────────────────────────────────────┐
+│  User uploads website files             │
+│  (HTML, CSS, JS, images)                │
+└──────────────┬──────────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────────┐
+│  Pakit DAG Backend                      │
+│  - Each file → DAG block                │
+│  - Manifest block → file map            │
+│  - Merkle proofs for integrity          │
+│  - SQLite DB + LRU cache                │
+└──────────────┬──────────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────────┐
+│  BNS Pallet (On-Chain)                  │
+│  - Stores manifest hash (32 bytes)      │
+│  - Links domain → content_hash          │
+│  - Tracks subscription/payments         │
+│  - Version history management           │
+└──────────────┬──────────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────────┐
+│  Hosting Service (HTTP Server)          │
+│  - Resolves domain → content_hash       │
+│  - Retrieves manifest from DAG          │
+│  - Serves files via HTTP                │
+│  - Bandwidth tracking                   │
+└─────────────────────────────────────────┘
+```
+
+**Why DAG?**
+- ✅ **100% Sovereign** - No IPFS/Arweave dependencies
+- ✅ **Merkle Proofs** - Cryptographic integrity verification
+- ✅ **Multi-Parent Blocks** - 2-5 parent references per block (anti-censorship)
+- ✅ **Efficient Queries** - O(1) hash lookups, O(log n) depth queries
+- ✅ **Compression** - Multi-algorithm compression (zstd/lz4/brotli)
+- ✅ **Deduplication** - Content-addressable storage
+
+---
+
+## Domain Registry
+
+### Domain Tiers
+
+| Tier | Price | Features | KYC Required |
+|------|-------|----------|--------------|
+| **Standard** | 100 DALLA | Basic features | Level 1 |
+| **Premium** | 500 DALLA | Enhanced features | Level 2 |
+| **Government** | 50 DALLA | Subsidized for public sector | Level 2 + Gov ID |
+| **Verified** | 1000 DALLA | Blue checkmark verification | Level 3 |
+
+### Registering a Domain
+
+```rust
+BNS::register_domain(
+    origin,
+    domain_name: b"mybusiness".to_vec(),
+    tier: 0,  // Standard tier
+)?;
+```
+
+**Registration Rules:**
+- 3-64 characters (alphanumeric + hyphens)
+- No leading/trailing hyphens
+- Case-insensitive (stored lowercase)
+- Permanent ownership (can transfer, cannot expire)
+- KYC verification required (prevents squatting)
+- Transfer lock: 30 days after registration
+
+---
+
+## Decentralized Web Hosting
+
+### Storage Model
+
+**Manifest Block (Root):**
+```json
+{
+  "type": "website_manifest",
+  "version": "1.0",
+  "files": {
+    "index.html": {
+      "hash": "abc123...def456",
+      "size": 2048,
+      "content_type": "text/html"
+    },
+    "style.css": {
+      "hash": "789ghi...jkl012",
+      "size": 1024,
+      "content_type": "text/css"
+    },
+    "logo.png": {
+      "hash": "345mno...pqr678",
+      "size": 8192,
+      "content_type": "image/png"
+    }
+  },
+  "index": "index.html",
+  "created_at": "2026-01-29T00:00:00Z"
+}
+```
+
+**File Blocks:**
+- Each file (HTML/CSS/JS/image) stored as separate DAG block
+- Content-addressable (SHA-256 hash)
+- Merkle proofs link to genesis block
+- Automatic compression and deduplication
+
+**On-Chain Storage:**
+- Only the manifest hash (32 bytes) stored on-chain
+- Immutable reference to entire website
+- Version history tracked on-chain
+
+### Hosting Tiers
+
+| Tier | Storage | Bandwidth | CDN | Monthly Fee |
+|------|---------|-----------|-----|-------------|
+| **Free** | 100MB | 1GB | No | 0 DALLA |
+| **Basic** | 1GB | 10GB | Yes | 10 DALLA |
+| **Pro** | 10GB | 100GB | Premium | 50 DALLA |
+| **Enterprise** | 100GB | 1TB | Full | 200 DALLA |
+
+### Activating Hosting
+
+```rust
+// Upload website to Pakit DAG storage first
+let manifest_hash = pakit.upload_website("mybusiness.bz", "./website_files/").await?;
+
+// Activate hosting on-chain
+BNS::activate_hosting(
+    origin,
+    domain_name: b"mybusiness".to_vec(),
+    tier: 1,  // Basic tier
+    content_hash: manifest_hash,  // DAG manifest block hash (32 bytes)
+    auto_renew: true
+)?;
+```
+
+### Updating Website Content
+
+```rust
+// Upload new version to DAG
+let new_manifest_hash = pakit.upload_website("mybusiness.bz", "./updated_files/").await?;
+
+// Update on-chain (saves version history)
+BNS::update_hosting_content(
+    origin,
+    domain_name: b"mybusiness".to_vec(),
+    new_content_hash: new_manifest_hash,
+    description: b"Version 2.0 - New homepage design".to_vec(),
+    size_bytes: 5_242_880  // 5MB
+)?;
+```
+
+**Content Versioning:**
+- Each update saves previous version to history
+- Maximum 100 versions per domain
+- Rollback to any previous version
+- On-chain version audit trail
+- Immutable content hashes
+
+### Content Resolution Flow
+
+```
+User types "mybusiness.bz" in browser
+           │
+           ▼
+┌──────────────────────┐
+│  DNS points to       │
+│  Pakit hosting IP    │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│  Hosting Service     │
+│  queries BNS pallet  │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│  Returns content_hash│
+│  (manifest block)    │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│  Retrieves manifest  │
+│  from DAG backend    │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│  Parses file map     │
+│  Gets "index.html"   │
+│  block hash          │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│  Retrieves HTML      │
+│  DAG block           │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│  Serves HTML to user │
+└──────────────────────┘
+```
+
+---
+
+## Domain Marketplace
+
+### Listing a Domain for Sale
+
+```rust
+BNS::list_domain_for_sale(
+    origin,
+    domain_name: b"premium".to_vec(),
+    price: 50_000 * DALLA,  // 50,000 DALLA
+    expiry_blocks: 86_400,  // 30 days (assuming 6-second blocks)
+    min_offer: Some(40_000 * DALLA)  // Accept offers >= 40,000 DALLA
+)?;
+```
+
+### Buying a Domain
+
+```rust
+BNS::buy_domain(
+    origin,
+    domain_name: b"premium".to_vec()
+)?;
+```
+
+**Marketplace Mechanics:**
+- 5% treasury fee (split: 3% BNS treasury, 2% seller bonus)
+- Instant transfer (atomic swap)
+- 30-day transfer lock after purchase
+- Auto-delist on expiry
+- Price negotiation via offers
+
+---
+
+## Domain Resolution
+
+### Setting Resolution Records
+
+```rust
+BNS::set_resolution(
+    origin,
+    domain_name: b"mybusiness".to_vec(),
+    wallet_address: Some(account_id),  // Payment routing
+    content_hash: Some(manifest_hash),  // Website content
+    metadata: br#"{"email":"info@mybusiness.bz","twitter":"@mybusiness"}"#.to_vec()
+)?;
+```
+
+### Custom Text Records
+
+```rust
+BNS::add_text_record(
+    origin,
+    domain_name: b"mybusiness".to_vec(),
+    key: b"email".to_vec(),
+    value: b"contact@mybusiness.bz".to_vec()
+)?;
+```
+
+**Supported Records:**
+- Wallet address (BelizeChain account)
+- Content hash (DAG manifest for websites)
+- Avatar hash (profile picture)
+- Metadata (JSON)
+- Custom text records (email, social media, URLs, etc.)
+
+---
+
+## External Domain Support
+
+Link traditional domains (`.com/.org/.net`) to your `.bz` identity:
+
+```rust
+// Register external domain
+BNS::register_external_domain(
+    origin,
+    external_domain: b"mybusiness.com".to_vec(),
+    linked_bns_domain: b"mybusiness".to_vec(),
+    tier: 1  // Basic tier
+)?;
+
+// Verify ownership (TXT record verification)
+BNS::verify_external_domain(
+    origin,
+    external_domain: b"mybusiness.com".to_vec(),
+    verification_code: b"belize-verify-abc123".to_vec()
+)?;
+```
+
+**Verification Process:**
+1. Register external domain on BNS
+2. Add TXT record to external DNS: `belize-verify-[code]`
+3. Call `verify_external_domain` to confirm ownership
+4. Redirect external domain to `.bz` hosting
+
+---
+
+## SSL/TLS Certificate Management
+
+```rust
+BNS::update_ssl_certificate(
+    origin,
+    domain_name: b"mybusiness".to_vec(),
+    cert_hash: [0x12, 0x34, ...],  // SHA-256 of certificate
+    serial_number: b"ABC123XYZ".to_vec(),
+    issuer: b"Let's Encrypt".to_vec(),
+    expires_at: 1_000_000  // Block number
+)?;
+```
+
+**SSL Features:**
+- Certificate hash storage on-chain
+- Expiry tracking
+- Auto-renewal reminders
+- Certificate revocation checks
+
+---
+
+## Events
+
+```rust
+/// Domain registered
+DomainRegistered { domain, owner, tier, price }
+
+/// Domain transferred
+DomainTransferred { domain, from, to, price }
+
+/// Hosting activated
+HostingActivated { domain, owner, tier, content_hash }
+
+/// Content updated
+ContentUpdated { domain, version, content_hash }
+
+/// Content rolled back
+ContentRolledBack { domain, version, content_hash }
+
+/// Domain listed for sale
+DomainListed { domain, seller, price, expires_at }
+
+/// Domain sold
+DomainSold { domain, seller, buyer, price, marketplace_fee }
+```
+
+---
+
+## Errors
+
+```rust
+DomainNotFound           // Domain doesn't exist
+DomainAlreadyRegistered  // Domain name already taken
+NotDomainOwner           // Caller doesn't own domain
+DomainTooLong            // Exceeds 64 characters
+DomainTooShort           // Less than 3 characters
+InvalidCharacters        // Non-alphanumeric (except hyphens)
+TransferLocked           // Within 30-day lock period
+HostingNotActive         // No active hosting subscription
+HostingExpired           // Subscription expired
+HostingAlreadyActive     // Already has active hosting
+InvalidTier              // Invalid tier selection
+InsufficientBalance      // Not enough DALLA for fees
+InvalidPrice             // Price too low/high
+ListingNotFound          // No active marketplace listing
+KYCNotVerified           // KYC verification required
+```
+
+---
+
+## Storage Items
+
+### DomainRegistry
+Maps domain names to ownership records:
+```rust
+DomainRecord {
+    owner: AccountId,
+    original_owner: AccountId,  // Permanent record
+    registered_at: BlockNumber,
+    purchase_price: u128,
+    tier: DomainTier,
+    locked_until: Option<BlockNumber>,
+    transfer_count: u32
+}
+```
+
+### HostedWebsites
+Maps domains to hosting configurations:
+```rust
+HostingInfo {
+    subscriber: AccountId,
+    tier: HostingTier,
+    content_hash: [u8; 32],  // DAG manifest block hash
+    activated_at: BlockNumber,
+    last_payment_at: BlockNumber,
+    expires_at: BlockNumber,
+    data_size: u64,
+    monthly_fee: u128,
+    auto_renew: bool
+}
+```
+
+### DomainResolution
+Maps domains to resolution records:
+```rust
+ResolutionRecords {
+    wallet_address: Option<AccountId>,
+    content_hash: Option<[u8; 32]>,  // DAG manifest hash
+    avatar: Option<[u8; 32]>,  // Avatar image hash
+    metadata: BoundedVec<u8, 256>,
+    text_records: BoundedVec<TextRecord, MaxRecords>
+}
+```
+
+---
+
+## Integration with Other Pallets
+
+### Identity Pallet
+- KYC verification for domain registration
+- Level 1: Standard domains
+- Level 2: Premium/Government domains
+- Level 3: Verified domains (blue checkmark)
+
+### Economy Pallet
+- DALLA payments for registration and hosting
+- Treasury fee collection (5% marketplace)
+- Auto-renewal subscriptions
+
+### Compliance Pallet
+- Domain content moderation
+- DMCA takedown support
+- FSC oversight for commercial domains
+
+---
+
+## Use Cases
+
+### 1. Personal Website
+```
+Register: mybusiness.bz (100 DALLA)
+Hosting: Free tier (100MB)
+Features: Portfolio, blog, contact form
+```
+
+### 2. E-Commerce Site
+```
+Register: shop.bz (Premium tier - 500 DALLA)
+Hosting: Pro tier (10GB - 50 DALLA/month)
+Features: Product catalog, payment gateway, CDN
+```
+
+### 3. Government Portal
+```
+Register: ministry.bz (Government tier - 50 DALLA)
+Hosting: Enterprise tier (100GB - 200 DALLA/month)
+Features: Public services, document downloads, secure forms
+```
+
+### 4. Domain Investing
+```
+Register: premium.bz (100 DALLA)
+List for sale: 50,000 DALLA
+Treasury fee: 2,500 DALLA (5%)
+Profit: 47,500 DALLA
+```
+
+---
+
+## Development
+
+### Build
+
+```bash
+cargo build -p pallet-belize-bns
+```
+
+### Test
+
+```bash
+cargo test -p pallet-belize-bns
+```
+
+### Benchmarks
+
+```bash
+cargo build --release --features runtime-benchmarks
+```
+
+---
+
+## License
+
+Apache 2.0 / MIT

@@ -1,0 +1,273 @@
+# BelizeChain Common Module
+
+Shared types, traits, and utilities for BelizeChain pallets.
+
+## Overview
+
+The common module is **not a runtime pallet** - it's a library that provides reusable components for other pallets. Think of it as BelizeChain's "standard library" for common patterns.
+
+## Components
+
+### Temporal Anchoring System
+
+The temporal anchoring system creates immutable audit trails of document evolution over time. Each anchor forms a blockchain-within-a-blockchain, linking versions together with cryptographic verification.
+
+#### Key Features
+
+- **Content-Addressable Storage**: Each anchor contains an IPFS/DAG content hash
+- **Version Chaining**: Each anchor links to its predecessor (forming a Merkle-DAG)
+- **Block-Level Timestamps**: Anchored to BelizeChain block numbers for immutable timestamps
+- **Merkle Proofs**: Full history verification via merkle roots
+- **Typed Anchors**: 8 specialized anchor types (LandTitle, BusinessLicense, GovernanceProposal, etc.)
+
+#### Data Structure
+
+```rust
+pub struct TemporalAnchor<BlockNumber> {
+    pub content_hash: [u8; 32],           // IPFS/DAG CID
+    pub previous_hash: Option<[u8; 32]>,  // Link to previous version
+    pub block_number: BlockNumber,        // Immutable timestamp
+    pub timestamp: u64,                   // Unix timestamp
+    pub anchor_type: AnchorType,          // Type classification
+    pub merkle_root: [u8; 32],            // Full history proof
+    pub version: u32,                     // Sequential version number
+}
+```
+
+#### Anchor Types
+
+| Type | Use Case | Example |
+|------|----------|---------|
+| `LandTitle` | Property ownership records | Deed transfers, boundary updates |
+| `BusinessLicense` | Operating permits | License amendments, renewals |
+| `GovernanceProposal` | Referendum tracking | Proposal amendments, voting records |
+| `CourtRecord` | Legal decisions | Judgments, appeals |
+| `EducationCredential` | Academic certificates | Degree issuance, verification |
+| `RegulatoryDocument` | FSC compliance | Regulatory filings |
+| `LegalContract` | Agreements | Contract amendments |
+| `IdentityCredential` | Attestations | KYC verifications |
+
+### TemporalAnchoring Trait
+
+Pallets implement this trait to create immutable document histories:
+
+```rust
+pub trait TemporalAnchoring<BlockNumber> {
+    // Create genesis anchor (first version)
+    fn create_anchor(
+        content_hash: [u8; 32],
+        anchor_type: AnchorType,
+    ) -> Result<[u8; 32], &'static str>;
+    
+    // Add new version to chain
+    fn update_anchor(
+        previous_anchor_hash: [u8; 32],
+        new_content_hash: [u8; 32],
+    ) -> Result<[u8; 32], &'static str>;
+    
+    // Retrieve specific anchor
+    fn get_anchor(hash: [u8; 32]) -> Option<TemporalAnchor<BlockNumber>>;
+    
+    // Verify chain integrity (walks backward, checks merkle roots)
+    fn verify_anchor_chain(hash: [u8; 32]) -> bool;
+    
+    // Get complete version history
+    fn get_anchor_history(hash: [u8; 32]) -> Vec<TemporalAnchor<BlockNumber>>;
+    
+    // Find latest version of content
+    fn get_latest_anchor(content_hash: [u8; 32]) -> Option<[u8; 32]>;
+}
+```
+
+## Integration Examples
+
+### LandLedger Pallet
+
+The LandLedger pallet uses temporal anchoring to track property deed evolution:
+
+```rust
+use pallet_belize_common::{
+    TemporalAnchor,
+    AnchorType,
+    TemporalAnchoring,
+};
+
+impl<T: Config> TemporalAnchoring<BlockNumberFor<T>> for Pallet<T> {
+    fn create_anchor(
+        content_hash: [u8; 32],
+        anchor_type: AnchorType,
+    ) -> Result<[u8; 32], &'static str> {
+        let anchor = TemporalAnchor {
+            content_hash,
+            previous_hash: None,  // Genesis
+            block_number: <frame_system::Pallet<T>>::block_number(),
+            timestamp: T::UnixTime::now().as_secs(),
+            anchor_type,
+            merkle_root: content_hash,  // Genesis root = content hash
+            version: 0,
+        };
+        
+        let hash = helpers::calculate_anchor_hash(&anchor);
+        Anchors::<T>::insert(hash, anchor);
+        Ok(hash)
+    }
+    
+    // ... other trait methods
+}
+```
+
+**Use Cases in LandLedger**:
+- Track property title transfers (A → B → C)
+- Document boundary adjustments
+- Record lien placements/releases
+- Audit trail for disputes
+
+### Future Pallets
+
+Other pallets can use temporal anchoring for:
+- **Governance**: Proposal amendment tracking
+- **Identity**: Credential verification history
+- **Compliance**: Regulatory submission chains
+- **Oracle**: Data feed update logs
+
+## Helper Functions
+
+The `helpers` module provides utility functions:
+
+```rust
+use pallet_belize_common::temporal_helpers;
+
+// Calculate anchor hash (for storage keys)
+let hash = temporal_helpers::calculate_anchor_hash(&anchor);
+
+// Calculate merkle root from history
+let root = temporal_helpers::calculate_merkle_root(&[hash1, hash2, hash3]);
+```
+
+## Architecture Benefits
+
+### Sovereign Data
+
+- **No External Dependencies**: Anchors live entirely on BelizeChain
+- **National Control**: Government controls full document history
+- **Legal Admissibility**: Blockchain timestamps for court evidence
+
+### Cryptographic Verification
+
+- **Tamper-Proof**: Any modification breaks the chain
+- **Public Verification**: Anyone can verify document authenticity
+- **Merkle Efficiency**: O(log n) verification for n-document chains
+
+### Storage Efficiency
+
+- **Off-Chain Content**: Only 32-byte hashes stored on-chain
+- **DAG Storage Integration**: Content stored in Pakit DAG
+- **Pruning Support**: Old versions can be archived while maintaining proofs
+
+## Technical Details
+
+### Merkle Tree Structure
+
+For a 4-anchor chain (versions 0-3):
+
+```
+        Root (v3)
+       /          \
+   H(v2)          H(v3)
+   /    \         /    \
+H(v0) H(v1)   H(v2)  H(v3)
+```
+
+Verification only needs:
+- Current anchor
+- Merkle root
+- O(log n) sibling hashes
+
+### Storage Pattern
+
+```rust
+// In implementing pallet:
+#[pallet::storage]
+pub type Anchors<T: Config> = StorageMap<
+    _,
+    Blake2_128Concat,
+    [u8; 32],  // Anchor hash
+    TemporalAnchor<BlockNumberFor<T>>,
+    OptionQuery,
+>;
+```
+
+### Weight Considerations
+
+| Operation | Weight | Notes |
+|-----------|--------|-------|
+| `create_anchor` | 2 reads, 1 write | Genesis anchor creation |
+| `update_anchor` | 3 reads, 1 write | Fetch previous + create new |
+| `get_anchor` | 1 read | Single lookup |
+| `verify_anchor_chain` | n reads | Walks full chain (worst case) |
+| `get_anchor_history` | n reads | Returns all versions |
+
+**Optimization**: For long chains (>100 versions), consider periodic merkle checkpoints.
+
+## Security Considerations
+
+### Attack Vectors
+
+1. **Chain Forgery**: ❌ Prevented by merkle root verification
+2. **Timestamp Manipulation**: ❌ Block numbers are consensus-enforced
+3. **Content Tampering**: ❌ Hash mismatch breaks verification
+4. **Denial of Service**: ✅ Weight limits prevent long-chain attacks
+
+### Best Practices
+
+- **Bounded History**: Limit chain length in pallets (e.g., max 1000 versions)
+- **Checkpoint Merkle Roots**: Store periodic summaries for O(1) verification
+- **Access Control**: Restrict anchor creation to authorized accounts
+- **Content Validation**: Verify IPFS/DAG content exists before anchoring
+
+## Testing
+
+```rust
+#[test]
+fn test_temporal_anchor_chain() {
+    // Create genesis anchor
+    let hash1 = create_anchor(content1, AnchorType::LandTitle).unwrap();
+    
+    // Update to version 2
+    let hash2 = update_anchor(hash1, content2).unwrap();
+    
+    // Verify chain integrity
+    assert!(verify_anchor_chain(hash2));
+    
+    // Get full history
+    let history = get_anchor_history(hash2);
+    assert_eq!(history.len(), 2);
+}
+```
+
+## Future Enhancements
+
+- [ ] **Merkle Checkpoints**: Periodic root snapshots for O(1) verification
+- [ ] **Anchor Expiration**: Archive old versions after N blocks
+- [ ] **Multi-Sig Anchoring**: Require multiple approvals for critical documents
+- [ ] **Cross-Chain Anchors**: Bridge anchors to Polkadot/Ethereum for international validation
+- [ ] **Encrypted Anchors**: Support for private document chains (TemporalAnchor with encrypted content_hash)
+
+## Dependencies
+
+```toml
+[dependencies]
+codec = { package = "parity-scale-codec", version = "3.6.12", default-features = false }
+scale-info = { version = "2.11.3", default-features = false, features = ["derive"] }
+sp-runtime = { version = "38.0.0", default-features = false }
+sp-io = { version = "37.0.0", default-features = false }
+sp-std = { version = "14.0.0", default-features = false }
+```
+
+## License
+
+GPL-3.0-or-later (same as BelizeChain runtime)
+
+---
+
+**Note**: This module is a **library crate**, not a runtime pallet. It provides types and traits for other pallets to implement. See [LandLedger pallet](../landledger/README.md) for a complete implementation example.

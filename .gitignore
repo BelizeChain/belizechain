@@ -1,0 +1,116 @@
+# BelizeChain .gitignore - Blockchain Only
+
+# Rust/Cargo
+target/
+**/*.rs.bk
+*.pdb
+Cargo.lock  # Keep for binary, remove for library crates
+
+# IDE and Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Blockchain
+chain-spec-raw.json
+.subxt/
+.polkadot/
+.substrate/
+keystore/
+db/
+chains/
+
+# Build artifacts
+/target/
+/doc/
+*.log
+audit_execution.log
+build.log
+belizechain_federated_training.log
+
+# Environment
+.env
+.env.template
+.cargo/
+
+# Docker
+.dockerignore
+belizechain_*.log
+*_federated_training.log
+
+# Runtime directory
+tmpruntime
+wbuild
+
+# Testing
+coverage/
+.nyc_output/
+junit.xml
+test-results/
+.pytest_cache/
+
+# Documentation
+.doctrees/
+_build/
+
+# Secrets and keys
+*.key
+*.pem
+*.p12
+*.pfx
+secrets.json
+appsettings.local.json
+local.settings.json
+
+# OS generated files
+.DS_Store?
+ehthumbs.db
+Icon?
+Thumbs.db
+
+# Federated Learning models and data
+models/
+training_data/
+checkpoints/checkpoint_gen_*.pt
+*.model
+*.ckpt
+
+# Keep final checkpoint
+!checkpoints/final_checkpoint.pt
+
+# IPFS/Arweave local data
+ipfs_data/
+arweave_data/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+
+# Build and test logs
+*.log
+build*.log
+test_results*.txt
+integration_test*.log
+*_results.log
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# UI build artifacts
+.next/
+out/
+.cache/
