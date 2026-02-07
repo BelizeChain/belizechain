@@ -2172,7 +2172,7 @@ impl<T: Config> GovernanceParticipation<T::AccountId> for Pallet<T> {
         let record = ParticipationRecord {
             activity_type: ActivityType::CouncilMembership,
             block_number: current_block,
-            value: 50, // Score for council activity
+            value: 500, // Score for council activity to align with governance weighting
         };
         
         ParticipationHistory::<T>::try_mutate(account, |history| {

@@ -30,7 +30,7 @@ pub enum MigrationStep {
 /// Template for pallet storage migrations
 /// 
 /// Usage:
-/// ```rust
+/// ```rust,ignore
 /// pub struct MigrateV1ToV2<T>(PhantomData<T>);
 /// 
 /// impl<T: Config> OnRuntimeUpgrade for MigrateV1ToV2<T> {

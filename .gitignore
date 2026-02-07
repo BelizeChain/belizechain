@@ -4,7 +4,7 @@
 target/
 **/*.rs.bk
 *.pdb
-Cargo.lock  # Keep for binary, remove for library crates
+# Cargo.lock is committed for reproducible builds (binary crate)
 
 # IDE and Editor
 .vscode/
@@ -49,6 +49,9 @@ tmpruntime
 wbuild
 
 # Testing
+__pycache__/
+*.pyc
+.venv/
 coverage/
 .nyc_output/
 junit.xml

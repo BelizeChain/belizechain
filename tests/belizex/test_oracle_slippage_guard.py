@@ -76,9 +76,16 @@ class TestBelizeXOracleSlippageGuard:
         assert receipt.is_success, f"Trade failed: {getattr(receipt, 'error_message', None)}"
 
         # 6) Confirm event emitted
-        found = False
-        for ev in receipt.triggered_events:
-            if ev.event_module == "BelizeX" and ev.event_name == "TradeExecuted":
-                found = True
-                break
-        assert found, "TradeExecuted event not found"
+        def _is_trade_executed(ev):
+            module = None
+            name = None
+            if hasattr(ev, "event") and hasattr(ev.event, "value") and isinstance(ev.event.value, dict):
+                module = ev.event.value.get("module") or ev.event.value.get("pallet") or ev.event.value.get("section")
+                name = ev.event.value.get("event") or ev.event.value.get("name")
+            module = module or getattr(ev, "event_module", None)
+            name = name or getattr(ev, "event_name", None)
+            if module == "BelizeX" and name == "TradeExecuted":
+                return True
+            return "TradeExecuted" in str(ev)
+
+        assert any(_is_trade_executed(ev) for ev in receipt.triggered_events), "TradeExecuted event not found"

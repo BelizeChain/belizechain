@@ -1,0 +1,165 @@
+# ─────────────────────────────────────────────────────────
+# BelizeChain Node — CI/CD Pipeline
+# Trigger: push to main  ·  manual dispatch
+# Flow:    test → build → push ACR → deploy Azure VM
+# ─────────────────────────────────────────────────────────
+
+name: Build & Deploy Blockchain Node
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: belizechainregistry.azurecr.io
+  IMAGE_NAME: belizechain-node
+  NODE_NAME: "BelizeChain-Testnet-Validator-1"
+
+# Only one deploy at a time; cancel superseded runs
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── 1. Run Rust unit tests ────────────────────────────
+  test:
+    name: 🧪 Rust Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-test-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-test-
+
+      - name: Run tests
+        run: cargo test --release --workspace
+
+  # ── 2. Build Docker image & push to ACR ───────────────
+  build:
+    name: 🐳 Build & Push Image
+    needs: test
+    runs-on: ubuntu-latest
+    # Only build on pushes to main (not on PRs)
+    if: github.event_name != 'pull_request'
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tags }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to:   type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+
+  # ── 3. Deploy to Azure VM ─────────────────────────────
+  deploy:
+    name: 🚀 Deploy to Testnet
+    needs: build
+    runs-on: ubuntu-latest
+    environment: testnet          # optional: add environment protection rules in GitHub Settings
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            REGISTRY="belizechainregistry.azurecr.io"
+            IMAGE="$REGISTRY/belizechain-node:latest"
+            CONTAINER="belizechain-node"
+
+            echo "🔑 Logging in to ACR…"
+            echo "${{ secrets.ACR_PASSWORD }}" | docker login "$REGISTRY" \
+              -u "${{ secrets.ACR_USERNAME }}" --password-stdin
+
+            echo "⬇️  Pulling latest image…"
+            docker pull "$IMAGE"
+
+            echo "🛑 Stopping previous container (if any)…"
+            docker stop "$CONTAINER" 2>/dev/null || true
+            docker rm   "$CONTAINER" 2>/dev/null || true
+
+            echo "🚀 Starting blockchain node…"
+            docker run -d \
+              --name "$CONTAINER" \
+              --restart unless-stopped \
+              --network belizechain-net \
+              -p 30333:30333 \
+              -p 9944:9944 \
+              -p 9615:9615 \
+              -v blockchain-data:/data \
+              "$IMAGE" \
+              --chain /etc/belizechain/testnet-chain-spec-raw.json \
+              --base-path /data \
+              --name "${{ env.NODE_NAME }}" \
+              --validator \
+              --rpc-port 9944 \
+              --rpc-cors all \
+              --rpc-external \
+              --rpc-methods Safe \
+              --prometheus-port 9615 \
+              --prometheus-external \
+              --state-pruning archive \
+              --telemetry-url "wss://telemetry.polkadot.io/submit/ 0"
+
+            echo "⏳ Waiting for node to become healthy…"
+            for i in $(seq 1 30); do
+              if curl -sf -X POST -H "Content-Type: application/json" \
+                   -d '{"jsonrpc":"2.0","id":1,"method":"system_health","params":[]}' \
+                   http://localhost:9944 > /dev/null 2>&1; then
+                echo "✅ Node is healthy!"
+                docker logs --tail 10 "$CONTAINER"
+                exit 0
+              fi
+              echo "   attempt $i/30 …"
+              sleep 5
+            done
+
+            echo "❌ Node failed health check after 150 s"
+            docker logs --tail 50 "$CONTAINER"
+            exit 1

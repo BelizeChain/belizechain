@@ -176,5 +176,8 @@ try-runtime = [
     "pallet-belize-quantum/try-runtime",
 ]
 
+# Development-only example migration hooks (disabled by default)
+example-migration = []
+
 # Enable benchmarking
 fast-runtime = []

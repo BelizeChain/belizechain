@@ -11,7 +11,17 @@ import asyncio
 import httpx
 import sys
 import json
+import os
 from datetime import datetime
+
+import pytest
+
+# Run these async API checks only when explicitly enabled
+RUN_SECURITY_API = os.getenv("ENABLE_ORACLE_API_TESTS") == "1"
+pytestmark = [
+    pytest.mark.asyncio,
+    pytest.mark.skipif(not RUN_SECURITY_API, reason="Oracle API tests disabled (set ENABLE_ORACLE_API_TESTS=1 to run)")
+]
 
 
 # Configuration

@@ -4,6 +4,13 @@
 
 set -e
 
+# Prefer project virtualenv for Python tools
+PYTHON_BIN="$(command -v python3)"
+if [ -x ".venv/bin/python" ]; then
+    PYTHON_BIN=".venv/bin/python"
+fi
+PIP_CMD="$PYTHON_BIN -m pip"
+
 echo "🧪 BelizeChain Complete Test Suite"
 echo "===================================="
 echo ""
@@ -36,7 +43,7 @@ echo ""
 # 3. Start testnet node in background
 echo "🚀 Starting testnet node..."
 echo "----------------------------"
-./target/release/belizechain-node --chain=testnet --tmp --alice > /tmp/belizechain-node.log 2>&1 &
+./target/release/belizechain-node --dev --tmp --alice > /tmp/belizechain-node.log 2>&1 &
 NODE_PID=$!
 echo "✅ Node started (PID: $NODE_PID)"
 echo ""
@@ -65,14 +72,14 @@ echo "---------------------------------------"
 # Set Python path
 export PYTHONPATH=$(pwd):$PYTHONPATH
 
-# Check if pytest is available
-if ! command -v pytest &> /dev/null; then
-    echo "Installing pytest..."
-    pip install -r tests/requirements.txt
+# Ensure dependencies are available in the selected interpreter
+if ! $PYTHON_BIN -m pytest --version > /dev/null 2>&1; then
+    echo "Installing Python test dependencies..."
+    $PIP_CMD install -r tests/requirements.txt
 fi
 
 # Run all integration tests
-if python3 -m pytest tests/ -v --tb=short; then
+if $PYTHON_BIN -m pytest tests/ -v --tb=short; then
     echo "✅ Python integration tests passed"
     PYTHON_TESTS_PASSED=1
 else
