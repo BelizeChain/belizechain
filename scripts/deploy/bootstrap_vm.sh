@@ -21,10 +21,15 @@ fi
 
 # ── 2. Login to ACR ─────────────────────────────────────────
 REGISTRY="belizechainregistry.azurecr.io"
+ACR_USER="${ACR_USERNAME:-wicked}"
 echo ""
 echo "🔑 Logging in to ACR ($REGISTRY)…"
-echo "   Enter ACR password when prompted."
-docker login "$REGISTRY" -u wicked
+if [ -n "${ACR_PASSWORD:-}" ]; then
+  echo "$ACR_PASSWORD" | docker login "$REGISTRY" -u "$ACR_USER" --password-stdin
+else
+  echo "   Enter ACR password when prompted."
+  docker login "$REGISTRY" -u "$ACR_USER"
+fi
 
 # ── 3. Create persistent volumes ────────────────────────────
 echo ""
