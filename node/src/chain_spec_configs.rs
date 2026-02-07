@@ -1,5 +1,5 @@
-/// Chain specification configurations for different networks
-/// Enables easy switching between testnet/mainnet/devnet
+// Chain specification configurations for different networks
+// Enables easy switching between testnet/mainnet/devnet
 
 use serde::{Deserialize, Serialize};
 use belizechain_runtime::{Balance, DOLLARS as DALLA};
@@ -143,12 +143,12 @@ mod tests {
     #[test]
     fn test_network_configs() {
         let dev = NetworkConfig::development();
-        assert_eq!(dev.enable_sudo, true);
-        assert_eq!(dev.enable_faucet, true);
+        assert!(dev.enable_sudo);
+        assert!(dev.enable_faucet);
 
         let mainnet = NetworkConfig::mainnet();
-        assert_eq!(mainnet.enable_sudo, false);
-        assert_eq!(mainnet.enable_faucet, false);
+        assert!(!mainnet.enable_sudo);
+        assert!(!mainnet.enable_faucet);
         assert!(mainnet.initial_authorities.len() >= 5);
     }
 }

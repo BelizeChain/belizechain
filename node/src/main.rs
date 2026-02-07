@@ -53,7 +53,6 @@ impl SubstrateCli for Cli {
     /// - "local" - Local testnet with Alice and Bob
     /// - "belize" or "" - Mainnet configuration
     /// - Custom path - Load from JSON file
-
     fn load_spec(&self, id: &str) -> Result<Box<dyn ChainSpec>, String> {
         Ok(match id {
             "dev" => Box::new(chain_spec::development_config()?),

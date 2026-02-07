@@ -1857,6 +1857,7 @@ pub mod pallet {
 
     #[pallet::genesis_config]
     #[derive(frame_support::DefaultNoBound)]
+    #[allow(clippy::type_complexity)]
     pub struct GenesisConfig<T: Config> {
         /// Initial education modules (Phase 5)
         pub education_modules: Vec<(

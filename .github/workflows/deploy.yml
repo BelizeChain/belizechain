@@ -96,7 +96,8 @@ jobs:
     name: 🚀 Deploy to Testnet
     needs: build
     runs-on: ubuntu-latest
-    environment: testnet          # optional: add environment protection rules in GitHub Settings
+    environment:
+      name: testnet               # add environment protection rules in GitHub Settings
 
     steps:
       - name: Deploy via SSH

@@ -13,7 +13,7 @@
 
 use sc_network::config::{NodeKeyConfig, SetConfig, TransportConfig};
 use sc_service::config::{KeystoreConfig, PrometheusConfig};
-use std::path::PathBuf;
+use std::path::Path;
 
 /// Validator node configuration presets (reserved for deployment automation)
 #[allow(dead_code)]
@@ -120,7 +120,7 @@ impl BootstrapNodes {
 }
 
 /// Recommended node key storage configuration
-pub fn node_key_config(_base_path: &PathBuf, _network: &str) -> NodeKeyConfig {
+pub fn node_key_config(_base_path: &Path, _network: &str) -> NodeKeyConfig {
     // Substrate NodeKeyConfig no longer has File variant in stable2512
     // Node keys are now managed through CLI --node-key or --node-key-file
     NodeKeyConfig::default()
@@ -135,7 +135,7 @@ pub fn prometheus_config(port: u16) -> PrometheusConfig {
 }
 
 /// Keystore configuration for validator keys
-pub fn keystore_config(base_path: &PathBuf, network: &str) -> KeystoreConfig {
+pub fn keystore_config(base_path: &Path, network: &str) -> KeystoreConfig {
     let keystore_path = base_path.join("keystore").join(network);
     KeystoreConfig::Path { path: keystore_path, password: None }
 }
@@ -161,10 +161,10 @@ pub fn reserved_peers_config() -> SetConfig {
 /// Database backend configuration recommendations
 pub mod database {
     use sc_service::config::DatabaseSource;
-    use std::path::PathBuf;
+    use std::path::Path;
 
     /// Recommended database for validators (RocksDB with tuned settings)
-    pub fn validator_database(base_path: &PathBuf) -> DatabaseSource {
+    pub fn validator_database(base_path: &Path) -> DatabaseSource {
         DatabaseSource::RocksDb {
             path: base_path.join("db"),
             cache_size: 512, // 512 MB cache for validators
@@ -172,7 +172,7 @@ pub mod database {
     }
 
     /// Recommended database for archive nodes (larger cache)
-    pub fn archive_database(base_path: &PathBuf) -> DatabaseSource {
+    pub fn archive_database(base_path: &Path) -> DatabaseSource {
         DatabaseSource::RocksDb {
             path: base_path.join("db"),
             cache_size: 2048, // 2 GB cache for archive nodes
@@ -180,7 +180,7 @@ pub mod database {
     }
 
     /// Recommended database for light clients (minimal resources)
-    pub fn light_database(base_path: &PathBuf) -> DatabaseSource {
+    pub fn light_database(base_path: &Path) -> DatabaseSource {
         DatabaseSource::RocksDb {
             path: base_path.join("db"),
             cache_size: 128, // 128 MB cache for light clients
@@ -225,10 +225,10 @@ mod tests {
     #[test]
     fn test_validator_configs() {
         let dev = ValidatorConfig::development();
-        assert_eq!(dev.enable_mdns, true);
+        assert!(dev.enable_mdns);
 
         let mainnet = ValidatorConfig::mainnet();
-        assert_eq!(mainnet.enable_mdns, false);
+        assert!(!mainnet.enable_mdns);
         assert!(mainnet.min_peers >= 10);
     }
 
