@@ -8,9 +8,9 @@ name: Build & Deploy Blockchain Node
 
 on:
   push:
-    branches: [main]
+    branches: [belizechain]
   pull_request:
-    branches: [main]
+    branches: [belizechain]
   workflow_dispatch:
 
 env:
