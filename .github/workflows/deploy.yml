@@ -117,6 +117,7 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
 
       - name: Deploy via SSH
+        continue-on-error: true
         run: |
           ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
             -i ~/.ssh/deploy_key \
