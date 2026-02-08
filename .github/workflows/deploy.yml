@@ -171,7 +171,7 @@ jobs:
             --validator \
             --rpc-port 9944 \
             --rpc-cors all \
-            --rpc-external \
+            --unsafe-rpc-external \
             --rpc-methods Safe \
             --prometheus-port 9615 \
             --prometheus-external \
