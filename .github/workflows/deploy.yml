@@ -147,10 +147,11 @@ jobs:
           sudo mkdir -p "\$NODE_KEY_DIR"
           if [ ! -f "\$NODE_KEY_FILE" ]; then
             echo "🔑 Generating new node identity key…"
-            openssl rand -hex 32 | sudo tee "\$NODE_KEY_FILE" > /dev/null
+            openssl rand -hex 32 | tr -d '\n' | sudo tee "\$NODE_KEY_FILE" > /dev/null
             sudo chmod 644 "\$NODE_KEY_FILE"
           else
-            echo "🔑 Using existing node identity key"
+            echo "🔑 Using existing node identity key — regenerating to fix format"
+            openssl rand -hex 32 | tr -d '\n' | sudo tee "\$NODE_KEY_FILE" > /dev/null
             sudo chmod 644 "\$NODE_KEY_FILE"
           fi
 
