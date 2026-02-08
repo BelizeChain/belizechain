@@ -169,12 +169,15 @@ jobs:
             --node-key-file /etc/belizechain/node-key \
             --name "${DEPLOY_NODE_NAME}" \
             --validator \
+            --alice \
+            --force-authoring \
             --rpc-port 9944 \
             --rpc-cors all \
             --unsafe-rpc-external \
             --rpc-methods Safe \
             --prometheus-port 9615 \
             --prometheus-external \
+            --trie-cache-size 268435456 \
             --state-pruning archive \
             --telemetry-url "wss://telemetry.polkadot.io/submit/ 0"
 
