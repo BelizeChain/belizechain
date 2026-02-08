@@ -104,69 +104,83 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: testnet               # add environment protection rules in GitHub Settings
+    env:
+      ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+      ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+      DEPLOY_NODE_NAME: ${{ env.NODE_NAME }}
 
     steps:
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
       - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.VM_HOST }}
-          username: ${{ secrets.VM_USER }}
-          key: ${{ secrets.VM_SSH_KEY }}
-          script_stop: true
-          script: |
-            set -euo pipefail
+        run: |
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
+            -i ~/.ssh/deploy_key \
+            "${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}" bash -s << ENDSSH
+          set -euo pipefail
 
-            REGISTRY="belizechainregistry.azurecr.io"
-            IMAGE="$REGISTRY/belizechain-node:latest"
-            CONTAINER="belizechain-node"
+          REGISTRY="belizechainregistry.azurecr.io"
+          IMAGE="\$REGISTRY/belizechain-node:latest"
+          CONTAINER="belizechain-node"
 
-            echo "🔑 Logging in to ACR…"
-            echo "${{ secrets.ACR_PASSWORD }}" | docker login "$REGISTRY" \
-              -u "${{ secrets.ACR_USERNAME }}" --password-stdin
+          echo "🔑 Logging in to ACR…"
+          echo "${ACR_PASSWORD}" | docker login "\$REGISTRY" \
+            -u "${ACR_USERNAME}" --password-stdin
 
-            echo "⬇️  Pulling latest image…"
-            docker pull "$IMAGE"
+          echo "⬇️  Pulling latest image…"
+          docker pull "\$IMAGE"
 
-            echo "🛑 Stopping previous container (if any)…"
-            docker stop "$CONTAINER" 2>/dev/null || true
-            docker rm   "$CONTAINER" 2>/dev/null || true
+          echo "🛑 Stopping previous container (if any)…"
+          docker stop "\$CONTAINER" 2>/dev/null || true
+          docker rm   "\$CONTAINER" 2>/dev/null || true
 
-            echo "🚀 Starting blockchain node…"
-            docker run -d \
-              --name "$CONTAINER" \
-              --restart unless-stopped \
-              --network belizechain-net \
-              -p 30333:30333 \
-              -p 9944:9944 \
-              -p 9615:9615 \
-              -v blockchain-data:/data \
-              "$IMAGE" \
-              --chain /etc/belizechain/testnet-chain-spec-raw.json \
-              --base-path /data \
-              --name "${{ env.NODE_NAME }}" \
-              --validator \
-              --rpc-port 9944 \
-              --rpc-cors all \
-              --rpc-external \
-              --rpc-methods Safe \
-              --prometheus-port 9615 \
-              --prometheus-external \
-              --state-pruning archive \
-              --telemetry-url "wss://telemetry.polkadot.io/submit/ 0"
+          docker network create belizechain-net 2>/dev/null || true
 
-            echo "⏳ Waiting for node to become healthy…"
-            for i in $(seq 1 30); do
-              if curl -sf -X POST -H "Content-Type: application/json" \
-                   -d '{"jsonrpc":"2.0","id":1,"method":"system_health","params":[]}' \
-                   http://localhost:9944 > /dev/null 2>&1; then
-                echo "✅ Node is healthy!"
-                docker logs --tail 10 "$CONTAINER"
-                exit 0
-              fi
-              echo "   attempt $i/30 …"
-              sleep 5
-            done
+          echo "🚀 Starting blockchain node…"
+          docker run -d \
+            --name "\$CONTAINER" \
+            --restart unless-stopped \
+            --network belizechain-net \
+            -p 30333:30333 \
+            -p 9944:9944 \
+            -p 9615:9615 \
+            -v blockchain-data:/data \
+            "\$IMAGE" \
+            --chain /etc/belizechain/testnet-chain-spec-raw.json \
+            --base-path /data \
+            --name "${DEPLOY_NODE_NAME}" \
+            --validator \
+            --rpc-port 9944 \
+            --rpc-cors all \
+            --rpc-external \
+            --rpc-methods Safe \
+            --prometheus-port 9615 \
+            --prometheus-external \
+            --state-pruning archive \
+            --telemetry-url "wss://telemetry.polkadot.io/submit/ 0"
 
-            echo "❌ Node failed health check after 150 s"
-            docker logs --tail 50 "$CONTAINER"
-            exit 1
+          echo "⏳ Waiting for node to become healthy…"
+          for i in \$(seq 1 30); do
+            if curl -sf -X POST -H "Content-Type: application/json" \
+                 -d '{"jsonrpc":"2.0","id":1,"method":"system_health","params":[]}' \
+                 http://localhost:9944 > /dev/null 2>&1; then
+              echo "✅ Node is healthy!"
+              docker logs --tail 10 "\$CONTAINER"
+              exit 0
+            fi
+            echo "   attempt \$i/30 …"
+            sleep 5
+          done
+
+          echo "❌ Node failed health check after 150 s"
+          docker logs --tail 50 "\$CONTAINER"
+          exit 1
+          ENDSSH
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
