@@ -141,6 +141,18 @@ jobs:
 
           docker network create belizechain-net 2>/dev/null || true
 
+          # Generate a persistent node key if one doesn't exist yet
+          NODE_KEY_DIR="/opt/belizechain"
+          NODE_KEY_FILE="\$NODE_KEY_DIR/node-key"
+          sudo mkdir -p "\$NODE_KEY_DIR"
+          if [ ! -f "\$NODE_KEY_FILE" ]; then
+            echo "🔑 Generating new node identity key…"
+            openssl rand -hex 32 | sudo tee "\$NODE_KEY_FILE" > /dev/null
+            sudo chmod 600 "\$NODE_KEY_FILE"
+          else
+            echo "🔑 Using existing node identity key"
+          fi
+
           echo "🚀 Starting blockchain node…"
           docker run -d \
             --name "\$CONTAINER" \
@@ -150,9 +162,11 @@ jobs:
             -p 9944:9944 \
             -p 9615:9615 \
             -v blockchain-data:/data \
+            -v "\$NODE_KEY_FILE":/etc/belizechain/node-key:ro \
             "\$IMAGE" \
             --chain /etc/belizechain/testnet-chain-spec-raw.json \
             --base-path /data \
+            --node-key-file /etc/belizechain/node-key \
             --name "${DEPLOY_NODE_NAME}" \
             --validator \
             --rpc-port 9944 \
