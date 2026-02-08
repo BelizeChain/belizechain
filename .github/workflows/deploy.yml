@@ -107,7 +107,7 @@ jobs:
     env:
       ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
       ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
-      DEPLOY_NODE_NAME: ${{ env.NODE_NAME }}
+      DEPLOY_NODE_NAME: "BelizeChain-Testnet-Validator-1"
 
     steps:
       - name: Setup SSH
