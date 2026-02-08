@@ -148,9 +148,10 @@ jobs:
           if [ ! -f "\$NODE_KEY_FILE" ]; then
             echo "🔑 Generating new node identity key…"
             openssl rand -hex 32 | sudo tee "\$NODE_KEY_FILE" > /dev/null
-            sudo chmod 600 "\$NODE_KEY_FILE"
+            sudo chmod 644 "\$NODE_KEY_FILE"
           else
             echo "🔑 Using existing node identity key"
+            sudo chmod 644 "\$NODE_KEY_FILE"
           fi
 
           echo "🚀 Starting blockchain node…"
