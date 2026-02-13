@@ -19,7 +19,7 @@ BelizeChain's two primary user interfaces connect citizens and government to the
                    ↓
 ┌─────────────────────────────────────────────┐
 │ BelizeChain Node (:9944)                    │
-│ 15 Custom Pallets + System Pallets          │
+│ 16 Custom Pallets + System Pallets          │
 └──────────────────┬──────────────────────────┘
                    │ Polkadot.js WebSocket
                    ↓

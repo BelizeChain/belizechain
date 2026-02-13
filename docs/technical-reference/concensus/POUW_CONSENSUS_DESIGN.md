@@ -75,8 +75,9 @@ PrivacySafeguards {
     // Data never leaves validator node
     local_computation: enforce_no_data_transmission(),
     
-    // Zero-knowledge proofs for verification
-    zk_proofs: prove_computation_without_revealing_data(),
+    // Computation commitments (blake2_256 hashes) for verification
+    // NOTE: True ZK proofs (sp-arkworks) roadmapped for 2028
+    computation_commitments: verify_commitment_integrity(),
     
     // Homomorphic encryption for model aggregation
     secure_aggregation: aggregate_encrypted_model_deltas(),
@@ -169,7 +170,7 @@ ComplianceFramework {
 ### **Week 1-2: Core PoUW Implementation**
 1. **staking**: PoUW consensus with federated learning
 2. **Federated learning coordinator**: Task distribution and aggregation
-3. **Zero-knowledge proof system**: Computation verification
+3. **Computation commitment system**: Structural validation (ZK circuits roadmapped 2028)
 4. **Reward distribution**: Quality/timeliness/honesty scoring
 
 ### **Week 3-4: Governance & Economics** 
@@ -200,7 +201,7 @@ ComplianceFramework {
 
 ### **Security Guarantees**
 - **Privacy preservation**: 100% local data retention
-- **Computation verification**: Zero-knowledge proof validation
+- **Computation verification**: Commitment validation (structural checks, entropy scoring)
 - **Slashing enforcement**: Automated penalty application
 - **Quantum resistance**: Migration readiness
 

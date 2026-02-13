@@ -5,6 +5,10 @@
 //! Goals:
 //! - Treat Passport and SSN as first-class, standards-based identifiers (ICAO Doc 9303 + SSB 9-digit)
 //! - Privacy-first: on-chain stores salted hashes and credential anchors, never plaintext PII
+//!   **Note**: Current privacy model uses salted blake2_256 hashes for PII. To verify identity,
+//!   the verifier needs the plaintext value to hash-and-compare. True ZK selective disclosure
+//!   (prove "I have KYC L2+" without revealing underlying data) requires ZK circuits and is
+//!   roadmapped for 2028 via sp-arkworks integration.
 //! - Issuer attestations: Immigration (Passport), SSB (SSN), Biometrics issuers; governance controls
 //! - KYC levels: L1 (SSN), L2 (Passport + SSN), L3 (Biometrics + all prior)
 //! - Annual validity + 6-month grace; revocation/suspension by governance/councils; emergency pause

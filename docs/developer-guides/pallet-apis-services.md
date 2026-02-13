@@ -277,7 +277,7 @@ pub struct MerkleProof {
 
 ## Payroll Pallet
 
-**Government and private sector payroll management**
+**Enterprise payroll management for all business types — government, enterprise, SME, cooperative, gig platforms, and nonprofits**
 
 ### Extrinsics
 

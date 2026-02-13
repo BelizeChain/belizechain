@@ -155,6 +155,13 @@ Project timeline: past milestones, current development, and future vision.
 - 📅 wDALLA, wbBZD, wETH wrapped tokens
 - 📅 5-of-7 validator multi-sig security
 - 📅 Polkadot XCM v3 integration (native asset transfers)
+- 🚧 **Meshtastic Mesh Network Pallet** (pallet-belize-mesh)
+  - On-chain Meshtastic node registry (T-Beam, Heltec V3, RAK WisBlock)
+  - Off-grid P2P payments via LoRa 915 MHz mesh (Maya Wallet → BLE → Meshtastic radio → LoRa mesh → Gateway → blockchain)
+  - Relay Mining rewards for mesh node operators
+  - Emergency Broadcast System (NEMO hurricane/disaster alerts via mesh)
+  - Validator mesh relay for consensus fallback during internet outages
+  - Coverage targeting: rural Belize, cayes, jungle communities, disaster zones
 
 **March 2026** (PLANNED):
 - 📅 Performance optimization: 2,500 TPS sustained (currently 1,000 TPS)

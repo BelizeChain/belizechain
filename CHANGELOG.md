@@ -7,6 +7,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - ZK Proof Audit & Privacy Remediation (February 2026) ⚠️ BREAKING
+
+Comprehensive audit of zero-knowledge proof usage across all 16 pallets. Removed
+fake/placeholder ZK claims, replaced plaintext event data with blake2_256 commitment
+hashes, and added structural proof validation. See `docs/security/` for full audit.
+
+- **Staking** (`pallet-belize-staking`) — BREAKING
+  - `ModelDelta.zk_proof: BoundedVec<u8, 256>` → `computation_commitment: [u8; 32]`
+  - Removed fake byte-length ZK validation (`ensure!(zk_proof.len() >= 32)`)
+  - Added structural commitment checks: non-zero, non-uniform bytes, encrypted_delta ≥ 16 bytes
+  - Added `evaluate_model_quality()` entropy-aware scoring (delta size + penalty for low-entropy)
+  - Error renamed: `InvalidZKProof` → `InvalidComputationCommitment`
+  - Docs: "zero-knowledge proofs" → "computation commitments" (honest labeling)
+- **Quantum** (`pallet-belize-quantum`) — BREAKING
+  - `record_quantum_result()` now validates: proof ≥ 32 bytes, result_hash ≠ all-zeros, accuracy ≤ 100
+  - `verify_quantum_result()` docs: clarified as root emergency override, not real ZK verification
+  - Tests: All proof_data updated from 10-byte literals to 32-byte commitments; 3 new validation tests
+  - 20 tests pass (up from 17)
+- **Payroll** (`pallet-belize-payroll`) — BREAKING
+  - `Employee` struct: Added `salary_commitment: [u8; 32]` (blake2_256 hash of salary + employer + id)
+  - `PayrollRecord` struct: Added `payment_commitment: [u8; 32]`
+  - Events no longer emit plaintext amounts:
+    - `EmployeeAdded`: `salary` → `salary_commitment`
+    - `SalaryUpdated`: `old_salary/new_salary` → `new_commitment`
+    - `PaymentExecuted`: `gross_amount/deductions/net_amount` → `payment_commitment`
+    - `BatchPaymentCompleted`: `total_amount` → `batch_commitment`
+    - `ScheduledPaymentProcessed`: `total_amount` → `batch_commitment`
+    - `DeductionUpdated`: `amount` → `deduction_commitment`
+    - `BonusIssued`: `amount` → `amount_commitment`
+  - Helper functions: `compute_salary_commitment()`, `compute_payment_commitment()`
+  - Uses `sp_core::hashing::blake2_256` (not `sp_io` — `no_std` compatible)
+  - Known limitation: `Currency::transfer` still emits plaintext in system Transfer event (Substrate constraint; Pedersen commitments roadmapped 2028)
+  - 46 tests updated to verify commitment hashes
+- **Governance** (`pallet-belize-governance`)
+  - Honest docs: "Shielded Voting" → "Roadmapped 2028, NOT YET IMPLEMENTED — current votes are public for accountability"
+  - Pre-provisioned `VoteCommitments<T>` storage for future commit-reveal scheme
+  - Privacy notes added to `Votes`, `ElectionVotes`, `ReferendumVotes` storage docs
+- **Identity** (`pallet-belize-identity`)
+  - Clarified ZK selective disclosure roadmap: current model uses salted blake2_256 hashes; true ZK circuits (sp-arkworks) roadmapped for 2028
+
+### Added - Enterprise Payroll Extension (February 2026)
+- **Employer Types**: Government, Enterprise, SME, Cooperative, GigPlatform, NonProfit classification
+- **Worker Types**: FullTime, PartTime, Contractor, Freelancer, Seasonal, Intern
+- **Department Management**: `create_department` extrinsic, per-department scheduling, employee count tracking
+- **Automatic Deductions**: IncomeTax, SocialSecurity, Pension, HealthInsurance, Custom — auto-applied on payment
+- **Bonus/One-Time Payments**: `issue_bonus` extrinsic with categories (Bonus, Overtime, Commission, Reimbursement, Severance)
+- **Employee Status Toggle**: `toggle_employee_status` for suspend/reactivate without removal
+- **Security Fix**: `verify_employer` now requires `VerifierOrigin` (root) instead of any signed account
+- **Multiple Schedules**: Employers can have per-department payroll schedules (StorageDoubleMap)
+- **Net Payment Tracking**: PayrollRecord now tracks deductions and net_amount alongside gross
+- **Test Coverage**: 46 unit tests (up from 24), covering all new enterprise features
+
+### Added - Meshtastic Mesh Network Pallet (February 2026)
+- **`pallet-belize-mesh`**: Complete Meshtastic LoRa mesh networking pallet
+  - **Off-Grid P2P Payments**: Maya Wallet → BLE → Meshtastic radio → LoRa 915 MHz mesh → Gateway → blockchain
+  - **Mesh Node Registry**: On-chain registration of Meshtastic nodes (T-Beam, Heltec V3, RAK WisBlock, Station G2)
+  - **Node Roles**: Client, Router, Gateway, ValidatorRelay, EmergencyBeacon
+  - **Relay Mining**: DALLA rewards for mesh operators relaying transactions, block headers, and emergency alerts
+  - **Emergency Broadcast System**: NEMO-integrated hurricane/disaster alerts via mesh with geo-targeting to districts
+  - **Validator Mesh Relay**: Compressed block header relay through LoRa for consensus fallback during internet outages
+  - **Coverage**: Rural Belize, cayes, jungle communities, disaster zones across 6 districts
+  - **Transaction Compression**: 87-byte compressed format fits LoRa 237-byte payload with replay protection
+  - **Node Heartbeat Monitoring**: Configurable timeout, reputation scoring, and coverage zone mapping
+  - Architecture doc: `docs/architecture/meshtastic-integration.md`
+- **Runtime Integration**: `MeshIdentityProviderImpl` with KYC verification, NEMO authority checks, and validator validation
+- **Constants**: `MINUTES` block time constant added to runtime
+
 ### Added - Pakit DAG Storage (Phase 1 Complete - January 2026)
 - **DAG Backend**: SQLite-based persistent storage with LRU caching
   - `backends/dag_backend.py`: 600+ lines, full CRUD operations

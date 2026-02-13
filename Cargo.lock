@@ -817,6 +817,7 @@ dependencies = [
  "pallet-belize-identity",
  "pallet-belize-interoperability",
  "pallet-belize-landledger",
+ "pallet-belize-mesh",
  "pallet-belize-oracle",
  "pallet-belize-payroll",
  "pallet-belize-quantum",
@@ -5611,6 +5612,25 @@ dependencies = [
  "log",
  "pallet-balances",
  "pallet-belize-common",
+ "pallet-insecure-randomness-collective-flip",
+ "pallet-timestamp",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
+name = "pallet-belize-mesh"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "log",
+ "pallet-balances",
  "pallet-insecure-randomness-collective-flip",
  "pallet-timestamp",
  "parity-scale-codec",

@@ -334,9 +334,13 @@ Technical terminology and BelizeChain-specific concepts.
 
 → See [Pallet APIs](developer-guides/pallet-apis-core.md)
 
-**Payroll**: Automated government/private payroll system:
-- **Deductions**: 8% SS + progressive tax (0-30%) + 12.5% GST
-- **Schedules**: Weekly, biweekly, monthly
+**Payroll**: Enterprise payroll automation for all business types:
+- **Employer Types**: Government, Enterprise, SME, Cooperative, GigPlatform, NonProfit
+- **Worker Types**: FullTime, PartTime, Contractor, Freelancer, Seasonal, Intern
+- **Deductions**: IncomeTax, SocialSecurity, Pension, HealthInsurance, Custom (auto-applied)
+- **Departments**: Per-employer department management with per-department scheduling
+- **Payments**: Salary, Bonus, Overtime, Commission, Reimbursement, Severance
+- **Schedules**: Weekly, biweekly, monthly (per department)
 - **Storage**: Payslips in Pakit
 
 → See [Payroll System](operations/payroll-system.md)

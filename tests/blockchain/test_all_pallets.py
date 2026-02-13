@@ -1,16 +1,16 @@
 """
-BelizeChain Blockchain Core Tests: All 15 Custom Pallets
+BelizeChain Blockchain Core Tests: All 16 Custom Pallets
 
 Comprehensive tests for all custom pallets to ensure 100% coverage.
 
-Custom Pallets (15):
+Custom Pallets (16):
 1. Economy - DALLA/bBZD, treasury, multi-sig
 2. Identity - BelizeID, KYC, SSN/Passport
 3. Governance - Proposals, voting, council, treasury
 4. Compliance - KYC/AML, sanctions, FSC oversight
 5. Staking - Validators, consensus, rewards
 6. Oracle - Data feeds, merchant verification
-7. Payroll - Government/private payroll
+7. Payroll - Enterprise payroll, departments, deductions, bonuses
 8. Interoperability - Cross-chain bridges (ETH/DOT)
 9. BelizeX - DEX, liquidity, asset registry
 10. LandLedger - Property registry, titles
@@ -18,6 +18,7 @@ Custom Pallets (15):
 12. Quantum - Quantum workload integration
 13. Community - Community governance
 14. BNS - .bz domains, marketplace, IPFS
+15. Mesh - Meshtastic LoRa mesh networking, relay mining
 15. Contracts - Wasm smart contracts (ink!)
 """
 
@@ -360,10 +361,41 @@ class TestOraclePallet:
 @pytest.mark.requires_blockchain
 @pytest.mark.pallet_payroll
 class TestPayrollPallet:
-    """Test Payroll pallet: Government/private payroll."""
+    """Test Payroll pallet: Enterprise payroll with departments, deductions, and bonuses."""
     
+    def test_verify_employer(self, blockchain_connection, alice_keypair, submit_sudo_extrinsic, query_storage):
+        """Test employer verification with employer type."""
+        receipt = submit_sudo_extrinsic(
+            "Payroll",
+            "verify_employer",
+            {
+                "employer": alice_keypair.ss58_address,
+                "employer_type": "Enterprise"
+            },
+            alice_keypair
+        )
+        
+        assert receipt.is_success
+        
+        profile = query_storage("Payroll", "EmployerProfiles", [alice_keypair.ss58_address])
+        assert profile is not None
+
+    def test_create_department(self, blockchain_connection, alice_keypair, submit_sudo_extrinsic, query_storage):
+        """Test department creation for employer."""
+        receipt = submit_sudo_extrinsic(
+            "Payroll",
+            "create_department",
+            {
+                "department_id": 1,
+                "name": [70, 105, 110, 97, 110, 99, 101]  # "Finance" as bytes
+            },
+            alice_keypair
+        )
+        
+        assert receipt.is_success
+
     def test_add_employee(self, blockchain_connection, alice_keypair, bob_keypair, submit_sudo_extrinsic, query_storage):
-        """Test adding employee to payroll."""
+        """Test adding employee with worker type and department."""
         monthly_salary = 5_000_000_000_000_000  # 5K DALLA/month
         
         receipt = submit_sudo_extrinsic(
@@ -372,7 +404,9 @@ class TestPayrollPallet:
             {
                 "employee": bob_keypair.ss58_address,
                 "salary": monthly_salary,
-                "department": "Finance"
+                "worker_type": "FullTime",
+                "department_id": 1,
+                "metadata_hash": "0x" + "00" * 32
             },
             alice_keypair
         )
@@ -382,6 +416,36 @@ class TestPayrollPallet:
         employee_info = query_storage("Payroll", "Employees", [bob_keypair.ss58_address])
         assert employee_info is not None
         assert employee_info['salary'] == monthly_salary
+
+    def test_set_deduction(self, blockchain_connection, alice_keypair, bob_keypair, submit_sudo_extrinsic):
+        """Test setting income tax deduction for employee."""
+        receipt = submit_sudo_extrinsic(
+            "Payroll",
+            "set_deduction",
+            {
+                "employee": bob_keypair.ss58_address,
+                "deduction_type": "IncomeTax",
+                "amount": 500_000_000_000_000  # 500 DALLA
+            },
+            alice_keypair
+        )
+        
+        assert receipt.is_success
+
+    def test_issue_bonus(self, blockchain_connection, alice_keypair, bob_keypair, submit_sudo_extrinsic):
+        """Test issuing bonus payment."""
+        receipt = submit_sudo_extrinsic(
+            "Payroll",
+            "issue_bonus",
+            {
+                "employee": bob_keypair.ss58_address,
+                "amount": 1_000_000_000_000_000,  # 1K DALLA bonus
+                "category": "Bonus"
+            },
+            alice_keypair
+        )
+        
+        assert receipt.is_success
         
     def test_process_payroll(self, blockchain_connection, alice_keypair, submit_sudo_extrinsic):
         """Test automated payroll processing."""

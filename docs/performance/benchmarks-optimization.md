@@ -529,31 +529,36 @@ impl Config for Runtime {
 
 ## Real-World Simulation Results
 
-### Government Payroll (1,500 employees)
+### Enterprise Payroll (1,500 employees, auto-deductions)
 
 ```python
-# Process monthly payroll for Ministry of Health
+# Process monthly payroll for enterprise with departments
 employees = 1_500
 gross_total = 6_750_000  # bBZD
 
 # Breakdown:
-# - Employee payments: 1,500 transactions
-# - Social Security: 1 batch transaction
-# - Income tax: 1 batch transaction
+# - Employee payments: 1,500 transactions (net after deductions)
+# - Deductions auto-applied: IncomeTax, SocialSecurity, Pension per employee
+# - Social Security batch: 1 batch transaction
+# - Income tax batch: 1 batch transaction
 # - Payslip generation: 1,500 PDFs
 
 total_transactions = 1_500 + 2
 processing_time = total_transactions / 450  # 450 TPS for transfers
 
-print(f"Payroll processing:")
+print(f"Enterprise payroll processing:")
+print(f"  Employer types: Government, Enterprise, SME, Cooperative, etc.")
 print(f"  Transactions: {total_transactions}")
 print(f"  Duration: {processing_time:.1f} seconds ({processing_time/60:.2f} minutes)")
+print(f"  Auto-deductions: {employees * 3} (3 per employee)")
 print(f"  Payslips generated: {employees} PDFs in {employees * 0.8:.0f}s ({employees*0.8/60:.1f} min)")
 
 # Output:
-# Payroll processing:
+# Enterprise payroll processing:
+#   Employer types: Government, Enterprise, SME, Cooperative, etc.
 #   Transactions: 1,502
 #   Duration: 3.3 seconds (0.06 minutes)
+#   Auto-deductions: 4,500 (3 per employee)
 #   Payslips generated: 1,500 PDFs in 1200s (20.0 min)
 ```
 

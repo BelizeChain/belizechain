@@ -90,7 +90,7 @@ Run specific integration test categories.
 ./scripts/testing/run_integration_tests.sh all
 
 # Specific categories
-./scripts/testing/run_integration_tests.sh blockchain      # 15 pallets
+./scripts/testing/run_integration_tests.sh blockchain      # 16 pallets
 ./scripts/testing/run_integration_tests.sh cross-pallet    # Cross-pallet integration
 ./scripts/testing/run_integration_tests.sh governance      # Governance system
 ./scripts/testing/run_integration_tests.sh economic        # DALLA/bBZD
@@ -109,7 +109,7 @@ Check individual pallet compilation (fast validation).
 ./scripts/testing/check_pallets.sh
 ```
 
-Verifies all 15 custom pallets compile without errors.
+Verifies all 16 custom pallets compile without errors.
 
 ---
 

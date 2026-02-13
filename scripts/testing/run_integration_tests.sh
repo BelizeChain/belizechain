@@ -22,7 +22,7 @@ export PYTHONPATH=$(pwd):$PYTHONPATH
 
 # Run tests based on argument
 if [ "$1" == "blockchain" ]; then
-    echo "🔬 Running Blockchain Core Tests (15 pallets)..."
+    echo "🔬 Running Blockchain Core Tests (16 pallets)..."
     python3 -m pytest tests/blockchain/ -v --tb=short
 elif [ "$1" == "cross-pallet" ]; then
     echo "🔬 Running Cross-Pallet Integration Tests..."
@@ -46,7 +46,7 @@ else
     echo "Usage: $0 {blockchain|cross-pallet|governance|economic|belizex|e2e|all}"
     echo ""
     echo "Options:"
-    echo "  blockchain    - Run blockchain core pallet tests (15 pallets)"
+    echo "  blockchain    - Run blockchain core pallet tests (16 pallets)"
     echo "  cross-pallet  - Run cross-pallet integration tests"
     echo "  governance    - Run governance system tests (proposals, voting, treasury, council, emergency)"
     echo "  economic      - Run economic system tests (DALLA/bBZD)"

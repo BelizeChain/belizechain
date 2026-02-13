@@ -619,7 +619,7 @@ WARNING: redis[async] not installed (cosmetic only)
     - Quantum job registry (job_id, backend, status, results, verification)
     - 8 quantum backends: Azure IonQ/Quantinuum/Rigetti, IBM Quantum, Qiskit simulator, SpinQ Gemini/Triangulum
     - Cost model: Pay-per-qubit (0.1 DALLA) + pay-per-shot (0.001 DALLA)
-    - Result verification with zero-knowledge proofs (prevents fabricated data)
+    - Result verification with structural proof validation and multi-validator consensus (root emergency override for disputes)
     - Achievement NFTs: 11 milestone types (FirstQuantumJob, Grover/Shor/QFT algorithms, Accuracy95/99, Volume100/1000, ErrorMitigation, Custom)
     - NFT rarity tiers: Common, Rare, Epic, Legendary
     - Proof of Quantum Work (PQW): Integration with Staking pallet for validator rewards
@@ -863,7 +863,7 @@ WARNING: redis[async] not installed (cosmetic only)
 
 ### Remaining Work:
 - **3 pallets remaining (20%)**:
-  - Payroll (government/private payroll management)
+  - Payroll (enterprise payroll management, departments, deductions, bonuses)
   - Quantum (quantum workload orchestration)
   - Staking (PoUW consensus with federated learning integration)
 

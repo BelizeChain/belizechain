@@ -5,7 +5,7 @@
 //! This pallet implements a novel consensus mechanism where validators:
 //! 1. Secure the blockchain through traditional staking
 //! 2. Execute federated learning tasks on private datasets
-//! 3. Submit verifiable model deltas with zero-knowledge proofs
+//! 3. Submit verifiable model deltas with computation commitments
 //! 4. Get rewarded based on contribution quality, timeliness, and honesty
 
 extern crate alloc;
@@ -150,13 +150,15 @@ pub mod pallet {
     pub struct ModelDelta {
         /// Validator who submitted
         pub validator: BoundedVec<u8, ConstU32<32>>, // AccountId encoded
-        /// Encrypted model delta
+        /// Encrypted model delta (AES-GCM ciphertext)
         pub encrypted_delta: BoundedVec<u8, ConstU32<1024>>,
-        /// Zero-knowledge proof of computation
-        pub zk_proof: BoundedVec<u8, ConstU32<256>>,
+        /// Computation commitment: blake2_256(model_weights || nonce || task_id)
+        /// Proves the validator performed computation without revealing model data.
+        /// NOT a zero-knowledge proof — honest hash commitment only.
+        pub computation_commitment: [u8; 32],
         /// Submission timestamp
         pub submitted_at: u32,
-        /// Computation log hash
+        /// Computation log hash: blake2_256(timestamped_execution_log)
         pub computation_log: [u8; 32],
     }
 
@@ -416,8 +418,8 @@ pub mod pallet {
         NoActiveFLTask,
         /// Model delta already submitted for current task
         ModelDeltaAlreadySubmitted,
-        /// Invalid zero-knowledge proof
-        InvalidZKProof,
+        /// Invalid computation commitment (all zeros or duplicate)
+        InvalidComputationCommitment,
         /// Submission deadline exceeded
         SubmissionDeadlineExceeded,
         /// Maximum validators reached
@@ -593,7 +595,7 @@ pub mod pallet {
             origin: OriginFor<T>,
             task_id: u32,
             encrypted_delta: BoundedVec<u8, ConstU32<1024>>,
-            zk_proof: BoundedVec<u8, ConstU32<256>>,
+            computation_commitment: [u8; 32],
             computation_log: [u8; 32],
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -615,18 +617,37 @@ pub mod pallet {
                 Error::<T>::SubmissionDeadlineExceeded
             );
 
-            // Validate zero-knowledge proof (simplified for now)
-            ensure!(zk_proof.len() >= 32, Error::<T>::InvalidZKProof);
+            // Validate computation commitment:
+            // 1. Must not be all zeros (empty/uncomputed)
+            // 2. Must not be all same byte (trivial commitment)
+            // 3. Encrypted delta must be non-empty (at least 16 bytes for AES-GCM minimum)
+            ensure!(
+                computation_commitment != [0u8; 32],
+                Error::<T>::InvalidComputationCommitment
+            );
+            ensure!(
+                !computation_commitment.iter().all(|&b| b == computation_commitment[0]),
+                Error::<T>::InvalidComputationCommitment
+            );
+            ensure!(
+                encrypted_delta.len() >= 16,
+                Error::<T>::InvalidComputationCommitment
+            );
+            // Verify computation_log is non-trivial
+            ensure!(
+                computation_log != [0u8; 32],
+                Error::<T>::InvalidComputationCommitment
+            );
 
             // Calculate scores based on submission quality and timeliness
-            let quality_score = Self::evaluate_model_quality(&encrypted_delta, &zk_proof);
+            let quality_score = Self::evaluate_model_quality(&encrypted_delta);
             let timeliness_score = Self::calculate_timeliness_score(current_block, active_task.deadline);
 
             // Create model delta submission
             let model_delta = ModelDelta {
-                validator: who.encode().try_into().unwrap_or_default(), // Convert AccountId to bytes for storage
+                validator: who.encode().try_into().unwrap_or_default(),
                 encrypted_delta,
-                zk_proof,
+                computation_commitment,
                 submitted_at: current_block.saturated_into::<u32>(),
                 computation_log,
             };
@@ -1137,13 +1158,29 @@ pub mod pallet {
             }
         }
 
-        /// Evaluate model contribution quality (simplified scoring)
-        fn evaluate_model_quality(encrypted_delta: &[u8], zk_proof: &[u8]) -> u8 {
-            // Simplified quality evaluation - in production would use advanced ML techniques
-            let delta_complexity = (encrypted_delta.len() as u32).min(1000) / 10;
-            let proof_validity = if zk_proof.len() >= 64 { 30 } else { 10 };
-            
-            (delta_complexity + proof_validity).min(100) as u8
+        /// Evaluate model contribution quality based on delta size and structure
+        fn evaluate_model_quality(encrypted_delta: &[u8]) -> u8 {
+            // Quality scoring based on encrypted delta characteristics:
+            // - Larger deltas indicate more model parameters updated (more work done)
+            // - Very small deltas may indicate trivial/no-op contributions
+            // - Score capped at 100
+            let delta_size_score = match encrypted_delta.len() {
+                0..=31 => 10u32,      // Suspiciously small — likely no real computation
+                32..=127 => 30,       // Minimal update
+                128..=511 => 60,      // Moderate update
+                512..=1024 => 80,     // Substantial update
+                _ => 80,              // Capped (BoundedVec already limits to 1024)
+            };
+
+            // Entropy check: if all bytes are the same, it's trivially generated
+            let first_byte = encrypted_delta.first().copied().unwrap_or(0);
+            let entropy_penalty = if encrypted_delta.iter().all(|&b| b == first_byte) {
+                30u32 // Penalize trivial/constant data
+            } else {
+                0
+            };
+
+            delta_size_score.saturating_sub(entropy_penalty).min(100) as u8
         }
 
         /// Calculate timeliness score based on submission time

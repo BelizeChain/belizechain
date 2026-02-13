@@ -25,6 +25,8 @@ frame_support::construct_runtime!(
 parameter_types! {
     pub const PayrollPalletId: PalletId = PalletId(*b"bz/payrl");
     pub const MaxEmployees: u32 = 1000;
+    pub const MaxDeductions: u32 = 10;
+    pub const MaxDepartments: u32 = 50;
     pub const MinimumPayment: u64 = 1_000_000; // 1 DALLA (10^6 with 6 decimals)
 }
 
@@ -89,12 +91,10 @@ impl pallet_timestamp::Config for Test {
 pub struct MockPayrollOracleProvider;
 impl pallet_payroll::PayrollOracleProvider<u64> for MockPayrollOracleProvider {
     fn get_kyc_level(_account: &u64) -> Option<u8> {
-        // Return Level 1 (Basic) for all accounts in tests
         Some(1)
     }
     
     fn meets_kyc_requirement(_account: &u64, required_level: u8) -> bool {
-        // For testing, assume all accounts meet Level 1 requirement
         required_level <= 1
     }
 }
@@ -104,7 +104,10 @@ impl pallet_payroll::Config for Test {
     type TimeProvider = Timestamp;
     type PalletId = PayrollPalletId;
     type MaxEmployees = MaxEmployees;
+    type MaxDeductions = MaxDeductions;
+    type MaxDepartments = MaxDepartments;
     type MinimumPayment = MinimumPayment;
+    type VerifierOrigin = frame_system::EnsureRoot<u64>;
     type Oracle = MockPayrollOracleProvider;
     type WeightInfo = ();
 }

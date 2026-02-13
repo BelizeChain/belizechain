@@ -27,7 +27,7 @@ BelizeChain uses **Polkadot SDK stable2512** (January 2026 release):
                │
 ┌──────────────▼──────────────────────┐
 │   Runtime (WASM + Native)           │
-│   - 15 Custom Pallets               │
+│   - 16 Custom Pallets               │
 │   - 8 System Pallets                │
 │   - Consensus (Aura + GRANDPA)      │
 └─────────────────────────────────────┘

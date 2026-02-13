@@ -34,7 +34,7 @@ BelizeChain Runtime
     ├── Compliance - Regulatory compliance
     ├── Staking - PoUW consensus + validator rewards
     ├── Oracle - Price feeds + merchant verification
-    ├── Payroll - Government/private payroll
+    ├── Payroll - Enterprise payroll, departments, deductions, bonuses
     ├── Interoperability - Cross-chain bridges
     ├── BelizeX - On-chain DEX
     ├── LandLedger - Property registry

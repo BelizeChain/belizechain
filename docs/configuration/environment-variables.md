@@ -129,6 +129,22 @@ ARWEAVE_WALLET_PATH=/path/to/arweave-wallet.json
 2. Generate wallet: `arweave key-create wallet.json`
 3. Fund wallet with AR tokens
 
+### Meshtastic Mesh Network
+
+```bash
+# Mesh network configuration
+MESH_ENABLED=true
+MESH_LORA_REGION=US915                    # ISM band (US915 for Belize/Americas)
+MESH_CHANNEL_PRESET=LongFast             # LoRa preset (LongFast, LongSlow, ShortFast)
+MESH_MAX_HOPS=7                           # Maximum mesh relay hops per message
+MESH_GATEWAY_ENABLED=false                # Enable gateway mode (bridges mesh ↔ internet)
+MESH_RELAY_MINING_ENABLED=true            # Enable relay mining rewards
+MESH_EMERGENCY_SYSTEM_ENABLED=true        # Enable emergency broadcast system
+MESH_VALIDATOR_RELAY_ENABLED=true         # Enable validator block header relay via mesh
+MESH_SERIAL_PORT=/dev/ttyUSB0             # Serial port for Meshtastic radio (gateway nodes)
+MESH_BLE_ENABLED=true                     # Enable Bluetooth LE for phone ↔ radio communication
+```
+
 ### Database Configuration
 
 ```bash

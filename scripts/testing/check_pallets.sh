@@ -11,6 +11,7 @@ PALLETS=(
     "governance"
     "interoperability"
     "landledger"
+    "mesh"
     "oracle"
     "payroll"
     "quantum"

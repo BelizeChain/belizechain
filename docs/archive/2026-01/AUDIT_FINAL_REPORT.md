@@ -172,7 +172,7 @@ wasmtime = ">=38.0.4"
 ✅ pallet-belize-compliance - KYC/AML + FSC oversight
 ✅ pallet-belize-staking    - PoUW consensus
 ✅ pallet-belize-oracle     - Price feeds + merchant verification
-✅ pallet-belize-payroll    - Government payroll
+✅ pallet-belize-payroll    - Enterprise payroll (departments, deductions, bonuses)
 ✅ pallet-belize-interoperability - Cross-chain bridges
 ✅ pallet-belize-belizex    - DEX + asset registry
 ✅ pallet-belize-landledger - Property registry

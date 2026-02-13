@@ -350,11 +350,12 @@ pub type PayrollHistory<T: Config> = StorageMap<
 
 pub struct PaymentRecord<T: Config> {
     pub employer: T::AccountId,
-    pub gross_amount: BalanceOf<T>,
-    pub net_amount: BalanceOf<T>,
+    pub payment_commitment: [u8; 32], // blake2_256(gross + net + employer + employee)
     pub deductions: BoundedVec<Deduction<T>, ConstU32<20>>,
     pub timestamp: T::BlockNumber,
     pub payslip_hash: [u8; 32], // Pakit DAG reference
+    // NOTE: gross_amount and net_amount are no longer stored in plaintext.
+    // Events emit commitment hashes; actual amounts are in the encrypted payslip.
 }
 ```
 
@@ -478,10 +479,10 @@ export function PayslipHistory() {
       {payslips.map(payment => (
         <PayslipCard 
           key={payment.timestamp}
-          gross={payment.gross_amount}
-          net={payment.net_amount}
+          paymentCommitment={payment.payment_commitment}
           deductions={payment.deductions}
           downloadHash={payment.payslip_hash}
+          // NOTE: Decrypt full payslip from Pakit DAG for gross/net details
         />
       ))}
     </div>

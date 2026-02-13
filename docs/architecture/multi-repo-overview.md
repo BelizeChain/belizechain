@@ -10,7 +10,7 @@ BelizeChain uses a multi-repository architecture for independent development, de
 
 | Repository | Purpose | Language | Size | Status |
 |------------|---------|----------|------|--------|
-| **belizechain/belizechain** | Core blockchain (15 pallets, runtime) | Rust | ~500 MB | Production |
+| **belizechain/belizechain** | Core blockchain (16 pallets, runtime) | Rust | ~500 MB | Production |
 | **belizechain/kinich-quantum** | Quantum computing integration | Python | ~50 MB | Production |
 | **belizechain/nawal-ai** | Federated learning AI | Python | ~120 MB | Production |
 | **belizechain/pakit-storage** | DAG storage system | Python | ~80 MB | Production |
@@ -25,7 +25,7 @@ BelizeChain uses a multi-repository architecture for independent development, de
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    BelizeChain Core                      │
-│  Substrate Runtime + 15 Pallets (Rust)                  │
+│  Substrate Runtime + 16 Pallets (Rust)                  │
 │  ws://localhost:9944                                     │
 └──────┬────────┬────────┬────────┬────────┬─────────────┘
        │        │        │        │        │
@@ -57,6 +57,15 @@ BelizeChain uses a multi-repository architecture for independent development, de
 - **RabbitMQ**: Event-driven communication
 - **Redis Pub/Sub**: Real-time updates
 - **Status**: Planned for Phase 2 (Q2 2026)
+
+### Meshtastic LoRa Mesh (Off-Grid)
+- **Protocol**: Meshtastic (LoRa 915 MHz + BLE)
+- **Phone → Radio**: Bluetooth Low Energy (BLE) to Meshtastic hardware
+- **Radio → Mesh**: LoRa 915 MHz ISM band, up to 7 hops, 1-25 km per hop
+- **Mesh → Blockchain**: Gateway nodes bridge mesh transactions to RPC
+- **Hardware**: T-Beam, Heltec V3, RAK WisBlock, Station G2
+- **Use Cases**: Off-grid payments (rural, cayes, jungle), emergency alerts (NEMO), validator consensus fallback
+- **Managed By**: `pallet-belize-mesh` (on-chain), Maya Wallet BLE integration (UI repo)
 
 ---
 

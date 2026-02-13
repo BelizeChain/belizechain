@@ -18,6 +18,7 @@ members = [
     "pallets/oracle",
     "pallets/quantum",
     "pallets/bns",
+    "pallets/mesh",
 ]
 
 [workspace.package]

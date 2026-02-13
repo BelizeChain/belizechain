@@ -142,15 +142,32 @@ Your wallet address that you share publicly. Derived from your private key.
 
 ---
 
+## L
+
+### LoRa (Long Range)
+Radio technology used by Meshtastic for long-range, low-power wireless communication. Operates at 915 MHz in Belize (Americas ISM band). Can send small messages 1-25 km without internet or cell service.
+
+---
+
 ## M
 
 ### Maya Wallet
-BelizeChain's official wallet app for phones and computers. Named after ancient Maya civilization.
+BelizeChain's official wallet app for phones and computers. Named after ancient Maya civilization. Connects to Meshtastic radios via Bluetooth LE for off-grid payments.
 
 ### Memo
 Optional message you can attach to transactions.
 - **Example**: "Rent for September", "Birthday gift"
 - **Limit**: 128 characters
+
+### Mesh Network
+A network where devices relay messages from one to another, extending range without internet. BelizeChain uses **Meshtastic** LoRa mesh networking for off-grid payments and emergency alerts across rural Belize.
+
+### Meshtastic
+Open-source LoRa mesh networking protocol used by BelizeChain for off-grid communication. Small radio devices (like T-Beam, Heltec V3) create a mesh that can send payments, emergency alerts, and validator data without internet.
+- **Range**: 1-25 km per hop depending on terrain
+- **Frequency**: 915 MHz (Americas ISM band)
+- **Phone connection**: Bluetooth Low Energy (BLE)
+- **Use cases**: Rural payments, hurricane alerts, validator consensus fallback
 
 ### Multisig (Multi-Signature)
 Wallet requiring multiple people to approve transactions. Government treasuries use this for security.

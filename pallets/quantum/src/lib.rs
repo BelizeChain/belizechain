@@ -33,7 +33,10 @@ pub const MAX_JOB_ID_LENGTH: u32 = 64;
 /// Maximum backend name length
 pub const MAX_BACKEND_LENGTH: u32 = 32;
 
-/// Maximum verification proof size (simplified ZK proof)
+/// Maximum verification proof size (computation commitment hash)
+/// NOTE: This is a hash commitment, NOT a zero-knowledge proof.
+/// Full ZK-SNARK verification is roadmapped for 2028.
+/// Current verification uses multi-validator consensus (Phase 2.3).
 pub const MAX_PROOF_SIZE: u32 = 256;
 
 /// Maximum metadata URI length (IPFS/Arweave CID)
@@ -328,7 +331,9 @@ pub mod pallet {
         pub job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>>,
         /// Hash of complete result JSON (stored off-chain in IPFS/Arweave)
         pub result_data_hash: [u8; 32],
-        /// Zero-knowledge proof of correct execution (simplified)
+        /// Computation commitment: hash(result_data || executor_key || job_params)
+        /// NOT a zero-knowledge proof — used for off-chain audit verification.
+        /// Real verification happens via multi-validator consensus (Phase 2.3).
         pub verification_proof: BoundedVec<u8, ConstU32<MAX_PROOF_SIZE>>,
         /// Accuracy score after error mitigation (0-100)
         pub accuracy_score: u8,
@@ -1019,13 +1024,16 @@ pub mod pallet {
 
         /// Record quantum result on-chain
         ///
-        /// Stores the result hash and verification proof for a completed quantum job.
+        /// Stores the result hash and computation commitment for a completed quantum job.
+        /// The result is NOT automatically verified — it enters `Verifying` status and
+        /// must pass multi-validator consensus (Phase 2.3) or root verification before
+        /// the executor receives payment.
         ///
         /// # Arguments
         /// * `origin` - Executor account
         /// * `job_id` - Job identifier
         /// * `result_data_hash` - SHA-256 hash of result JSON (stored off-chain)
-        /// * `verification_proof` - Zero-knowledge proof
+        /// * `verification_proof` - Computation commitment hash for audit trail
         /// * `accuracy_score` - Accuracy after error mitigation (0-100)
         #[pallet::call_index(2)]
         #[pallet::weight(T::WeightInfo::record_quantum_result())]
@@ -1038,6 +1046,23 @@ pub mod pallet {
         ) -> DispatchResult {
             let executor = ensure_signed(origin)?;
 
+            // Validate computation commitment is structurally sound:
+            // - Must be at least 32 bytes (a valid hash commitment)
+            // - result_data_hash must not be all zeros (no empty result)
+            // - accuracy_score must be in valid range
+            ensure!(
+                verification_proof.len() >= 32,
+                Error::<T>::InvalidVerificationProof
+            );
+            ensure!(
+                result_data_hash != [0u8; 32],
+                Error::<T>::InvalidVerificationProof
+            );
+            ensure!(
+                accuracy_score <= 100,
+                Error::<T>::InvalidCircuitParameters
+            );
+
             // Ensure job exists and is in correct status
             QuantumJobs::<T>::try_mutate(&job_id, |maybe_job| {
                 let job = maybe_job.as_mut().ok_or(Error::<T>::JobNotFound)?;
@@ -1049,7 +1074,8 @@ pub mod pallet {
                 ensure!(!QuantumResults::<T>::contains_key(&job_id), 
                     Error::<T>::ResultAlreadyRecorded);
 
-                // Update job with result
+                // Update job with result — stays in Verifying until multi-validator
+                // consensus or root verification approves it
                 job.result_hash = Some(result_data_hash);
                 job.executor = Some(executor.clone());
                 job.verification_status = VerificationStatus::Verifying;
@@ -1084,13 +1110,17 @@ pub mod pallet {
             Ok(())
         }
 
-        /// Verify quantum result (simplified verification)
+        /// Verify quantum result (root emergency override)
         ///
-        /// In production, this would perform full ZK-SNARK verification.
-        /// Currently implements simplified proof checking.
+        /// Primary verification path is multi-validator consensus (Phase 2.3).
+        /// This root-only function serves as emergency override for when:
+        /// - Multi-validator consensus fails to reach quorum
+        /// - Time-critical results need expedited verification
+        ///
+        /// In production, prefer `request_verification` + `submit_verification` flow.
         ///
         /// # Arguments
-        /// * `origin` - Verifier account or root
+        /// * `origin` - Root only (emergency override)
         /// * `job_id` - Job identifier
         /// * `verification_passed` - Whether verification passed
         #[pallet::call_index(3)]
@@ -1100,8 +1130,14 @@ pub mod pallet {
             job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>>,
             verification_passed: bool,
         ) -> DispatchResult {
-            // Only root or designated verifiers can verify
+            // Only root can use emergency verification override
             ensure_root(origin)?;
+
+            // Ensure result exists before allowing verification
+            ensure!(
+                QuantumResults::<T>::contains_key(&job_id),
+                Error::<T>::ResultNotFound
+            );
 
             QuantumJobs::<T>::try_mutate(&job_id, |maybe_job| {
                 let job = maybe_job.as_mut().ok_or(Error::<T>::JobNotFound)?;

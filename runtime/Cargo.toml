@@ -60,6 +60,7 @@ pallet-belize-oracle = { path = "../pallets/oracle", default-features = false }
 pallet-belize-payroll = { path = "../pallets/payroll", default-features = false }
 pallet-belize-quantum = { path = "../pallets/quantum", default-features = false }
 pallet-belize-bns = { path = "../pallets/bns", default-features = false }
+pallet-belize-mesh = { path = "../pallets/mesh", default-features = false }
 
 # Additional Substrate pallets for functionality
 pallet-insecure-randomness-collective-flip = { workspace = true, default-features = false }
@@ -107,6 +108,7 @@ std = [
     "pallet-belize-payroll/std",
     "pallet-belize-quantum/std",
     "pallet-belize-bns/std",
+    "pallet-belize-mesh/std",
     "sp-api/std",
     "sp-block-builder/std",
     "sp-consensus-aura/std",
@@ -148,6 +150,7 @@ runtime-benchmarks = [
     "pallet-belize-oracle/runtime-benchmarks",
     "pallet-belize-payroll/runtime-benchmarks",
     "pallet-belize-quantum/runtime-benchmarks",
+    "pallet-belize-mesh/runtime-benchmarks",
 ]
 
 try-runtime = [
@@ -174,6 +177,7 @@ try-runtime = [
     "pallet-belize-community/try-runtime",
     "pallet-belize-oracle/try-runtime",
     "pallet-belize-quantum/try-runtime",
+    "pallet-belize-mesh/try-runtime",
 ]
 
 # Development-only example migration hooks (disabled by default)

@@ -111,6 +111,7 @@ const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 
 // Currency and time unit constants for readable configuration
 pub const DOLLARS: Balance = 1_000_000_000_000; // 1 DALLA = 10^12 base units (12 decimals)
+pub const MINUTES: BlockNumber = 10; // Blocks per minute (6-second block time: 60s ÷ 6s = 10 blocks)
 pub const DAYS: BlockNumber = 14_400; // Blocks per day (assuming 6-second block time: 86400s/day ÷ 6s/block = 14400 blocks)
 
 parameter_types! {
@@ -403,7 +404,10 @@ impl pallet_belize_payroll::Config for Runtime {
     type TimeProvider = Timestamp;
     type PalletId = PayrollPalletId;
     type MaxEmployees = ConstU32<10_000>;
+    type MaxDeductions = ConstU32<10>;
+    type MaxDepartments = ConstU32<100>;
     type MinimumPayment = MinimumPayment;
+    type VerifierOrigin = EnsureRoot<AccountId>;
     type Oracle = PayrollOracleProvider;
     type WeightInfo = ();
 }
@@ -505,6 +509,24 @@ impl pallet_belize_bns::Config for Runtime {
     type GovernanceOrigin = EnsureRoot<AccountId>;  // Governance for external domain verification
 }
 
+impl pallet_belize_mesh::Config for Runtime {
+    type Currency = Balances;
+    type UnixTime = Timestamp;
+    type Identity = MeshIdentityProviderImpl;
+    type GovernanceOrigin = EnsureRoot<AccountId>;
+    type EmergencyOrigin = EnsureRoot<AccountId>;  // NEMO / government emergency authority
+    type MaxMeshNodes = ConstU32<5_000>;  // 5,000 Meshtastic nodes across Belize
+    type MaxPendingMeshTx = ConstU32<1_000>;  // 1,000 pending off-grid transactions
+    type MaxActiveAlerts = ConstU32<50>;  // 50 concurrent emergency alerts
+    type MaxRelayProofsPerClaim = ConstU32<100>;  // 100 relay proofs per reward claim
+    type RelayRewardPerTransaction = ConstU128<{ DOLLARS / 10 }>;  // 0.1 DALLA per tx relay
+    type RelayRewardPerBlockHeader = ConstU128<{ 5 * DOLLARS / 100 }>;  // 0.05 DALLA per block header
+    type RelayRewardPerEmergencyAlert = ConstU128<{ 5 * DOLLARS / 10 }>;  // 0.5 DALLA per emergency relay
+    type NodeRegistrationDeposit = ConstU128<{ 10 * DOLLARS }>;  // 10 DALLA deposit to register node
+    type HeartbeatTimeout = ConstU32<{ 10 * MINUTES }>;  // Node inactive after 10 minutes no heartbeat
+    type WeightInfo = ();
+}
+
 // Construct runtime
 construct_runtime!(
     pub struct Runtime {
@@ -535,6 +557,7 @@ construct_runtime!(
         Quantum: pallet_belize_quantum,
         Community: pallet_belize_community,
         Bns: pallet_belize_bns,
+        Mesh: pallet_belize_mesh,
     }
 );
 
@@ -786,6 +809,28 @@ impl pallet_belize_consensus::ConsensusStakingProvider<AccountId, Balance>
         } else {
             false
         }
+    }
+}
+
+/// Mesh network Identity provider - integrates KYC and authority checks for Meshtastic nodes
+pub struct MeshIdentityProviderImpl;
+
+impl pallet_belize_mesh::MeshIdentityProvider<AccountId> for MeshIdentityProviderImpl {
+    fn get_kyc_level(account: &AccountId) -> u8 {
+        Identity::get_verified_kyc_level(account).unwrap_or(0)
+    }
+
+    fn is_emergency_authority(account: &AccountId) -> bool {
+        // Level 3 KYC (Full) + not sanctioned = authorized for emergency alerts
+        // In production, this would check a dedicated NEMO authority registry
+        let current_block = System::block_number();
+        use pallet_belize_identity::{KycLevel, KycState};
+        Identity::kyc_state(account, KycLevel::L3, current_block) == KycState::Valid
+            && !Oracle::is_sanctioned(account)
+    }
+
+    fn is_validator(account: &AccountId) -> bool {
+        pallet_belize_staking::Validators::<Runtime>::contains_key(account)
     }
 }
 

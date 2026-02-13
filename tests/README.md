@@ -3,21 +3,21 @@
 ## Overview
 
 Integration tests validate that all BelizeChain pallets and systems work together as one cohesive blockchain:
-- **Blockchain Core**: 15 custom pallets + system pallets
+- **Blockchain Core**: 16 custom pallets + system pallets
 - **Cross-Pallet Interactions**: Economy+Compliance, Identity+Governance, Staking+Oracle
 - **Economic System**: DALLA, bBZD, multi-sig treasury, cashback mechanics
 - **End-to-End Workflows**: Citizen onboarding, business payments, government operations
 
 ## Test Categories
 
-### 1. **Blockchain Core Pallet Tests** (15 pallets)
+### 1. **Blockchain Core Pallet Tests** (16 pallets)
 - **Economy**: DALLA/bBZD minting, transfers, multi-sig treasury, account types
 - **Identity**: BelizeID registration, KYC verification, SSN/Passport integration
 - **Governance**: Proposals, voting, council elections, treasury spending, JaguarMode
 - **Compliance**: KYC/AML enforcement, sanctions, FSC oversight, limits
 - **Staking**: Validator registration, consensus participation, rewards distribution
 - **Oracle**: Data feed registration, merchant verification, rate updates
-- **Payroll**: Government/private payroll, automated salary distribution
+- **Payroll**: Enterprise payroll, departments, deductions, bonuses, multi-employer-type support
 - **Interoperability**: Cross-chain bridges (Ethereum, Polkadot), asset transfers
 - **BelizeX**: DEX trading, liquidity pools, asset registry, Oracle guards
 - **LandLedger**: Property registry, title transfers, document proofs

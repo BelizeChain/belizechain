@@ -6,7 +6,7 @@
 
 BelizeChain is a sovereign blockchain infrastructure for the nation of Belize, featuring:
 - **Dual currency system**: DALLA (native token) + bBZD (1:1 BZD-pegged stablecoin)
-- **15 custom pallets**: Economy, Identity, Governance, Compliance, Staking, and more
+- **16 custom pallets**: Economy, Identity, Governance, Compliance, Staking, Mesh, and more
 - **AI integration**: Nawal federated learning for privacy-preserving ML
 - **Quantum computing**: Kinich layer for quantum workloads and compression
 - **Sovereign storage**: Pakit DAG storage with 6.8x quantum compression

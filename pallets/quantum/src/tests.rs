@@ -150,7 +150,7 @@ fn record_quantum_result_works() {
         // Update job status to Running (required before recording result)
         // Record result (use 32-byte hash, not JSON string)
         let result_hash = [1u8; 32];  // Hash of actual result data
-        let verification_proof: BoundedVec<u8, ConstU32<256>> = b"proof_data".to_vec().try_into().unwrap();
+        let verification_proof: BoundedVec<u8, ConstU32<256>> = [0xABu8; 32].to_vec().try_into().unwrap();
         let accuracy = 95u8;
 
         let _executor_initial_balance = Balances::free_balance(executor);
@@ -188,7 +188,7 @@ fn record_quantum_result_fails_job_not_found() {
         let executor = 2;
         let job_id: BoundedVec<u8, ConstU32<64>> = b"nonexistent".to_vec().try_into().unwrap();
         let result_hash = [1u8; 32];
-        let verification_proof: BoundedVec<u8, ConstU32<256>> = b"proof".to_vec().try_into().unwrap();
+        let verification_proof: BoundedVec<u8, ConstU32<256>> = [0xCDu8; 32].to_vec().try_into().unwrap();
 
         assert_noop!(
             Quantum::record_quantum_result(
@@ -238,7 +238,7 @@ fn mint_achievement_nft_works() {
             RuntimeOrigin::signed(2),
             job_id.clone(),
             [1u8; 32],
-            b"proof_data".to_vec().try_into().unwrap(),
+            [0xABu8; 32].to_vec().try_into().unwrap(),
             95,
         ));
 
@@ -298,7 +298,7 @@ fn mint_achievement_nft_calculates_rarity_correctly() {
             RuntimeOrigin::signed(2),
             job_id.clone(),
             [2u8; 32],
-            b"proof_data".to_vec().try_into().unwrap(),
+            [0xABu8; 32].to_vec().try_into().unwrap(),
             100,
         ));
 
@@ -352,7 +352,7 @@ fn verification_consensus_works() {
         assert_ok!(Quantum::record_quantum_result(
             RuntimeOrigin::signed(2),
             job_id.clone(),
-            [1u8; 32], b"proof_data".to_vec().try_into().unwrap(), 95,
+            [1u8; 32], [0xABu8; 32].to_vec().try_into().unwrap(), 95,
         ));
 
         // Request verification
@@ -430,7 +430,7 @@ fn verification_updates_reputation() {
         assert_ok!(Quantum::record_quantum_result(
             RuntimeOrigin::signed(2),
             job_id.clone(),
-            [1u8; 32], b"proof_data".to_vec().try_into().unwrap(), 95,
+            [1u8; 32], [0xABu8; 32].to_vec().try_into().unwrap(), 95,
         ));
 
         // Request verification
@@ -509,7 +509,7 @@ fn list_nft_works() {
         assert_ok!(Quantum::record_quantum_result(
             RuntimeOrigin::signed(2),
             job_id.clone(),
-            [1u8; 32], b"proof_data".to_vec().try_into().unwrap(), 95,
+            [1u8; 32], [0xABu8; 32].to_vec().try_into().unwrap(), 95,
         ));
 
         assert_ok!(Quantum::mint_achievement_nft(
@@ -574,7 +574,7 @@ fn buy_nft_works() {
         assert_ok!(Quantum::record_quantum_result(
             RuntimeOrigin::signed(2),
             job_id.clone(),
-            [1u8; 32], b"proof_data".to_vec().try_into().unwrap(), 95,
+            [1u8; 32], [0xABu8; 32].to_vec().try_into().unwrap(), 95,
         ));
 
         assert_ok!(Quantum::mint_achievement_nft(
@@ -650,7 +650,7 @@ fn buy_nft_fails_own_nft() {
         assert_ok!(Quantum::record_quantum_result(
             RuntimeOrigin::signed(2),
             job_id.clone(),
-            [1u8; 32], b"proof_data".to_vec().try_into().unwrap(), 95,
+            [1u8; 32], [0xABu8; 32].to_vec().try_into().unwrap(), 95,
         ));
 
         assert_ok!(Quantum::mint_achievement_nft(
@@ -710,7 +710,7 @@ fn bridge_to_ethereum_works() {
         assert_ok!(Quantum::record_quantum_result(
             RuntimeOrigin::signed(2),
             job_id.clone(),
-            [1u8; 32], b"proof_data".to_vec().try_into().unwrap(), 95,
+            [1u8; 32], [0xABu8; 32].to_vec().try_into().unwrap(), 95,
         ));
 
         assert_ok!(Quantum::mint_achievement_nft(
@@ -779,7 +779,7 @@ fn bridge_fails_for_listed_nft() {
         assert_ok!(Quantum::record_quantum_result(
             RuntimeOrigin::signed(2),
             job_id.clone(),
-            [1u8; 32], b"proof_data".to_vec().try_into().unwrap(), 95,
+            [1u8; 32], [0xABu8; 32].to_vec().try_into().unwrap(), 95,
         ));
 
         assert_ok!(Quantum::mint_achievement_nft(
@@ -842,7 +842,7 @@ fn bridge_to_parachain_works() {
         assert_ok!(Quantum::record_quantum_result(
             RuntimeOrigin::signed(2),
             job_id.clone(),
-            [1u8; 32], b"proof_data".to_vec().try_into().unwrap(), 95,
+            [1u8; 32], [0xABu8; 32].to_vec().try_into().unwrap(), 95,
         ));
 
         assert_ok!(Quantum::mint_achievement_nft(
@@ -872,5 +872,95 @@ fn bridge_to_parachain_works() {
         // Check bridge request created
         let bridge_request = Quantum::bridge_requests(nft_id).unwrap();
         assert_eq!(bridge_request.destination, ChainDestination::Parachain(parachain_id));
+    });
+}
+
+// ===== PROOF VALIDATION TESTS (ZK Audit) =====
+
+#[test]
+fn record_result_rejects_short_proof() {
+    new_test_ext().execute_with(|| {
+        let owner = 1;
+        let executor = 2;
+        let job_id: BoundedVec<u8, ConstU32<64>> = b"job_short_proof".to_vec().try_into().unwrap();
+
+        // Submit job
+        assert_ok!(Quantum::submit_quantum_job(
+            RuntimeOrigin::signed(owner),
+            job_id.clone(),
+            4, // Qiskit
+            [1u8; 32], 4, 10, 100,
+        ));
+
+        // Proof < 32 bytes should be rejected
+        let short_proof: BoundedVec<u8, ConstU32<256>> = b"too_short".to_vec().try_into().unwrap();
+        assert_noop!(
+            Quantum::record_quantum_result(
+                RuntimeOrigin::signed(executor),
+                job_id.clone(),
+                [1u8; 32],
+                short_proof,
+                95,
+            ),
+            Error::<Test>::InvalidVerificationProof
+        );
+    });
+}
+
+#[test]
+fn record_result_rejects_zero_result_hash() {
+    new_test_ext().execute_with(|| {
+        let owner = 1;
+        let executor = 2;
+        let job_id: BoundedVec<u8, ConstU32<64>> = b"job_zero_hash".to_vec().try_into().unwrap();
+
+        // Submit job
+        assert_ok!(Quantum::submit_quantum_job(
+            RuntimeOrigin::signed(owner),
+            job_id.clone(),
+            4, // Qiskit
+            [1u8; 32], 4, 10, 100,
+        ));
+
+        // Zero result hash should be rejected
+        let valid_proof: BoundedVec<u8, ConstU32<256>> = [0xABu8; 32].to_vec().try_into().unwrap();
+        assert_noop!(
+            Quantum::record_quantum_result(
+                RuntimeOrigin::signed(executor),
+                job_id.clone(),
+                [0u8; 32], // all zeros
+                valid_proof,
+                95,
+            ),
+            Error::<Test>::InvalidVerificationProof
+        );
+    });
+}
+
+#[test]
+fn record_result_rejects_invalid_accuracy() {
+    new_test_ext().execute_with(|| {
+        let owner = 1;
+        let executor = 2;
+        let job_id: BoundedVec<u8, ConstU32<64>> = b"job_bad_accuracy".to_vec().try_into().unwrap();
+
+        assert_ok!(Quantum::submit_quantum_job(
+            RuntimeOrigin::signed(owner),
+            job_id.clone(),
+            4, // Qiskit
+            [1u8; 32], 4, 10, 100,
+        ));
+
+        let valid_proof: BoundedVec<u8, ConstU32<256>> = [0xABu8; 32].to_vec().try_into().unwrap();
+        assert_noop!(
+            Quantum::record_quantum_result(
+                RuntimeOrigin::signed(executor),
+                job_id.clone(),
+                [1u8; 32],
+                valid_proof,
+                101, // > 100 invalid
+            ),
+            Error::<Test>::InvalidCircuitParameters
+        );
     });
 }

@@ -178,7 +178,9 @@
 //!
 //! - **Quadratic Voting**: Research QV implementation for fairer preference aggregation
 //! - **Liquid Democracy**: Extended delegation chains with transitive trust
-//! - **Shielded Voting**: Zero-knowledge proofs for anonymous voting options
+//! - **Shielded Voting** (Roadmapped 2028): Commit-reveal scheme with optional ZK selective
+//!   disclosure for anonymous voting. NOT YET IMPLEMENTED — current votes are public for
+//!   accountability. Infrastructure storage (`VoteCommitments`) is pre-provisioned.
 //! - **Cross-Chain Governance**: XCM integration for Polkadot governance participation
 //!
 //! ## References
@@ -1575,7 +1577,13 @@ pub mod pallet {
 
     #[pallet::storage]
     #[pallet::getter(fn votes)]
-    /// Vote records for proposals
+    /// Vote records for proposals.
+    ///
+    /// **Privacy Note**: Votes are currently stored in plaintext (voter -> vote).
+    /// This is a deliberate design choice for governance accountability — council
+    /// votes and proposal votes are public in most democratic systems.
+    /// For referendum votes (citizen-level), commit-reveal privacy is roadmapped.
+    /// See `VoteCommitments` storage for the commit-reveal infrastructure.
     pub type Votes<T: Config> = StorageDoubleMap<
         _,
         Blake2_128Concat,
@@ -1583,6 +1591,26 @@ pub mod pallet {
         Blake2_128Concat,
         T::AccountId, // Voter
         Vote,
+    >;
+
+    #[pallet::storage]
+    /// Vote commitments for commit-reveal voting (Phase 3 roadmap).
+    ///
+    /// When commit-reveal is active for a proposal/referendum:
+    /// 1. **Commit phase**: Voter submits `blake2_256(vote_choice || salt)`, stored here
+    /// 2. **Reveal phase**: After voting period, voter submits `(vote_choice, salt)`,
+    ///    pallet verifies hash match, records in `Votes`/`ReferendumVotes`, deletes commitment
+    ///
+    /// Currently pre-provisioned storage — not yet wired into extrinsics.
+    /// Full implementation requires new `commit_vote` and `reveal_vote` extrinsics.
+    pub type VoteCommitments<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        u32, // Proposal/Referendum ID
+        Blake2_128Concat,
+        T::AccountId, // Voter
+        [u8; 32], // blake2_256(vote_choice || salt)
+        OptionQuery,
     >;
 
     #[pallet::storage]
@@ -1774,7 +1802,10 @@ pub mod pallet {
     >;
 
     #[pallet::storage]
-    /// Election votes (election_id -> voter -> candidate voted for)
+    /// Election votes (election_id -> voter -> candidate voted for).
+    ///
+    /// **Privacy Note**: Election votes are public for democratic accountability.
+    /// Commit-reveal voting for elections is roadmapped for Phase 3.
     pub type ElectionVotes<T: Config> = StorageDoubleMap<
         _,
         Blake2_128Concat,
@@ -1872,7 +1903,12 @@ pub mod pallet {
     pub type NextReferendumId<T: Config> = StorageValue<_, u32, ValueQuery>;
 
     #[pallet::storage]
-    /// Referendum votes (referendum_id -> voter -> option_index)
+    /// Referendum votes (referendum_id -> voter -> option_index).
+    ///
+    /// **Privacy Note**: Referendum votes are currently public. These are the
+    /// highest-priority candidate for commit-reveal privacy since referendum
+    /// votes are citizen-level and should not be linkable to individual voters.
+    /// Migration to commit-reveal is roadmapped for Phase 3.
     pub type ReferendumVotes<T: Config> = StorageDoubleMap<
         _,
         Blake2_128Concat,
@@ -2004,7 +2040,11 @@ pub mod pallet {
             proposal_type_index: u8,  // Index into ProposalType enum
             threshold_index: u8,      // Index into VotingThreshold enum
         },
-        /// Vote cast on proposal
+        /// Vote cast on proposal.
+        ///
+        /// **Privacy Note**: Vote choice and voter identity are currently public.
+        /// This enables accountability for governance votes. Commit-reveal privacy
+        /// is roadmapped for Phase 3 (see `VoteCommitments` storage).
         VoteCast {
             proposal_id: u32,
             voter: T::AccountId,

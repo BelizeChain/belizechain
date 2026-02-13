@@ -40,7 +40,7 @@ Welcome to the BelizeChain Bug Bounty Program! We're committed to building the m
   - `pallet-belize-compliance` - KYC/AML, FSC oversight
   - `pallet-belize-staking` - PoUW consensus, validator rewards
   - `pallet-belize-oracle` - Merchant verification (tourism cashback eligibility)
-  - `pallet-payroll` - Government/private payroll
+  - `pallet-payroll` - Enterprise payroll, departments, deductions
   - `pallet-interoperability` - Cross-chain bridges (Ethereum/Polkadot)
   - `pallet-belizex` - DEX, liquidity pools
   - `pallet-land-ledger` - Property registry

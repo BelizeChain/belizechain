@@ -19,7 +19,7 @@
 [![Coverage](https://img.shields.io/badge/coverage-100%25-success.svg)](tests/)
 [![Testnet](https://img.shields.io/badge/testnet-ready-blue.svg)](https://testnet.belizechain.org)
 
-**Enterprise-grade blockchain runtime** powering Belize's sovereign digital infrastructure with 15 custom pallets, dual-currency system (DALLA + bBZD), built-in compliance, and WebAssembly smart contracts.
+**Enterprise-grade blockchain runtime** powering Belize's sovereign digital infrastructure with 16 custom pallets, dual-currency system (DALLA + bBZD), built-in compliance, and WebAssembly smart contracts.
 
 [**Quick Start**](#-quick-start) • [**Documentation**](docs/) • [**Testnet**](#-testnet-access) • [**Contributing**](#-contributing)
 
@@ -36,7 +36,7 @@ BelizeChain is a **production-ready Substrate blockchain** built specifically fo
 <td width="50%">
 
 ### Core Features
-- 🏛️ **15 Custom Pallets**: Complete governance, finance, and compliance stack
+- 🏛️ **16 Custom Pallets**: Complete governance, finance, compliance, and mesh networking stack
 - 💰 **Dual Currency System**: DALLA (native) + bBZD (BZD-pegged stablecoin)
 - ⚖️ **Regulatory Compliance**: Built-in KYC/AML, FSC oversight, sanctions enforcement
 - 🗳️ **Democratic Governance**: District councils, on-chain voting, emergency powers
@@ -70,16 +70,16 @@ BelizeChain is a **production-ready Substrate blockchain** built specifically fo
 | **UI Suite** | Maya Wallet + Blue Hole Portal | [ui](https://github.com/BelizeChain/ui) |
 | **Infrastructure** | Kubernetes deployment configs | [infra](https://github.com/BelizeChain/infra) |
 
-## 💎 The 15 Custom Pallets
+## 💎 The 16 Custom Pallets
 
-BelizeChain implements **15 sovereign pallets** covering the complete national infrastructure stack:
+BelizeChain implements **16 sovereign pallets** covering the complete national infrastructure stack:
 
 <details>
 <summary><b>💰 Financial & Economic (3 pallets)</b></summary>
 
 - **Economy** (`pallets/economy/`) - DALLA/bBZD dual-currency system, multi-sig treasury (4-of-7), account type limits
 - **BelizeX** (`pallets/belizex/`) - On-chain DEX, liquidity pools, Oracle-guarded swaps, asset registry
-- **Payroll** (`pallets/payroll/`) - Government & private payroll automation, salary distribution
+- **Payroll** (`pallets/payroll/`) - Enterprise payroll automation: departments, deductions, bonuses, 6 employer types
 
 </details>
 
@@ -107,6 +107,7 @@ BelizeChain implements **15 sovereign pallets** covering the complete national i
 - **Consensus** (`pallets/consensus/`) - Proof of Useful Work, block production, quality scoring
 - **Interoperability** (`pallets/interoperability/`) - Ethereum & Polkadot bridges, cross-chain messaging
 - **Quantum** (`pallets/quantum/`) - Quantum workload orchestration, PQW rewards
+- **Mesh** (`pallets/mesh/`) - Meshtastic LoRa mesh networking, off-grid P2P payments, emergency broadcast
 
 </details>
 
@@ -185,12 +186,12 @@ BelizeChain has **100% test coverage** across all components:
 # Complete test suite (Rust + Python) - automated
 ./scripts/run_all_tests.sh
 
-# Rust unit tests only (all 15 pallets)
+# Rust unit tests only (all 16 pallets)
 cargo test --workspace --release
 
 # Python integration tests by category
 ./scripts/testing/run_integration_tests.sh all          # All tests
-./scripts/testing/run_integration_tests.sh blockchain   # 15 pallets
+./scripts/testing/run_integration_tests.sh blockchain   # 16 pallets
 ./scripts/testing/run_integration_tests.sh cross-pallet # Cross-pallet integration
 ./scripts/testing/run_integration_tests.sh governance   # Governance system
 ./scripts/testing/run_integration_tests.sh economic     # DALLA/bBZD
