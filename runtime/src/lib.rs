@@ -217,9 +217,9 @@ impl pallet_sudo::Config for Runtime {
 
 impl pallet_insecure_randomness_collective_flip::Config for Runtime {}
 
-// ==================== SPIKE SMART CONTRACT PLATFORM ====================
+// ==================== GEM SMART CONTRACT PLATFORM ====================
 // Configuration for pallet-contracts (ink! smart contract execution)
-// This enables the Spike smart contract ecosystem for BelizeChain
+// This enables the GEM smart contract ecosystem for BelizeChain
 
 // Constants for smart contract limits
 parameter_types! {

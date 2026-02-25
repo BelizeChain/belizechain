@@ -42,7 +42,7 @@ pallet-timestamp = { workspace = true, default-features = false }
 pallet-transaction-payment = { workspace = true, default-features = false }
 pallet-transaction-payment-rpc-runtime-api = { workspace = true, default-features = false }
 
-# Smart Contracts (Spike Platform)
+# Smart Contracts (GEM Platform)
 pallet-contracts = { workspace = true, default-features = false }
 
 # BelizeChain custom pallets
