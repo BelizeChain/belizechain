@@ -5,7 +5,7 @@
 
 use crate as pallet_belize_belizex;
 use super::*;
-use frame_support::{parameter_types, traits::{ConstU16, ConstU32, Everything}};
+use frame_support::{parameter_types, traits::{ConstU16, ConstU32, Everything}, PalletId};
 use frame_system as system;
 use sp_runtime::{traits::{BlakeTwo256, IdentityLookup}, BuildStorage};
 
@@ -33,6 +33,7 @@ parameter_types! {
     pub const ProtocolFeeToTreasuryBps: u32 = 5; // 0.05%
     pub const MinLiquidityAmount: u128 = 1;
     pub const MaxOracleDeviationBpsConst: u32 = 500; // 5%
+    pub const DexPalletId: PalletId = PalletId(*b"belizexd");
 }
 
 // Runtime for tests
@@ -137,6 +138,7 @@ impl Config for Test {
     type ProtocolFeeToTreasuryBps = ProtocolFeeToTreasuryBps;
     type Oracle = MockOracle;
     type MaxOracleDeviationBps = MaxOracleDeviationBpsConst;
+    type DexPalletId = DexPalletId;
 }
 
 parameter_types! {

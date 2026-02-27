@@ -28,6 +28,7 @@ parameter_types! {
     pub const MaxDeductions: u32 = 10;
     pub const MaxDepartments: u32 = 50;
     pub const MinimumPayment: u64 = 1_000_000; // 1 DALLA (10^6 with 6 decimals)
+    pub const MaxSchedulesPerBlock: u32 = 50;
 }
 
 impl frame_system::Config for Test {
@@ -109,6 +110,7 @@ impl pallet_payroll::Config for Test {
     type MinimumPayment = MinimumPayment;
     type VerifierOrigin = frame_system::EnsureRoot<u64>;
     type Oracle = MockPayrollOracleProvider;
+    type MaxSchedulesPerBlock = MaxSchedulesPerBlock;
     type WeightInfo = ();
 }
 

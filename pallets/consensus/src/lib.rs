@@ -23,7 +23,7 @@ use frame_support::{
 use frame_system::pallet_prelude::*;
 use sp_runtime::{
     traits::{
-        SaturatedConversion, Zero,
+        SaturatedConversion, Zero, Saturating,
     },
     RuntimeDebug,
 };
@@ -35,6 +35,32 @@ pub use pallet::*;
 
 const CONSENSUS_ID: PalletId = PalletId(*b"bz/consn");
 const AI_WORK_LOCK_ID: LockIdentifier = *b"bzaiwork";
+
+// ===== Named constants replacing magic numbers (audit §1.14) =====
+
+/// Computation time (ms) below which a fast-work bonus is awarded.
+const FAST_COMPUTATION_THRESHOLD: u32 = 1_000;
+
+/// Bonus score points for validators who complete work under the threshold.
+const FAST_COMPUTATION_BONUS: u32 = 100;
+
+/// Divisor to normalize raw stake (in plancks) into a manageable weight.
+const STAKE_NORMALIZATION_DIVISOR: u32 = 1_000_000;
+
+/// Percentage weight for AI quality in validator selection score.
+const QUALITY_WEIGHT_PCT: u32 = 70;
+
+/// Percentage weight for economic stake in validator selection score.
+const STAKE_WEIGHT_PCT: u32 = 30;
+
+/// Percentage weight for staking-pallet quality score in the combined quality blend.
+const STAKING_QUALITY_PCT: u32 = 60;
+
+/// Percentage weight for on-chain quality score in the combined quality blend.
+const ONCHAIN_QUALITY_PCT: u32 = 40;
+
+/// Standard 100-based percentage divisor.
+const PERCENT_DIVISOR: u32 = 100;
 
 /// Trait for Staking integration - ties AI model quality to validator reputation
 pub trait ConsensusStakingProvider<AccountId, Balance> {
@@ -444,6 +470,8 @@ pub mod pallet {
             };
 
             let model_id = Self::next_model_id();
+            // SAFETY(saturated_into): BlockNumber → u64 will not saturate; block
+            // numbers are far below u64::MAX for any realistic chain lifetime.
             let _now = frame_system::Pallet::<T>::block_number().saturated_into::<u64>();
 
             let ai_model = AIModel {
@@ -462,9 +490,10 @@ pub mod pallet {
 
             AIModels::<T>::insert(model_id, ai_model);
             
-            ModelsByAccount::<T>::mutate(&who, |models| {
-                let _ = models.try_push(model_id);
-            });
+            ModelsByAccount::<T>::try_mutate(&who, |models| {
+                models.try_push(model_id)
+                    .map_err(|_| Error::<T>::TooManySubmissions)
+            })?;
 
             NextModelId::<T>::put(model_id.saturating_add(1));
 
@@ -568,6 +597,8 @@ pub mod pallet {
             AIModels::<T>::mutate(model_id, |maybe_model| {
                 if let Some(model) = maybe_model {
                     model.accuracy_score = accuracy_score;
+                    // SAFETY(saturated_into): BlockNumber → u64 is lossless for any
+                    // realistic chain lifetime (u32 block numbers fit in u64).
                     model.validated_at = Some(frame_system::Pallet::<T>::block_number().saturated_into::<u64>());
                     
                     // Activate model if quality is sufficient
@@ -672,7 +703,7 @@ pub mod pallet {
 
             // Calculate quality score based on model quality and computation time
             let base_quality = model.accuracy_score;
-            let time_bonus = if computation_time < 1000 { 100 } else { 0 }; // Bonus for fast computation
+            let time_bonus = if computation_time < FAST_COMPUTATION_THRESHOLD { FAST_COMPUTATION_BONUS } else { 0 };
             let quality_score = base_quality.saturating_add(time_bonus);
 
             let work_submission = AIWorkSubmission {
@@ -686,12 +717,14 @@ pub mod pallet {
             };
 
             // Add work submission to current round
-            ConsensusRounds::<T>::mutate(current_round_id, |maybe_round| {
+            ConsensusRounds::<T>::try_mutate(current_round_id, |maybe_round| -> DispatchResult {
                 if let Some(round) = maybe_round {
-                    let _ = round.ai_work_submissions.try_push(work_submission);
+                    round.ai_work_submissions.try_push(work_submission)
+                        .map_err(|_| Error::<T>::TooManySubmissions)?;
                     round.total_useful_work = round.total_useful_work.saturating_add(quality_score as u64);
                 }
-            });
+                Ok(())
+            })?;
 
             // Update validator participation
             ConsensusValidators::<T>::mutate(validator_id, |maybe_validator| {
@@ -726,14 +759,103 @@ pub mod pallet {
 
             Ok(())
         }
+
+        /// Finalize the current consensus round, distribute rewards, and clear the active round
+        ///
+        /// Can only be called by AIAuthorityOrigin (governance or automated trigger).
+        /// The round must have exceeded its configured duration in blocks.
+        #[pallet::call_index(5)]
+        #[pallet::weight(T::WeightInfo::finalize_consensus_round())]
+        pub fn finalize_consensus_round(
+            origin: OriginFor<T>,
+        ) -> DispatchResult {
+            T::AIAuthorityOrigin::ensure_origin(origin)?;
+
+            // Get active round ID
+            let round_id = Self::current_consensus_round()
+                .ok_or(Error::<T>::RoundNotInProgress)?;
+
+            let current_block = frame_system::Pallet::<T>::block_number();
+
+            // Mutate the round in storage
+            ConsensusRounds::<T>::try_mutate(round_id, |maybe_round| -> DispatchResult {
+                let round = maybe_round.as_mut().ok_or(Error::<T>::RoundNotFound)?;
+
+                // Ensure round is still in progress
+                ensure!(round.status == RoundStatus::InProgress, Error::<T>::RoundNotInProgress);
+
+                // Ensure the round duration has elapsed
+                let end_block = round.start_block.saturating_add(round.duration);
+                ensure!(current_block >= end_block, Error::<T>::RoundNotInProgress);
+
+                let participating_validators = round.validators.len() as u32;
+                let total_useful_work = round.total_useful_work;
+
+                // Mark round as completed
+                round.status = RoundStatus::Completed;
+                // SAFETY(saturated_into): BlockNumber → u64 is lossless (u32 fits u64).
+                round.completed_at = Some(current_block.saturated_into::<u64>());
+
+                // Distribute rewards to participating validators proportionally
+                let total_reward = T::ConsensusReward::get();
+                let mut total_distributed = <<T as Config>::Currency as Currency<T::AccountId>>::Balance::zero();
+
+                if !round.ai_work_submissions.is_empty() && total_useful_work > 0 {
+                    for submission in round.ai_work_submissions.iter() {
+                        if let Some(validator) = ConsensusValidators::<T>::get(submission.validator_id) {
+                            // Proportional reward based on quality score contribution
+                            let share = total_reward
+                                .saturating_mul(submission.quality_score.into())
+                                / (total_useful_work as u32).max(1).into();
+
+                            if !share.is_zero() {
+                                let _imbalance = T::Currency::deposit_creating(&validator.validator, share);
+                                total_distributed = total_distributed.saturating_add(share);
+
+                                // Update validator total rewards
+                                ConsensusValidators::<T>::mutate(submission.validator_id, |v| {
+                                    if let Some(val) = v {
+                                        val.total_rewards = val.total_rewards.saturating_add(share);
+                                    }
+                                });
+                            }
+                        }
+                    }
+                }
+
+                // Clear active round
+                CurrentConsensusRound::<T>::kill();
+
+                // Update global metrics
+                GlobalAIMetrics::<T>::mutate(|metrics| {
+                    metrics.rounds_completed = metrics.rounds_completed.saturating_add(1);
+                    metrics.total_useful_work = metrics.total_useful_work.saturating_add(total_useful_work);
+                });
+
+                Self::deposit_event(Event::ConsensusRoundCompleted {
+                    round_id,
+                    total_useful_work,
+                    participating_validators,
+                });
+
+                Self::deposit_event(Event::ConsensusRewardsDistributed {
+                    round_id,
+                    total_rewards: total_distributed,
+                });
+
+                Ok(())
+            })
+        }
     }
 
     impl<T: Config> Pallet<T> {
         /// Select validators for consensus round based on Staking-enhanced quality and economic weight
         fn select_round_validators() -> Vec<(u32, u32)> {
             let mut selected_validators = Vec::new();
+            let max_validators = T::MaxValidators::get() as usize;
             
-            for (validator_id, validator) in ConsensusValidators::<T>::iter() {
+            // SECURITY: Bounded iteration prevents DoS via storage bloat (§1.7)
+            for (validator_id, validator) in ConsensusValidators::<T>::iter().take(max_validators) {
                 // Check basic eligibility
                 if !validator.active || validator.quality_score < T::MinModelQualityScore::get() {
                     continue;
@@ -743,15 +865,18 @@ pub mod pallet {
                 let staking_quality = T::Staking::get_model_quality_score(&validator.validator);
                 
                 // Combined quality = 60% staking quality + 40% on-chain quality
-                let combined_quality = (staking_quality as u32 * 60 + validator.quality_score * 40) / 100;
+                let combined_quality = (staking_quality as u32 * STAKING_QUALITY_PCT + validator.quality_score * ONCHAIN_QUALITY_PCT) / PERCENT_DIVISOR;
                 
                 // Get economic weight from stake (higher stake = higher priority)
                 let stake = T::Staking::get_validator_stake(&validator.validator);
-                let stake_weight = stake.saturated_into::<u32>() / 1_000_000; // Normalize
+                // SAFETY(saturated_into): Balance → u32 may saturate for very large stakes,
+                // but the subsequent division by STAKE_NORMALIZATION_DIVISOR keeps this in
+                // a comparable range to the quality score component.
+                let stake_weight = stake.saturated_into::<u32>() / STAKE_NORMALIZATION_DIVISOR;
                 
                 // Final score = 70% quality + 30% stake weight (quality-first PoUW)
-                let consensus_score = combined_quality.saturating_mul(70)
-                    .saturating_add(stake_weight.saturating_mul(30)) / 100;
+                let consensus_score = combined_quality.saturating_mul(QUALITY_WEIGHT_PCT)
+                    .saturating_add(stake_weight.saturating_mul(STAKE_WEIGHT_PCT)) / PERCENT_DIVISOR;
                 
                 selected_validators.push((validator_id, consensus_score));
             }
@@ -767,7 +892,10 @@ pub mod pallet {
             let mut total_quality = 0u64;
             let mut active_models = 0u32;
 
-            for (_, model) in AIModels::<T>::iter() {
+            // SECURITY: Bounded iteration prevents DoS via storage bloat (§1.7)
+            // Uses MaxValidators as upper bound; each validator registers at most one model.
+            let max_models = T::MaxValidators::get() as usize;
+            for (_, model) in AIModels::<T>::iter().take(max_models) {
                 if model.active {
                     total_quality = total_quality.saturating_add(model.accuracy_score as u64);
                     active_models = active_models.saturating_add(1);
@@ -795,11 +923,14 @@ pub mod pallet {
             // 50% AI quality + 30% reputation + 20% stake weight
             let quality = T::Staking::get_model_quality_score(account) as u32;
             let reputation = T::Staking::get_validator_reputation(account) as u32;
-            let stake = T::Staking::get_validator_stake(account).saturated_into::<u32>() / 1_000_000;
+            // SAFETY(saturated_into): Balance → u32 may saturate for very large stakes,
+            // but the subsequent division by STAKE_NORMALIZATION_DIVISOR normalizes the
+            // value into a scoring range comparable to quality/reputation components.
+            let stake = T::Staking::get_validator_stake(account).saturated_into::<u32>() / STAKE_NORMALIZATION_DIVISOR;
             
             quality.saturating_mul(50)
                 .saturating_add(reputation.saturating_mul(30))
-                .saturating_add(stake.saturating_mul(20)) / 100
+                .saturating_add(stake.saturating_mul(20)) / PERCENT_DIVISOR
         }
 
         /// Get account ID for consensus operations
@@ -816,6 +947,7 @@ pub trait WeightInfo {
     fn validate_model() -> Weight;
     fn start_consensus_round() -> Weight;
     fn submit_ai_work() -> Weight;
+    fn finalize_consensus_round() -> Weight;
 }
 
 impl WeightInfo for () {
@@ -838,6 +970,10 @@ impl WeightInfo for () {
     fn submit_ai_work() -> Weight {
         Weight::from_parts(40_000_000, 0)
             .saturating_add(Weight::from_parts(0, 4500))
+    }
+    fn finalize_consensus_round() -> Weight {
+        Weight::from_parts(50_000_000, 0)
+            .saturating_add(Weight::from_parts(0, 6000))
     }
 }
 

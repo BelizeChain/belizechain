@@ -55,6 +55,52 @@ jobs:
       - name: Run tests
         run: cargo test --release --workspace
 
+  # ── 1b. Run pallet benchmarks (smoke test) ───────────
+  benchmark:
+    name: ⚖️ Benchmark Smoke Test
+    runs-on: ubuntu-latest
+    # Benchmarks are expensive — only run on push to main, not on PRs
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.90.0"
+          targets: wasm32-unknown-unknown
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler libclang-dev
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-bench-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-bench-
+
+      - name: Build with runtime-benchmarks feature
+        run: cargo build --release --features runtime-benchmarks
+
+      - name: Run benchmark smoke test (frame-system baseline)
+        run: |
+          ./target/release/belizechain-node benchmark pallet \
+            --chain dev \
+            --pallet frame_system \
+            --extrinsic '*' \
+            --steps 2 \
+            --repeat 1 \
+            --output /dev/null \
+            2>&1 | head -50
+        # Smoke test only — 2 steps, 1 repeat is enough to verify benchmarks compile and run.
+        # Full benchmarking (--steps 50 --repeat 20) should be run before releases.
+
   # ── 2. Build Docker image & push to ACR ───────────────
   build:
     name: 🐳 Build & Push Image

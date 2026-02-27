@@ -209,6 +209,13 @@ use scale_info::TypeInfo;
 // Import GovernanceParticipation trait from Community pallet (Phase 6)
 pub use pallet_belize_community::GovernanceParticipation;
 
+/// Blocks per year assuming 6-second block time (~5,256,000).
+/// Used for term calculations, delegation expiry, and fiscal year defaults.
+const BLOCKS_PER_YEAR: u32 = 5_256_000;
+
+/// Maximum number of delegation receivers per delegate account.
+const MAX_DELEGATION_RECEIVERS: usize = 100;
+
 /// Participation tiers determine what governance actions an account can perform.
 ///
 /// Tiers are automatically assigned based on KYC/AML verification level from
@@ -716,6 +723,8 @@ pub trait ComplianceCheck<AccountId> {
     fn can_participate_in_governance(account: &AccountId) -> bool;
 }
 
+/// Pallet account ID for future governance treasury operations.
+/// Reserved for Phase 4 when the governance pallet manages its own escrow.
 #[allow(dead_code)]
 const GOVERNANCE_ID: PalletId = PalletId(*b"bz/govnc");
 
@@ -777,6 +786,11 @@ pub mod pallet {
         
         /// Weight information for extrinsics
         type WeightInfo: WeightInfo;
+
+        /// Maximum number of candidates per district election.
+        /// Bounds the `iter_prefix().collect()` in `finalize_district_election`.
+        #[pallet::constant]
+        type MaxCandidatesPerElection: Get<u32>;
     }
 
     /// Type alias for balance amounts
@@ -1957,6 +1971,28 @@ pub mod pallet {
     /// Total national treasury reserves (separate from district budgets)
     pub type NationalTreasuryReserve<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery>;
 
+    // ===== GOVERNANCE-CONTROLLED CHAIN PARAMETERS (Audit P3 §32) =====
+
+    #[pallet::storage]
+    /// Runtime-configurable chain parameters, updatable via governance proposal.
+    ///
+    /// Keys use a short string identifier (e.g. `b"blocks_per_yr"`, `b"max_delegators"`).
+    /// Values are u64 to accommodate block counts, percentages, and small amounts.
+    ///
+    /// ## Intended Usage
+    ///
+    /// Rather than hardcoding constants like `BLOCKS_PER_YEAR` or
+    /// `MAX_DELEGATION_RECEIVERS`, this map allows governance to adjust operational
+    /// parameters without a runtime upgrade. Individual pallets can query this map
+    /// via a helper or fallback to their compile-time defaults.
+    pub type ChainParameters<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        BoundedVec<u8, ConstU32<32>>, // parameter key
+        u64,                          // parameter value
+        OptionQuery,
+    >;
+
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
         /// Initial council members
@@ -1991,11 +2027,11 @@ pub mod pallet {
                 let voting_weight = community_rank + pouw_contribution;
                 
                 // Calculate 2-year term (default for genesis members)
-                let blocks_per_year = 5_256_000u32;
-                let term_blocks = BlockNumberFor::<T>::from(blocks_per_year * 2);
+                let term_blocks = BlockNumberFor::<T>::from(BLOCKS_PER_YEAR * 2);
                 let term_end_zero: u64 = 0;
                 let term_blocks_u64: u64 = TryInto::<u64>::try_into(term_blocks).unwrap_or(0);
                 let term_end_u64 = term_end_zero.saturating_add(term_blocks_u64);
+                // SAFETY: value derived from u32 block number arithmetic in u64; fits in BlockNumberFor<T> (runtime uses u32 block numbers)
                 let term_end: BlockNumberFor<T> = term_end_u64.saturated_into();
                 
                 let council_member = CouncilMember {
@@ -2381,6 +2417,12 @@ pub mod pallet {
             overridden_by: [u8; 32],
             justification: BoundedVec<u8, ConstU32<512>>,
         },
+        /// A governance-controlled chain parameter was updated
+        ChainParameterUpdated {
+            key: BoundedVec<u8, ConstU32<32>>,
+            old_value: Option<u64>,
+            new_value: u64,
+        },
     }
 
     #[pallet::error]
@@ -2482,6 +2524,8 @@ pub mod pallet {
         NotInVotingPhase,
         /// Candidate already registered for this election
         CandidateAlreadyRegistered,
+        /// Maximum candidate count reached for this election
+        TooManyCandidates,
         /// Already voted in this election
         AlreadyVotedInDistrictElection,
         /// Candidate not found in election
@@ -2604,6 +2648,10 @@ pub mod pallet {
         EmergencyProposalExpired,
         /// Super-majority (66%+) not achieved for emergency action
         InsufficientSuperMajority,
+
+        // Chain Parameter Errors
+        /// Parameter key too long (max 32 bytes)
+        ParameterKeyTooLong,
     }
 
     #[pallet::call]
@@ -2736,6 +2784,7 @@ pub mod pallet {
             let current_u64: u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0);
             let launch_u64: u64 = TryInto::<u64>::try_into(launch_period).unwrap_or(0);
             let voting_start_u64 = current_u64.saturating_add(launch_u64);
+            // SAFETY: value derived from u32 block number arithmetic in u64; fits in BlockNumberFor<T> (runtime uses u32 block numbers)
             let voting_start: BlockNumberFor<T> = voting_start_u64.saturated_into();
             let voting_period = if is_emergency {
                 BlockNumberFor::<T>::from(21600u32) // 3 hours for emergency
@@ -2745,6 +2794,7 @@ pub mod pallet {
             let voting_start_u64_2: u64 = TryInto::<u64>::try_into(voting_start).unwrap_or(0);
             let voting_period_u64: u64 = TryInto::<u64>::try_into(voting_period).unwrap_or(0);
             let voting_end_u64 = voting_start_u64_2.saturating_add(voting_period_u64);
+            // SAFETY: value derived from u32 block number arithmetic in u64; fits in BlockNumberFor<T> (runtime uses u32 block numbers)
             let voting_end: BlockNumberFor<T> = voting_end_u64.saturated_into();
 
             let proposal_id = Self::next_proposal_id();
@@ -2905,14 +2955,16 @@ pub mod pallet {
             let pouw_contribution = Self::pouw_contributions(&who);
             let voting_weight = community_rank.saturating_add(pouw_contribution);
 
-            // Apply conviction multiplier
-            let final_weight = voting_weight.saturating_mul(conviction as u32);
+            // Apply conviction multiplier (minimum 1x to preserve vote weight)
+            let conviction_multiplier = (conviction as u32).max(1);
+            let final_weight = voting_weight.saturating_mul(conviction_multiplier);
 
             // Record vote
             let vote = Vote {
                 vote: vote_choice.clone(),
                 weight: final_weight,
                 conviction,
+                // SAFETY: BlockNumber fits in u64 (runtime uses u32 block numbers)
                 timestamp: current_block.saturated_into(),
             };
 
@@ -3196,9 +3248,11 @@ pub mod pallet {
             let current_u64: u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0);
             let launch_period_u64: u64 = TryInto::<u64>::try_into(T::LaunchPeriod::get()).unwrap_or(0);
             let voting_start_u64 = current_u64.saturating_add(launch_period_u64);
+            // SAFETY: value derived from u32 block number arithmetic in u64; fits in BlockNumberFor<T> (runtime uses u32 block numbers)
             let voting_start: BlockNumberFor<T> = voting_start_u64.saturated_into();
             let voting_period_u64: u64 = TryInto::<u64>::try_into(T::VotingPeriod::get()).unwrap_or(0);
             let voting_end_u64 = voting_start_u64.saturating_add(voting_period_u64);
+            // SAFETY: value derived from u32 block number arithmetic in u64; fits in BlockNumberFor<T> (runtime uses u32 block numbers)
             let voting_end: BlockNumberFor<T> = voting_end_u64.saturated_into();
 
             let proposal_id = Self::next_proposal_id();
@@ -3352,13 +3406,13 @@ pub mod pallet {
                 Error::<T>::BoardRoleLimitExceeded
             );
 
-            // Calculate term end (blocks per year: ~5,256,000 at 6s/block)
-            let blocks_per_year = 5_256_000u32;
-            let term_blocks = BlockNumberFor::<T>::from(blocks_per_year * term_years as u32);
+            // Calculate term end
+            let term_blocks = BlockNumberFor::<T>::from(BLOCKS_PER_YEAR * term_years as u32);
             let current_block = frame_system::Pallet::<T>::block_number();
             let current_u64: u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0);
             let term_blocks_u64: u64 = TryInto::<u64>::try_into(term_blocks).unwrap_or(0);
             let term_end_u64 = current_u64.saturating_add(term_blocks_u64);
+            // SAFETY(saturated_into): value derived from u32 block number arithmetic in u64; fits in BlockNumberFor<T> (runtime uses u32 block numbers)
             let term_end: BlockNumberFor<T> = term_end_u64.saturated_into();
 
             // Create council member
@@ -3755,6 +3809,7 @@ pub mod pallet {
             let current_u64: u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0);
             let duration_u64: u64 = TryInto::<u64>::try_into(duration).unwrap_or(0);
             let voting_end_u64 = current_u64.saturating_add(duration_u64);
+            // SAFETY(saturated_into): value derived from u32 block number arithmetic in u64; fits in BlockNumberFor<T> (runtime uses u32 block numbers)
             let voting_end: BlockNumberFor<T> = voting_end_u64.saturated_into();
 
             // Generate referendum ID
@@ -4132,9 +4187,11 @@ pub mod pallet {
             let current_block = frame_system::Pallet::<T>::block_number();
             let current_u64: u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0);
             let reg_end_u64 = current_u64.saturating_add(registration_period_blocks.into());
+            // SAFETY(saturated_into): value derived from u32 block number arithmetic in u64; fits in BlockNumberFor<T> (runtime uses u32 block numbers)
             let registration_end: BlockNumberFor<T> = reg_end_u64.saturated_into();
             let voting_start = registration_end;
             let voting_end_u64 = reg_end_u64.saturating_add(voting_period_blocks.into());
+            // SAFETY(saturated_into): value derived from u32 block number arithmetic in u64; fits in BlockNumberFor<T> (runtime uses u32 block numbers)
             let voting_end: BlockNumberFor<T> = voting_end_u64.saturated_into();
 
             // Create election
@@ -4213,6 +4270,13 @@ pub mod pallet {
             ensure!(
                 !ElectionCandidates::<T>::contains_key(election.id, &who),
                 Error::<T>::CandidateAlreadyRegistered
+            );
+
+            // Enforce maximum candidate limit per election
+            let candidate_count = ElectionCandidates::<T>::iter_prefix(election.id).count() as u32;
+            ensure!(
+                candidate_count < T::MaxCandidatesPerElection::get(),
+                Error::<T>::TooManyCandidates
             );
 
             // Convert platform to BoundedVec
@@ -4368,8 +4432,10 @@ pub mod pallet {
                 Error::<T>::ElectionAlreadyFinalized
             );
 
-            // Get all candidates for this election
+            // Get all candidates for this election (bounded by MaxCandidatesPerElection)
+            let max_candidates = T::MaxCandidatesPerElection::get() as usize;
             let mut candidates: Vec<(T::AccountId, u32)> = ElectionCandidates::<T>::iter_prefix(election.id)
+                .take(max_candidates)
                 .map(|(account, info)| (account, info.votes))
                 .collect();
 
@@ -4389,11 +4455,11 @@ pub mod pallet {
             );
 
             // Calculate term end (2 years from now)
-            let blocks_per_year = 5_256_000u32; // ~6s per block
-            let term_blocks: BlockNumberFor<T> = (blocks_per_year * 2).into();
+            let term_blocks: BlockNumberFor<T> = (BLOCKS_PER_YEAR * 2).into();
             let current_u64: u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0);
             let term_blocks_u64: u64 = TryInto::<u64>::try_into(term_blocks).unwrap_or(0);
             let term_end_u64 = current_u64.saturating_add(term_blocks_u64);
+            // SAFETY(saturated_into): value derived from u32 block number arithmetic in u64; fits in BlockNumberFor<T> (runtime uses u32 block numbers)
             let term_end: BlockNumberFor<T> = term_end_u64.saturated_into();
 
             // Assign council seats to winners
@@ -4535,7 +4601,7 @@ pub mod pallet {
             // Check delegate's delegator count
             let mut receivers = DelegationReceivers::<T>::get(&delegate);
             ensure!(
-                receivers.len() < 100,
+                receivers.len() < MAX_DELEGATION_RECEIVERS,
                 Error::<T>::TooManyDelegators
             );
 
@@ -4543,7 +4609,8 @@ pub mod pallet {
             let expires_at_final = expires_at.unwrap_or_else(|| {
                 // Default: 1 year (5,256,000 blocks)
                 let current_u64: u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0);
-                let expiry_u64 = current_u64.saturating_add(5_256_000u64);
+                let expiry_u64 = current_u64.saturating_add(BLOCKS_PER_YEAR as u64);
+                // SAFETY(saturated_into): value derived from u32 block number arithmetic in u64; fits in BlockNumberFor<T> (runtime uses u32 block numbers)
                 expiry_u64.saturated_into()
             });
 
@@ -4691,13 +4758,18 @@ pub mod pallet {
                     let has_voted = Votes::<T>::iter_prefix(0) // Check any proposal
                         .any(|(acc, _)| acc == claimer);
                     ensure!(has_voted, Error::<T>::NoRewardAvailable);
+                    // SAFETY(saturated_into): constant 10_000_000_000_000 fits in BalanceOf<T> (u128 on standard runtimes)
                     10_000_000_000_000u128.saturated_into() // 10 DALLA (12 decimals)
                 }
                 1 => {
                     // Proposal reward - check if authored
+                    // SECURITY: Bounded iteration prevents DoS via storage bloat (§1.7)
+                    // 1000 is a generous upper bound for total proposals.
                     let has_proposed = Proposals::<T>::iter()
+                        .take(1_000)
                         .any(|(_, prop)| prop.proposer == claimer);
                     ensure!(has_proposed, Error::<T>::NoRewardAvailable);
+                    // SAFETY(saturated_into): constant 100_000_000_000_000 fits in BalanceOf<T> (u128 on standard runtimes)
                     100_000_000_000_000u128.saturated_into() // 100 DALLA
                 }
                 2 => {
@@ -4706,6 +4778,7 @@ pub mod pallet {
                         CouncilMembers::<T>::contains_key(&claimer),
                         Error::<T>::NoRewardAvailable
                     );
+                    // SAFETY(saturated_into): constant 500_000_000_000_000 fits in BalanceOf<T> (u128 on standard runtimes)
                     500_000_000_000_000u128.saturated_into() // 500 DALLA
                 }
                 _ => return Err(Error::<T>::InvalidPriority.into()),
@@ -4746,6 +4819,7 @@ pub mod pallet {
             Self::deposit_event(Event::RewardClaimed {
                 account: claimer,
                 reward_type,
+                // SAFETY(saturated_into): BalanceOf<T> → u128 is lossless on standard runtimes (Balance is u128)
                 amount: reward_amount.saturated_into(),
             });
 
@@ -4913,6 +4987,7 @@ pub mod pallet {
 
             // Determine approval threshold based on amount
             // Converting amount to u128 for comparison (assuming 12 decimals)
+            // SAFETY(saturated_into): BalanceOf<T> → u128 is lossless on standard runtimes (Balance is u128)
             let amount_value: u128 = amount.saturated_into();
             let threshold = if amount_value < 10_000_000_000_000 { // < 10K DALLA
                 1u8  // Single approval
@@ -5154,7 +5229,7 @@ pub mod pallet {
                         spent: Zero::zero(),
                         proposals_funded: BoundedVec::default(),
                         fiscal_year_start: current_block,
-                        fiscal_year_end: current_block + 5256000u32.into(), // Default 1 year
+                        fiscal_year_end: current_block + BLOCKS_PER_YEAR.into(),
                         is_active: true,
                     }
                 });
@@ -5199,13 +5274,10 @@ pub mod pallet {
             origin: OriginFor<T>,
             proposal_id: u32,
         ) -> DispatchResult {
-            // Only Root or FSC can execute emergency proposals
+            // Only Root or Council can execute emergency proposals
             if ensure_root(origin.clone()).is_err() {
-                let who = ensure_signed(origin)?;
-                ensure!(
-                    T::Currency::reserved_balance(&who) >= 1_000_000u32.into(),
-                    Error::<T>::Unauthorized
-                );
+                T::CouncilOrigin::ensure_origin(origin)
+                    .map_err(|_| Error::<T>::Unauthorized)?;
             }
 
             // Verify JaguarMode is active
@@ -5277,13 +5349,10 @@ pub mod pallet {
             origin: OriginFor<T>,
             referendum_id: u32,
         ) -> DispatchResult {
-            // Only Root or FSC can fast-track
+            // Only Root or Council can fast-track
             if ensure_root(origin.clone()).is_err() {
-                let who = ensure_signed(origin)?;
-                ensure!(
-                    T::Currency::reserved_balance(&who) >= 1_000_000u32.into(),
-                    Error::<T>::Unauthorized
-                );
+                T::CouncilOrigin::ensure_origin(origin)
+                    .map_err(|_| Error::<T>::Unauthorized)?;
             }
 
             // Verify JaguarMode is active
@@ -5383,14 +5452,71 @@ pub mod pallet {
 
             Ok(())
         }
+
+        /// Update a governance-controlled chain parameter.
+        ///
+        /// Only callable by Root (i.e., via a successful governance proposal or sudo).
+        /// This allows the chain to adjust operational constants — such as term lengths,
+        /// delegation limits, or reward percentages — without a full runtime upgrade.
+        ///
+        /// ## Parameters
+        ///
+        /// - `origin`: Root origin (governance proposal output)
+        /// - `key`: Parameter identifier (max 32 bytes, e.g. `b"blocks_per_yr"`)
+        /// - `value`: New u64 value for the parameter
+        ///
+        /// ## Emits
+        ///
+        /// - `ChainParameterUpdated`
+        #[pallet::call_index(36)]
+        #[pallet::weight(Weight::from_parts(10_000_000, 0)
+            .saturating_add(T::DbWeight::get().reads(1))
+            .saturating_add(T::DbWeight::get().writes(1)))]
+        pub fn update_chain_parameter(
+            origin: OriginFor<T>,
+            key: Vec<u8>,
+            value: u64,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+
+            let bounded_key: BoundedVec<u8, ConstU32<32>> = key
+                .try_into()
+                .map_err(|_| Error::<T>::ParameterKeyTooLong)?;
+
+            let old_value = ChainParameters::<T>::get(&bounded_key);
+            ChainParameters::<T>::insert(&bounded_key, value);
+
+            Self::deposit_event(Event::ChainParameterUpdated {
+                key: bounded_key,
+                old_value,
+                new_value: value,
+            });
+
+            Ok(())
+        }
     }
 
     impl<T: Config> Pallet<T> {
         /// Calculate total council voting weight
         pub fn total_council_weight() -> u32 {
+            // SECURITY: Bounded iteration prevents DoS via storage bloat (§1.7)
+            // Council size is naturally bounded by MaxCandidatesPerElection;
+            // explicit .take() provides defense-in-depth.
+            let max_council = T::MaxCandidatesPerElection::get() as usize;
             CouncilMembers::<T>::iter()
+                .take(max_council)
                 .map(|(_, member)| member.voting_weight)
                 .sum()
+        }
+
+        /// Query a governance-controlled chain parameter, falling back to `default`
+        /// if the key has not been set via `update_chain_parameter`.
+        pub fn chain_param(key: &[u8], default: u64) -> u64 {
+            let bounded: Result<BoundedVec<u8, ConstU32<32>>, _> = key.to_vec().try_into();
+            match bounded {
+                Ok(k) => ChainParameters::<T>::get(&k).unwrap_or(default),
+                Err(_) => default,
+            }
         }
 
         /// Check if account is council member
@@ -5400,7 +5526,9 @@ pub mod pallet {
 
         /// Get council size
         pub fn council_size() -> u32 {
-            CouncilMembers::<T>::iter().count() as u32
+            // SECURITY: Bounded iteration prevents DoS via storage bloat (§1.7)
+            let max_council = T::MaxCandidatesPerElection::get() as usize;
+            CouncilMembers::<T>::iter().take(max_council).count() as u32
         }
 
         // ===== Phase 4: Board System Helper Functions =====
@@ -5844,6 +5972,7 @@ pub trait WeightInfo {
     fn update_community_rank() -> Weight;
     fn update_pouw_contribution() -> Weight;
     fn council_override() -> Weight;
+    fn update_chain_parameter() -> Weight;
 }
 
 impl WeightInfo for () {
@@ -5870,6 +5999,10 @@ impl WeightInfo for () {
     fn council_override() -> Weight {
         Weight::from_parts(8_000_000, 0)
             .saturating_add(Weight::from_parts(0, 1000))
+    }
+    fn update_chain_parameter() -> Weight {
+        Weight::from_parts(10_000_000, 0)
+            .saturating_add(Weight::from_parts(0, 500))
     }
 }
 

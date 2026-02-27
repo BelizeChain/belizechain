@@ -134,6 +134,7 @@ impl pallet_belize_interoperability::Config for Test {
     type PQSignatureThreshold = PQSignatureThreshold;
     type WeightInfo = ();
     type Identity = MockIdentity;
+    type ChallengePeriod = ConstU64<100>;
 }
 
 // Test account constants

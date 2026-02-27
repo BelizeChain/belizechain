@@ -645,6 +645,8 @@ pub mod pallet {
                 .ok_or(Error::<T>::ArithmeticOverflow)?;
 
             // Transfer funds: buyer -> seller (minus fee)
+            // SAFETY(saturated_into): u128 price → Balance. For standard substrate u128 balances
+            // this is a no-op identity conversion.
             let seller_balance = seller_amount.saturated_into();
             T::Currency::transfer(
                 &buyer,
@@ -655,6 +657,9 @@ pub mod pallet {
 
             // Transfer marketplace fee to treasury
             let treasury = T::Treasury::get();
+            // SAFETY(saturated_into): u128 → Balance. The marketplace_fee is derived from
+            // the listing price via a bounded percentage, so it stays within Balance range.
+            // If it exceeds Balance::MAX, the transfer below would fail gracefully.
             let fee_balance = marketplace_fee.saturated_into();
             T::Currency::transfer(
                 &buyer,
@@ -1299,6 +1304,8 @@ pub mod pallet {
         /// Collect domain registration fee to treasury
         fn collect_domain_fee(payer: &T::AccountId, amount: u128) -> DispatchResult {
             let treasury = T::Treasury::get();
+            // SAFETY(saturated_into): u128 → Balance. Domain fees are protocol-defined
+            // constants (e.g. 10–50 DALLA) that are well within Balance range.
             let balance_amount = amount.saturated_into();
 
             T::Currency::transfer(
@@ -1328,6 +1335,8 @@ pub mod pallet {
             }
 
             let treasury = T::Treasury::get();
+            // SAFETY(saturated_into): u128 → Balance. Hosting fees are protocol-defined
+            // via HostingTier constants (10–200 DALLA), well within Balance range.
             let balance_amount = amount.saturated_into();
 
             T::Currency::transfer(

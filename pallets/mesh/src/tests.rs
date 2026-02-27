@@ -118,7 +118,7 @@ fn register_validator_relay_requires_validator() {
                 BelizeDistrict::Cayo,
                 TerrainType::Jungle,
             ),
-            Error::<Test>::NotValidator
+            Error::<Test>::ValidatorNotFound
         );
 
         // Account 10 is a validator - should succeed
@@ -696,7 +696,7 @@ fn non_validator_relay_cannot_relay_block_headers() {
                 15,
                 1707843600,
             ),
-            Error::<Test>::NotValidator
+            Error::<Test>::ValidatorNotFound
         );
     });
 }

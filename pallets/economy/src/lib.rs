@@ -703,9 +703,10 @@ pub mod pallet {
             NextRedemptionId::<T>::put(redemption_id.saturating_add(1));
 
             // Track pending redemption ID for easy discovery by UIs/tests
-            PendingRedemptionIds::<T>::mutate(|ids| {
-                let _ = ids.try_push(redemption_id);
-            });
+            PendingRedemptionIds::<T>::try_mutate(|ids| {
+                ids.try_push(redemption_id)
+                    .map_err(|_| Error::<T>::MaxSupplyReached)
+            })?;
             
             // Update total supply
             let new_supply = TotalBbzdSupply::<T>::get();

@@ -87,6 +87,11 @@ pub mod pallet {
         /// Number of blocks per PoUW epoch
         #[pallet::constant]
         type EpochDuration: Get<BlockNumberFor<Self>>;
+
+        /// Number of blocks a validator must wait after requesting unbond
+        /// before they can withdraw their stake (default: 14400 blocks = ~24 hours)
+        #[pallet::constant]
+        type UnbondingPeriod: Get<BlockNumberFor<Self>>;
         
         /// Weight information for extrinsics
         type WeightInfo: WeightInfo;
@@ -259,6 +264,16 @@ pub mod pallet {
         ValueQuery,
     >;
 
+    #[pallet::storage]
+    #[pallet::getter(fn pending_unbonds)]
+    /// Validators in the unbonding period: maps account to the block at which they can withdraw
+    pub type PendingUnbonds<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        (BalanceOf<T>, BlockNumberFor<T>), // (stake, unlock_at)
+    >;
+
     // ═══════════════════════════════════════════════════════════════════
     // QUANTUM COMPUTING INTEGRATION (Phase 2.2)
     // ═══════════════════════════════════════════════════════════════════
@@ -404,6 +419,17 @@ pub mod pallet {
             domain_bonus: <T::Currency as Currency<T::AccountId>>::Balance,
             total_reward: <T::Currency as Currency<T::AccountId>>::Balance,
         },
+        /// Validator started unbonding period
+        UnbondingStarted {
+            validator: T::AccountId,
+            stake: <T::Currency as Currency<T::AccountId>>::Balance,
+            unlock_at: BlockNumberFor<T>,
+        },
+        /// Validator withdrew unbonded stake
+        StakeWithdrawn {
+            validator: T::AccountId,
+            amount: <T::Currency as Currency<T::AccountId>>::Balance,
+        },
     }
 
     #[pallet::error]
@@ -442,6 +468,14 @@ pub mod pallet {
         NoDomainContributions,
         /// Caller is not an authorized Oracle operator
         NotAuthorizedOracle,
+        /// Validator is already unbonding
+        AlreadyUnbonding,
+        /// No pending unbond found
+        NoPendingUnbond,
+        /// Unbonding period not yet elapsed
+        UnbondingNotReady,
+        /// Invalid slash reason code
+        InvalidSlashReason,
     }
 
     /// Reasons for slashing validators
@@ -533,10 +567,13 @@ pub mod pallet {
             // Validate compute capacity
             ensure!(compute_capacity >= 50, Error::<T>::InvalidComputeCapacity);
 
-            // Reserve the stake
-            T::Currency::reserve(&who, stake)?;
+            // Ensure the user has enough free balance for the lock
+            ensure!(
+                T::Currency::free_balance(&who) >= stake,
+                Error::<T>::InsufficientStake
+            );
 
-            // Lock the stake for staking
+            // Lock the stake for staking (lock prevents spending, no reserve needed)
             T::Currency::set_lock(
                 STAKING_ID,
                 &who,
@@ -566,7 +603,11 @@ pub mod pallet {
             Ok(())
         }
 
-        /// Leave the validator set
+        /// Leave the validator set and start the unbonding period
+        ///
+        /// The validator is removed from the active set immediately, but their
+        /// stake remains locked for `UnbondingPeriod` blocks. Call `withdraw_unbonded`
+        /// after the period elapses to reclaim funds.
         #[pallet::call_index(1)]
         #[pallet::weight(T::WeightInfo::leave_validators())]
         pub fn leave_validators(origin: OriginFor<T>) -> DispatchResult {
@@ -575,15 +616,73 @@ pub mod pallet {
             // Ensure validator exists
             let validator_info = Validators::<T>::get(&who).ok_or(Error::<T>::ValidatorNotFound)?;
 
-            // Remove validator from storage and decrement count
+            // Ensure not already unbonding
+            ensure!(!PendingUnbonds::<T>::contains_key(&who), Error::<T>::AlreadyUnbonding);
+
+            // Remove validator from active set and decrement count
             Validators::<T>::remove(&who);
             ValidatorCount::<T>::mutate(|c| { *c = c.saturating_sub(1); });
 
-            // Unlock and unreserve stake
-            T::Currency::remove_lock(STAKING_ID, &who);
-            T::Currency::unreserve(&who, validator_info.stake);
+            // Keep the lock in place during unbonding — record unlock time
+            let current_block = frame_system::Pallet::<T>::block_number();
+            let unlock_at = current_block.saturating_add(T::UnbondingPeriod::get());
+            PendingUnbonds::<T>::insert(&who, (validator_info.stake, unlock_at));
 
-            Self::deposit_event(Event::ValidatorLeft { validator: who });
+            Self::deposit_event(Event::UnbondingStarted {
+                validator: who,
+                stake: validator_info.stake,
+                unlock_at,
+            });
+
+            Ok(())
+        }
+
+        /// Withdraw stake after the unbonding period has elapsed
+        #[pallet::call_index(9)]
+        #[pallet::weight(T::WeightInfo::leave_validators())]
+        pub fn withdraw_unbonded(origin: OriginFor<T>) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            let (stake, unlock_at) = PendingUnbonds::<T>::get(&who)
+                .ok_or(Error::<T>::NoPendingUnbond)?;
+
+            let current_block = frame_system::Pallet::<T>::block_number();
+            ensure!(current_block >= unlock_at, Error::<T>::UnbondingNotReady);
+
+            // Remove pending unbond entry and release the lock
+            PendingUnbonds::<T>::remove(&who);
+            T::Currency::remove_lock(STAKING_ID, &who);
+
+            Self::deposit_event(Event::StakeWithdrawn {
+                validator: who,
+                amount: stake,
+            });
+
+            Ok(())
+        }
+
+        /// Report a validator offense and apply slashing.
+        /// Root-only extrinsic for governance / consensus to slash misbehaving validators.
+        #[pallet::call_index(10)]
+        #[pallet::weight(T::WeightInfo::report_validator_offense())]
+        pub fn report_validator_offense(
+            origin: OriginFor<T>,
+            validator: T::AccountId,
+            slash_percent: u32,
+            reason_code: u8,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+
+            let reason = SlashReason::from_u8(reason_code)
+                .ok_or(Error::<T>::InvalidSlashReason)?;
+
+            ensure!(
+                Validators::<T>::contains_key(&validator),
+                Error::<T>::ValidatorNotFound
+            );
+
+            let slash_percentage = Perbill::from_percent(slash_percent.min(100));
+            Self::slash_validator(&validator, slash_percentage, reason)?;
 
             Ok(())
         }
@@ -648,6 +747,7 @@ pub mod pallet {
                 validator: who.encode().try_into().unwrap_or_default(),
                 encrypted_delta,
                 computation_commitment,
+                // SAFETY: BlockNumber fits in u32 (runtime uses u32 block numbers)
                 submitted_at: current_block.saturated_into::<u32>(),
                 computation_log,
             };
@@ -686,6 +786,7 @@ pub mod pallet {
             let current_u64: u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0);
             let deadline_blocks_u64: u64 = TryInto::<u64>::try_into(deadline_blocks).unwrap_or(0);
             let deadline_u64 = current_u64.saturating_add(deadline_blocks_u64);
+            // SAFETY: deadline_u64 derived from block numbers which fit in BlockNumberFor<T>
             let deadline: BlockNumberFor<T> = deadline_u64.saturated_into();
 
             let fl_task = FederatedLearningTask {
@@ -693,6 +794,7 @@ pub mod pallet {
                 model_hash,
                 computation_time,
                 reward_multiplier,
+                // SAFETY: BlockNumber fits in u32 (runtime uses u32 block numbers)
                 deadline: deadline.saturated_into::<u32>(),
             };
 
@@ -723,7 +825,9 @@ pub mod pallet {
             let mut participant_count = 0u32;
 
             // Calculate and distribute rewards to validators
-            for (validator_id, validator_info) in Validators::<T>::iter() {
+            // SECURITY: Bounded iteration prevents DoS via storage bloat (§1.7)
+            let max_validators = T::MaxValidators::get() as usize;
+            for (validator_id, validator_info) in Validators::<T>::iter().take(max_validators) {
                 if let Some(_model_submission) = ModelSubmissions::<T>::get(&validator_id) {
                     let reward = Self::calculate_validator_reward(&validator_info, base_reward);
                     
@@ -776,10 +880,12 @@ pub mod pallet {
             // Only Quantum pallet or root can record contributions
             let caller = ensure_signed_or_root(origin)?;
             
-            // If signed, verify it's the Quantum pallet or a trusted oracle
+            // If signed, verify caller is an authorized Oracle operator
             if let Some(who) = caller {
-                // For now, allow any signed call - in production would verify caller identity
-                let _ = who;
+                ensure!(
+                    T::OracleVerifier::is_authorized_operator(&who),
+                    Error::<T>::NotAuthorizedOracle
+                );
             }
 
             // Ensure validator exists
@@ -807,6 +913,7 @@ pub mod pallet {
                 circuit_depth,
                 num_shots,
                 accuracy_score,
+                // SAFETY: BlockNumber fits in u32 (runtime uses u32 block numbers)
                 completed_at: current_block.saturated_into::<u32>(),
                 computation_score,
             };
@@ -892,10 +999,13 @@ pub mod pallet {
             // Validate compute capacity
             ensure!(compute_capacity >= 50, Error::<T>::InvalidComputeCapacity);
 
-            // Reserve the stake
-            T::Currency::reserve(&who, stake)?;
+            // Ensure the user has enough free balance for the lock
+            ensure!(
+                T::Currency::free_balance(&who) >= stake,
+                Error::<T>::InsufficientStake
+            );
 
-            // Lock the stake for staking
+            // Lock the stake for staking (lock prevents spending, no reserve needed)
             T::Currency::set_lock(
                 STAKING_ID,
                 &who,
@@ -954,6 +1064,7 @@ pub mod pallet {
             ensure!(quality_score <= 100, Error::<T>::InvalidAccuracyScore);
 
             let current_block = frame_system::Pallet::<T>::block_number();
+            // SAFETY: BlockNumber fits in u32 (runtime uses u32 block numbers)
             let current_block_u32 = current_block.saturated_into::<u32>();
 
             // Update operator domain stats
@@ -1038,7 +1149,7 @@ pub mod pallet {
             // Calculate domain bonus using fixed-point arithmetic (10_000 = 1.0x)
             let domain_bonus = Self::calculate_domain_bonus(&who, &domain_breakdown);
 
-            // Convert to Balance type using SaturatedConversion
+            // SAFETY: Balance is u128-backed; converting Balance → u128 is lossless
             let base_reward_u128: u128 = base_reward.saturated_into();
             
             // Apply domain bonus multiplier (fixed-point: 10_000 = 1.0x)
@@ -1047,7 +1158,7 @@ pub mod pallet {
                 .saturating_sub(base_reward_u128.saturating_mul(10_000)) // Subtract base to get only bonus
                 / 10_000;
 
-            // Convert back to Balance type
+            // SAFETY: bonus_reward_u128 ≤ base_reward_u128 (bounded by domain_bonus multiplier), fits in Balance
             let bonus_reward = bonus_reward_u128.saturated_into();
             let total_reward = base_reward.saturating_add(bonus_reward);
 
@@ -1194,6 +1305,7 @@ pub mod pallet {
                 let total_blocks = BlockNumberFor::<T>::from(deadline);
                 
                 // Earlier submissions get higher scores
+                // SAFETY: BlockNumber fits in u32 (runtime uses u32 block numbers)
                 let ratio = blocks_remaining_u64 * 100 / total_blocks.saturated_into::<u32>() as u64;
                 ratio.min(100) as u8
             } else {
@@ -1248,8 +1360,15 @@ pub mod pallet {
             // Reduce stake
             validator_info.stake = validator_info.stake.saturating_sub(slash_amount);
             
-            // Slash from locked balance
-            let _ = T::Currency::slash_reserved(validator, slash_amount);                // Update slashing record
+            // Slash from free balance (lock-only model, no reserved balance)
+            let (_imbalance, _remaining) = T::Currency::slash(validator, slash_amount);
+            // Update the lock to reflect reduced stake
+            T::Currency::set_lock(
+                STAKING_ID,
+                validator,
+                validator_info.stake,
+                frame_support::traits::WithdrawReasons::all(),
+            );                // Update slashing record
                 let current_slashes = SlashingSpans::<T>::get(validator);
                 SlashingSpans::<T>::insert(validator, current_slashes.saturating_add(1));
                 
@@ -1275,12 +1394,14 @@ pub mod pallet {
 pub trait WeightInfo {
     fn join_validators() -> Weight;
     fn leave_validators() -> Weight;
+    fn withdraw_unbonded() -> Weight;
     fn submit_model_delta() -> Weight;
     fn assign_fl_task() -> Weight;
     fn distribute_rewards() -> Weight;
     fn record_quantum_contribution() -> Weight;
     fn record_domain_contribution() -> Weight;
     fn claim_pouw_with_domain_bonus() -> Weight;
+    fn report_validator_offense() -> Weight;
 }
 
 impl WeightInfo for () {
@@ -1291,6 +1412,11 @@ impl WeightInfo for () {
     }
     fn leave_validators() -> Weight {
         Weight::from_parts(10_000_000, 0)
+            .saturating_add(RocksDbWeight::get().reads(1))
+            .saturating_add(RocksDbWeight::get().writes(2))
+    }
+    fn withdraw_unbonded() -> Weight {
+        Weight::from_parts(8_000_000, 0)
             .saturating_add(RocksDbWeight::get().reads(1))
             .saturating_add(RocksDbWeight::get().writes(2))
     }
@@ -1322,5 +1448,10 @@ impl WeightInfo for () {
         Weight::from_parts(25_000_000, 0)
             .saturating_add(RocksDbWeight::get().reads(2))  // Read validator info + domain stats
             .saturating_add(RocksDbWeight::get().writes(1))  // Mint rewards
+    }
+    fn report_validator_offense() -> Weight {
+        Weight::from_parts(15_000_000, 0)
+            .saturating_add(RocksDbWeight::get().reads(2))  // Read validator + slashing spans
+            .saturating_add(RocksDbWeight::get().writes(3))  // Update validator + slashing spans + balance
     }
 }

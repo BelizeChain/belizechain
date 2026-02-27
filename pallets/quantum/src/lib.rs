@@ -763,6 +763,11 @@ pub mod pallet {
             destination_index: u8,  // Index into ChainDestination enum
             claim_tx_hash: [u8; 32],
         },
+        /// NFT bridge cancelled by owner (Phase 2.3.4)
+        BridgeCancelled {
+            nft_id: u64,
+            owner: T::AccountId,
+        },
     }
 
     #[pallet::error]
@@ -836,6 +841,8 @@ pub mod pallet {
         InvalidRecipientAddress,
         /// NFT locked in bridge
         NFTLockedInBridge,
+        /// Bridge already claimed on destination chain
+        BridgeAlreadyClaimed,
     }
 
     #[pallet::call]
@@ -1089,6 +1096,7 @@ pub mod pallet {
             })?;
 
             // Create result record
+            // SAFETY(saturated_into): BlockNumber → u32 is lossless; BelizeChain uses u32 block numbers.
             let current_block: u32 = frame_system::Pallet::<T>::block_number().saturated_into();
             let quantum_result = QuantumResult {
                 job_id: job_id.clone(),
@@ -1300,6 +1308,9 @@ pub mod pallet {
         ) -> DispatchResult {
             let from = ensure_signed(origin)?;
 
+            // Ensure NFT is not locked in a bridge request
+            ensure!(!BridgeRequests::<T>::contains_key(nft_id), Error::<T>::NFTLockedInBridge);
+
             QuantumAchievements::<T>::try_mutate(nft_id, |maybe_nft| {
                 let nft = maybe_nft.as_mut().ok_or(Error::<T>::NFTNotFound)?;
 
@@ -1355,6 +1366,7 @@ pub mod pallet {
             let current_u64: u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0);
             let duration_u64: u64 = TryInto::<u64>::try_into(duration).unwrap_or(0);
             let expiry_u64 = current_u64.saturating_add(duration_u64);
+            // SAFETY(saturated_into): u64 → BlockNumberFor<T>. The expiry is derived from current block + duration, both bounded by chain lifetime.
             let expiry: BlockNumberFor<T> = expiry_u64.saturated_into();
 
             // Store original minter (owner when first minted)
@@ -1528,8 +1540,12 @@ pub mod pallet {
             BridgeRequests::<T>::insert(nft_id, bridge_request);
             BridgeCounter::<T>::mutate(|c| *c = c.saturating_add(1));
 
-            // Lock NFT (mark as locked - could use separate storage flag)
-            // In production: Transfer to bridge pallet account
+            // Lock NFT by setting transferable to false — prevents transfer/list/auction
+            QuantumAchievements::<T>::mutate(nft_id, |maybe_nft| {
+                if let Some(nft) = maybe_nft {
+                    nft.transferable = false;
+                }
+            });
 
             Self::deposit_event(Event::BridgeInitiated {
                 nft_id,
@@ -1587,6 +1603,13 @@ pub mod pallet {
             BridgeRequests::<T>::insert(nft_id, bridge_request);
             BridgeCounter::<T>::mutate(|c| *c = c.saturating_add(1));
 
+            // Lock NFT by setting transferable to false — prevents transfer/list/auction
+            QuantumAchievements::<T>::mutate(nft_id, |maybe_nft| {
+                if let Some(nft) = maybe_nft {
+                    nft.transferable = false;
+                }
+            });
+
             // In production: Send XCM message to parachain
             // xcm::send_xcm(destination, message)?;
 
@@ -1595,6 +1618,45 @@ pub mod pallet {
                 owner,
                 destination_index: ChainDestination::Parachain(parachain_id).to_index(),
                 recipient,
+            });
+
+            Ok(())
+        }
+
+        /// Cancel a pending bridge request and unlock the NFT
+        ///
+        /// Only the NFT owner can cancel. Cannot cancel if already claimed.
+        ///
+        /// # Arguments
+        /// * `origin` - NFT owner
+        /// * `nft_id` - Bridged NFT to cancel
+        #[pallet::call_index(13)]
+        #[pallet::weight(T::WeightInfo::cancel_bridge())]
+        pub fn cancel_bridge(
+            origin: OriginFor<T>,
+            nft_id: u64,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // Get and validate bridge request
+            let bridge_request = BridgeRequests::<T>::get(nft_id)
+                .ok_or(Error::<T>::BridgeRequestNotFound)?;
+            ensure!(bridge_request.owner == who, Error::<T>::NotAuthorized);
+            ensure!(!bridge_request.claimed, Error::<T>::BridgeAlreadyClaimed);
+
+            // Remove bridge request
+            BridgeRequests::<T>::remove(nft_id);
+
+            // Unlock NFT by restoring transferable flag
+            QuantumAchievements::<T>::mutate(nft_id, |maybe_nft| {
+                if let Some(nft) = maybe_nft {
+                    nft.transferable = true;
+                }
+            });
+
+            Self::deposit_event(Event::BridgeCancelled {
+                nft_id,
+                owner: who,
             });
 
             Ok(())
@@ -1637,6 +1699,7 @@ pub mod pallet {
             let required = required_verifications.clamp(2, 10);
 
             let current_block = frame_system::Pallet::<T>::block_number();
+            // SAFETY(saturated_into): BlockNumber → u32 is lossless; BelizeChain uses u32 block numbers.
             let deadline = current_block.saturated_into::<u32>() + 100; // 100 blocks deadline
 
             // Create verification request
@@ -1648,6 +1711,7 @@ pub mod pallet {
                 rejections: 0,
                 consensus_reached: false,
                 consensus_result: None,
+                // SAFETY(saturated_into): BlockNumber → u32 is lossless; BelizeChain uses u32 block numbers.
                 created_at: current_block.saturated_into::<u32>(),
                 deadline,
             };
@@ -1703,6 +1767,7 @@ pub mod pallet {
 
             // Check deadline
             let current_block = frame_system::Pallet::<T>::block_number();
+            // SAFETY(saturated_into): BlockNumber → u32 is lossless; BelizeChain uses u32 block numbers.
             ensure!(
                 current_block.saturated_into::<u32>() <= request.deadline,
                 Error::<T>::VerificationDeadlinePassed
@@ -1722,19 +1787,21 @@ pub mod pallet {
                 validator: validator_bytes,
                 vote: vote.clone(),
                 confidence,
+                // SAFETY(saturated_into): BlockNumber → u32 is lossless; BelizeChain uses u32 block numbers.
                 submitted_at: current_block.saturated_into::<u32>(),
                 result_hash,
             };
 
-            // Update vote counts
+            // Add verification first (bounded to 10 max) — must succeed before updating counts
+            request.verifications.try_push(verification)
+                .map_err(|_| Error::<T>::ConsensusAlreadyReached)?;
+
+            // Update vote counts only after successful push
             match vote {
                 VerificationVote::Approve => request.approvals += 1,
                 VerificationVote::Reject => request.rejections += 1,
                 VerificationVote::Abstain => {}, // Abstain doesn't count
             }
-
-            // Add verification (bounded to 10 max)
-            let _ = request.verifications.try_push(verification);
 
             // Check if consensus reached
             let total_votes = request.approvals + request.rejections;
@@ -1979,6 +2046,7 @@ pub trait WeightInfo {
     fn bridge_to_parachain() -> Weight;
     fn request_verification() -> Weight;
     fn submit_verification() -> Weight;
+    fn cancel_bridge() -> Weight;
 }
 
 impl WeightInfo for () {
@@ -2046,6 +2114,11 @@ impl WeightInfo for () {
         Weight::from_parts(20_000_000, 0)
             .saturating_add(RocksDbWeight::get().reads(3))  // Read request + job + result
             .saturating_add(RocksDbWeight::get().writes(3))  // Update request + job + reputation
+    }
+    fn cancel_bridge() -> Weight {
+        Weight::from_parts(12_000_000, 0)
+            .saturating_add(RocksDbWeight::get().reads(2))  // Read bridge request + NFT
+            .saturating_add(RocksDbWeight::get().writes(2))  // Remove bridge request + unlock NFT
     }
 }
 

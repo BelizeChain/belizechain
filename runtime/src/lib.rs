@@ -38,7 +38,7 @@ use sp_core::{crypto::KeyTypeId, OpaqueMetadata, H256};
 use sp_runtime::{
     generic, impl_opaque_keys,
     traits::{
-        AccountIdLookup, BlakeTwo256, Block as BlockT, IdentifyAccount, NumberFor,
+        AccountIdConversion, AccountIdLookup, BlakeTwo256, Block as BlockT, IdentifyAccount, NumberFor,
         Verify,
     },
     transaction_validity::{TransactionSource, TransactionValidity},
@@ -215,6 +215,11 @@ impl pallet_sudo::Config for Runtime {
     type WeightInfo = pallet_sudo::weights::SubstrateWeight<Runtime>;
 }
 
+// SECURITY WARNING: `pallet_insecure_randomness_collective_flip` uses block-hash
+// based randomness that is manipulable by block producers. It MUST NOT be relied
+// upon for security-critical decisions (e.g. financial lotteries, leader election).
+// TODO(security): Migrate to BABE epoch-randomness or an off-chain VRF oracle
+// before mainnet launch. Tracking issue: RANDOMNESS-MIGRATION.
 impl pallet_insecure_randomness_collective_flip::Config for Runtime {}
 
 // ==================== GEM SMART CONTRACT PLATFORM ====================
@@ -273,6 +278,7 @@ parameter_types! {
     pub const CommunityTreasuryPalletId: PalletId = PalletId(*b"py/comty");
     pub const IdentityPalletId: PalletId = PalletId(*b"py/ident");
     pub const PayrollPalletId: PalletId = PalletId(*b"py/payrl");
+    pub const BelizeXPalletId: PalletId = PalletId(*b"py/bzdex");
     pub const MaxDallaSupply: Balance = 501_000_000_000_000_000; // 501B DALLA
     pub const MinValidatorStake: Balance = 100_000_000_000; // 100 DALLA
     pub const BaseReward: Balance = 1_000_000_000; // 1 DALLA per block
@@ -286,17 +292,11 @@ parameter_types! {
     pub const PQSignatureThreshold: u32 = 3; // 3 of 5 validators
 }
 
-// Treasury account (sudo for now)
+// Treasury account — derived deterministically from TreasuryPalletId
 pub struct TreasuryAccount;
 impl Get<AccountId> for TreasuryAccount {
     fn get() -> AccountId {
-        // Use fixed account ID for treasury (derived from "belizechain-treasury")
-        // This is safer than AccountIdConversion in some runtime configurations
-        AccountId::new([
-            0x62, 0x7a, 0x74, 0x72, 0x65, 0x61, 0x73, 0x75, 0x72, 0x79, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-        ])
+        TreasuryPalletId::get().into_account_truncating()
     }
 }
 
@@ -304,12 +304,7 @@ impl Get<AccountId> for TreasuryAccount {
 pub struct CommunityTreasuryAccount;
 impl Get<AccountId> for CommunityTreasuryAccount {
     fn get() -> AccountId {
-        // Use fixed account ID for community treasury
-        AccountId::new([
-            0x63, 0x6f, 0x6d, 0x6d, 0x75, 0x6e, 0x69, 0x74, 0x79, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-        ])
+        CommunityTreasuryPalletId::get().into_account_truncating()
     }
 }
 
@@ -353,6 +348,7 @@ impl pallet_belize_governance::Config for Runtime {
     type VotingPeriod = VotingPeriod;
     type LaunchPeriod = LaunchPeriod;
     type WeightInfo = ();
+    type MaxCandidatesPerElection = ConstU32<200>;
 }
 
 use pallet_belize_compliance::VerificationLevel;
@@ -388,6 +384,7 @@ impl pallet_belize_staking::Config for Runtime {
     type MinValidatorStake = MinValidatorStake;
     type BaseReward = BaseReward;
     type EpochDuration = EpochDuration;
+    type UnbondingPeriod = ConstU32<14_400>; // ~24 hours at 6s blocks
     type WeightInfo = ();
 }
 
@@ -407,6 +404,7 @@ impl pallet_belize_payroll::Config for Runtime {
     type MaxDeductions = ConstU32<10>;
     type MaxDepartments = ConstU32<100>;
     type MinimumPayment = MinimumPayment;
+    type MaxSchedulesPerBlock = ConstU32<50>;
     type VerifierOrigin = EnsureRoot<AccountId>;
     type Oracle = PayrollOracleProvider;
     type WeightInfo = ();
@@ -423,6 +421,8 @@ impl pallet_belize_interoperability::Config for Runtime {
     type MinBridgeAmount = MinBridgeAmount;
     type BridgeFeeRate = BridgeFeeRate;
     type PQSignatureThreshold = PQSignatureThreshold;
+    // Challenge period: 100 blocks ≈ 10 minutes at 6s block time (§4.4b)
+    type ChallengePeriod = ConstU32<100>;
     type WeightInfo = ();
 }
 
@@ -436,6 +436,7 @@ impl pallet_belize_belizex::Config for Runtime {
     type ProtocolFeeToTreasuryBps = ConstU32<3000>; // 30% to treasury
     type Oracle = BelizeXOracleProvider;
     type MaxOracleDeviationBps = ConstU32<500>; // 5% max deviation from Oracle rate for bBZD trades
+    type DexPalletId = BelizeXPalletId;
     type TourismOrigin = EnsureRoot<AccountId>;
     type PairListingOrigin = EnsureRoot<AccountId>;
     type Treasury = TreasuryAccount;
@@ -493,7 +494,15 @@ impl pallet_belize_community::Config for Runtime {
 }
 
 parameter_types! {
-    pub const BnsTreasuryAccount: AccountId = AccountId::new([0xBB; 32]);  // BNS treasury
+    pub const BnsPalletId: PalletId = PalletId(*b"py/bznss");
+}
+
+// BNS treasury account — derived from BnsPalletId for deterministic addressing
+pub struct BnsTreasuryAccount;
+impl Get<AccountId> for BnsTreasuryAccount {
+    fn get() -> AccountId {
+        BnsPalletId::get().into_account_truncating()
+    }
 }
 
 impl pallet_belize_bns::Config for Runtime {
@@ -572,6 +581,24 @@ impl pallet_belize_staking::OracleVerifier<AccountId> for StakingOracleVerifier 
         Oracle::oracle_operators(who)
     }
 }
+
+// =============================================================================
+// Cross-Pallet Provider Implementations
+// =============================================================================
+//
+// ## Provider Consolidation Roadmap (Audit §3.8)
+//
+// The runtime currently defines 14 provider structs to wire pallets together via
+// trait implementations. This is a recognized architectural concern:
+//
+// - Many providers still return hardcoded or placeholder values (see P2 §2.7 fixes
+//   for partial remediation — e.g. LandLedger ownership now uses real storage).
+// - Future phases should consolidate providers into a shared `RuntimeProviders`
+//   module that groups related trait impls and makes it easy to audit which
+//   cross-pallet queries are "real" vs. stubbed.
+// - Consider a macro-based approach (e.g. `impl_providers!`) to reduce boilerplate
+//   and enforce that every provider method has an explicit "stub" or "live" label.
+// =============================================================================
 
 /// Oracle provider for Economy pallet - Merchant verification ONLY
 /// 
@@ -683,11 +710,8 @@ impl pallet_belize_community::GovernanceParticipation<AccountId> for GovernanceC
 pub struct LandLedgerOracleProvider;
 impl pallet_belize_landledger::LandLedgerOracleProvider<AccountId> for LandLedgerOracleProvider {
     fn verify_land_owner(property_id: u32, account: &AccountId) -> bool {
-        // LandLedger uses internal u32 IDs, Oracle uses external [u8; 32] hashes
-        // For on-chain properties, we trust the LandLedger pallet's own ownership checks
-        // External verification would require a mapping between internal IDs and external registry hashes
-        let _ = (property_id, account);
-        true // Trust on-chain LandLedger storage
+        // Delegate to on-chain LandLedger storage — check that `account` holds `property_id`
+        LandLedger::property_owners(account).contains(&property_id)
     }
     fn get_kyc_level(account: &AccountId) -> Option<u8> {
         Identity::get_verified_kyc_level(account)
@@ -738,7 +762,8 @@ impl pallet_belize_belizex::BelizeXOracleProvider<AccountId> for BelizeXOraclePr
     }
     
     fn get_trading_volume_tier(_account: &AccountId) -> u8 {
-        // Phase 3: Default tier 0 (volume tracking in Phase 4)
+        // TODO(Phase 4): Implement volume tracking in BelizeX pallet and delegate here.
+        // Until then, all accounts default to tier 0 (no volume discount).
         0
     }
 }
@@ -883,6 +908,7 @@ pub type Executive = frame_executive::Executive<
     frame_system::ChainContext<Runtime>,
     Runtime,
     AllPalletsWithSystem,
+    migrations::CoordinatedUpgrade<Runtime>,
 >;
 
 // Type alias for contract events (required by Contracts API)

@@ -121,6 +121,7 @@ parameter_types! {
     pub const MinValidatorStake: u128 = 10_000_000_000; // 10K DALLA
     pub const BaseReward: u128 = 100_000_000; // 100 DALLA per epoch
     pub const EpochDuration: u64 = 100; // 100 blocks per epoch
+    pub const UnbondingPeriod: u64 = 100; // 100 blocks unbonding
 }
 
 impl pallet_belize_staking::Config for Test {
@@ -132,6 +133,7 @@ impl pallet_belize_staking::Config for Test {
     type MinValidatorStake = MinValidatorStake;
     type BaseReward = BaseReward;
     type EpochDuration = EpochDuration;
+    type UnbondingPeriod = UnbondingPeriod;
     type WeightInfo = ();
 }
 

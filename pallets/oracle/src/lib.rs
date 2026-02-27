@@ -19,6 +19,10 @@ mod tests;
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
 
+/// Blocks per year assuming 6-second block time.
+/// 60s/min * 60min/hr * 24hr/day * 365.25 days/yr / 6s/block ≈ 5,256,000
+const BLOCKS_PER_YEAR: u32 = 5_256_000;
+
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
@@ -447,8 +451,7 @@ pub mod pallet {
             let category = Self::u8_to_merchant_category(category)?;
 
             let current_block = frame_system::Pallet::<T>::block_number();
-            // 1 year = ~5,256,000 blocks (assuming 6 second block time)
-            let expiry_block = current_block.saturating_add(5_256_000u32.into());
+            let expiry_block = current_block.saturating_add(BLOCKS_PER_YEAR.into());
 
             let merchant_info = MerchantInfo {
                 merchant: merchant.clone(),
@@ -538,14 +541,20 @@ pub mod pallet {
             biometric_verified: bool,
             address_verified: bool,
         ) -> DispatchResult {
-            let _operator = ensure_signed(origin)?;
+            let operator = ensure_signed(origin)?;
+
+            // Verify caller is an authorized oracle operator
+            ensure!(
+                OracleOperators::<T>::get(&operator),
+                Error::<T>::NotAuthorizedOperator
+            );
 
             // Convert u8 to KycLevel
             let kyc_level = Self::u8_to_kyc_level(kyc_level)?;
 
             let current_block = frame_system::Pallet::<T>::block_number();
             // KYC expires after 1 year
-            let expiry_block = current_block.saturating_add(5_256_000u32.into());
+            let expiry_block = current_block.saturating_add(BLOCKS_PER_YEAR.into());
 
             let identity_info = IdentityInfo {
                 account: account.clone(),
@@ -579,7 +588,13 @@ pub mod pallet {
             has_encumbrances: bool,
             co_owner_count: u8,
         ) -> DispatchResult {
-            let _operator = ensure_signed(origin)?;
+            let operator = ensure_signed(origin)?;
+
+            // Verify caller is an authorized oracle operator
+            ensure!(
+                OracleOperators::<T>::get(&operator),
+                Error::<T>::NotAuthorizedOperator
+            );
 
             let current_block = frame_system::Pallet::<T>::block_number();
 

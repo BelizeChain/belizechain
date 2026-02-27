@@ -429,6 +429,8 @@ pub mod pallet {
         BuyerKycInsufficient,
         /// Account is sanctioned and cannot participate in property transactions
         AccountSanctioned,
+        /// Maximum properties per account reached
+        MaxPropertiesReached,
     }
 
     #[pallet::call]
@@ -484,6 +486,8 @@ pub mod pallet {
             T::Currency::reserve(&who, T::RegistrationDeposit::get())?;
 
             let property_id = Self::next_property_id();
+            // SAFETY(saturated_into): BlockNumber → u64 is lossless for BelizeChain's
+            // u32 block numbers. Used only as a timestamp for the property record.
             let now = frame_system::Pallet::<T>::block_number().saturated_into::<u64>();
 
             let property = PropertyRecord {
@@ -508,9 +512,10 @@ pub mod pallet {
             Properties::<T>::insert(property_id, property);
             PropertyByTitle::<T>::insert(title_hash, property_id);
             
-            PropertyOwners::<T>::mutate(&who, |properties| {
-                let _ = properties.try_push(property_id);
-            });
+            PropertyOwners::<T>::try_mutate(&who, |properties| {
+                properties.try_push(property_id)
+                    .map_err(|_| Error::<T>::MaxPropertiesReached)
+            })?;
 
             NextPropertyId::<T>::put(property_id.saturating_add(1));
 
@@ -594,6 +599,10 @@ pub mod pallet {
 
             // Collect transfer tax
             if transfer_tax > 0 {
+                // SAFETY(saturated_into): u128 → Balance. The transfer_tax is derived
+                // from transfer_price (user-supplied) × rate / 10000, so it fits within
+                // any reasonable Balance type. If it somehow exceeds Balance::MAX the
+                // subsequent transfer call would fail with InsufficientBalance.
                 T::Currency::transfer(
                     &who,
                     &Self::account_id(),
@@ -603,6 +612,7 @@ pub mod pallet {
             }
 
             let transfer_id = Self::next_transfer_id();
+            // SAFETY(saturated_into): BlockNumber → u64 — lossless for BelizeChain's u32 blocks.
             let now = frame_system::Pallet::<T>::block_number().saturated_into::<u64>();
 
             // Create transfer record
@@ -612,6 +622,8 @@ pub mod pallet {
                 from_owner: who.clone(),
                 to_owner: new_owner.clone(),
                 transfer_price,
+                // SAFETY(saturated_into): u64 → u64 is identity; the `now` value is
+                // already u64 from the block number conversion above.
                 transferred_at: now.saturated_into(),
                 government_approved: true, // Could require separate approval step
                 tax_paid: transfer_tax,
@@ -630,9 +642,10 @@ pub mod pallet {
             PropertyOwners::<T>::mutate(&who, |properties| {
                 properties.retain(|&x| x != property_id);
             });
-            PropertyOwners::<T>::mutate(&new_owner, |properties| {
-                let _ = properties.try_push(property_id);
-            });
+            PropertyOwners::<T>::try_mutate(&new_owner, |properties| {
+                properties.try_push(property_id)
+                    .map_err(|_| Error::<T>::MaxPropertiesReached)
+            })?;
 
             NextTransferId::<T>::put(transfer_id.saturating_add(1));
 
@@ -654,6 +667,8 @@ pub mod pallet {
                 property_id,
                 from_owner: who,
                 to_owner: new_owner,
+                // SAFETY(saturated_into): u128 → Balance event field. The transfer_price
+                // is user-supplied and has been validated through the tax calculation above.
                 transfer_price: transfer_price.saturated_into(),
                 transfer_id,
             });
@@ -770,7 +785,8 @@ pub mod pallet {
             anchor_type: AnchorType,
         ) -> Result<[u8; 32], &'static str> {
             let block_number = frame_system::Pallet::<T>::block_number();
-            let timestamp = block_number.saturated_into::<u64>(); // Simplified timestamp
+            // SAFETY(saturated_into): BlockNumber → u64 — lossless for BelizeChain's u32 blocks.
+            let timestamp = block_number.saturated_into::<u64>();
             
             let anchor = TemporalAnchor {
                 content_hash,
@@ -797,6 +813,8 @@ pub mod pallet {
                 .ok_or("Previous anchor not found")?;
             
             let block_number = frame_system::Pallet::<T>::block_number();
+            // SAFETY(saturated_into): BlockNumber → u64 is lossless for BelizeChain's
+            // u32 block numbers. Used as timestamp in temporal anchor.
             let timestamp = block_number.saturated_into::<u64>();
             
             // Build history for merkle root calculation

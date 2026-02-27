@@ -1,5 +1,15 @@
 #![allow(clippy::result_large_err, clippy::type_complexity)]
 //! Service and ServiceFactory implementation for BelizeChain.
+//!
+//! ## Customization Roadmap (Audit §3.7)
+//!
+//! The current node implementation closely follows the Substrate node template.
+//! The following customizations should be implemented before mainnet:
+//!
+//! - **Custom RPC middleware**: Rate limiting, authentication, CORS policies
+//! - **Telemetry hooks**: BelizeChain-specific metrics (PoUW scores, mesh node count)
+//! - **Transaction pool logic**: Priority ordering for governance/emergency extrinsics
+//! - **Networking layer**: Optimized peer selection for Belizean network topology
 
 use std::{sync::Arc, time::Duration};
 use futures::FutureExt;

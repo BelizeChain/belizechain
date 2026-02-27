@@ -140,6 +140,8 @@ pub trait WeightInfo {
     fn relay_block_header() -> Weight;
     fn claim_relay_rewards() -> Weight;
     fn update_mesh_config() -> Weight;
+    fn fund_relay_rewards() -> Weight;
+    fn confirm_relay_proof() -> Weight;
 }
 
 /// Default weight implementation
@@ -156,6 +158,8 @@ impl WeightInfo for () {
     fn relay_block_header() -> Weight { Weight::from_parts(70_000_000, 0) }
     fn claim_relay_rewards() -> Weight { Weight::from_parts(50_000_000, 0) }
     fn update_mesh_config() -> Weight { Weight::from_parts(20_000_000, 0) }
+    fn fund_relay_rewards() -> Weight { Weight::from_parts(30_000_000, 0) }
+    fn confirm_relay_proof() -> Weight { Weight::from_parts(40_000_000, 0) }
 }
 
 /// Trait for Identity integration - KYC verification for mesh node registration
@@ -470,6 +474,11 @@ pub mod pallet {
             owner: T::AccountId,
             amount: <T::Currency as Currency<T::AccountId>>::Balance,
         },
+        /// Relay rewards pool funded
+        RelayRewardsFunded {
+            funder: T::AccountId,
+            amount: <T::Currency as Currency<T::AccountId>>::Balance,
+        },
         /// Emergency alert issued
         EmergencyAlertIssued {
             alert_id: u32,
@@ -498,6 +507,12 @@ pub mod pallet {
         MeshConfigUpdated {
             max_hops: u8,
             channel_preset: ChannelPreset,
+        },
+        /// Relay proof confirmed by a second node — rewards now accrue
+        RelayProofConfirmed {
+            relayer_node: MeshtasticNodeId,
+            confirmer: T::AccountId,
+            reward: <T::Currency as Currency<T::AccountId>>::Balance,
         },
     }
 
@@ -548,13 +563,19 @@ pub mod pallet {
         /// Invalid GPS coordinates
         InvalidCoordinates,
         /// Not a registered validator (cannot use ValidatorRelay role)
-        NotValidator,
+        ValidatorNotFound,
         /// Relay mining is currently disabled
         RelayMiningDisabled,
         /// Emergency system is currently disabled
         EmergencySystemDisabled,
         /// Insufficient deposit for node registration
         InsufficientDeposit,
+        /// Relay proof already confirmed
+        ProofAlreadyConfirmed,
+        /// Cannot confirm own relay proof
+        CannotConfirmOwnProof,
+        /// Relay proof index out of range
+        ProofIndexOutOfRange,
     }
 
     // ========================
@@ -610,7 +631,7 @@ pub mod pallet {
 
             // ValidatorRelay requires being a registered validator
             if matches!(role, MeshNodeRole::ValidatorRelay) {
-                ensure!(T::Identity::is_validator(&who), Error::<T>::NotValidator);
+                ensure!(T::Identity::is_validator(&who), Error::<T>::ValidatorNotFound);
             }
 
             // Reserve registration deposit
@@ -935,20 +956,9 @@ pub mod pallet {
                 Ok(())
             })?;
 
-            // Calculate and accrue reward
-            let reward = match relay_type {
-                RelayType::Transaction => T::RelayRewardPerTransaction::get(),
-                RelayType::BlockHeader => T::RelayRewardPerBlockHeader::get(),
-                RelayType::EmergencyAlert => T::RelayRewardPerEmergencyAlert::get(),
-                RelayType::Heartbeat | RelayType::Confirmation => {
-                    // Minimal reward for heartbeats and confirmations
-                    T::RelayRewardPerTransaction::get() / 10u32.saturated_into()
-                },
-            };
-
-            RelayRewards::<T>::mutate(&who, |balance| {
-                *balance = balance.saturating_add(reward);
-            });
+            // NOTE: Rewards are NOT accrued here. They are deferred until a
+            // second node confirms the relay via `confirm_relay_proof`.
+            // This prevents self-reporting abuse.
 
             // Update node stats
             MeshNodes::<T>::mutate(node_id, |maybe_node| {
@@ -1143,7 +1153,7 @@ pub mod pallet {
             ensure!(node.owner == who, Error::<T>::NotNodeOwner);
             ensure!(
                 matches!(node.role, MeshNodeRole::ValidatorRelay),
-                Error::<T>::NotValidator
+                Error::<T>::ValidatorNotFound
             );
 
             let header = MeshBlockHeader {
@@ -1195,6 +1205,7 @@ pub mod pallet {
 
             // Update total rewards in stats
             NetworkStats::<T>::mutate(|stats| {
+                // SAFETY(saturated_into): Balance → u128 is lossless; substrate balances are at most u128.
                 stats.total_relay_rewards = stats.total_relay_rewards.saturating_add(
                     reward.saturated_into::<u128>()
                 );
@@ -1250,6 +1261,90 @@ pub mod pallet {
             });
 
             Ok(())
+        }
+
+        /// Fund the relay rewards pool from the sender's balance.
+        ///
+        /// Governance or the treasury can call this to ensure the pallet account
+        /// has sufficient balance to pay out `claim_relay_rewards`.
+        #[pallet::call_index(12)]
+        #[pallet::weight(T::WeightInfo::fund_relay_rewards())]
+        pub fn fund_relay_rewards(
+            origin: OriginFor<T>,
+            #[pallet::compact] amount: <T::Currency as Currency<T::AccountId>>::Balance,
+        ) -> DispatchResult {
+            let funder = ensure_signed(origin)?;
+            ensure!(!amount.is_zero(), Error::<T>::NoRelayRewards);
+
+            let pallet_account: T::AccountId = MESH_PALLET_ID.into_account_truncating();
+            T::Currency::transfer(
+                &funder,
+                &pallet_account,
+                amount,
+                frame_support::traits::ExistenceRequirement::KeepAlive,
+            )?;
+
+            Self::deposit_event(Event::RelayRewardsFunded {
+                funder,
+                amount,
+            });
+
+            Ok(())
+        }
+
+        /// Confirm a relay proof submitted by a different node owner.
+        ///
+        /// A second, independent mesh node must confirm a relay proof before
+        /// the submitter earns relay mining rewards. This prevents a single
+        /// node from fabricating proofs.
+        #[pallet::call_index(13)]
+        #[pallet::weight(T::WeightInfo::confirm_relay_proof())]
+        pub fn confirm_relay_proof(
+            origin: OriginFor<T>,
+            relayer_node_id: MeshtasticNodeId,
+            proof_index: u32,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // Confirmer must own a registered mesh node (cannot be the same owner)
+            let relayer_node = MeshNodes::<T>::get(relayer_node_id)
+                .ok_or(Error::<T>::NodeNotFound)?;
+            ensure!(relayer_node.owner != who, Error::<T>::CannotConfirmOwnProof);
+
+            // Confirmer must own at least one active node to be credible
+            let confirmer_nodes = NodesByOwner::<T>::get(&who);
+            ensure!(!confirmer_nodes.is_empty(), Error::<T>::NodeNotFound);
+
+            RelayProofs::<T>::try_mutate(relayer_node_id, |proofs| -> DispatchResult {
+                let proof = proofs.get_mut(proof_index as usize)
+                    .ok_or(Error::<T>::ProofIndexOutOfRange)?;
+                ensure!(!proof.confirmed, Error::<T>::ProofAlreadyConfirmed);
+
+                proof.confirmed = true;
+
+                // Now accrue the reward to the relay node owner
+                let reward = match proof.relay_type {
+                    RelayType::Transaction => T::RelayRewardPerTransaction::get(),
+                    RelayType::BlockHeader => T::RelayRewardPerBlockHeader::get(),
+                    RelayType::EmergencyAlert => T::RelayRewardPerEmergencyAlert::get(),
+                    RelayType::Heartbeat | RelayType::Confirmation => {
+                        // SAFETY(saturated_into): constant 10u32 → BalanceOf<T> is lossless; small constant fits any Balance type.
+                        T::RelayRewardPerTransaction::get() / 10u32.saturated_into()
+                    },
+                };
+
+                RelayRewards::<T>::mutate(&relayer_node.owner, |balance| {
+                    *balance = balance.saturating_add(reward);
+                });
+
+                Self::deposit_event(Event::RelayProofConfirmed {
+                    relayer_node: relayer_node_id,
+                    confirmer: who.clone(),
+                    reward,
+                });
+
+                Ok(())
+            })
         }
     }
 

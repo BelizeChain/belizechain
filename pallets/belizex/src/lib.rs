@@ -12,14 +12,16 @@
 use frame_support::{
     pallet_prelude::*,
     traits::{
-        Currency, ReservableCurrency, LockableCurrency, LockIdentifier, Get, Randomness,
+        Currency, ReservableCurrency, LockableCurrency, Get, Randomness,
+        ExistenceRequirement,
     },
     weights::{Weight, constants::RocksDbWeight},
+    PalletId,
 };
 use frame_system::pallet_prelude::*;
 use sp_runtime::{
     traits::{
-        Saturating, SaturatedConversion, IntegerSquareRoot,
+        Saturating, SaturatedConversion, IntegerSquareRoot, AccountIdConversion,
     },
     RuntimeDebug, FixedU128, FixedPointNumber,
 };
@@ -31,7 +33,7 @@ use sp_std::vec::Vec;
 
 pub use pallet::*;
 
-const LIQUIDITY_LOCK_ID: LockIdentifier = *b"bzliquid";
+// LIQUIDITY_LOCK_ID removed: custody model now uses transfer-to-pool instead of locks
 
 /// Minimal trait to check KYC status of an account.
 pub trait KycCheck<AccountId> {
@@ -108,6 +110,10 @@ pub mod pallet {
         /// Used as a safety guard to prevent extreme price manipulation when trading bBZD.
         #[pallet::constant]
         type MaxOracleDeviationBps: Get<u32>;
+
+        /// Pallet ID used to derive the DEX pool escrow account
+        #[pallet::constant]
+        type DexPalletId: Get<PalletId>;
     }
 
         /// Liquidity provider position
@@ -617,23 +623,27 @@ pub mod pallet {
                 Error::<T>::InsufficientBalance
             );
 
+            // SAFETY(saturated_into): Balance → u128 is lossless for standard substrate balances
+            // (u128 max > any practical token supply). If a custom Balance type exceeds u128,
+            // values would saturate at u128::MAX — acceptable since LP math already uses
+            // saturating arithmetic.
             let base_amount_u128: u128 = base_amount.saturated_into();
             let quote_amount_u128: u128 = quote_amount.saturated_into();
 
-            // Calculate LP tokens to mint (simplified formula)
-            let lp_tokens = base_amount_u128.saturating_add(quote_amount_u128).integer_sqrt();
+            // Calculate LP tokens to mint (constant-product AMM: sqrt(x * y))
+            let lp_tokens = base_amount_u128.saturating_mul(quote_amount_u128).integer_sqrt();
             
             let min_lp_tokens_u128: u128 = min_lp_tokens;
             ensure!(lp_tokens >= min_lp_tokens_u128, Error::<T>::SlippageExceeded);
 
-            // Lock funds
-            let lock_amount = base_amount.saturating_add(quote_amount);
-            T::Currency::set_lock(
-                LIQUIDITY_LOCK_ID,
+            // Transfer funds to the DEX pool escrow account
+            let pool = Self::pool_account();
+            T::Currency::transfer(
                 &who,
-                lock_amount,
-                frame_support::traits::WithdrawReasons::all(),
-            );
+                &pool,
+                base_amount.saturating_add(quote_amount),
+                ExistenceRequirement::KeepAlive,
+            )?;
 
             // Update pair reserves
             pair.base_reserve = pair.base_reserve.saturating_add(base_amount_u128);
@@ -700,6 +710,7 @@ pub mod pallet {
                 ensure!(Self::tourism_traders(&who), Error::<T>::Unauthorized);
             }
 
+            // SAFETY(saturated_into): Balance → u128 is lossless; substrate balances fit within u128.
             let amount_in_u128: u128 = amount_in.saturated_into();
             
             // Calculate dynamic fee with Oracle-enhanced volume tiers and tourism verification
@@ -750,6 +761,27 @@ pub mod pallet {
 
             ensure!(amount_out >= min_amount_out, Error::<T>::SlippageExceeded);
 
+            // Transfer input amount from trader to DEX pool
+            let pool = Self::pool_account();
+            T::Currency::transfer(
+                &who,
+                &pool,
+                // SAFETY(saturated_into): Balance → Balance identity; saturation is a no-op.
+                amount_in.saturated_into(),
+                ExistenceRequirement::KeepAlive,
+            )?;
+
+            // Transfer output amount from DEX pool to trader
+            // SAFETY(saturated_into): u128 → Balance; output is bounded by pool reserve which fits in Balance.
+            let amount_out_balance: <T::Currency as Currency<T::AccountId>>::Balance =
+                amount_out.saturated_into();
+            T::Currency::transfer(
+                &pool,
+                &who,
+                amount_out_balance,
+                ExistenceRequirement::AllowDeath,
+            )?;
+
             // Update reserves: LP fee is retained in pool
             pair.base_reserve = pair.base_reserve
                 .saturating_add(amount_after_fee)
@@ -763,13 +795,14 @@ pub mod pallet {
                 *volume = volume.saturating_add(amount_in_u128);
             });
 
-            // Transfer treasury portion of fee to treasury
+            // Transfer treasury portion of fee from pool to treasury
             let treasury = T::Treasury::get();
             T::Currency::transfer(
-                &who, 
+                &pool, 
                 &treasury, 
+                // SAFETY(saturated_into): u128 → Balance; treasury fee ≤ amount_in which originated as Balance.
                 treasury_fee.saturated_into(),
-                frame_support::traits::ExistenceRequirement::KeepAlive
+                ExistenceRequirement::AllowDeath,
             )?;
 
             Self::deposit_event(Event::TradeExecuted {
@@ -835,6 +868,9 @@ pub mod pallet {
             let current_u64: u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0);
             let expires_in_u64: u64 = TryInto::<u64>::try_into(expires_in_blocks).unwrap_or(0);
             let expires_u64 = current_u64.saturating_add(expires_in_u64);
+            // SAFETY(saturated_into): u64 → BlockNumber. If the computed expiry exceeds
+            // BlockNumber::MAX it saturates rather than wrapping — order simply expires
+            // at the maximum possible block.
             let expires_at: BlockNumberFor<T> = expires_u64.saturated_into();
 
             let is_tourism_order = matches!(order_type_enum, OrderType::TourismBuy | OrderType::TourismSell);
@@ -890,6 +926,7 @@ pub mod pallet {
             ensure!(path.len() >= 2, Error::<T>::PairNotFound);
             ensure!(path.len() <= 5, Error::<T>::SlippageExceeded); // simple path limit
 
+            // SAFETY(saturated_into): Balance → u128 is lossless; substrate balances fit within u128.
             let mut amount: u128 = amount_in.saturated_into();
             let mut total_treasury_fee: u128 = 0;
 
@@ -949,6 +986,7 @@ pub mod pallet {
                 T::Currency::transfer(
                     &who,
                     &treasury,
+                    // SAFETY(saturated_into): u128 → Balance; total fee ≤ amount_in which originated as Balance.
                     total_treasury_fee.saturated_into(),
                     frame_support::traits::ExistenceRequirement::KeepAlive,
                 )?;
@@ -959,6 +997,7 @@ pub mod pallet {
             Self::deposit_event(Event::TradeExecuted {
                 trader: who,
                 pair: last_pair,
+                // SAFETY(saturated_into): Balance → u128 is lossless; substrate balances fit within u128.
                 amount_in: amount_in.saturated_into(),
                 amount_out: amount,
                 fee_paid: total_treasury_fee, // only treasury fee reported here
@@ -1010,6 +1049,11 @@ pub mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
+        /// Derive the DEX pool escrow account from PalletId
+        pub fn pool_account() -> T::AccountId {
+            T::DexPalletId::get().into_account_truncating()
+        }
+
         /// Calculate output amount for trade using constant product formula
         fn get_amount_out(
             amount_in: u128,

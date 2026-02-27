@@ -266,17 +266,42 @@ fn testnet_genesis(
 
 /// Production mainnet genesis configuration
 /// PRODUCTION DEPLOYMENT: Configure with actual validator keys and treasury accounts
+///
+/// # Security
+/// Validator keys and the root (sudo) key MUST be injected from a secure key
+/// management system (e.g. `subkey generate`, HSM, or Vault) before building
+/// the production chain spec.  The `MAINNET_KEYS_CONFIGURED` compile-time guard
+/// prevents accidental deployment with placeholder keys.
 fn mainnet_genesis() -> Result<serde_json::Value, String> {
-    // Production validator keys - configured from secure key management system
-    // CRITICAL: NEVER use development keys (Alice/Bob) in production deployments
+    // ── COMPILE-TIME SAFETY GUARD ──────────────────────────────────────────
+    // Flip this to `true` ONLY after replacing the placeholder keys below
+    // with real, securely-generated validator keys.
+    const MAINNET_KEYS_CONFIGURED: bool = false;
+    if !MAINNET_KEYS_CONFIGURED {
+        return Err(
+            "SECURITY: Mainnet genesis still uses placeholder keys. \
+             Generate real validator keys with `subkey generate`, replace \
+             the entries below, and set MAINNET_KEYS_CONFIGURED = true."
+                .into(),
+        );
+    }
+
+    // Production validator keys — replace with output of `subkey generate`
+    // before setting MAINNET_KEYS_CONFIGURED = true.
+    //
+    // Example (DO NOT USE — generate your own):
+    //   let aura_key = AuraId::from_slice(&hex!("...")).unwrap();
+    //   let gran_key = GrandpaId::from_slice(&hex!("...")).unwrap();
+    //
+    // PLACEHOLDER keys (will be rejected at runtime by the guard above):
     let initial_authorities: Vec<(AuraId, GrandpaId)> = vec![
-        // Initial validator set (30 validators for mainnet launch)
         authority_keys_from_seed("ValidatorOne"),
         authority_keys_from_seed("ValidatorTwo"),
         authority_keys_from_seed("ValidatorThree"),
     ];
 
     // Government of Belize treasury account (multi-signature 4-of-7)
+    // PLACEHOLDER — replace with a real multi-sig account before mainnet.
     let root_key = get_account_id_from_seed::<sr25519::Public>("TreasuryAccount");
 
     // Initial token distribution per Step 9 Token Economics (100M DALLA genesis)

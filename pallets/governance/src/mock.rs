@@ -136,6 +136,7 @@ impl pallet_belize_governance::Config for Test {
     type VotingPeriod = VotingPeriod;
     type LaunchPeriod = LaunchPeriod;
     type WeightInfo = ();
+    type MaxCandidatesPerElection = ConstU32<50>;
 }
 
 // Build genesis storage according to the mock runtime

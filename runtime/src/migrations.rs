@@ -1,5 +1,14 @@
 /// Runtime upgrade utilities for forkless blockchain upgrades.
 /// Enables seamless pallet updates without hard forks.
+///
+/// ## Adding a new migration
+///
+/// 1. Bump `CURRENT_RUNTIME_VERSION` by one.
+/// 2. Add a new migration struct (e.g. `MigrateV2ToV3<T>`) implementing
+///    `OnRuntimeUpgrade`.
+/// 3. Register it inside `CoordinatedUpgrade::on_runtime_upgrade()` behind
+///    a version guard: `if on_chain < N { ... }`.
+/// 4. Implement `pre_upgrade` / `post_upgrade` for `try-runtime` validation.
 use codec::{Decode, Encode};
 use frame_support::{
     traits::OnRuntimeUpgrade,
@@ -10,6 +19,10 @@ use sp_std::marker::PhantomData;
 
 #[cfg(feature = "try-runtime")]
 use sp_std::prelude::*;
+
+/// Current runtime migration version.
+/// Bump this whenever a new migration is added.
+const CURRENT_RUNTIME_VERSION: u32 = 1;
 
 /// Migration tracker for coordinated multi-pallet upgrades
 #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
@@ -25,6 +38,23 @@ pub enum MigrationStep {
     InProgress(u32), // Step number
     Completed,
     Failed,
+}
+
+// On-chain version tracker — stored as a raw storage value in `frame_system`
+// auxiliary storage under a well-known key so it persists across upgrades.
+frame_support::parameter_types! {
+    pub const MigrationVersionKey: [u8; 32] = *b"belizechain::migration_version!!";
+}
+
+/// Read the on-chain migration version.
+fn on_chain_version() -> u32 {
+    frame_support::storage::unhashed::get::<u32>(b"belizechain::migration_version!!")
+        .unwrap_or(0)
+}
+
+/// Write the on-chain migration version.
+fn set_on_chain_version(v: u32) {
+    frame_support::storage::unhashed::put::<u32>(b"belizechain::migration_version!!", &v);
 }
 
 /// Template for pallet storage migrations
@@ -58,56 +88,81 @@ impl<T> StorageMigration<T> {
 
     /// Validate migration completed successfully
     #[cfg(feature = "try-runtime")]
-    pub fn post_upgrade_check(expected_version: u16) -> Result<(), &'static str> {
+    pub fn post_upgrade_check(_expected_version: u16) -> Result<(), &'static str> {
         // Implement version validation
         Ok(())
     }
 }
 
-/// Multi-step runtime upgrade coordinator
-/// Ensures all pallets upgrade atomically or rollback
+/// Multi-step runtime upgrade coordinator.
+///
+/// Ensures all pallets upgrade atomically. Each migration is gated behind
+/// a version check so it only runs once, even if the on-runtime-upgrade
+/// hook fires multiple times (e.g. during `try-runtime`).
 pub struct CoordinatedUpgrade<T> {
     _phantom: PhantomData<T>,
 }
 
-impl<T> OnRuntimeUpgrade for CoordinatedUpgrade<T> {
+impl<T: frame_system::Config> OnRuntimeUpgrade for CoordinatedUpgrade<T> {
     fn on_runtime_upgrade() -> Weight {
-        log::info!("🔄 Starting coordinated runtime upgrade...");
-        
-        let total_weight = Weight::zero();
+        let on_chain = on_chain_version();
+        let mut total_weight = Weight::zero();
 
-        // Step 1: Pre-upgrade validation
-        #[cfg(feature = "try-runtime")]
-        {
-            Self::pre_upgrade().expect("Pre-upgrade validation failed");
+        if on_chain >= CURRENT_RUNTIME_VERSION {
+            log::info!(
+                "✅ Runtime already at migration version {on_chain}, nothing to do."
+            );
+            return total_weight;
         }
 
-        // Step 2: Execute migrations (add your pallet migrations here)
-        // Example:
-        // total_weight = total_weight.saturating_add(MigrateEconomyV1ToV2::<T>::on_runtime_upgrade());
-        // total_weight = total_weight.saturating_add(MigrateIdentityV1ToV2::<T>::on_runtime_upgrade());
+        log::info!(
+            "🔄 Starting coordinated runtime upgrade: v{on_chain} → v{CURRENT_RUNTIME_VERSION}"
+        );
 
-        // Step 3: Post-upgrade validation
-        #[cfg(feature = "try-runtime")]
-        {
-            Self::post_upgrade(Vec::new()).expect("Post-upgrade validation failed");
+        // ── V0 → V1: Initial migration (no-op, establishes version tracking) ──
+        if on_chain < 1 {
+            log::info!("  ↳ Applying migration V0 → V1 (version tracking bootstrap)");
+            // Future migrations go here. Example:
+            // total_weight = total_weight.saturating_add(
+            //     MigrateEconomyV1ToV2::<T>::on_runtime_upgrade()
+            // );
+            total_weight = total_weight.saturating_add(
+                Weight::from_parts(1_000_000, 0) // bookkeeping weight
+            );
         }
 
-        log::info!("✅ Runtime upgrade completed successfully");
+        // ── Add new version gates above this line ──
+        // if on_chain < 2 {
+        //     log::info!("  ↳ Applying migration V1 → V2 ...");
+        //     total_weight = total_weight.saturating_add(MigrateXxx::<T>::on_runtime_upgrade());
+        // }
+
+        set_on_chain_version(CURRENT_RUNTIME_VERSION);
+        log::info!(
+            "✅ Runtime upgrade completed: now at migration version {CURRENT_RUNTIME_VERSION}"
+        );
         total_weight
     }
 
     #[cfg(feature = "try-runtime")]
-    fn pre_upgrade() -> Result<Vec<u8>, &'static str> {
-        log::info!("Running pre-upgrade checks...");
-        // Implement pre-upgrade validation logic
-        Ok(Vec::new())
+    fn pre_upgrade() -> Result<Vec<u8>, sp_runtime::TryRuntimeError> {
+        let v = on_chain_version();
+        log::info!("Pre-upgrade check: on-chain version = {v}");
+        Ok(v.encode())
     }
 
     #[cfg(feature = "try-runtime")]
-    fn post_upgrade(_state: Vec<u8>) -> Result<(), &'static str> {
-        log::info!("Running post-upgrade checks...");
-        // Implement post-upgrade validation logic
+    fn post_upgrade(state: Vec<u8>) -> Result<(), sp_runtime::TryRuntimeError> {
+        let pre_version = u32::decode(&mut &state[..])
+            .map_err(|_| "Failed to decode pre-upgrade version")?;
+        let post_version = on_chain_version();
+        log::info!(
+            "Post-upgrade check: {pre_version} → {post_version} (target: {CURRENT_RUNTIME_VERSION})"
+        );
+        assert_eq!(
+            post_version, CURRENT_RUNTIME_VERSION,
+            "On-chain version mismatch after upgrade"
+        );
         Ok(())
     }
 }
@@ -118,7 +173,7 @@ pub mod test_utils {
     use super::*;
 
     /// Simulate runtime upgrade without applying changes
-    pub fn dry_run_upgrade<T: OnRuntimeUpgrade>() -> Result<Weight, &'static str> {
+    pub fn dry_run_upgrade<T: OnRuntimeUpgrade>() -> Result<Weight, sp_runtime::TryRuntimeError> {
         let pre_state = T::pre_upgrade()?;
         let weight = T::on_runtime_upgrade();
         T::post_upgrade(pre_state)?;
@@ -134,7 +189,7 @@ pub mod example {
     
     pub struct MigrateEconomyV1ToV2<T>(PhantomData<T>);
     
-    impl<T> OnRuntimeUpgrade for MigrateEconomyV1ToV2<T> {
+    impl<T: frame_system::Config> OnRuntimeUpgrade for MigrateEconomyV1ToV2<T> {
         fn on_runtime_upgrade() -> Weight {
             log::info!("Migrating Economy pallet from V1 to V2...");
             
@@ -145,13 +200,13 @@ pub mod example {
         }
 
         #[cfg(feature = "try-runtime")]
-        fn pre_upgrade() -> Result<Vec<u8>, &'static str> {
+        fn pre_upgrade() -> Result<Vec<u8>, sp_runtime::TryRuntimeError> {
             // Validate current state before migration
             Ok(Vec::new())
         }
 
         #[cfg(feature = "try-runtime")]
-        fn post_upgrade(_state: Vec<u8>) -> Result<(), &'static str> {
+        fn post_upgrade(_state: Vec<u8>) -> Result<(), sp_runtime::TryRuntimeError> {
             // Validate state after migration
             Ok(())
         }

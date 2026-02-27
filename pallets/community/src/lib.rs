@@ -117,7 +117,7 @@ pub mod pallet {
         traits::{Currency, ReservableCurrency, Get},
     };
     use frame_system::pallet_prelude::*;
-    use sp_runtime::traits::{SaturatedConversion, CheckedAdd};
+    use sp_runtime::traits::{SaturatedConversion, CheckedAdd, Zero};
     
     use crate::weights::WeightInfo;
     use pallet_belize_identity::BelizeKyc as BelizeKycTrait;
@@ -659,6 +659,8 @@ pub mod pallet {
         InvalidReferral,
         /// Referral already claimed
         ReferralAlreadyClaimed,
+        /// Caller is not authorized for this operation
+        NotAuthorized,
     }
 
     // ================================
@@ -685,10 +687,15 @@ pub mod pallet {
             // Allow both root (for system-triggered activities) and self-reporting
             // NOTE: In production, cross-pallet trait calls should be used for automatic recording
             // (e.g., governance pallet calls this when a vote is cast)
-            let _ = ensure_signed(origin.clone()).or_else(|_| -> Result<T::AccountId, DispatchError> {
+            let caller = ensure_signed(origin.clone()).or_else(|_| -> Result<T::AccountId, DispatchError> {
                 ensure_root(origin)?;
                 Ok(account.clone())
             })?;
+
+            // If signed (not root), caller must be the account itself
+            if caller != account {
+                return Err(Error::<T>::NotAuthorized.into());
+            }
 
             // Convert u8 code to ActivityType enum
             let activity = ActivityType::from_u8(activity_code)
@@ -1166,6 +1173,7 @@ pub mod pallet {
             T::GovernanceOrigin::ensure_origin(origin)?;
 
             let current_block = frame_system::Pallet::<T>::block_number();
+            // SAFETY(saturated_into): BlockNumber → u32 is lossless; BelizeChain uses u32 block numbers.
             let block_u32: u32 = current_block.saturated_into();
 
             let sanction = SanctionStatus {
@@ -1284,6 +1292,7 @@ pub mod pallet {
 
             // Record completion
             let current_block = frame_system::Pallet::<T>::block_number();
+            // SAFETY(saturated_into): BlockNumber → u32 is lossless; BelizeChain uses u32 block numbers.
             let block_u32: u32 = current_block.saturated_into();
 
             let completion = CompletionData {
@@ -1299,6 +1308,13 @@ pub mod pallet {
 
             // Update SRS - education completion increases score
             Self::update_srs_after_education(&who);
+
+            // Mint education reward to the learner
+            // SAFETY(saturated_into): u128 reward → BalanceOf<T>. Module reward amounts are protocol-defined constants that fit within Balance.
+            let reward_balance: BalanceOf<T> = module.reward_amount.saturated_into();
+            if !reward_balance.is_zero() {
+                let _ = T::Currency::deposit_creating(&who, reward_balance);
+            }
 
             Self::deposit_event(Event::EducationModuleCompleted {
                 account: who.clone(),
@@ -1411,6 +1427,13 @@ pub mod pallet {
             
             referral_data.total_rewards_earned = referral_data.total_rewards_earned.saturating_add(reward);
             ReferralData::<T>::insert(&referrer, referral_data.clone());
+
+            // Mint referral reward to the referrer
+            // SAFETY(saturated_into): u128 reward → BalanceOf<T>. Referral rewards are small protocol-defined values that fit within Balance.
+            let reward_balance: BalanceOf<T> = reward.saturated_into();
+            if !reward_balance.is_zero() {
+                let _ = T::Currency::deposit_creating(&referrer, reward_balance);
+            }
 
             Self::deposit_event(Event::ReferralClaimed {
                 referee: referee.clone(),
@@ -1912,14 +1935,12 @@ pub mod pallet {
             }
             
             // Initialize green projects
-            for (project_id, title, _description, funding_goal, current_funding, is_active) in &self.green_projects {
+            for (project_id, title, _description, _funding_goal, current_funding, is_active) in &self.green_projects {
                 let bounded_title: BoundedVec<u8, ConstU32<128>> = title.clone()
                     .try_into()
                     .expect("Title too long for BoundedVec<128>");
                 
                 // Convert BalanceOf<T> to u64 for storage
-                let _goal_u64: u64 = (*funding_goal).try_into()
-                    .unwrap_or(0u64);
                 let current_u64: u64 = (*current_funding).try_into()
                     .unwrap_or(0u64);
                 

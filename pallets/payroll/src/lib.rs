@@ -329,6 +329,10 @@ pub mod pallet {
         #[pallet::constant]
         type MinimumPayment: Get<BalanceOf<Self>>;
 
+        /// Maximum schedules to process per block in on_initialize
+        #[pallet::constant]
+        type MaxSchedulesPerBlock: Get<u32>;
+
         /// Origin that can verify employers (governance / compliance authority)
         type VerifierOrigin: EnsureOrigin<Self::RuntimeOrigin>;
         
@@ -573,13 +577,23 @@ pub mod pallet {
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         fn on_initialize(n: BlockNumberFor<T>) -> Weight {
             let mut total_weight = Weight::from_parts(10_000_000, 0);
+            let max_per_block = T::MaxSchedulesPerBlock::get() as usize;
+            let mut processed = 0usize;
 
-            // Process scheduled payments (iterate all employer schedules)
-            for (employer, _schedule_id, schedule) in PayrollSchedules::<T>::iter() {
+            // SECURITY: Bounded iteration prevents DoS via storage bloat (§1.7 / §2.8)
+            // Scan at most 10× max_per_block entries to find due payments; this caps
+            // worst-case iteration while ensuring we process enough candidates.
+            let scan_limit = max_per_block.saturating_mul(10);
+
+            for (scanned, (employer, _schedule_id, schedule)) in PayrollSchedules::<T>::iter().enumerate() {
+                if processed >= max_per_block || scanned >= scan_limit {
+                    break;
+                }
                 if schedule.active && schedule.next_payment <= n {
                     if let Ok(weight) = Self::process_scheduled_payment(&employer, schedule) {
                         total_weight = total_weight.saturating_add(weight);
                     }
+                    processed += 1;
                 }
             }
 
@@ -613,6 +627,7 @@ pub mod pallet {
                 employer_type: employer_type.clone(),
                 verified: true,
                 department_count: 0,
+                // SAFETY(saturated_into): BlockNumber → u32 is lossless; BelizeChain uses u32 block numbers.
                 registered_at: frame_system::Pallet::<T>::block_number().saturated_into(),
             };
             EmployerProfiles::<T>::insert(&employer, profile);
@@ -711,6 +726,7 @@ pub mod pallet {
                 last_paid: 0u32,
                 total_paid: Zero::zero(),
                 total_deductions: Zero::zero(),
+                // SAFETY(saturated_into): BlockNumber → u32 is lossless; BelizeChain uses u32 block numbers.
                 start_block: frame_system::Pallet::<T>::block_number().saturated_into(),
                 metadata_hash,
             };
@@ -875,6 +891,7 @@ pub mod pallet {
             )?;
 
             // Update employee record
+            // SAFETY(saturated_into): BlockNumber → u32 is lossless; BelizeChain uses u32 block numbers.
             let current_block: u32 = frame_system::Pallet::<T>::block_number().saturated_into();
             emp.last_paid = current_block;
             emp.total_paid = emp.total_paid.saturating_add(emp.salary);
@@ -954,6 +971,7 @@ pub mod pallet {
                         ExistenceRequirement::KeepAlive,
                     )?;
 
+                    // SAFETY(saturated_into): BlockNumber → u32 is lossless; BelizeChain uses u32 block numbers.
                     let current_block: u32 = frame_system::Pallet::<T>::block_number().saturated_into();
                     emp.last_paid = current_block;
                     emp.total_paid = emp.total_paid.saturating_add(emp.salary);
@@ -1198,6 +1216,7 @@ pub mod pallet {
 
             // Update employee total
             emp.total_paid = emp.total_paid.saturating_add(amount);
+            // SAFETY(saturated_into): BlockNumber → u32 is lossless; BelizeChain uses u32 block numbers.
             let current_block: u32 = frame_system::Pallet::<T>::block_number().saturated_into();
             emp.last_paid = current_block;
             Employees::<T>::insert(&employer, &employee, emp);
@@ -1316,6 +1335,7 @@ pub mod pallet {
                         ExistenceRequirement::KeepAlive,
                     )?;
 
+                    // SAFETY(saturated_into): BlockNumber → u32 is lossless; BelizeChain uses u32 block numbers.
                     let current_block: u32 = frame_system::Pallet::<T>::block_number().saturated_into();
                     emp.last_paid = current_block;
                     emp.total_paid = emp.total_paid.saturating_add(emp.salary);

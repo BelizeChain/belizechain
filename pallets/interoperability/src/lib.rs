@@ -86,6 +86,11 @@ pub mod pallet {
         #[pallet::constant]
         type PQSignatureThreshold: Get<u32>;
         
+        /// Challenge period in blocks before a bridge transaction is finalized.
+        /// During this window, validators can dispute a transaction. (§4.4b)
+        #[pallet::constant]
+        type ChallengePeriod: Get<BlockNumberFor<Self>>;
+        
         /// Weight information for extrinsics
         type WeightInfo: WeightInfo;
 
@@ -203,6 +208,8 @@ pub mod pallet {
         Disputed,
         /// Cancelled by governance
         Cancelled,
+        /// Finalized after challenge period elapsed without dispute (§4.4b)
+        Finalized,
     }
 
     /// Bridge validator information for post-quantum security
@@ -373,6 +380,17 @@ pub mod pallet {
         ValueQuery,
     >;
 
+    #[pallet::storage]
+    #[pallet::getter(fn pending_finalizations)]
+    /// Bridge transactions awaiting finalization after challenge period (§4.4b).
+    /// Key: tx_id → block number when challenge period expires.
+    pub type PendingFinalizations<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u32, // Transaction ID
+        BlockNumberFor<T>,
+    >;
+
     /// Chain-specific configuration
     #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub struct ChainConfig {
@@ -460,6 +478,15 @@ pub mod pallet {
             amount: u128,
             asset: u8,
         },
+        /// Bridge transaction disputed during challenge period (§4.4b)
+        BridgeTransactionDisputed {
+            tx_id: u32,
+            disputer: T::AccountId,
+        },
+        /// Bridge transaction finalized after challenge period elapsed (§4.4b)
+        BridgeTransactionFinalized {
+            tx_id: u32,
+        },
     }
 
     #[pallet::error]
@@ -502,6 +529,43 @@ pub mod pallet {
         BridgeOperatorKycInsufficient,
         /// Invalid bridge configuration
         InvalidConfiguration,
+        /// Transaction is not in a disputable state (must be ReadyForExecution)
+        NotDisputable,
+        /// Challenge period has not elapsed yet
+        ChallengePeriodActive,
+    }
+
+    // ===== HOOKS (§4.4b Challenge Period Finalization) =====
+
+    #[pallet::hooks]
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        fn on_initialize(n: BlockNumberFor<T>) -> Weight {
+            let mut weight = Weight::from_parts(5_000_000, 0);
+            let mut finalized_ids = Vec::new();
+
+            // SECURITY: Bounded iteration — process at most 20 finalizations per block
+            for (tx_id, expiry_block) in PendingFinalizations::<T>::iter().take(20) {
+                if n >= expiry_block {
+                    // Challenge period has elapsed — finalize the transaction
+                    if let Some(mut bridge_tx) = BridgeTransactions::<T>::get(tx_id) {
+                        if bridge_tx.status == BridgeStatus::ReadyForExecution {
+                            bridge_tx.status = BridgeStatus::Finalized;
+                            bridge_tx.completed_at = Some(n);
+                            BridgeTransactions::<T>::insert(tx_id, bridge_tx);
+                            Self::deposit_event(Event::BridgeTransactionFinalized { tx_id });
+                        }
+                    }
+                    finalized_ids.push(tx_id);
+                    weight = weight.saturating_add(Weight::from_parts(10_000_000, 0));
+                }
+            }
+
+            for tx_id in finalized_ids {
+                PendingFinalizations::<T>::remove(tx_id);
+            }
+
+            weight
+        }
     }
 
     #[pallet::call]
@@ -535,6 +599,7 @@ pub mod pallet {
 
             // Validate amount
             ensure!(amount >= T::MinBridgeAmount::get(), Error::<T>::BelowMinimumAmount);
+            // SAFETY: Balance is u128-backed; Balance → u128 is lossless
             ensure!(
                 amount.saturated_into::<u128>() <= chain_config.max_amount,
                 Error::<T>::ExceedsMaximumAmount
@@ -572,6 +637,7 @@ pub mod pallet {
             let bridge_operation = BridgeOperation::LockAndMint {
                 target_chain: target_chain.clone(),
                 target_address: target_address_bounded,
+                // SAFETY: Balance is u128-backed; Balance → u128 is lossless
                 amount: net_amount.saturated_into::<u128>(),
                 asset: asset.clone(),
             };
@@ -584,6 +650,7 @@ pub mod pallet {
                 required_signatures: chain_config.pq_signatures_required,
                 collected_signatures: 0,
                 pq_signatures: BoundedVec::default(),
+                // SAFETY: Balance is u128-backed; Balance → u128 is lossless
                 fee: fee_amount.saturated_into::<u128>(),
                 initiated_at: current_block,
                 completed_at: None,
@@ -596,6 +663,7 @@ pub mod pallet {
 
             // Update total locked assets
             TotalLockedAssets::<T>::mutate(&target_chain, &asset, |total| {
+                // SAFETY: Balance is u128-backed; Balance → u128 is lossless
                 *total = total.saturating_add(net_amount.saturated_into::<u128>());
             });
 
@@ -603,12 +671,14 @@ pub mod pallet {
                 tx_id,
                 initiator: who.clone(),
                 target_chain: Self::encode_chain(&target_chain),
+                // SAFETY: Balance is u128-backed; Balance → u128 is lossless
                 amount: amount.saturated_into::<u128>(),
                 asset: Self::encode_asset(&asset),
             });
 
             Self::deposit_event(Event::AssetsLocked {
                 account: who,
+                // SAFETY: Balance is u128-backed; Balance → u128 is lossless
                 amount: net_amount.saturated_into::<u128>(),
                 asset: Self::encode_asset(&asset),
                 target_chain: Self::encode_chain(&target_chain),
@@ -665,6 +735,11 @@ pub mod pallet {
             // Update status based on signature count
             if bridge_tx.collected_signatures >= bridge_tx.required_signatures {
                 bridge_tx.status = BridgeStatus::ReadyForExecution;
+                // Register challenge period — transaction will auto-finalize after
+                // ChallengePeriod blocks if no dispute is filed (§4.4b)
+                let current_block = frame_system::Pallet::<T>::block_number();
+                let expiry = current_block.saturating_add(T::ChallengePeriod::get());
+                PendingFinalizations::<T>::insert(tx_id, expiry);
             } else {
                 bridge_tx.status = BridgeStatus::AwaitingSignatures;
             }
@@ -710,6 +785,7 @@ pub mod pallet {
                 pool_id,
                 chain: chain.clone(),
                 asset: asset.clone(),
+                // SAFETY: Balance is u128-backed; Balance → u128 is lossless
                 belizechain_liquidity: initial_liquidity.saturated_into::<u128>(),
                 external_liquidity: 0, // Will be updated externally
                 manager: who.clone(),
@@ -754,10 +830,12 @@ pub mod pallet {
             // In production, would verify against external chain state
 
             // Calculate unlock amount (minus fees already deducted)
-            let _unlock_amount: <T::Currency as Currency<T::AccountId>>::Balance = amount.saturated_into();
+            // SAFETY: amount is u128 and Balance is u128-backed; u128 → Balance is lossless
+            let unlock_amount: <T::Currency as Currency<T::AccountId>>::Balance = amount.saturated_into();
 
-            // Unlock assets
+            // Unlock assets and credit tokens to recipient
             T::Currency::remove_lock(BRIDGE_LOCK_ID, &recipient);
+            let _imbalance = T::Currency::deposit_creating(&recipient, unlock_amount);
 
             // Update total locked assets
             TotalLockedAssets::<T>::mutate(&source_chain, &asset, |total| {
@@ -791,6 +869,7 @@ pub mod pallet {
                 .try_into()
                 .map_err(|_| Error::<T>::InvalidConfiguration)?;
             let message_hash = sp_core::blake2_256(payload_bounded.as_slice());
+            // SAFETY: BlockNumber fits in u64 (runtime uses u32 block numbers)
             let timestamp = frame_system::Pallet::<T>::block_number().saturated_into::<u64>();
 
             let message = CrossChainMessage {
@@ -840,6 +919,67 @@ pub mod pallet {
             Self::deposit_event(Event::BridgeConfigUpdated {
                 chain: Self::encode_chain(&chain),
                 fee_rate,
+            });
+
+            Ok(())
+        }
+
+        /// Dispute a bridge transaction during challenge period (§4.4b)
+        ///
+        /// Only registered bridge validators can file disputes. If a dispute is
+        /// accepted, the transaction moves to `Disputed` status and is blocked
+        /// from automatic finalization. Governance must then resolve the dispute.
+        #[pallet::call_index(6)]
+        #[pallet::weight(T::WeightInfo::update_config())] // Re-use weight; lightweight operation
+        pub fn dispute_bridge_transaction(
+            origin: OriginFor<T>,
+            tx_id: u32,
+            reason: Vec<u8>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // Only registered bridge validators can dispute
+            ensure!(
+                Self::bridge_validators(&who).is_some(),
+                Error::<T>::ValidatorNotRegistered
+            );
+
+            // Verify bridge operator KYC
+            ensure!(
+                T::Identity::verify_bridge_operator(&who),
+                Error::<T>::BridgeOperatorKycInsufficient
+            );
+
+            let mut bridge_tx = Self::bridge_transactions(tx_id)
+                .ok_or(Error::<T>::TransactionNotFound)?;
+
+            // Can only dispute transactions in ReadyForExecution (challenge window)
+            ensure!(
+                bridge_tx.status == BridgeStatus::ReadyForExecution,
+                Error::<T>::NotDisputable
+            );
+
+            // Verify we are still within the challenge period
+            ensure!(
+                PendingFinalizations::<T>::contains_key(tx_id),
+                Error::<T>::NotDisputable
+            );
+
+            // Mark transaction as disputed
+            bridge_tx.status = BridgeStatus::Disputed;
+            let reason_bounded: BoundedVec<u8, ConstU32<256>> = reason
+                .try_into()
+                .map_err(|_| Error::<T>::InvalidConfiguration)?;
+            bridge_tx.dispute_info = Some(reason_bounded);
+
+            BridgeTransactions::<T>::insert(tx_id, bridge_tx);
+
+            // Remove from pending finalization — governance must resolve
+            PendingFinalizations::<T>::remove(tx_id);
+
+            Self::deposit_event(Event::BridgeTransactionDisputed {
+                tx_id,
+                disputer: who,
             });
 
             Ok(())
