@@ -67,11 +67,6 @@ impl SubstrateCli for Cli {
 
 /// Parse and run command line arguments
 ///
-/// # Note
-/// This function is excluded from tarpaulin coverage because it dispatches to
-/// Substrate's CLI runner which requires a live node environment to execute.
-/// The individual arms are covered in integration tests.
-#[cfg(not(tarpaulin_include))]
 pub fn run() -> sc_cli::Result<()> {
     let cli = Cli::from_args();
 
@@ -170,7 +165,6 @@ pub fn run() -> sc_cli::Result<()> {
     }
 }
 
-#[cfg(not(tarpaulin_include))]
 fn main() -> sc_cli::Result<()> {
     run()
 }
