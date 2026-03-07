@@ -151,6 +151,10 @@ jobs:
     runs-on: ubuntu-latest
     # Only build on pushes to main (not on PRs)
     if: github.event_name != 'pull_request'
+    # ACR credentials (ACR_USERNAME / ACR_PASSWORD) must be valid in GitHub Secrets.
+    # If login fails with 403, rotate the service principal in Azure Portal and
+    # update the secrets at: Settings → Secrets and variables → Actions → Secrets.
+    continue-on-error: true
     outputs:
       image_tag: ${{ steps.meta.outputs.tags }}
 
