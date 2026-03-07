@@ -1,3 +1,8 @@
 [env]
 CXX = "g++"
 CXXFLAGS = "-std=c++17 -include cstdint"
+
+[build]
+# Limit parallel rustc jobs to prevent OOM on 14GB RAM systems
+# Substrate release builds use 1-3GB per rustc instance
+jobs = 3

@@ -28,7 +28,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
     /// Reads: DomainRegistry, AccountDomains, Identity verification (3 reads)
     /// Writes: DomainRegistry, AccountDomains, TotalDomains (3 writes)
     fn register_domain() -> Weight {
-        Weight::from_parts(50_000_000, 0)
+        Weight::from_parts(50_000_000, 1536)
             .saturating_add(T::DbWeight::get().reads(3))
             .saturating_add(T::DbWeight::get().writes(3))
     }
@@ -37,7 +37,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
     /// Reads: DomainRegistry (1 read)
     /// Writes: DomainResolution (1 write)
     fn set_resolution() -> Weight {
-        Weight::from_parts(30_000_000, 0)
+        Weight::from_parts(30_000_000, 512)
             .saturating_add(T::DbWeight::get().reads(1))
             .saturating_add(T::DbWeight::get().writes(1))
     }
@@ -46,7 +46,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
     /// Reads: DomainRegistry, AccountDomains (2 reads)
     /// Writes: DomainRegistry, AccountDomains (2 writes)
     fn transfer_domain() -> Weight {
-        Weight::from_parts(40_000_000, 0)
+        Weight::from_parts(40_000_000, 1024)
             .saturating_add(T::DbWeight::get().reads(2))
             .saturating_add(T::DbWeight::get().writes(2))
     }
@@ -55,7 +55,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
     /// Reads: DomainRegistry (1 read)
     /// Writes: DomainListings (1 write)
     fn list_domain() -> Weight {
-        Weight::from_parts(25_000_000, 0)
+        Weight::from_parts(25_000_000, 512)
             .saturating_add(T::DbWeight::get().reads(1))
             .saturating_add(T::DbWeight::get().writes(1))
     }
@@ -64,7 +64,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
     /// Reads: DomainRegistry, DomainListings, AccountDomains (3 reads)
     /// Writes: DomainRegistry, DomainListings, AccountDomains, TotalMarketplaceRevenue (4 writes)
     fn buy_domain() -> Weight {
-        Weight::from_parts(60_000_000, 0)
+        Weight::from_parts(60_000_000, 1536)
             .saturating_add(T::DbWeight::get().reads(3))
             .saturating_add(T::DbWeight::get().writes(4))
     }
@@ -73,7 +73,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
     /// Reads: DomainListings (1 read)
     /// Writes: DomainListings (1 write)
     fn unlist_domain() -> Weight {
-        Weight::from_parts(20_000_000, 0)
+        Weight::from_parts(20_000_000, 512)
             .saturating_add(T::DbWeight::get().reads(1))
             .saturating_add(T::DbWeight::get().writes(1))
     }
@@ -82,7 +82,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
     /// Reads: DomainRegistry, HostedWebsites (2 reads)
     /// Writes: HostedWebsites (1 write)
     fn activate_hosting() -> Weight {
-        Weight::from_parts(45_000_000, 0)
+        Weight::from_parts(45_000_000, 1024)
             .saturating_add(T::DbWeight::get().reads(2))
             .saturating_add(T::DbWeight::get().writes(1))
     }
@@ -91,7 +91,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
     /// Reads: HostedWebsites (1 read)
     /// Writes: HostedWebsites, TotalHostingRevenue (2 writes)
     fn renew_hosting() -> Weight {
-        Weight::from_parts(35_000_000, 0)
+        Weight::from_parts(35_000_000, 512)
             .saturating_add(T::DbWeight::get().reads(1))
             .saturating_add(T::DbWeight::get().writes(2))
     }
@@ -100,7 +100,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
     /// Reads: HostedWebsites (1 read)
     /// Writes: HostedWebsites (1 write)
     fn deactivate_hosting() -> Weight {
-        Weight::from_parts(30_000_000, 0)
+        Weight::from_parts(30_000_000, 512)
             .saturating_add(T::DbWeight::get().reads(1))
             .saturating_add(T::DbWeight::get().writes(1))
     }
@@ -109,7 +109,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
     /// Reads: DomainRegistry (1 read)
     /// Writes: ExternalDomains, DomainVerification (2 writes)
     fn register_external_domain() -> Weight {
-        Weight::from_parts(40_000_000, 0)
+        Weight::from_parts(40_000_000, 512)
             .saturating_add(T::DbWeight::get().reads(1))
             .saturating_add(T::DbWeight::get().writes(2))
     }
@@ -118,7 +118,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
     /// Reads: ExternalDomains, DomainVerification (2 reads)
     /// Writes: ExternalDomains, DomainVerification (2 writes)
     fn verify_external_domain() -> Weight {
-        Weight::from_parts(50_000_000, 0)
+        Weight::from_parts(50_000_000, 1024)
             .saturating_add(T::DbWeight::get().reads(2))
             .saturating_add(T::DbWeight::get().writes(2))
     }
@@ -128,7 +128,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
     /// Reads: HostedWebsites, ContentHistory, CurrentContentVersion (3 reads)
     /// Writes: HostedWebsites, DomainResolution, ContentHistory, CurrentContentVersion (4 writes)
     fn update_hosting_content() -> Weight {
-        Weight::from_parts(45_000_000, 0)
+        Weight::from_parts(45_000_000, 1536)
             .saturating_add(T::DbWeight::get().reads(3))
             .saturating_add(T::DbWeight::get().writes(4))
     }
@@ -137,7 +137,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
     /// Reads: DomainRegistry (parent), DomainRegistry (subdomain check) (2 reads)
     /// Writes: DomainRegistry, DomainResolution, AccountDomains, TotalDomains (4 writes)
     fn create_subdomain() -> Weight {
-        Weight::from_parts(50_000_000, 0)
+        Weight::from_parts(50_000_000, 1024)
             .saturating_add(T::DbWeight::get().reads(2))
             .saturating_add(T::DbWeight::get().writes(4))
     }

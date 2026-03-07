@@ -43,9 +43,10 @@ pub enum Subcommand {
     /// Revert the chain to a previous state.
     Revert(sc_cli::RevertCmd),
 
-    // /// Sub-commands concerned with benchmarking.
-    // #[command(subcommand)]
-    // Benchmark(Box<BenchmarkCmd>),
+    /// Sub-commands concerned with benchmarking.
+    #[cfg(feature = "runtime-benchmarks")]
+    #[command(subcommand)]
+    Benchmark(Box<frame_benchmarking_cli::BenchmarkCmd>),
 
     /// Try some command against a specified runtime.
     #[cfg(feature = "try-runtime")]

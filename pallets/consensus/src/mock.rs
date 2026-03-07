@@ -150,6 +150,7 @@ impl pallet_belize_consensus::Config for Test {
     type ConsensusReward = ConsensusReward;
     type WeightInfo = ();
     type Staking = MockStakingProvider;
+    type MaxSubmitPerBlock = ConstU32<5>;
 }
 
 // Test account constants

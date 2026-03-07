@@ -900,6 +900,8 @@ fn issuer_withdraw_bond_works() {
     new_test_ext().execute_with(|| {
         let new_issuer = 30;
         Balances::make_free_balance_be(&new_issuer, 5_000_000);
+        // Seed pallet escrow so it stays alive after returning the bond
+        let _ = Balances::deposit_creating(&BelizeIdentity::account_id(), 2u128);
         
         // Deposit bond
         assert_ok!(BelizeIdentity::issuer_deposit_bond(
@@ -1185,16 +1187,7 @@ fn pause_and_resume_works_correctly() {
             test_name("Alice")
         ));
         
-        // Add issuer with bond deposit
-        assert_ok!(BelizeIdentity::issuer_deposit_bond(
-            RuntimeOrigin::signed(SSN_ISSUER),
-            AttributeType::Ssn as u8
-        ));
-        assert_ok!(BelizeIdentity::add_issuer(
-            RuntimeOrigin::root(),
-            AttributeType::Ssn as u8,
-            SSN_ISSUER
-        ));
+        // SSN_ISSUER is already an authorized issuer from genesis — no need to re-add
         
         // Pause the pallet
         assert_ok!(BelizeIdentity::set_pause(RuntimeOrigin::root(), true));
@@ -1253,6 +1246,9 @@ fn issuer_bond_withdrawal_works() {
     new_test_ext().execute_with(|| {
         let issuer = 5u64;
         let bond_amount = 1000u128;
+        // Fund the issuer and pallet escrow so transfers don't fail KeepAlive
+        Balances::make_free_balance_be(&issuer, 10_000u128);
+        let _ = Balances::deposit_creating(&BelizeIdentity::account_id(), 2u128);
         
         // Set and deposit bond
         assert_ok!(BelizeIdentity::set_issuer_bond_amount(
@@ -1304,17 +1300,7 @@ fn rate_limits_prevent_spam() {
             2    // biometric
         ));
         
-        // Deposit bond first
-        assert_ok!(BelizeIdentity::issuer_deposit_bond(
-            RuntimeOrigin::signed(SSN_ISSUER),
-            AttributeType::Ssn as u8
-        ));
-        
-        assert_ok!(BelizeIdentity::add_issuer(
-            RuntimeOrigin::root(),
-            AttributeType::Ssn as u8,
-            SSN_ISSUER
-        ));
+        // SSN_ISSUER is already an authorized issuer from genesis — no need to re-add
         
         // Register 3 identities
         for i in 1u64..=3u64 {
@@ -1359,18 +1345,7 @@ fn rate_limits_prevent_spam() {
 #[test]
 fn ssn_duplicate_prevention_works() {
     new_test_ext().execute_with(|| {
-        // Deposit bond first
-        assert_ok!(BelizeIdentity::issuer_deposit_bond(
-            RuntimeOrigin::signed(SSN_ISSUER),
-            AttributeType::Ssn as u8
-        ));
-        
-        // Add issuer
-        assert_ok!(BelizeIdentity::add_issuer(
-            RuntimeOrigin::root(),
-            AttributeType::Ssn as u8,
-            SSN_ISSUER
-        ));
+        // SSN_ISSUER is already an authorized issuer from genesis — no need to re-add
         
         // Register 2 identities
         assert_ok!(BelizeIdentity::register_identity(
@@ -1426,6 +1401,1417 @@ fn did_document_update_works() {
         
         let identity = Identities::<Test>::get(alice_id).unwrap();
         assert_eq!(identity.did_doc_cid, Some(did_doc));
+    });
+}
+
+// ============================================================================
+// PASSPORT ERROR PATH TESTS
+// ============================================================================
+
+#[test]
+fn issue_passport_fails_unauthorized() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        // BOB is not a passport issuer
+        assert_noop!(
+            BelizeIdentity::issue_passport(
+                RuntimeOrigin::signed(BOB),
+                ALICE,
+                test_hash(1),
+                test_anchor(1),
+                true
+            ),
+            Error::<Test>::NotAuthorizedIssuer
+        );
+    });
+}
+
+#[test]
+fn issue_passport_fails_when_flagged() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        // Flag passport issuer
+        assert_ok!(BelizeIdentity::flag_issuer(
+            RuntimeOrigin::root(),
+            1, // Passport
+            PASSPORT_ISSUER,
+            true
+        ));
+        assert_noop!(
+            BelizeIdentity::issue_passport(
+                RuntimeOrigin::signed(PASSPORT_ISSUER),
+                ALICE,
+                test_hash(1),
+                test_anchor(1),
+                true
+            ),
+            Error::<Test>::IssuerFlagged
+        );
+    });
+}
+
+#[test]
+fn issue_passport_fails_when_paused() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        assert_ok!(BelizeIdentity::set_pause(RuntimeOrigin::root(), true));
+        assert_noop!(
+            BelizeIdentity::issue_passport(
+                RuntimeOrigin::signed(PASSPORT_ISSUER),
+                ALICE,
+                test_hash(1),
+                test_anchor(1),
+                true
+            ),
+            Error::<Test>::Paused
+        );
+    });
+}
+
+#[test]
+fn issue_passport_respects_rate_limit() {
+    new_test_ext().execute_with(|| {
+        // Register 6 accounts (passport rate limit = 5 per window)
+        for i in 0u64..6 {
+            let acct = 300 + i;
+            Balances::make_free_balance_be(&acct, 1_000_000);
+            assert_ok!(BelizeIdentity::register_identity(
+                RuntimeOrigin::signed(acct),
+                test_name("User")
+            ));
+        }
+
+        // Issue 5 passports - should all succeed
+        for i in 0u64..5 {
+            let acct = 300 + i;
+            assert_ok!(BelizeIdentity::issue_passport(
+                RuntimeOrigin::signed(PASSPORT_ISSUER),
+                acct,
+                test_hash((10 + i) as u8),
+                test_anchor((10 + i) as u8),
+                true
+            ));
+        }
+
+        // 6th should fail - rate limit exceeded
+        assert_noop!(
+            BelizeIdentity::issue_passport(
+                RuntimeOrigin::signed(PASSPORT_ISSUER),
+                305,
+                test_hash(16),
+                test_anchor(16),
+                true
+            ),
+            Error::<Test>::IssuerRateLimitExceeded
+        );
+    });
+}
+
+#[test]
+fn issue_passport_emits_attested_event() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        let id = IdentityOf::<Test>::get(ALICE).unwrap();
+        assert_ok!(BelizeIdentity::issue_passport(
+            RuntimeOrigin::signed(PASSPORT_ISSUER),
+            ALICE,
+            test_hash(1),
+            test_anchor(1),
+            true
+        ));
+        System::assert_last_event(Event::Attested {
+            identity: id,
+            attr: 1, // Passport
+            issuer: PASSPORT_ISSUER,
+        }.into());
+    });
+}
+
+#[test]
+fn issue_passport_fails_identity_not_found() {
+    new_test_ext().execute_with(|| {
+        // ALICE has no registered identity
+        assert_noop!(
+            BelizeIdentity::issue_passport(
+                RuntimeOrigin::signed(PASSPORT_ISSUER),
+                ALICE,
+                test_hash(1),
+                test_anchor(1),
+                true
+            ),
+            Error::<Test>::IdentityNotFound
+        );
+    });
+}
+
+// ============================================================================
+// BIOMETRICS ERROR PATH TESTS
+// ============================================================================
+
+#[test]
+fn issue_biometrics_fails_unauthorized() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        // BOB is not a biometric issuer
+        assert_noop!(
+            BelizeIdentity::issue_biometrics(
+                RuntimeOrigin::signed(BOB),
+                ALICE,
+                test_anchor(1),
+            ),
+            Error::<Test>::NotAuthorizedIssuer
+        );
+    });
+}
+
+#[test]
+fn issue_biometrics_fails_when_flagged() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        assert_ok!(BelizeIdentity::flag_issuer(
+            RuntimeOrigin::root(),
+            2, // Biometrics
+            BIO_ISSUER,
+            true
+        ));
+        assert_noop!(
+            BelizeIdentity::issue_biometrics(
+                RuntimeOrigin::signed(BIO_ISSUER),
+                ALICE,
+                test_anchor(1),
+            ),
+            Error::<Test>::IssuerFlagged
+        );
+    });
+}
+
+#[test]
+fn issue_biometrics_fails_when_paused() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        assert_ok!(BelizeIdentity::set_pause(RuntimeOrigin::root(), true));
+        assert_noop!(
+            BelizeIdentity::issue_biometrics(
+                RuntimeOrigin::signed(BIO_ISSUER),
+                ALICE,
+                test_anchor(1),
+            ),
+            Error::<Test>::Paused
+        );
+    });
+}
+
+#[test]
+fn issue_biometrics_respects_rate_limit() {
+    new_test_ext().execute_with(|| {
+        // Register 4 accounts (biometrics rate limit = 3 per window)
+        for i in 0u64..4 {
+            let acct = 400 + i;
+            Balances::make_free_balance_be(&acct, 1_000_000);
+            assert_ok!(BelizeIdentity::register_identity(
+                RuntimeOrigin::signed(acct),
+                test_name("User")
+            ));
+        }
+
+        // Issue 3 biometrics - should all succeed
+        for i in 0u64..3 {
+            let acct = 400 + i;
+            assert_ok!(BelizeIdentity::issue_biometrics(
+                RuntimeOrigin::signed(BIO_ISSUER),
+                acct,
+                test_anchor((20 + i) as u8),
+            ));
+        }
+
+        // 4th should fail - rate limit exceeded
+        assert_noop!(
+            BelizeIdentity::issue_biometrics(
+                RuntimeOrigin::signed(BIO_ISSUER),
+                403,
+                test_anchor(24),
+            ),
+            Error::<Test>::IssuerRateLimitExceeded
+        );
+    });
+}
+
+#[test]
+fn issue_biometrics_emits_attested_event() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        let id = IdentityOf::<Test>::get(ALICE).unwrap();
+        assert_ok!(BelizeIdentity::issue_biometrics(
+            RuntimeOrigin::signed(BIO_ISSUER),
+            ALICE,
+            test_anchor(1),
+        ));
+        System::assert_last_event(Event::Attested {
+            identity: id,
+            attr: 2, // Biometrics
+            issuer: BIO_ISSUER,
+        }.into());
+    });
+}
+
+#[test]
+fn issue_biometrics_fails_identity_not_found() {
+    new_test_ext().execute_with(|| {
+        assert_noop!(
+            BelizeIdentity::issue_biometrics(
+                RuntimeOrigin::signed(BIO_ISSUER),
+                ALICE,
+                test_anchor(1),
+            ),
+            Error::<Test>::IdentityNotFound
+        );
+    });
+}
+
+// ============================================================================
+// PRIMARY-ACCOUNT-ONLY GUARD TESTS (M50 / I-7 FIXES)
+// ============================================================================
+
+#[test]
+fn link_account_fails_from_linked_account_m50() {
+    new_test_ext().execute_with(|| {
+        // ALICE registers and links BOB
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        assert_ok!(BelizeIdentity::link_account(
+            RuntimeOrigin::signed(ALICE),
+            BOB
+        ));
+        // BOB is a linked (secondary) account - cannot link CHARLIE
+        assert_noop!(
+            BelizeIdentity::link_account(
+                RuntimeOrigin::signed(BOB),
+                CHARLIE
+            ),
+            Error::<Test>::IdentityNotFound
+        );
+    });
+}
+
+#[test]
+fn update_did_doc_fails_from_linked_account_i7() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        assert_ok!(BelizeIdentity::link_account(
+            RuntimeOrigin::signed(ALICE),
+            BOB
+        ));
+        // BOB is linked but not primary — cannot update DID doc
+        assert_noop!(
+            BelizeIdentity::update_did_doc(
+                RuntimeOrigin::signed(BOB),
+                test_anchor(99)
+            ),
+            Error::<Test>::IdentityNotFound
+        );
+    });
+}
+
+#[test]
+fn link_account_fails_when_paused() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        assert_ok!(BelizeIdentity::set_pause(RuntimeOrigin::root(), true));
+        assert_noop!(
+            BelizeIdentity::link_account(RuntimeOrigin::signed(ALICE), BOB),
+            Error::<Test>::Paused
+        );
+    });
+}
+
+// ============================================================================
+// ADD/REMOVE ISSUER ERROR PATH TESTS
+// ============================================================================
+
+#[test]
+fn add_issuer_fails_for_duplicate() {
+    new_test_ext().execute_with(|| {
+        // SSN_ISSUER is already in genesis SSN issuers list
+        // Must deposit bond first so the bond check passes before the duplicate check
+        assert_ok!(BelizeIdentity::issuer_deposit_bond(RuntimeOrigin::signed(SSN_ISSUER), 0));
+        assert_noop!(
+            BelizeIdentity::add_issuer(RuntimeOrigin::root(), 0, SSN_ISSUER),
+            Error::<Test>::AlreadyAttested
+        );
+    });
+}
+
+#[test]
+fn add_issuer_fails_for_duplicate_passport() {
+    new_test_ext().execute_with(|| {
+        // PASSPORT_ISSUER is already in genesis passport issuers list
+        assert_ok!(BelizeIdentity::issuer_deposit_bond(RuntimeOrigin::signed(PASSPORT_ISSUER), 1));
+        assert_noop!(
+            BelizeIdentity::add_issuer(RuntimeOrigin::root(), 1, PASSPORT_ISSUER),
+            Error::<Test>::AlreadyAttested
+        );
+    });
+}
+
+#[test]
+fn add_issuer_fails_for_duplicate_biometrics() {
+    new_test_ext().execute_with(|| {
+        // BIO_ISSUER is already in genesis biometric issuers list
+        assert_ok!(BelizeIdentity::issuer_deposit_bond(RuntimeOrigin::signed(BIO_ISSUER), 2));
+        assert_noop!(
+            BelizeIdentity::add_issuer(RuntimeOrigin::root(), 2, BIO_ISSUER),
+            Error::<Test>::AlreadyAttested
+        );
+    });
+}
+
+#[test]
+fn remove_issuer_fails_for_nonexistent() {
+    new_test_ext().execute_with(|| {
+        // BOB is not an SSN issuer
+        assert_noop!(
+            BelizeIdentity::remove_issuer(RuntimeOrigin::root(), 0, BOB),
+            Error::<Test>::NotAuthorizedIssuer
+        );
+    });
+}
+
+#[test]
+fn remove_issuer_emits_event() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::remove_issuer(
+            RuntimeOrigin::root(),
+            0, // SSN
+            SSN_ISSUER
+        ));
+        System::assert_last_event(Event::IssuerRemoved {
+            attr: 0,
+            issuer: SSN_ISSUER,
+        }.into());
+    });
+}
+
+#[test]
+fn remove_issuer_requires_root() {
+    new_test_ext().execute_with(|| {
+        assert_noop!(
+            BelizeIdentity::remove_issuer(RuntimeOrigin::signed(ALICE), 0, SSN_ISSUER),
+            sp_runtime::DispatchError::BadOrigin
+        );
+    });
+}
+
+// ============================================================================
+// SET STANDARD VERSION TESTS
+// ============================================================================
+
+#[test]
+fn set_standard_version_fails_for_biometrics_i5() {
+    new_test_ext().execute_with(|| {
+        // I-5 FIX: Biometrics has no standard version storage, should return error
+        assert_noop!(
+            BelizeIdentity::set_standard_version(RuntimeOrigin::root(), 2, 5),
+            Error::<Test>::NoAttestation
+        );
+    });
+}
+
+#[test]
+fn set_standard_version_emits_event() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::set_standard_version(RuntimeOrigin::root(), 1, 3));
+        System::assert_last_event(Event::StandardVersionUpdated {
+            attr: 1,
+            version: 3,
+        }.into());
+    });
+}
+
+// ============================================================================
+// SUSPEND ERROR PATH TESTS
+// ============================================================================
+
+#[test]
+fn suspend_fails_without_ssn_attestation() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        // No SSN attestation issued
+        assert_noop!(
+            BelizeIdentity::suspend(RuntimeOrigin::root(), ALICE, 0),
+            Error::<Test>::NoAttestation
+        );
+    });
+}
+
+#[test]
+fn suspend_fails_without_passport_attestation() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        assert_noop!(
+            BelizeIdentity::suspend(RuntimeOrigin::root(), ALICE, 1),
+            Error::<Test>::NoAttestation
+        );
+    });
+}
+
+#[test]
+fn suspend_fails_without_biometrics_attestation() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        assert_noop!(
+            BelizeIdentity::suspend(RuntimeOrigin::root(), ALICE, 2),
+            Error::<Test>::NoAttestation
+        );
+    });
+}
+
+#[test]
+fn suspend_emits_event() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        let id = IdentityOf::<Test>::get(ALICE).unwrap();
+        assert_ok!(BelizeIdentity::issue_ssn(
+            RuntimeOrigin::signed(SSN_ISSUER),
+            ALICE,
+            test_hash(1),
+            test_anchor(1),
+            true
+        ));
+        assert_ok!(BelizeIdentity::suspend(RuntimeOrigin::root(), ALICE, 0));
+        System::assert_last_event(Event::Suspended { identity: id, attr: 0 }.into());
+    });
+}
+
+#[test]
+fn suspend_passport_works() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        assert_ok!(BelizeIdentity::issue_passport(
+            RuntimeOrigin::signed(PASSPORT_ISSUER),
+            ALICE,
+            test_hash(1),
+            test_anchor(1),
+            true
+        ));
+        assert_ok!(BelizeIdentity::suspend(RuntimeOrigin::root(), ALICE, 1));
+        let id = IdentityOf::<Test>::get(ALICE).unwrap();
+        let att = PassportAttestations::<Test>::get(id).unwrap();
+        assert_eq!(att.status, AttestationStatus::Suspended);
+    });
+}
+
+#[test]
+fn suspend_biometrics_works() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        assert_ok!(BelizeIdentity::issue_biometrics(
+            RuntimeOrigin::signed(BIO_ISSUER),
+            ALICE,
+            test_anchor(1),
+        ));
+        assert_ok!(BelizeIdentity::suspend(RuntimeOrigin::root(), ALICE, 2));
+        let id = IdentityOf::<Test>::get(ALICE).unwrap();
+        let att = BiometricAttestations::<Test>::get(id).unwrap();
+        assert_eq!(att.status, AttestationStatus::Suspended);
+    });
+}
+
+// ============================================================================
+// REVOKE ERROR PATH AND EVENT TESTS
+// ============================================================================
+
+#[test]
+fn revoke_fails_without_passport_attestation() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        assert_noop!(
+            BelizeIdentity::revoke(RuntimeOrigin::root(), ALICE, 1),
+            Error::<Test>::NoAttestation
+        );
+    });
+}
+
+#[test]
+fn revoke_fails_without_biometrics_attestation() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        assert_noop!(
+            BelizeIdentity::revoke(RuntimeOrigin::root(), ALICE, 2),
+            Error::<Test>::NoAttestation
+        );
+    });
+}
+
+#[test]
+fn revoke_fails_identity_not_found() {
+    new_test_ext().execute_with(|| {
+        // ALICE has no registered identity
+        assert_noop!(
+            BelizeIdentity::revoke(RuntimeOrigin::root(), ALICE, 0),
+            Error::<Test>::IdentityNotFound
+        );
+    });
+}
+
+#[test]
+fn revoke_emits_event() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        let id = IdentityOf::<Test>::get(ALICE).unwrap();
+        assert_ok!(BelizeIdentity::issue_ssn(
+            RuntimeOrigin::signed(SSN_ISSUER),
+            ALICE,
+            test_hash(1),
+            test_anchor(1),
+            true
+        ));
+        assert_ok!(BelizeIdentity::revoke(RuntimeOrigin::root(), ALICE, 0));
+        System::assert_last_event(Event::Revoked { identity: id, attr: 0 }.into());
+    });
+}
+
+#[test]
+fn revoke_passport_works() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        assert_ok!(BelizeIdentity::issue_passport(
+            RuntimeOrigin::signed(PASSPORT_ISSUER),
+            ALICE,
+            test_hash(1),
+            test_anchor(1),
+            true
+        ));
+        assert_ok!(BelizeIdentity::revoke(RuntimeOrigin::root(), ALICE, 1));
+        let id = IdentityOf::<Test>::get(ALICE).unwrap();
+        let att = PassportAttestations::<Test>::get(id).unwrap();
+        assert_eq!(att.status, AttestationStatus::Revoked);
+    });
+}
+
+#[test]
+fn revoke_biometrics_works() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        assert_ok!(BelizeIdentity::issue_biometrics(
+            RuntimeOrigin::signed(BIO_ISSUER),
+            ALICE,
+            test_anchor(1),
+        ));
+        assert_ok!(BelizeIdentity::revoke(RuntimeOrigin::root(), ALICE, 2));
+        let id = IdentityOf::<Test>::get(ALICE).unwrap();
+        let att = BiometricAttestations::<Test>::get(id).unwrap();
+        assert_eq!(att.status, AttestationStatus::Revoked);
+    });
+}
+
+// ============================================================================
+// ISSUER BOND ERROR PATH TESTS
+// ============================================================================
+
+#[test]
+fn slash_issuer_bond_fails_for_over_slash() {
+    new_test_ext().execute_with(|| {
+        // Deposit bond first (genesis does not deposit bonds)
+        assert_ok!(BelizeIdentity::issuer_deposit_bond(RuntimeOrigin::signed(SSN_ISSUER), 0));
+        let bond = IssuerBonds::<Test>::get(AttributeType::Ssn, SSN_ISSUER);
+        assert_eq!(bond, 1_000_000);
+        // Try to slash more than bonded
+        assert_noop!(
+            BelizeIdentity::slash_issuer_bond(
+                RuntimeOrigin::root(),
+                0, // SSN
+                SSN_ISSUER,
+                2_000_000
+            ),
+            Error::<Test>::BondInsufficient
+        );
+    });
+}
+
+#[test]
+fn issuer_withdraw_bond_fails_when_no_bond() {
+    new_test_ext().execute_with(|| {
+        // BOB has no bond deposited
+        // First remove BOB if authorized (he isn't) - just call withdraw directly
+        assert_noop!(
+            BelizeIdentity::issuer_withdraw_bond(RuntimeOrigin::signed(BOB), 0),
+            Error::<Test>::BondNotFound
+        );
+    });
+}
+
+#[test]
+fn issuer_withdraw_bond_fails_when_flagged() {
+    new_test_ext().execute_with(|| {
+        // Deposit bond first (genesis doesn't deposit bonds)
+        assert_ok!(BelizeIdentity::issuer_deposit_bond(RuntimeOrigin::signed(SSN_ISSUER), 0));
+        // Remove SSN_ISSUER from authorized list so they can attempt withdrawal
+        assert_ok!(BelizeIdentity::remove_issuer(RuntimeOrigin::root(), 0, SSN_ISSUER));
+        // Flag the issuer
+        assert_ok!(BelizeIdentity::flag_issuer(RuntimeOrigin::root(), 0, SSN_ISSUER, true));
+        // Try to withdraw - should fail due to flagged
+        assert_noop!(
+            BelizeIdentity::issuer_withdraw_bond(RuntimeOrigin::signed(SSN_ISSUER), 0),
+            Error::<Test>::IssuerFlagged
+        );
+    });
+}
+
+#[test]
+fn issuer_bond_deposited_emits_event() {
+    new_test_ext().execute_with(|| {
+        // Give DAVE enough balance (needs more than 1M bond + ED)
+        Balances::make_free_balance_be(&DAVE, 5_000_000);
+        assert_ok!(BelizeIdentity::issuer_deposit_bond(
+            RuntimeOrigin::signed(DAVE),
+            0 // SSN
+        ));
+        System::assert_last_event(Event::IssuerBondDeposited {
+            attr: 0,
+            issuer: DAVE,
+            amount: 1_000_000,
+        }.into());
+    });
+}
+
+#[test]
+fn issuer_bond_withdrawn_emits_event() {
+    new_test_ext().execute_with(|| {
+        // Deposit bond first (genesis doesn't deposit bonds)
+        assert_ok!(BelizeIdentity::issuer_deposit_bond(RuntimeOrigin::signed(SSN_ISSUER), 0));
+        // Seed pallet escrow so it can return the bond
+        let _ = Balances::deposit_creating(&BelizeIdentity::account_id(), 2u128);
+        // Remove SSN_ISSUER from authorized list first
+        assert_ok!(BelizeIdentity::remove_issuer(RuntimeOrigin::root(), 0, SSN_ISSUER));
+        // Withdraw bond
+        assert_ok!(BelizeIdentity::issuer_withdraw_bond(
+            RuntimeOrigin::signed(SSN_ISSUER),
+            0
+        ));
+        System::assert_last_event(Event::IssuerBondWithdrawn {
+            attr: 0,
+            issuer: SSN_ISSUER,
+            amount: 1_000_000,
+        }.into());
+    });
+}
+
+#[test]
+fn issuer_bond_slashed_emits_event() {
+    new_test_ext().execute_with(|| {
+        // Deposit bond first (genesis doesn't deposit bonds)
+        assert_ok!(BelizeIdentity::issuer_deposit_bond(RuntimeOrigin::signed(SSN_ISSUER), 0));
+        // Seed pallet escrow so it can transfer slashed funds
+        let _ = Balances::deposit_creating(&BelizeIdentity::account_id(), 2u128);
+        assert_ok!(BelizeIdentity::slash_issuer_bond(
+            RuntimeOrigin::root(),
+            0,
+            SSN_ISSUER,
+            500_000
+        ));
+        System::assert_last_event(Event::IssuerBondSlashed {
+            attr: 0,
+            issuer: SSN_ISSUER,
+            amount: 500_000,
+        }.into());
+    });
+}
+
+// ============================================================================
+// FLAG/UNFLAG ISSUER TESTS
+// ============================================================================
+
+#[test]
+fn flag_issuer_emits_event() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::flag_issuer(
+            RuntimeOrigin::root(),
+            1, // Passport
+            PASSPORT_ISSUER,
+            true
+        ));
+        System::assert_last_event(Event::IssuerFlagged {
+            attr: 1,
+            issuer: PASSPORT_ISSUER,
+            flagged: true,
+        }.into());
+    });
+}
+
+#[test]
+fn unflag_issuer_works() {
+    new_test_ext().execute_with(|| {
+        // Flag then unflag
+        assert_ok!(BelizeIdentity::flag_issuer(RuntimeOrigin::root(), 0, SSN_ISSUER, true));
+        assert!(FlaggedIssuers::<Test>::get(AttributeType::Ssn, SSN_ISSUER));
+        assert_ok!(BelizeIdentity::flag_issuer(RuntimeOrigin::root(), 0, SSN_ISSUER, false));
+        assert!(!FlaggedIssuers::<Test>::get(AttributeType::Ssn, SSN_ISSUER));
+        System::assert_last_event(Event::IssuerFlagged {
+            attr: 0,
+            issuer: SSN_ISSUER,
+            flagged: false,
+        }.into());
+    });
+}
+
+#[test]
+fn flagged_issuer_cannot_issue_after_unflagged() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        // Flag SSN issuer
+        assert_ok!(BelizeIdentity::flag_issuer(RuntimeOrigin::root(), 0, SSN_ISSUER, true));
+        // Cannot issue while flagged
+        assert_noop!(
+            BelizeIdentity::issue_ssn(
+                RuntimeOrigin::signed(SSN_ISSUER),
+                ALICE,
+                test_hash(1),
+                test_anchor(1),
+                true
+            ),
+            Error::<Test>::IssuerFlagged
+        );
+        // Unflag
+        assert_ok!(BelizeIdentity::flag_issuer(RuntimeOrigin::root(), 0, SSN_ISSUER, false));
+        // Can issue again
+        assert_ok!(BelizeIdentity::issue_ssn(
+            RuntimeOrigin::signed(SSN_ISSUER),
+            ALICE,
+            test_hash(1),
+            test_anchor(1),
+            true
+        ));
+    });
+}
+
+// ============================================================================
+// PAUSE/RESUME EVENT TESTS
+// ============================================================================
+
+#[test]
+fn pause_emits_paused_event() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::set_pause(RuntimeOrigin::root(), true));
+        System::assert_last_event(Event::Paused.into());
+    });
+}
+
+#[test]
+fn resume_emits_resumed_event() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::set_pause(RuntimeOrigin::root(), true));
+        assert_ok!(BelizeIdentity::set_pause(RuntimeOrigin::root(), false));
+        System::assert_last_event(Event::Resumed.into());
+    });
+}
+
+// ============================================================================
+// ADMIN EVENT EMISSION TESTS
+// ============================================================================
+
+#[test]
+fn set_operation_fee_emits_event() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::set_operation_fee(RuntimeOrigin::root(), 500));
+        System::assert_last_event(Event::OperationFeeUpdated { fee: 500 }.into());
+    });
+}
+
+#[test]
+fn set_issuer_bond_amount_emits_event() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::set_issuer_bond_amount(RuntimeOrigin::root(), 2_000_000));
+        System::assert_last_event(Event::IssuerBondAmountUpdated { amount: 2_000_000 }.into());
+    });
+}
+
+#[test]
+fn set_rate_limits_emits_event() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::set_rate_limits(RuntimeOrigin::root(), 100, 20, 10, 5));
+        System::assert_last_event(Event::RateLimitUpdated {
+            window: 100,
+            ssn: 20,
+            passport: 10,
+            biometrics: 5,
+        }.into());
+    });
+}
+
+#[test]
+fn add_issuer_emits_event() {
+    new_test_ext().execute_with(|| {
+        // Give DAVE enough balance for bond + ED
+        Balances::make_free_balance_be(&DAVE, 5_000_000);
+        // DAVE deposits bond first
+        assert_ok!(BelizeIdentity::issuer_deposit_bond(RuntimeOrigin::signed(DAVE), 0));
+        assert_ok!(BelizeIdentity::add_issuer(RuntimeOrigin::root(), 0, DAVE));
+        System::assert_last_event(Event::IssuerAdded { attr: 0, issuer: DAVE }.into());
+    });
+}
+
+// ============================================================================
+// SSN STALE HASH CLEANUP ON RE-ISSUE
+// ============================================================================
+
+#[test]
+fn ssn_reissue_cleans_stale_hash_index() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        let id = IdentityOf::<Test>::get(ALICE).unwrap();
+
+        let hash1 = test_hash(1);
+        let hash2 = test_hash(2);
+
+        // Issue SSN with hash1
+        assert_ok!(BelizeIdentity::issue_ssn(
+            RuntimeOrigin::signed(SSN_ISSUER),
+            ALICE,
+            hash1,
+            test_anchor(1),
+            true
+        ));
+        assert_eq!(SsnHashIndex::<Test>::get(hash1), Some(id));
+
+        // Re-issue SSN with hash2 (different hash)
+        assert_ok!(BelizeIdentity::issue_ssn(
+            RuntimeOrigin::signed(SSN_ISSUER),
+            ALICE,
+            hash2,
+            test_anchor(2),
+            true
+        ));
+
+        // Old hash should be cleaned up
+        assert_eq!(SsnHashIndex::<Test>::get(hash1), None);
+        // New hash should be indexed
+        assert_eq!(SsnHashIndex::<Test>::get(hash2), Some(id));
+    });
+}
+
+#[test]
+fn ssn_reissue_same_hash_no_cleanup_needed() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+
+        let hash = test_hash(42);
+        // Issue SSN
+        assert_ok!(BelizeIdentity::issue_ssn(
+            RuntimeOrigin::signed(SSN_ISSUER),
+            ALICE,
+            hash,
+            test_anchor(1),
+            true
+        ));
+        // Re-issue with same hash (should succeed, no stale cleanup needed)
+        assert_ok!(BelizeIdentity::issue_ssn(
+            RuntimeOrigin::signed(SSN_ISSUER),
+            ALICE,
+            hash,
+            test_anchor(2),
+            true
+        ));
+        let id = IdentityOf::<Test>::get(ALICE).unwrap();
+        assert_eq!(SsnHashIndex::<Test>::get(hash), Some(id));
+    });
+}
+
+// ============================================================================
+// IDENTITY REGISTRATION EVENT TESTS
+// ============================================================================
+
+#[test]
+fn register_identity_emits_event() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        System::assert_last_event(Event::IdentityRegistered {
+            identity: 1000,
+            owner: ALICE,
+        }.into());
+    });
+}
+
+#[test]
+fn link_account_emits_event() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        let id = IdentityOf::<Test>::get(ALICE).unwrap();
+        assert_ok!(BelizeIdentity::link_account(RuntimeOrigin::signed(ALICE), BOB));
+        System::assert_last_event(Event::AccountLinked {
+            identity: id,
+            account: BOB,
+        }.into());
+    });
+}
+
+#[test]
+fn did_doc_update_emits_event() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        let id = IdentityOf::<Test>::get(ALICE).unwrap();
+        assert_ok!(BelizeIdentity::update_did_doc(
+            RuntimeOrigin::signed(ALICE),
+            test_anchor(5)
+        ));
+        System::assert_last_event(Event::DidDocUpdated { identity: id }.into());
+    });
+}
+
+// ============================================================================
+// SUSPEND/REVOKE IDENTITY NOT FOUND
+// ============================================================================
+
+#[test]
+fn suspend_fails_identity_not_found() {
+    new_test_ext().execute_with(|| {
+        assert_noop!(
+            BelizeIdentity::suspend(RuntimeOrigin::root(), ALICE, 0),
+            Error::<Test>::IdentityNotFound
+        );
+    });
+}
+
+#[test]
+fn revoke_requires_root() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        assert_ok!(BelizeIdentity::issue_ssn(
+            RuntimeOrigin::signed(SSN_ISSUER),
+            ALICE,
+            test_hash(1),
+            test_anchor(1),
+            true
+        ));
+        assert_noop!(
+            BelizeIdentity::revoke(RuntimeOrigin::signed(BOB), ALICE, 0),
+            sp_runtime::DispatchError::BadOrigin
+        );
+    });
+}
+
+// ============================================================================
+// KYC LEVEL EDGE CASE TESTS
+// ============================================================================
+
+#[test]
+fn kyc_level_l0_always_valid() {
+    new_test_ext().execute_with(|| {
+        // L0 requires identity registration but always passes the level check
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        assert!(BelizeIdentity::is_kyc_verified(&ALICE, KycLevel::L0, 1));
+    });
+}
+
+#[test]
+fn kyc_level_l2_requires_both_ssn_and_passport() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        // Only SSN — not L2
+        assert_ok!(BelizeIdentity::issue_ssn(
+            RuntimeOrigin::signed(SSN_ISSUER),
+            ALICE,
+            test_hash(1),
+            test_anchor(1),
+            true
+        ));
+        assert!(!BelizeIdentity::is_kyc_verified(&ALICE, KycLevel::L2, 1));
+
+        // Add passport — now L2
+        assert_ok!(BelizeIdentity::issue_passport(
+            RuntimeOrigin::signed(PASSPORT_ISSUER),
+            ALICE,
+            test_hash(2),
+            test_anchor(2),
+            true
+        ));
+        assert!(BelizeIdentity::is_kyc_verified(&ALICE, KycLevel::L2, 1));
+    });
+}
+
+#[test]
+fn kyc_level_drops_when_attestation_suspended() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        assert_ok!(BelizeIdentity::issue_ssn(
+            RuntimeOrigin::signed(SSN_ISSUER),
+            ALICE,
+            test_hash(1),
+            test_anchor(1),
+            true
+        ));
+        assert_ok!(BelizeIdentity::issue_passport(
+            RuntimeOrigin::signed(PASSPORT_ISSUER),
+            ALICE,
+            test_hash(2),
+            test_anchor(2),
+            true
+        ));
+        assert!(BelizeIdentity::is_kyc_verified(&ALICE, KycLevel::L2, 1));
+
+        // Suspend passport → drops to L1
+        assert_ok!(BelizeIdentity::suspend(RuntimeOrigin::root(), ALICE, 1));
+        assert!(BelizeIdentity::is_kyc_verified(&ALICE, KycLevel::L1, 1));
+        assert!(!BelizeIdentity::is_kyc_verified(&ALICE, KycLevel::L2, 1));
+    });
+}
+
+// ============================================================================
+// REPORT BAD ATTESTATION EDGE CASES
+// ============================================================================
+
+#[test]
+fn report_bad_attestation_flag_only_no_slash() {
+    new_test_ext().execute_with(|| {
+        let bond_before = IssuerBonds::<Test>::get(AttributeType::Ssn, SSN_ISSUER);
+        // Flag without slash (slash_amount = 0)
+        assert_ok!(BelizeIdentity::report_bad_attestation(
+            RuntimeOrigin::root(),
+            0,
+            SSN_ISSUER,
+            true,
+            0
+        ));
+        // Verify flagged
+        assert!(FlaggedIssuers::<Test>::get(AttributeType::Ssn, SSN_ISSUER));
+        // Bond unchanged
+        let bond_after = IssuerBonds::<Test>::get(AttributeType::Ssn, SSN_ISSUER);
+        assert_eq!(bond_before, bond_after);
+    });
+}
+
+#[test]
+fn report_bad_attestation_fails_over_slash() {
+    new_test_ext().execute_with(|| {
+        assert_noop!(
+            BelizeIdentity::report_bad_attestation(
+                RuntimeOrigin::root(),
+                0,
+                SSN_ISSUER,
+                true,
+                5_000_000 // More than 1M bond
+            ),
+            Error::<Test>::BondInsufficient
+        );
+    });
+}
+
+#[test]
+fn report_bad_attestation_requires_root() {
+    new_test_ext().execute_with(|| {
+        assert_noop!(
+            BelizeIdentity::report_bad_attestation(
+                RuntimeOrigin::signed(ALICE),
+                0,
+                SSN_ISSUER,
+                true,
+                100
+            ),
+            sp_runtime::DispatchError::BadOrigin
+        );
+    });
+}
+
+// ============================================================================
+// ISSUER BOND DEPOSIT EDGE CASES
+// ============================================================================
+
+#[test]
+fn issuer_deposit_bond_noop_when_already_sufficient() {
+    new_test_ext().execute_with(|| {
+        // Deposit bond first (genesis doesn't deposit bonds)
+        assert_ok!(BelizeIdentity::issuer_deposit_bond(RuntimeOrigin::signed(SSN_ISSUER), 0));
+        // Now bond is already sufficient — second deposit should be a no-op
+        let balance_before = Balances::free_balance(SSN_ISSUER);
+        assert_ok!(BelizeIdentity::issuer_deposit_bond(
+            RuntimeOrigin::signed(SSN_ISSUER),
+            0
+        ));
+        // No balance change since bond already meets requirement
+        assert_eq!(Balances::free_balance(SSN_ISSUER), balance_before);
+    });
+}
+
+#[test]
+fn issuer_deposit_bond_tops_up_partial() {
+    new_test_ext().execute_with(|| {
+        // Deposit full bond first (genesis doesn't deposit bonds)
+        assert_ok!(BelizeIdentity::issuer_deposit_bond(RuntimeOrigin::signed(SSN_ISSUER), 0));
+        // Seed pallet escrow so it can transfer slashed funds
+        let _ = Balances::deposit_creating(&BelizeIdentity::account_id(), 2u128);
+        // Slash half the bond
+        assert_ok!(BelizeIdentity::slash_issuer_bond(RuntimeOrigin::root(), 0, SSN_ISSUER, 500_000));
+        assert_eq!(IssuerBonds::<Test>::get(AttributeType::Ssn, SSN_ISSUER), 500_000);
+
+        // Deposit bond tops up to full requirement
+        let balance_before = Balances::free_balance(SSN_ISSUER);
+        assert_ok!(BelizeIdentity::issuer_deposit_bond(RuntimeOrigin::signed(SSN_ISSUER), 0));
+        assert_eq!(IssuerBonds::<Test>::get(AttributeType::Ssn, SSN_ISSUER), 1_000_000);
+        // Should have transferred 500K (the diff)
+        assert_eq!(Balances::free_balance(SSN_ISSUER), balance_before - 500_000);
+    });
+}
+
+// ============================================================================
+// RATE LIMIT WINDOW RESET
+// ============================================================================
+
+#[test]
+fn rate_limit_resets_after_window() {
+    new_test_ext().execute_with(|| {
+        // Rate limit for biometrics = 3 per 50-block window
+        for i in 0u64..3 {
+            let acct = 500 + i;
+            Balances::make_free_balance_be(&acct, 1_000_000);
+            assert_ok!(BelizeIdentity::register_identity(
+                RuntimeOrigin::signed(acct),
+                test_name("User")
+            ));
+            assert_ok!(BelizeIdentity::issue_biometrics(
+                RuntimeOrigin::signed(BIO_ISSUER),
+                acct,
+                test_anchor((30 + i) as u8),
+            ));
+        }
+
+        // Register one more user
+        Balances::make_free_balance_be(&503, 1_000_000);
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(503),
+            test_name("User4")
+        ));
+
+        // Should fail — rate limit hit
+        assert_noop!(
+            BelizeIdentity::issue_biometrics(
+                RuntimeOrigin::signed(BIO_ISSUER),
+                503,
+                test_anchor(34),
+            ),
+            Error::<Test>::IssuerRateLimitExceeded
+        );
+
+        // Advance past window (50 blocks + 1)
+        run_to_block(52);
+
+        // Should succeed now — window reset
+        assert_ok!(BelizeIdentity::issue_biometrics(
+            RuntimeOrigin::signed(BIO_ISSUER),
+            503,
+            test_anchor(34),
+        ));
+    });
+}
+
+// ============================================================================
+// PASSPORT HASH INDEX STALE ENTRY ON RE-ISSUE (KNOWN BUG)
+// ============================================================================
+
+#[test]
+fn passport_reissue_does_not_clean_stale_hash() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        let id = IdentityOf::<Test>::get(ALICE).unwrap();
+
+        let hash1 = test_hash(10);
+        let hash2 = test_hash(11);
+
+        // Issue passport with hash1
+        assert_ok!(BelizeIdentity::issue_passport(
+            RuntimeOrigin::signed(PASSPORT_ISSUER),
+            ALICE,
+            hash1,
+            test_anchor(1),
+            true
+        ));
+        assert_eq!(PassportHashIndex::<Test>::get(hash1), Some(id));
+
+        // Re-issue passport with hash2
+        assert_ok!(BelizeIdentity::issue_passport(
+            RuntimeOrigin::signed(PASSPORT_ISSUER),
+            ALICE,
+            hash2,
+            test_anchor(2),
+            true
+        ));
+
+        // BUG: Old hash1 still in PassportHashIndex (unlike SSN which cleans up)
+        assert_eq!(PassportHashIndex::<Test>::get(hash1), Some(id));
+        // New hash2 is also indexed
+        assert_eq!(PassportHashIndex::<Test>::get(hash2), Some(id));
+    });
+}
+
+// ============================================================================
+// ISSUER WITHDRAW BOND — CANNOT WHILE AUTHORIZED
+// ============================================================================
+
+#[test]
+fn issuer_withdraw_bond_fails_while_authorized() {
+    new_test_ext().execute_with(|| {
+        // SSN_ISSUER is currently authorized and bonded
+        assert_noop!(
+            BelizeIdentity::issuer_withdraw_bond(RuntimeOrigin::signed(SSN_ISSUER), 0),
+            Error::<Test>::CannotWithdrawWhileAuthorized
+        );
+    });
+}
+
+// ============================================================================
+// SLASH ISSUER BOND REQUIRES ROOT
+// ============================================================================
+
+#[test]
+fn slash_issuer_bond_requires_root() {
+    new_test_ext().execute_with(|| {
+        assert_noop!(
+            BelizeIdentity::slash_issuer_bond(RuntimeOrigin::signed(ALICE), 0, SSN_ISSUER, 100),
+            sp_runtime::DispatchError::BadOrigin
+        );
+    });
+}
+
+// ============================================================================
+// SET STANDARD VERSION VERIFIES STORAGE
+// ============================================================================
+
+#[test]
+fn set_standard_version_updates_ssn_storage() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::set_standard_version(RuntimeOrigin::root(), 0, 5));
+        assert_eq!(SsnStandardVersion::<Test>::get(), 5);
+    });
+}
+
+#[test]
+fn set_standard_version_updates_passport_storage() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::set_standard_version(RuntimeOrigin::root(), 1, 7));
+        assert_eq!(PassportStandardVersion::<Test>::get(), 7);
+    });
+}
+
+// ============================================================================
+// ISSUE SSN EMITS EVENT
+// ============================================================================
+
+#[test]
+fn issue_ssn_emits_attested_event() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeIdentity::register_identity(
+            RuntimeOrigin::signed(ALICE),
+            test_name("Alice")
+        ));
+        let id = IdentityOf::<Test>::get(ALICE).unwrap();
+        assert_ok!(BelizeIdentity::issue_ssn(
+            RuntimeOrigin::signed(SSN_ISSUER),
+            ALICE,
+            test_hash(1),
+            test_anchor(1),
+            true
+        ));
+        System::assert_last_event(Event::Attested {
+            identity: id,
+            attr: 0, // SSN
+            issuer: SSN_ISSUER,
+        }.into());
     });
 }
 

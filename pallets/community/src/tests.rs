@@ -144,6 +144,7 @@ fn test_honesty_score_calculation() {
 
         // 3 approved
         for _ in 0..3 {
+            attest_activity(1, ActivityType::ProposalApproved.as_u8());
             assert_ok!(Community::record_participation(
                 RuntimeOrigin::signed(1),
                 1,
@@ -270,6 +271,7 @@ fn test_proposal_stats_updated() {
         assert_eq!(stats.total, 1);
         assert_eq!(stats.approved, 0);
 
+        attest_activity(1, ActivityType::ProposalApproved.as_u8());
         assert_ok!(Community::record_participation(
             RuntimeOrigin::signed(1),
             1,
@@ -599,7 +601,7 @@ fn test_community_rank_export() {
                 ActivityType::ProposalSubmission.as_u8()
             ));
         }
-        assert!(Community::get_community_rank(&1) >= 200);
+        assert!(Community::get_community_rank(&1) >= 175);
     });
 }
 
@@ -1804,6 +1806,9 @@ fn test_multiple_green_contributions() {
 #[test]
 fn test_green_milestone_event() {
     new_test_ext().execute_with(|| {
+        // Fund account 1 enough to reserve the contribution amount
+        Balances::make_free_balance_be(&1_u64, 200_000);
+
         // Setup project
         let project = GreenProject {
             id: 1,
@@ -2011,6 +2016,9 @@ fn test_education_score_calculation() {
 #[test]
 fn test_sustainability_score_calculation() {
     new_test_ext().execute_with(|| {
+        // Fund account 1 to cover the total reserved across 3 project contributions
+        Balances::make_free_balance_be(&1_u64, 25_000);
+
         // Setup multiple projects
         for i in 1..=3 {
             let project = GreenProject {
@@ -2135,7 +2143,7 @@ fn test_community_rank_trait_progression() {
 
         // Should be Silver
         let rank = Community::get_community_rank(&1);
-        assert_eq!(rank, 200); // Silver = 200
+        assert_eq!(rank, 175); // Silver = 175 (diminishing returns cap, M61 fix)
 
         let tier = Community::get_srs_tier(&1);
         assert_eq!(tier, SRSTier::Silver);
@@ -2501,6 +2509,7 @@ fn test_fee_calculator_integration() {
         // Create Gold tier SRS (50% discount) - need score of 5000+
         // Participation: 50 * 50 = 2500, plus PoUW, endorsements, etc.
         for _ in 0..50 {
+            attest_activity(1, ActivityType::ProposalApproved.as_u8());
             Community::record_participation(
                 RuntimeOrigin::signed(1),
                 1,
@@ -2668,6 +2677,7 @@ fn test_fee_discount_with_exemption_limit() {
     new_test_ext().execute_with(|| {
         // Create Gold tier user (50% discount) - need score of 5000+
         for _ in 0..50 {
+            attest_activity(1, ActivityType::ProposalApproved.as_u8());
             Community::record_participation(
                 RuntimeOrigin::signed(1),
                 1,

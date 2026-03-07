@@ -4,6 +4,7 @@ use super::*;
 use frame_benchmarking::v2::*;
 use frame_support::BoundedVec;
 use frame_system::RawOrigin;
+use sp_std::vec;
 
 #[benchmarks]
 mod benchmarks {
@@ -46,6 +47,23 @@ mod benchmarks {
         let endorser: T::AccountId = whitelisted_caller();
         let endorsee: T::AccountId = account("endorsee", 0, 0);
         let skill_code: u8 = 0; // Leadership
+
+        // Endorser must have SRS record with tier >= Silver
+        let endorser_srs = SRSData {
+            score: 5000u32,
+            governance_score: 2000u32,
+            education_score: 1000u32,
+            sustainability_score: 1000u32,
+            participation_score: 1000u32,
+            peer_endorsements: 0u32,
+            honesty_rating: 0u32,
+            last_updated: frame_system::Pallet::<T>::block_number(),
+            tier: SRSTier::Silver,
+            total_contributions: 0u32,
+            public_display: false,
+            anonymous_hash: None,
+        };
+        SocialResponsibilityScores::<T>::insert(&endorser, endorser_srs);
 
         #[extrinsic_call]
         endorse_peer(RawOrigin::Signed(endorser.clone()), endorsee.clone(), skill_code);

@@ -3,7 +3,7 @@
 use crate as pallet_belize_oracle;
 use frame_support::{
     parameter_types,
-    traits::ConstU32,
+    traits::{ConstU32, ConstU64},
 };
 use sp_core::H256;
 use sp_runtime::{
@@ -17,12 +17,14 @@ type Block = frame_system::mocking::MockBlock<Test>;
 frame_support::construct_runtime!(
     pub enum Test {
         System: frame_system,
+        Balances: pallet_balances,
         Oracle: pallet_belize_oracle,
     }
 );
 
 parameter_types! {
     pub const BlockHashCount: u64 = 250;
+    pub TreasuryAccount: u64 = 999;
 }
 
 impl frame_system::Config for Test {
@@ -42,7 +44,7 @@ impl frame_system::Config for Test {
     type BlockHashCount = BlockHashCount;
     type Version = ();
     type PalletInfo = PalletInfo;
-    type AccountData = ();
+    type AccountData = pallet_balances::AccountData<u64>;
     type OnNewAccount = ();
     type OnKilledAccount = ();
     type SystemWeightInfo = ();
@@ -58,10 +60,29 @@ impl frame_system::Config for Test {
     type ExtensionsWeightInfo = ();
 }
 
+impl pallet_balances::Config for Test {
+    type MaxLocks = ConstU32<50>;
+    type MaxReserves = ();
+    type ReserveIdentifier = [u8; 8];
+    type Balance = u64;
+    type RuntimeEvent = RuntimeEvent;
+    type DustRemoval = ();
+    type ExistentialDeposit = ConstU64<1>;
+    type AccountStore = System;
+    type WeightInfo = ();
+    type FreezeIdentifier = ();
+    type MaxFreezes = ();
+    type RuntimeHoldReason = ();
+    type RuntimeFreezeReason = ();
+    type DoneSlashHandler = ();
+}
+
 parameter_types! {
     pub const MaxOperators: u32 = 10;
     pub const MaxDataStaleness: u64 = 100; // 100 blocks
     pub const MinConsensusOperators: u32 = 1; // Minimum 1 operator for testing (production should be 2+)
+    pub const MinOracleAgreement: u32 = 1;
+    pub const BehaviorCooldownBlocks: u64 = 50;
 }
 
 impl pallet_belize_oracle::Config for Test {
@@ -70,6 +91,10 @@ impl pallet_belize_oracle::Config for Test {
     type MaxDataStaleness = MaxDataStaleness;
     type MinConsensusOperators = MinConsensusOperators;
     type WeightInfo = crate::weights::SubstrateWeight<Test>;
+    type Currency = Balances;
+    type TreasuryAccount = TreasuryAccount;
+    type MinOracleAgreement = MinOracleAgreement;
+    type BehaviorCooldownBlocks = BehaviorCooldownBlocks;
 }
 
 // Build genesis storage according to the mock runtime
@@ -87,4 +112,37 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
     let mut ext = sp_io::TestExternalities::new(t);
     ext.execute_with(|| System::set_block_number(1));
     ext
+}
+
+/// Helper: submit identity verification from both ALICE (1) and BOB (2) so that
+/// quorum is reached and the verification is finalized in storage.
+pub fn verify_identity_with_quorum(
+    account: u64,
+    kyc_level: u8,
+    id_hash: [u8; 32],
+    provider: sp_runtime::BoundedVec<u8, frame_support::traits::ConstU32<64>>,
+    biometric_verified: bool,
+    address_verified: bool,
+) {
+    use frame_support::assert_ok;
+    // First oracle vote (stages but does NOT finalize)
+    assert_ok!(crate::Pallet::<Test>::verify_identity(
+        RuntimeOrigin::signed(1),
+        account,
+        kyc_level,
+        id_hash,
+        provider.clone(),
+        biometric_verified,
+        address_verified,
+    ));
+    // Second oracle vote — reaches quorum and finalizes
+    assert_ok!(crate::Pallet::<Test>::verify_identity(
+        RuntimeOrigin::signed(2),
+        account,
+        kyc_level,
+        id_hash,
+        provider,
+        biometric_verified,
+        address_verified,
+    ));
 }

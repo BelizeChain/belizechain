@@ -45,6 +45,11 @@
 
 pub use pallet::*;
 
+pub mod weights;
+
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
 #[cfg(test)]
 mod mock;
 
@@ -575,8 +580,29 @@ pub mod pallet {
 
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
-        fn on_initialize(n: BlockNumberFor<T>) -> Weight {
-            let mut total_weight = Weight::from_parts(10_000_000, 0);
+        // AR-10: Periodic payroll processing moved from on_initialize to on_idle so it
+        // does not compete with user transactions for mandatory block-start weight budget.
+        fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
+            Weight::zero()
+        }
+
+        /// Process due payroll payments using leftover block weight.
+        ///
+        /// Only runs when the block has sufficient remaining capacity so that scheduled
+        /// payments never crowd out user-submitted extrinsics.
+        ///
+        /// **Invariant**: consumes at most `remaining_weight`; returns actual weight used.
+        fn on_idle(n: BlockNumberFor<T>, remaining_weight: Weight) -> Weight {
+            // Minimum weight needed for one storage iter + one payment transfer.
+            let per_payment_weight = Weight::from_parts(50_000_000, 1_024)
+                .saturating_add(T::DbWeight::get().reads(3))
+                .saturating_add(T::DbWeight::get().writes(2));
+
+            if remaining_weight.ref_time() < per_payment_weight.ref_time() {
+                return Weight::zero();
+            }
+
+            let mut total_weight = Weight::from_parts(10_000_000, 512);
             let max_per_block = T::MaxSchedulesPerBlock::get() as usize;
             let mut processed = 0usize;
 
@@ -586,7 +612,13 @@ pub mod pallet {
             let scan_limit = max_per_block.saturating_mul(10);
 
             for (scanned, (employer, _schedule_id, schedule)) in PayrollSchedules::<T>::iter().enumerate() {
+                // Stop if we've hit the per-block cap or the remaining weight is exhausted.
                 if processed >= max_per_block || scanned >= scan_limit {
+                    break;
+                }
+                if total_weight.saturating_add(per_payment_weight).ref_time()
+                    > remaining_weight.ref_time()
+                {
                     break;
                 }
                 if schedule.active && schedule.next_payment <= n {
@@ -614,7 +646,7 @@ pub mod pallet {
         /// - `employer`: AccountId to verify
         /// - `employer_type`: Classification of the employer
         #[pallet::call_index(7)]
-        #[pallet::weight(Weight::from_parts(15_000_000, 0))]
+        #[pallet::weight(Weight::from_parts(15_000_000, 512))]
         pub fn verify_employer(
             origin: OriginFor<T>,
             employer: T::AccountId,
@@ -801,7 +833,7 @@ pub mod pallet {
 
         /// Toggle employee active/inactive status (suspend or reactivate)
         #[pallet::call_index(8)]
-        #[pallet::weight(Weight::from_parts(15_000_000, 0))]
+        #[pallet::weight(Weight::from_parts(15_000_000, 512))]
         pub fn toggle_employee_status(
             origin: OriginFor<T>,
             employee: T::AccountId,
@@ -955,6 +987,9 @@ pub mod pallet {
                 }
             }
 
+            // PR-2 FIX: Enforce MaxEmployees bound to prevent unbounded weight
+            ensure!(count <= T::MaxEmployees::get(), Error::<T>::MaxEmployeesReached);
+
             let balance = T::Currency::free_balance(&employer);
             ensure!(balance >= total_gross, Error::<T>::InsufficientBalance);
 
@@ -1096,7 +1131,7 @@ pub mod pallet {
 
         /// Create a department / cost-center
         #[pallet::call_index(9)]
-        #[pallet::weight(Weight::from_parts(15_000_000, 0))]
+        #[pallet::weight(Weight::from_parts(15_000_000, 512))]
         pub fn create_department(
             origin: OriginFor<T>,
             name_hash: [u8; 32],
@@ -1141,7 +1176,7 @@ pub mod pallet {
         /// - `deduction_type`: Type of deduction  
         /// - `amount`: Per-period deduction amount
         #[pallet::call_index(10)]
-        #[pallet::weight(Weight::from_parts(20_000_000, 0))]
+        #[pallet::weight(Weight::from_parts(20_000_000, 512))]
         pub fn set_deduction(
             origin: OriginFor<T>,
             employee: T::AccountId,
@@ -1191,7 +1226,7 @@ pub mod pallet {
         /// - `amount`: Bonus amount (transferred immediately, no deductions)
         /// - `category`: Payment category (Bonus, Overtime, Commission, Reimbursement, etc.)
         #[pallet::call_index(11)]
-        #[pallet::weight(Weight::from_parts(50_000_000, 0))]
+        #[pallet::weight(Weight::from_parts(50_000_000, 512))]
         pub fn issue_bonus(
             origin: OriginFor<T>,
             employee: T::AccountId,
@@ -1320,7 +1355,7 @@ pub mod pallet {
 
             let balance = T::Currency::free_balance(employer);
             if balance < total_amount {
-                return Ok(Weight::from_parts(5_000_000, 0));
+                return Ok(Weight::from_parts(5_000_000, 512));
             }
 
             for (emp_account, mut emp) in Employees::<T>::iter_prefix(employer) {
@@ -1424,32 +1459,32 @@ pub trait WeightInfo {
 
 impl WeightInfo for () {
     fn add_employee() -> Weight {
-        Weight::from_parts(25_000_000, 0)
+        Weight::from_parts(25_000_000, 512)
             .saturating_add(Weight::from_parts(0, 3_000))
     }
     fn remove_employee() -> Weight {
-        Weight::from_parts(20_000_000, 0)
+        Weight::from_parts(20_000_000, 512)
             .saturating_add(Weight::from_parts(0, 2_000))
     }
     fn update_salary() -> Weight {
-        Weight::from_parts(15_000_000, 0)
+        Weight::from_parts(15_000_000, 512)
             .saturating_add(Weight::from_parts(0, 2_000))
     }
     fn execute_payment() -> Weight {
-        Weight::from_parts(50_000_000, 0)
+        Weight::from_parts(50_000_000, 512)
             .saturating_add(Weight::from_parts(0, 5_000))
     }
     fn batch_payment(n: u32) -> Weight {
-        Weight::from_parts(10_000_000, 0)
+        Weight::from_parts(10_000_000, 512)
             .saturating_add(Weight::from_parts(50_000_000u64.saturating_mul(n as u64), 0))
             .saturating_add(Weight::from_parts(0, 5_000u64.saturating_mul(n as u64)))
     }
     fn create_schedule() -> Weight {
-        Weight::from_parts(30_000_000, 0)
+        Weight::from_parts(30_000_000, 512)
             .saturating_add(Weight::from_parts(0, 3_000))
     }
     fn update_schedule() -> Weight {
-        Weight::from_parts(20_000_000, 0)
+        Weight::from_parts(20_000_000, 512)
             .saturating_add(Weight::from_parts(0, 2_000))
     }
 }

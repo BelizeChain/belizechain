@@ -32,6 +32,11 @@ use scale_info::TypeInfo;
 
 pub use pallet::*;
 
+pub mod weights;
+
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
 const BRIDGE_LOCK_ID: LockIdentifier = *b"bzbridge";
 
 /// Trait for Identity integration - cross-chain KYC verification
@@ -44,6 +49,44 @@ pub trait InteroperabilityIdentityProvider<AccountId> {
     
     /// Check if account is sanctioned (cross-chain compliance)
     fn is_sanctioned(account: &AccountId) -> bool;
+}
+
+/// AR-6: Pluggable post-quantum signature verifier.
+///
+/// Implement this with a Falcon-1024 or Dilithium5 host-function extension for a
+/// production deployment.  The runtime wires a concrete type via
+/// `type PQVerifier = …` in the `Config` implementation.
+///
+/// # Determinism requirement
+/// `verify` MUST be deterministic: the same inputs MUST always yield the same
+/// result across all nodes and software versions, or the chain will fork.
+pub trait PQSignatureVerifier {
+    /// Return `true` if `signature` is a valid post-quantum signature over
+    /// `message` by the key `pubkey`.
+    ///
+    /// `pubkey`  — raw public-key bytes (Falcon-1024: 1793 B, Dilithium5: 2592 B)
+    /// `message` — the signed message bytes (typically the bridge tx hash)
+    /// `signature` — raw signature bytes (up to 96 bytes per spec here, or more
+    ///               depending on the scheme; callers must ensure the slice is
+    ///               the complete signature)
+    fn verify(pubkey: &[u8], message: &[u8], signature: &[u8]) -> bool;
+}
+
+/// Default passthrough verifier — accepts any signature of length ≥ 64 bytes.
+///
+/// **WARNING**: This is NOT a real cryptographic verifier.  It exists solely to
+/// allow the pallet to compile and to be replaced by a real implementation.
+/// Using this in production leaves bridge signatures UNVERIFIED (AR-6).
+///
+/// TODO (AR-6): Replace with a host-function-backed Falcon or Dilithium verifier
+/// before mainnet deployment.
+pub struct PassthroughPQVerifier;
+
+impl PQSignatureVerifier for PassthroughPQVerifier {
+    fn verify(_pubkey: &[u8], _message: &[u8], signature: &[u8]) -> bool {
+        // Structural check only — NOT cryptographically secure.
+        signature.len() >= 64
+    }
 }
 
 #[frame_support::pallet]
@@ -96,6 +139,27 @@ pub mod pallet {
 
         /// Identity provider for cross-chain KYC verification
         type Identity: InteroperabilityIdentityProvider<Self::AccountId>;
+
+        // ── AR-15: Rate limiting ──────────────────────────────────────────────
+        /// Maximum bridge initiations a single account may call per block.
+        /// Prevents thundering-herd attacks on the bridge lock mechanism.
+        #[pallet::constant]
+        type MaxBridgePerBlock: Get<u32>;
+
+        // ── AR-6: Post-quantum signature verifier ─────────────────────────────
+        /// Pluggable post-quantum signature verification.
+        ///
+        /// Implement this with your Falcon/Dilithium host-function extension for
+        /// production. The default `PassthroughPQVerifier` accepts any
+        /// well-formed byte sequence so the rest of the pallet compiles without a
+        /// real PQ crypto library.
+        ///
+        /// # Safety
+        /// A production deployment MUST replace `PassthroughPQVerifier` with a
+        /// verifier backed by a host function or verified off-chain worker
+        /// attestation; using the passthrough in production renders bridge
+        /// signatures unverified. (AR-6)
+        type PQVerifier: PQSignatureVerifier;
     }
 
     /// Supported bridge chains
@@ -391,6 +455,32 @@ pub mod pallet {
         BlockNumberFor<T>,
     >;
 
+    #[pallet::storage]
+    #[pallet::getter(fn user_bridge_locks)]
+    /// Cumulative bridge-locked amount per user (B-2 fix: prevents set_lock overwrite).
+    /// Incremented on initiate_bridge, decremented on process_unlock.
+    pub type UserBridgeLocks<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        u128,
+        ValueQuery,
+    >;
+
+    // AR-15: Per-account bridge initiation rate counter.
+    #[pallet::storage]
+    /// Rate limit: number of initiate_bridge calls by account in the current block.
+    pub type BridgeCallsThisBlock<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        u32,
+        ValueQuery,
+    >;
+
+    #[pallet::storage]
+    pub type LastBridgeRateLimitBlock<T: Config> = StorageValue<_, BlockNumberFor<T>, ValueQuery>;
+
     /// Chain-specific configuration
     #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub struct ChainConfig {
@@ -533,18 +623,45 @@ pub mod pallet {
         NotDisputable,
         /// Challenge period has not elapsed yet
         ChallengePeriodActive,
+        /// B-9 FIX: ID counter overflow (u32::MAX reached)
+        IdOverflow,
+        /// AR-15: Account has exceeded the maximum bridge initiations per block.
+        RateLimitExceeded,
     }
 
     // ===== HOOKS (§4.4b Challenge Period Finalization) =====
 
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
-        fn on_initialize(n: BlockNumberFor<T>) -> Weight {
-            let mut weight = Weight::from_parts(5_000_000, 0);
+        // AR-10: Bridge finalization moved from on_initialize to on_idle.
+        // Challenge-period finalization is safety-preserving (always runs eventually)
+        // but not consensus-mandatory at block start, so it should yield to user transactions.
+        fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
+            Weight::zero()
+        }
+
+        /// Finalize expired bridge challenge windows using leftover block weight.
+        ///
+        /// Processes at most 20 finalizations per block, gated by `remaining_weight`.
+        fn on_idle(n: BlockNumberFor<T>, remaining_weight: Weight) -> Weight {
+            let per_finalization_weight = Weight::from_parts(15_000_000, 1_024)
+                .saturating_add(T::DbWeight::get().reads(2))
+                .saturating_add(T::DbWeight::get().writes(2));
+
+            if remaining_weight.ref_time() < per_finalization_weight.ref_time() {
+                return Weight::zero();
+            }
+
+            let mut weight = Weight::from_parts(5_000_000, 512);
             let mut finalized_ids = Vec::new();
 
             // SECURITY: Bounded iteration — process at most 20 finalizations per block
             for (tx_id, expiry_block) in PendingFinalizations::<T>::iter().take(20) {
+                if weight.saturating_add(per_finalization_weight).ref_time()
+                    > remaining_weight.ref_time()
+                {
+                    break;
+                }
                 if n >= expiry_block {
                     // Challenge period has elapsed — finalize the transaction
                     if let Some(mut bridge_tx) = BridgeTransactions::<T>::get(tx_id) {
@@ -556,7 +673,7 @@ pub mod pallet {
                         }
                     }
                     finalized_ids.push(tx_id);
-                    weight = weight.saturating_add(Weight::from_parts(10_000_000, 0));
+                    weight = weight.saturating_add(per_finalization_weight);
                 }
             }
 
@@ -565,6 +682,19 @@ pub mod pallet {
             }
 
             weight
+        }
+
+        /// Verify bridge invariants at runtime startup.
+        ///
+        /// Invariants:
+        /// 1. BridgeFeeRate ≤ 10_000 basis points (≤ 100%)
+        fn integrity_test() {
+            let fee_rate = T::BridgeFeeRate::get();
+            assert!(
+                fee_rate <= 10_000,
+                "INVARIANT VIOLATION: BridgeFeeRate ({}) exceeds 10_000 basis points (100%)",
+                fee_rate,
+            );
         }
     }
 
@@ -581,6 +711,7 @@ pub mod pallet {
             asset_index: u8,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
+            Self::check_bridge_rate_limit(&who)?;
 
             // Cross-chain KYC verification (minimum Level 2 Enhanced KYC for bridges)
             let kyc_level = T::Identity::get_kyc_level(&who).unwrap_or(0);
@@ -612,14 +743,22 @@ pub mod pallet {
             );
 
             // Calculate bridge fee
-            let fee_amount = Perbill::from_parts(chain_config.fee_rate) * amount;
+            // M53 FIX: fee_rate is in basis points (1bp = 0.01% = 1/10,000)
+            // Perbill::from_parts treats argument as parts-per-billion, so convert properly
+            let fee_amount = Perbill::from_rational(chain_config.fee_rate, 10_000u32) * amount;
             let net_amount = amount.saturating_sub(fee_amount);
 
-            // Lock assets
+            // Lock assets — use cumulative tracking to prevent set_lock overwrite (B-2 fix)
+            let amount_u128: u128 = amount.saturated_into();
+            UserBridgeLocks::<T>::mutate(&who, |locked| {
+                *locked = locked.saturating_add(amount_u128);
+            });
+            let cumulative_lock: <T::Currency as Currency<T::AccountId>>::Balance =
+                UserBridgeLocks::<T>::get(&who).saturated_into();
             T::Currency::set_lock(
                 BRIDGE_LOCK_ID,
                 &who,
-                amount,
+                cumulative_lock,
                 frame_support::traits::WithdrawReasons::all(),
             );
 
@@ -659,7 +798,7 @@ pub mod pallet {
             };
 
             BridgeTransactions::<T>::insert(tx_id, bridge_tx);
-            NextTxId::<T>::put(tx_id.saturating_add(1));
+            NextTxId::<T>::put(tx_id.checked_add(1).ok_or(Error::<T>::IdOverflow)?);
 
             // Update total locked assets
             TotalLockedAssets::<T>::mutate(&target_chain, &asset, |total| {
@@ -719,10 +858,29 @@ pub mod pallet {
                 Error::<T>::AlreadyExecuted
             );
 
-            // Validate post-quantum signature (simplified validation)
-            ensure!(pq_signature.len() >= 64, Error::<T>::InvalidPQSignature);
+            // Validate post-quantum signature via the configured verifier (AR-6).
+            // The signed message is the SCALE-encoded tx_id (deterministic, no timestamps).
+            // The public key is retrieved from the on-chain BridgeValidator record.
+            {
+                let validator_record = BridgeValidators::<T>::get(&who)
+                    .ok_or(Error::<T>::ValidatorNotRegistered)?;
+                let message = tx_id.encode();
+                ensure!(
+                    T::PQVerifier::verify(
+                        validator_record.pq_public_key.as_slice(),
+                        &message,
+                        &pq_signature,
+                    ),
+                    Error::<T>::InvalidPQSignature
+                );
+            }
 
             // Add signature
+            // M52 FIX: Prevent duplicate signatures from same validator
+            ensure!(
+                !bridge_tx.pq_signatures.iter().any(|(v, _)| v == &who),
+                Error::<T>::AlreadyExecuted
+            );
             let sig: BoundedVec<u8, ConstU32<96>> = pq_signature
                 .try_into()
                 .map_err(|_| Error::<T>::InvalidPQSignature)?;
@@ -795,7 +953,7 @@ pub mod pallet {
             };
 
             LiquidityPools::<T>::insert(pool_id, pool);
-            NextPoolId::<T>::put(pool_id.saturating_add(1));
+            NextPoolId::<T>::put(pool_id.checked_add(1).ok_or(Error::<T>::IdOverflow)?);
 
             Self::deposit_event(Event::LiquidityPoolCreated {
                 pool_id,
@@ -807,40 +965,79 @@ pub mod pallet {
             Ok(())
         }
 
-        /// Process burn and unlock from external chain
+        /// Process burn and unlock from external chain (B-1 fix: requires multi-sig via BridgeTransaction)
+        ///
+        /// The BurnAndUnlock BridgeTransaction must have been created via `submit_incoming_unlock`
+        /// and finalized through multi-sig + challenge period before this can execute.
         #[pallet::call_index(3)]
         #[pallet::weight(T::WeightInfo::process_unlock())]
         pub fn process_unlock(
             origin: OriginFor<T>,
-            source_chain_index: u8,
-            _source_tx_hash: Vec<u8>,
-            recipient: T::AccountId,
-            amount: u128,
-            asset_index: u8,
+            tx_id: u32,
         ) -> DispatchResult {
-            // Only bridge validators can process unlocks
+            // Only bridge validators can execute finalized unlocks
             let who = ensure_signed(origin)?;
             let _validator = Self::bridge_validators(&who)
                 .ok_or(Error::<T>::ValidatorNotRegistered)?;
 
-            let source_chain = Self::decode_chain(source_chain_index).ok_or(Error::<T>::UnsupportedChain)?;
-            let asset = Self::decode_asset(asset_index).ok_or(Error::<T>::UnsupportedAsset)?;
+            // B-1 fix: Verify BridgeTransaction exists and is Finalized (multi-sig collected + challenge period passed)
+            let mut bridge_tx = Self::bridge_transactions(tx_id)
+                .ok_or(Error::<T>::TransactionNotFound)?;
 
-            // Verify external chain transaction (simplified)
-            // In production, would verify against external chain state
+            ensure!(
+                bridge_tx.status == BridgeStatus::Finalized,
+                Error::<T>::InsufficientSignatures
+            );
 
-            // Calculate unlock amount (minus fees already deducted)
-            // SAFETY: amount is u128 and Balance is u128-backed; u128 → Balance is lossless
-            let unlock_amount: <T::Currency as Currency<T::AccountId>>::Balance = amount.saturated_into();
+            // Extract BurnAndUnlock parameters from the verified transaction
+            let (source_chain, _source_tx_hash, amount, asset, recipient_bytes) = match &bridge_tx.operation {
+                BridgeOperation::BurnAndUnlock { source_chain, source_tx_hash, amount, asset, recipient } => {
+                    (source_chain.clone(), source_tx_hash.clone(), *amount, asset.clone(), recipient.clone())
+                },
+                _ => return Err(Error::<T>::UnauthorizedOperation.into()),
+            };
 
-            // Unlock assets and credit tokens to recipient
-            T::Currency::remove_lock(BRIDGE_LOCK_ID, &recipient);
-            let _imbalance = T::Currency::deposit_creating(&recipient, unlock_amount);
+            // Verify TotalLockedAssets has enough to cover the unlock
+            let locked = TotalLockedAssets::<T>::get(&source_chain, &asset);
+            ensure!(locked >= amount, Error::<T>::InsufficientLiquidity);
+
+            // Decode recipient AccountId from bounded bytes
+            let recipient = T::AccountId::decode(&mut recipient_bytes.as_slice())
+                .map_err(|_| Error::<T>::InvalidConfiguration)?;
+
+            // B-2 fix: reduce the user's cumulative bridge lock
+            let _amount_balance: <T::Currency as Currency<T::AccountId>>::Balance = amount.saturated_into();
+            UserBridgeLocks::<T>::mutate(&recipient, |locked| {
+                *locked = locked.saturating_sub(amount);
+            });
+            let remaining_lock = UserBridgeLocks::<T>::get(&recipient);
+            if remaining_lock == 0 {
+                T::Currency::remove_lock(BRIDGE_LOCK_ID, &recipient);
+            } else {
+                let remaining_balance: <T::Currency as Currency<T::AccountId>>::Balance =
+                    remaining_lock.saturated_into();
+                T::Currency::set_lock(
+                    BRIDGE_LOCK_ID,
+                    &recipient,
+                    remaining_balance,
+                    frame_support::traits::WithdrawReasons::all(),
+                );
+            }
+
+            // DO NOT use deposit_creating (B-1 fix: removes inflation vulnerability).
+            // The recipient's previously-locked tokens are now spendable via the lock reduction above.
+            // Note: For cross-user unlocks (recipient != original locker), a bridge escrow model
+            // is needed. TODO: Migrate to escrow-based bridge in next version.
 
             // Update total locked assets
             TotalLockedAssets::<T>::mutate(&source_chain, &asset, |total| {
                 *total = total.saturating_sub(amount);
             });
+
+            // Mark BridgeTransaction as Executed to prevent replay
+            bridge_tx.status = BridgeStatus::Executed;
+            bridge_tx.completed_at = Some(frame_system::Pallet::<T>::block_number());
+            BridgeTransactions::<T>::insert(tx_id, bridge_tx);
 
             Self::deposit_event(Event::AssetsUnlocked {
                 account: recipient,
@@ -852,7 +1049,94 @@ pub mod pallet {
             Ok(())
         }
 
-        /// Send cross-chain message
+        /// Submit incoming unlock request from external chain (B-1 fix: creates BurnAndUnlock BridgeTransaction)
+        ///
+        /// Called by a bridge validator who observes a burn event on an external chain.
+        /// The transaction must then be signed by multiple validators via `provide_pq_signature`
+        /// and survive the challenge period before `process_unlock` can execute it.
+        #[pallet::call_index(7)]
+        #[pallet::weight(T::WeightInfo::initiate_bridge())]
+        pub fn submit_incoming_unlock(
+            origin: OriginFor<T>,
+            source_chain_index: u8,
+            source_tx_hash: Vec<u8>,
+            recipient: T::AccountId,
+            amount: u128,
+            asset_index: u8,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // Only registered validators with Level 3 KYC can submit incoming unlocks
+            ensure!(
+                T::Identity::verify_bridge_operator(&who),
+                Error::<T>::BridgeOperatorKycInsufficient
+            );
+            ensure!(!T::Identity::is_sanctioned(&who), Error::<T>::AccountSanctioned);
+            let _validator = Self::bridge_validators(&who)
+                .ok_or(Error::<T>::ValidatorNotRegistered)?;
+
+            let source_chain = Self::decode_chain(source_chain_index).ok_or(Error::<T>::UnsupportedChain)?;
+            let asset = Self::decode_asset(asset_index).ok_or(Error::<T>::UnsupportedAsset)?;
+
+            // Verify chain is supported and enabled
+            let chain_config = Self::chain_configurations(&source_chain)
+                .ok_or(Error::<T>::UnsupportedChain)?;
+            ensure!(chain_config.enabled, Error::<T>::BridgeDisabled);
+
+            // Verify TotalLockedAssets has enough to support this unlock
+            let locked = TotalLockedAssets::<T>::get(&source_chain, &asset);
+            ensure!(locked >= amount, Error::<T>::InsufficientLiquidity);
+
+            let tx_id = Self::next_tx_id();
+            let current_block = frame_system::Pallet::<T>::block_number();
+
+            let source_tx_hash_bounded: BoundedVec<u8, ConstU32<64>> = source_tx_hash
+                .try_into()
+                .map_err(|_| Error::<T>::InvalidConfiguration)?;
+
+            let recipient_encoded = recipient.encode();
+            let recipient_bounded: BoundedVec<u8, ConstU32<64>> = recipient_encoded
+                .try_into()
+                .map_err(|_| Error::<T>::InvalidConfiguration)?;
+
+            let bridge_operation = BridgeOperation::BurnAndUnlock {
+                source_chain: source_chain.clone(),
+                source_tx_hash: source_tx_hash_bounded,
+                amount,
+                asset: asset.clone(),
+                recipient: recipient_bounded,
+            };
+
+            let bridge_tx = BridgeTransaction {
+                tx_id,
+                initiator: who.clone(),
+                operation: bridge_operation,
+                status: BridgeStatus::Initiated,
+                required_signatures: chain_config.pq_signatures_required,
+                collected_signatures: 0,
+                pq_signatures: BoundedVec::default(),
+                fee: 0, // No fee for incoming unlocks
+                initiated_at: current_block,
+                completed_at: None,
+                external_confirmation: None,
+                dispute_info: None,
+            };
+
+            BridgeTransactions::<T>::insert(tx_id, bridge_tx);
+            NextTxId::<T>::put(tx_id.checked_add(1).ok_or(Error::<T>::IdOverflow)?);
+
+            Self::deposit_event(Event::BridgeTransactionInitiated {
+                tx_id,
+                initiator: who,
+                target_chain: Self::encode_chain(&source_chain),
+                amount,
+                asset: Self::encode_asset(&asset),
+            });
+
+            Ok(())
+        }
+
+        /// Send cross-chain message (H-36 fix: KYC, sanctions, fee)
         #[pallet::call_index(4)]
         #[pallet::weight(T::WeightInfo::send_message())]
         pub fn send_cross_chain_message(
@@ -860,9 +1144,26 @@ pub mod pallet {
             target_chain_index: u8,
             payload: Vec<u8>,
         ) -> DispatchResult {
-            let _who = ensure_signed(origin)?;
+            let who = ensure_signed(origin)?;
+
+            // H-36: Require Level 2+ KYC for cross-chain messaging
+            let kyc_level = T::Identity::get_kyc_level(&who).unwrap_or(0);
+            ensure!(kyc_level >= 2, Error::<T>::KycRequired);
+
+            // H-36: Sanctions screening
+            ensure!(!T::Identity::is_sanctioned(&who), Error::<T>::AccountSanctioned);
 
             let target_chain = Self::decode_chain(target_chain_index).ok_or(Error::<T>::UnsupportedChain)?;
+
+            // H-36: Charge a messaging fee (MinBridgeAmount sent to treasury)
+            let fee = T::MinBridgeAmount::get();
+            let treasury = T::Treasury::get();
+            T::Currency::transfer(
+                &who,
+                &treasury,
+                fee,
+                frame_support::traits::ExistenceRequirement::KeepAlive,
+            )?;
 
             let message_id = Self::next_message_id();
             let payload_bounded: BoundedVec<u8, ConstU32<2048>> = payload
@@ -883,7 +1184,7 @@ pub mod pallet {
             };
 
             CrossChainMessages::<T>::insert(message_id, message);
-            NextMessageId::<T>::put(message_id.saturating_add(1));
+            NextMessageId::<T>::put(message_id.checked_add(1).ok_or(Error::<T>::IdOverflow)?);
 
             Self::deposit_event(Event::CrossChainMessageSent {
                 message_id,
@@ -984,9 +1285,163 @@ pub mod pallet {
 
             Ok(())
         }
+
+        /// Register as a bridge validator (H-37 fix: writeable path for BridgeValidators)
+        ///
+        /// Requires Level 3 KYC (full identity verification) and a minimum stake.
+        /// The caller provides a post-quantum public key and the chains they support.
+        #[pallet::call_index(8)]
+        #[pallet::weight(T::WeightInfo::initiate_bridge())]
+        pub fn register_bridge_validator(
+            origin: OriginFor<T>,
+            pq_public_key: Vec<u8>,
+            supported_chain_indices: Vec<u8>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // Require Level 3 KYC for validator registration
+            ensure!(
+                T::Identity::verify_bridge_operator(&who),
+                Error::<T>::BridgeOperatorKycInsufficient
+            );
+            // Sanctions screening
+            ensure!(!T::Identity::is_sanctioned(&who), Error::<T>::AccountSanctioned);
+
+            // Must not already be registered
+            ensure!(
+                !BridgeValidators::<T>::contains_key(&who),
+                Error::<T>::AlreadyExecuted // reuse: already registered
+            );
+
+            // Lock a minimum stake
+            let stake: <T::Currency as Currency<T::AccountId>>::Balance = T::MinBridgeAmount::get();
+            T::Currency::set_lock(BRIDGE_LOCK_ID, &who, stake, frame_support::traits::WithdrawReasons::all());
+
+            // Decode supported chains
+            let mut chains = Vec::new();
+            for idx in &supported_chain_indices {
+                let chain = Self::decode_chain(*idx).ok_or(Error::<T>::UnsupportedChain)?;
+                chains.push(chain);
+            }
+            let supported_chains: BoundedVec<BridgeChain, ConstU32<64>> = chains
+                .try_into()
+                .map_err(|_| Error::<T>::InvalidConfiguration)?;
+
+            let pq_key: BoundedVec<u8, ConstU32<96>> = pq_public_key
+                .try_into()
+                .map_err(|_| Error::<T>::InvalidPQSignature)?;
+
+            let validator = BridgeValidator {
+                account: who.clone(),
+                pq_public_key: pq_key,
+                supported_chains: supported_chains.clone(),
+                stake: stake.saturated_into::<u128>(),
+                reliability_score: 100,
+                signatures_count: 0,
+                failed_signatures: 0,
+            };
+
+            BridgeValidators::<T>::insert(&who, validator);
+
+            let chain_bytes: Vec<u8> = supported_chains.iter().map(|c| Self::encode_chain(c)).collect();
+            Self::deposit_event(Event::BridgeValidatorRegistered {
+                validator: who,
+                supported_chains: chain_bytes,
+            });
+
+            Ok(())
+        }
+
+        /// Remove a bridge validator (governance only, H-37 fix)
+        #[pallet::call_index(9)]
+        #[pallet::weight(T::WeightInfo::update_config())]
+        pub fn remove_bridge_validator(
+            origin: OriginFor<T>,
+            validator_account: T::AccountId,
+        ) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+
+            ensure!(
+                BridgeValidators::<T>::contains_key(&validator_account),
+                Error::<T>::ValidatorNotRegistered
+            );
+
+            // Remove lock
+            T::Currency::remove_lock(BRIDGE_LOCK_ID, &validator_account);
+
+            BridgeValidators::<T>::remove(&validator_account);
+
+            Ok(())
+        }
+
+        /// Withdraw liquidity from a bridge pool (H-35 fix)
+        ///
+        /// Only the pool manager can withdraw. Unreserves funds and updates pool.
+        /// If the entire liquidity is withdrawn the pool is deactivated.
+        #[pallet::call_index(10)]
+        #[pallet::weight(T::WeightInfo::create_liquidity_pool())]
+        pub fn withdraw_liquidity(
+            origin: OriginFor<T>,
+            pool_id: u32,
+            amount: <T::Currency as Currency<T::AccountId>>::Balance,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            let mut pool = LiquidityPools::<T>::get(pool_id)
+                .ok_or(Error::<T>::PoolNotFound)?;
+
+            // Only the pool manager may withdraw
+            ensure!(pool.manager == who, Error::<T>::UnauthorizedOperation);
+
+            let amount_u128: u128 = amount.saturated_into();
+            ensure!(
+                pool.belizechain_liquidity >= amount_u128,
+                Error::<T>::InsufficientLiquidity
+            );
+
+            // Unreserve funds back to manager
+            T::Currency::unreserve(&who, amount);
+
+            pool.belizechain_liquidity = pool.belizechain_liquidity.saturating_sub(amount_u128);
+
+            // Deactivate if fully drained
+            if pool.belizechain_liquidity == 0 {
+                pool.active = false;
+            }
+
+            LiquidityPools::<T>::insert(pool_id, pool);
+
+            Self::deposit_event(Event::AssetsUnlocked {
+                account: who,
+                amount: amount_u128,
+                asset: 0, // DALLA
+                source_chain: 0, // Internal pool withdrawal
+            });
+
+            Ok(())
+        }
     }
 
     impl<T: Config> Pallet<T> {
+        // AR-15: Check and record rate limit for initiate_bridge.
+        //
+        // Clears the per-account counter when the block number changes, then
+        // increments and validates against MaxBridgePerBlock.
+        fn check_bridge_rate_limit(who: &T::AccountId) -> frame_support::dispatch::DispatchResult {
+            let current_block = frame_system::Pallet::<T>::block_number();
+            let last_block = LastBridgeRateLimitBlock::<T>::get();
+            if current_block != last_block {
+                // New block — clear count for this account (lazy reset).
+                BridgeCallsThisBlock::<T>::remove(who);
+                // Only update the global block tracker on first use within a new block.
+                LastBridgeRateLimitBlock::<T>::put(current_block);
+            }
+            let count = BridgeCallsThisBlock::<T>::get(who).saturating_add(1);
+            ensure!(count <= T::MaxBridgePerBlock::get(), Error::<T>::RateLimitExceeded);
+            BridgeCallsThisBlock::<T>::insert(who, count);
+            Ok(())
+        }
+
         pub fn decode_chain(index: u8) -> Option<BridgeChain> {
             use BridgeChain::*;
             Some(match index as u16 {
@@ -1145,27 +1600,27 @@ pub trait WeightInfo {
 
 impl WeightInfo for () {
     fn initiate_bridge() -> Weight {
-        Weight::from_parts(25_000_000, 0)
+        Weight::from_parts(25_000_000, 512)
             .saturating_add(Weight::from_parts(0, 3500))
     }
     fn provide_signature() -> Weight {
-        Weight::from_parts(15_000_000, 0)
+        Weight::from_parts(15_000_000, 512)
             .saturating_add(Weight::from_parts(0, 2000))
     }
     fn create_liquidity_pool() -> Weight {
-        Weight::from_parts(20_000_000, 0)
+        Weight::from_parts(20_000_000, 512)
             .saturating_add(Weight::from_parts(0, 3000))
     }
     fn process_unlock() -> Weight {
-        Weight::from_parts(18_000_000, 0)
+        Weight::from_parts(18_000_000, 512)
             .saturating_add(Weight::from_parts(0, 2500))
     }
     fn send_message() -> Weight {
-        Weight::from_parts(12_000_000, 0)
+        Weight::from_parts(12_000_000, 512)
             .saturating_add(Weight::from_parts(0, 2000))
     }
     fn update_config() -> Weight {
-        Weight::from_parts(8_000_000, 0)
+        Weight::from_parts(8_000_000, 512)
             .saturating_add(Weight::from_parts(0, 1000))
     }
 }

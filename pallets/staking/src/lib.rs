@@ -30,6 +30,11 @@ use scale_info::TypeInfo;
 
 pub use pallet::*;
 
+pub mod weights;
+
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
 #[cfg(test)]
 mod mock;
 
@@ -39,7 +44,7 @@ mod tests;
 const STAKING_ID: LockIdentifier = *b"bzstking";
 
 /// Minimum staking amount for PoUW validators
-pub const MIN_VALIDATOR_STAKE: u128 = 10_000 * 1_000_000; // 10K DALLA (6 decimals)
+pub const MIN_VALIDATOR_STAKE: u128 = 10_000 * 1_000_000_000_000; // 10K DALLA (12 decimals)
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -55,6 +60,25 @@ pub mod pallet {
     /// Provider trait for Oracle pallet verification
     pub trait OracleVerifier<AccountId> {
         fn is_authorized_operator(who: &AccountId) -> bool;
+    }
+
+    /// Provider trait for Justice pallet first-offense slash intercept (Phase 4A).
+    ///
+    /// When a validator is reported for their first offense, the staking pallet
+    /// delegates to this provider instead of executing an immediate slash.  The
+    /// justice pallet escrows the amount and opens a cooling-off period; the slash
+    /// only executes if a mediator rules wrongdoing confirmed.
+    pub trait JusticeProvider<AccountId, Balance> {
+        /// Escrow `amount` from `account` into the justice pallet for review.
+        ///
+        /// On `Ok(())` the caller MUST NOT also execute a direct slash — the
+        /// escrowed amount is reserved and will be slashed or released by the
+        /// justice pallet's ruling extrinsics.
+        fn try_escrow_slash(account: &AccountId, amount: Balance) -> DispatchResult;
+
+        /// Returns `true` if `account` already has a slash escrowed and awaiting
+        /// justice review.  Prevents double-escrowing on overlapping reports.
+        fn has_pending_review(account: &AccountId) -> bool;
     }
 
     #[pallet::config]
@@ -92,9 +116,20 @@ pub mod pallet {
         /// before they can withdraw their stake (default: 14400 blocks = ~24 hours)
         #[pallet::constant]
         type UnbondingPeriod: Get<BlockNumberFor<Self>>;
+
+        /// Maximum total supply cap — minting is halted once total_issuance reaches this
+        #[pallet::constant]
+        type MaxSupply: Get<<Self::Currency as Currency<Self::AccountId>>::Balance>;
         
         /// Weight information for extrinsics
         type WeightInfo: WeightInfo;
+
+        /// Justice pallet provider for first-offense slash intercept (Phase 4A).
+        ///
+        /// First-time offenders have their slash escrowed in the justice pallet
+        /// instead of being executed immediately, giving them a cooling-off period
+        /// and the opportunity for mediation.  Repeat offenders bypass this path.
+        type JusticeProvider: JusticeProvider<Self::AccountId, BalanceOf<Self>>;
     }
 
     /// Identity provider trait for Staking pallet
@@ -354,6 +389,17 @@ pub mod pallet {
     >;
 
     #[pallet::storage]
+    #[pallet::getter(fn last_claimed_epoch)]
+    /// Last epoch in which an operator claimed domain bonus rewards
+    pub type LastClaimedEpoch<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        u32,
+        ValueQuery,
+    >;
+
+    #[pallet::storage]
     #[pallet::getter(fn epoch_domain_contributions)]
     /// Total contributions per domain in current epoch
     pub type EpochDomainContributions<T: Config> = StorageValue<_, OperatorDomainBreakdown, ValueQuery>;
@@ -466,6 +512,8 @@ pub mod pallet {
         InvalidDomainIndex,
         /// Operator has no domain contributions (Phase 3)
         NoDomainContributions,
+        /// Already claimed domain bonus for current epoch
+        AlreadyClaimedThisEpoch,
         /// Caller is not an authorized Oracle operator
         NotAuthorizedOracle,
         /// Validator is already unbonding
@@ -514,6 +562,24 @@ pub mod pallet {
                 3 => Some(SlashReason::ModelPoisoning),
                 4 => Some(SlashReason::ConsensusViolation),
                 _ => None,
+            }
+        }
+    }
+
+    #[pallet::hooks]
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        /// Verify staking invariants at runtime startup.
+        ///
+        /// Invariants:
+        /// 1. Every active validator has stake ≥ MinValidatorStake
+        fn integrity_test() {
+            let min_stake = T::MinValidatorStake::get();
+            for (account, info) in Validators::<T>::iter() {
+                assert!(
+                    info.stake >= min_stake,
+                    "INVARIANT VIOLATION: validator {:?} has stake below minimum",
+                    account,
+                );
             }
         }
     }
@@ -681,6 +747,29 @@ pub mod pallet {
                 Error::<T>::ValidatorNotFound
             );
 
+            // Phase 4A: First offense → route through justice pallet (cooling-off path).
+            // If the validator has never been slashed and has no existing pending justice
+            // review, escrow the slash amount instead of executing it immediately.  The
+            // justice pallet opens a dispute and applies a cooling-off period; the slash
+            // only executes if the mediator confirms wrongdoing.  Repeat offenders (any
+            // prior slash on record) bypass this path and are slashed immediately.
+            let current_slashes = SlashingSpans::<T>::get(&validator);
+            if current_slashes == 0 && !T::JusticeProvider::has_pending_review(&validator) {
+                if let Some(validator_info) = Validators::<T>::get(&validator) {
+                    let slash_amount =
+                        Perbill::from_percent(slash_percent.min(100)) * validator_info.stake;
+                    // Reserve the slash into justice escrow and record the offense.
+                    T::JusticeProvider::try_escrow_slash(&validator, slash_amount)?;
+                    SlashingSpans::<T>::insert(&validator, 1u32);
+                    Self::deposit_event(Event::ValidatorSlashed {
+                        validator: validator.clone(),
+                        slash_amount,
+                        reason: reason.as_u8(),
+                    });
+                    return Ok(());
+                }
+            }
+
             let slash_percentage = Perbill::from_percent(slash_percent.min(100));
             Self::slash_validator(&validator, slash_percentage, reason)?;
 
@@ -762,10 +851,11 @@ pub mod pallet {
 
             Validators::<T>::insert(&who, validator_info);
 
+            // S-5 FIX: Use computed quality_score instead of hardcoded 80
             Self::deposit_event(Event::ModelDeltaSubmitted {
                 validator: who,
                 task_id,
-                quality_score: 80u8,
+                quality_score,
             });            Ok(())
         }
 
@@ -824,17 +914,29 @@ pub mod pallet {
             let mut total_distributed: <T::Currency as Currency<T::AccountId>>::Balance = Zero::zero();
             let mut participant_count = 0u32;
 
+            // SECURITY: Supply-cap guard — stop minting once total issuance reaches MaxSupply (H-19)
+            let max_supply = T::MaxSupply::get();
+
             // Calculate and distribute rewards to validators
             // SECURITY: Bounded iteration prevents DoS via storage bloat (§1.7)
             let max_validators = T::MaxValidators::get() as usize;
             for (validator_id, validator_info) in Validators::<T>::iter().take(max_validators) {
                 if let Some(_model_submission) = ModelSubmissions::<T>::get(&validator_id) {
                     let reward = Self::calculate_validator_reward(&validator_info, base_reward);
-                    
+
+                    // Supply-cap check: skip minting if it would exceed MaxSupply
+                    let current_issuance = T::Currency::total_issuance();
+                    let headroom = max_supply.saturating_sub(current_issuance);
+                    if headroom.is_zero() {
+                        break; // supply exhausted — no more rewards this epoch
+                    }
+                    // Clamp reward to remaining headroom
+                    let capped_reward = reward.min(headroom);
+
                     // Mint rewards to validator
-                    let _ = T::Currency::deposit_creating(&validator_id, reward);
+                    let _ = T::Currency::deposit_creating(&validator_id, capped_reward);
                     
-                    total_distributed = total_distributed.saturating_add(reward);
+                    total_distributed = total_distributed.saturating_add(capped_reward);
                     participant_count = participant_count.saturating_add(1);
                 }
             }
@@ -1131,6 +1233,11 @@ pub mod pallet {
             let validator_info = Validators::<T>::get(&who)
                 .ok_or(Error::<T>::ValidatorNotFound)?;
 
+            // Prevent repeated claims within the same epoch
+            let current_epoch = Self::current_epoch();
+            let last_claimed = LastClaimedEpoch::<T>::get(&who);
+            ensure!(last_claimed < current_epoch, Error::<T>::AlreadyClaimedThisEpoch);
+
             // Get domain statistics
             let domain_breakdown = OperatorDomainStatsMap::<T>::get(&who);
 
@@ -1164,6 +1271,10 @@ pub mod pallet {
 
             // Mint rewards to operator
             let _ = T::Currency::deposit_creating(&who, total_reward);
+
+            // Record claim epoch and clear stats to prevent re-claim
+            LastClaimedEpoch::<T>::insert(&who, current_epoch);
+            OperatorDomainStatsMap::<T>::remove(&who);
 
             Self::deposit_event(Event::PouWRewardsClaimedWithBonus {
                 operator: who,
@@ -1270,11 +1381,13 @@ pub mod pallet {
         }
 
         /// Evaluate model contribution quality based on delta size and structure
+        /// S-4 FIX: Improved entropy analysis to resist trivially gameable inputs
         fn evaluate_model_quality(encrypted_delta: &[u8]) -> u8 {
-            // Quality scoring based on encrypted delta characteristics:
-            // - Larger deltas indicate more model parameters updated (more work done)
-            // - Very small deltas may indicate trivial/no-op contributions
-            // - Score capped at 100
+            if encrypted_delta.is_empty() {
+                return 0;
+            }
+
+            // Size scoring: larger deltas indicate more model parameters updated
             let delta_size_score = match encrypted_delta.len() {
                 0..=31 => 10u32,      // Suspiciously small — likely no real computation
                 32..=127 => 30,       // Minimal update
@@ -1283,12 +1396,23 @@ pub mod pallet {
                 _ => 80,              // Capped (BoundedVec already limits to 1024)
             };
 
-            // Entropy check: if all bytes are the same, it's trivially generated
-            let first_byte = encrypted_delta.first().copied().unwrap_or(0);
-            let entropy_penalty = if encrypted_delta.iter().all(|&b| b == first_byte) {
-                30u32 // Penalize trivial/constant data
+            // Entropy analysis: count unique bytes and check byte distribution
+            let mut byte_counts = [0u32; 256];
+            for &b in encrypted_delta.iter() {
+                byte_counts[b as usize] = byte_counts[b as usize].saturating_add(1);
+            }
+            let unique_bytes = byte_counts.iter().filter(|&&c| c > 0).count() as u32;
+            let len = encrypted_delta.len() as u32;
+
+            // Entropy penalty based on unique byte ratio
+            let entropy_penalty = if unique_bytes <= 1 {
+                50u32 // All identical bytes — trivially generated
+            } else if unique_bytes <= 4 {
+                30 // Very low entropy — likely padded/repeated pattern
+            } else if unique_bytes * 100 / len.max(1) < 10 {
+                20 // Low entropy ratio — suspicious repetition
             } else {
-                0
+                0  // Acceptable entropy
             };
 
             delta_size_score.saturating_sub(entropy_penalty).min(100) as u8
@@ -1406,51 +1530,51 @@ pub trait WeightInfo {
 
 impl WeightInfo for () {
     fn join_validators() -> Weight {
-        Weight::from_parts(10_000_000, 0)
+        Weight::from_parts(10_000_000, 1536)
             .saturating_add(RocksDbWeight::get().reads(2))
             .saturating_add(RocksDbWeight::get().writes(3))
     }
     fn leave_validators() -> Weight {
-        Weight::from_parts(10_000_000, 0)
+        Weight::from_parts(10_000_000, 1024)
             .saturating_add(RocksDbWeight::get().reads(1))
             .saturating_add(RocksDbWeight::get().writes(2))
     }
     fn withdraw_unbonded() -> Weight {
-        Weight::from_parts(8_000_000, 0)
+        Weight::from_parts(8_000_000, 2048)
             .saturating_add(RocksDbWeight::get().reads(1))
             .saturating_add(RocksDbWeight::get().writes(2))
     }
     fn submit_model_delta() -> Weight {
-        Weight::from_parts(15_000_000, 0)
+        Weight::from_parts(15_000_000, 1536)
             .saturating_add(RocksDbWeight::get().reads(3))
             .saturating_add(RocksDbWeight::get().writes(2))
     }
     fn assign_fl_task() -> Weight {
-        Weight::from_parts(5_000_000, 0)
+        Weight::from_parts(5_000_000, 1536)
         .saturating_add(RocksDbWeight::get().writes(2))
     }
     fn distribute_rewards() -> Weight {
-        Weight::from_parts(20_000_000, 0)
+        Weight::from_parts(20_000_000, 2560)
             .saturating_add(RocksDbWeight::get().reads(3))
             .saturating_add(RocksDbWeight::get().writes(3))
     }
     fn record_quantum_contribution() -> Weight {
-        Weight::from_parts(12_000_000, 0)
+        Weight::from_parts(12_000_000, 1024)
             .saturating_add(RocksDbWeight::get().reads(2))  // Check validator + check job not recorded
             .saturating_add(RocksDbWeight::get().writes(3))  // Store contribution + update stats + increment counter
     }
     fn record_domain_contribution() -> Weight {
-        Weight::from_parts(10_000_000, 0)
+        Weight::from_parts(10_000_000, 1536)
             .saturating_add(RocksDbWeight::get().reads(1))  // Read operator stats
             .saturating_add(RocksDbWeight::get().writes(2))  // Update operator stats + epoch stats
     }
     fn claim_pouw_with_domain_bonus() -> Weight {
-        Weight::from_parts(25_000_000, 0)
+        Weight::from_parts(25_000_000, 2048)
             .saturating_add(RocksDbWeight::get().reads(2))  // Read validator info + domain stats
             .saturating_add(RocksDbWeight::get().writes(1))  // Mint rewards
     }
     fn report_validator_offense() -> Weight {
-        Weight::from_parts(15_000_000, 0)
+        Weight::from_parts(15_000_000, 1024)
             .saturating_add(RocksDbWeight::get().reads(2))  // Read validator + slashing spans
             .saturating_add(RocksDbWeight::get().writes(3))  // Update validator + slashing spans + balance
     }

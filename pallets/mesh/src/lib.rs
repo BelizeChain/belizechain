@@ -124,6 +124,11 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
+pub mod weights;
+
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
 pub use pallet::*;
 
 /// Weight info trait for benchmarking
@@ -146,20 +151,20 @@ pub trait WeightInfo {
 
 /// Default weight implementation
 impl WeightInfo for () {
-    fn register_node() -> Weight { Weight::from_parts(50_000_000, 0) }
-    fn deregister_node() -> Weight { Weight::from_parts(30_000_000, 0) }
-    fn update_node_location() -> Weight { Weight::from_parts(20_000_000, 0) }
-    fn node_heartbeat() -> Weight { Weight::from_parts(15_000_000, 0) }
-    fn submit_mesh_transaction() -> Weight { Weight::from_parts(80_000_000, 0) }
-    fn submit_relay_proof() -> Weight { Weight::from_parts(40_000_000, 0) }
-    fn issue_emergency_alert() -> Weight { Weight::from_parts(60_000_000, 0) }
-    fn resolve_emergency_alert() -> Weight { Weight::from_parts(30_000_000, 0) }
-    fn confirm_emergency_alert() -> Weight { Weight::from_parts(25_000_000, 0) }
-    fn relay_block_header() -> Weight { Weight::from_parts(70_000_000, 0) }
-    fn claim_relay_rewards() -> Weight { Weight::from_parts(50_000_000, 0) }
-    fn update_mesh_config() -> Weight { Weight::from_parts(20_000_000, 0) }
-    fn fund_relay_rewards() -> Weight { Weight::from_parts(30_000_000, 0) }
-    fn confirm_relay_proof() -> Weight { Weight::from_parts(40_000_000, 0) }
+    fn register_node() -> Weight { Weight::from_parts(50_000_000, 512) }
+    fn deregister_node() -> Weight { Weight::from_parts(30_000_000, 512) }
+    fn update_node_location() -> Weight { Weight::from_parts(20_000_000, 512) }
+    fn node_heartbeat() -> Weight { Weight::from_parts(15_000_000, 512) }
+    fn submit_mesh_transaction() -> Weight { Weight::from_parts(80_000_000, 512) }
+    fn submit_relay_proof() -> Weight { Weight::from_parts(40_000_000, 512) }
+    fn issue_emergency_alert() -> Weight { Weight::from_parts(60_000_000, 512) }
+    fn resolve_emergency_alert() -> Weight { Weight::from_parts(30_000_000, 512) }
+    fn confirm_emergency_alert() -> Weight { Weight::from_parts(25_000_000, 512) }
+    fn relay_block_header() -> Weight { Weight::from_parts(70_000_000, 512) }
+    fn claim_relay_rewards() -> Weight { Weight::from_parts(50_000_000, 512) }
+    fn update_mesh_config() -> Weight { Weight::from_parts(20_000_000, 512) }
+    fn fund_relay_rewards() -> Weight { Weight::from_parts(30_000_000, 512) }
+    fn confirm_relay_proof() -> Weight { Weight::from_parts(40_000_000, 512) }
 }
 
 /// Trait for Identity integration - KYC verification for mesh node registration
@@ -321,6 +326,20 @@ pub mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn next_alert_id)]
     pub type NextAlertId<T: Config> = StorageValue<_, u32, ValueQuery>;
+
+    /// O(1) counter: active (non-resolved) alerts per district (H-40)
+    #[pallet::storage]
+    pub type ActiveAlertCountPerDistrict<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        BelizeDistrict,
+        u32,
+        ValueQuery,
+    >;
+
+    /// O(1) flag: true when at least one unresolved Catastrophic alert exists (H-40)
+    #[pallet::storage]
+    pub type CatastrophicAlertCount<T: Config> = StorageValue<_, u32, ValueQuery>;
 
     /// Relayed block headers via mesh
     #[pallet::storage]
@@ -576,6 +595,12 @@ pub mod pallet {
         CannotConfirmOwnProof,
         /// Relay proof index out of range
         ProofIndexOutOfRange,
+        /// Alert already confirmed by this node (M58 dedup)
+        AlertAlreadyConfirmed,
+        /// Block header for this number already relayed (MH-6)
+        HeaderAlreadyExists,
+        /// Emergency message too long for bounded vec (#80)
+        MessageTooLong,
     }
 
     // ========================
@@ -844,6 +869,10 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
+            // M57 FIX: Basic mesh transaction signature validation
+            // Signature hash must be non-zero (zero hash indicates unsigned/invalid tx)
+            ensure!(signature_hash != H256::zero(), Error::<T>::InvalidMeshSignature);
+
             // Verify gateway node exists and caller owns it
             let gateway = MeshNodes::<T>::get(gateway_node_id).ok_or(Error::<T>::NodeNotFound)?;
             ensure!(gateway.owner == who, Error::<T>::NotNodeOwner);
@@ -1022,8 +1051,9 @@ pub mod pallet {
             let current_block = <frame_system::Pallet<T>>::block_number();
             let alert_id = NextAlertId::<T>::get();
 
+            // #80 FIX: Return error instead of silently truncating
             let bounded_message: BoundedVec<u8, ConstU32<128>> =
-                message.try_into().unwrap_or_default();
+                message.try_into().map_err(|_| Error::<T>::MessageTooLong)?;
 
             let expires_at = current_block + duration_blocks.into();
 
@@ -1041,10 +1071,17 @@ pub mod pallet {
                 resolved: false,
                 relay_count: 0,
                 confirmations: 0,
+                district: district.clone(),
             };
 
             EmergencyAlerts::<T>::insert(alert_id, alert);
             NextAlertId::<T>::put(alert_id + 1);
+
+            // O(1) counter maintenance (H-40)
+            ActiveAlertCountPerDistrict::<T>::mutate(&district, |c| *c = c.saturating_add(1));
+            if severity >= AlertSeverity::Catastrophic {
+                CatastrophicAlertCount::<T>::mutate(|c| *c = c.saturating_add(1));
+            }
 
             // Update network stats
             NetworkStats::<T>::mutate(|stats| {
@@ -1085,6 +1122,13 @@ pub mod pallet {
                 let alert = maybe_alert.as_mut().ok_or(Error::<T>::AlertNotFound)?;
                 ensure!(!alert.resolved, Error::<T>::AlertAlreadyResolved);
                 alert.resolved = true;
+
+                // O(1) counter maintenance (H-40)
+                ActiveAlertCountPerDistrict::<T>::mutate(&alert.district, |c| *c = c.saturating_sub(1));
+                if alert.severity >= AlertSeverity::Catastrophic {
+                    CatastrophicAlertCount::<T>::mutate(|c| *c = c.saturating_sub(1));
+                }
+
                 Ok(())
             })?;
 
@@ -1113,6 +1157,28 @@ pub mod pallet {
 
             EmergencyAlerts::<T>::try_mutate(alert_id, |maybe_alert| -> DispatchResult {
                 let alert = maybe_alert.as_mut().ok_or(Error::<T>::AlertNotFound)?;
+
+                // M58 FIX: Prevent same node from confirming an alert multiple times.
+                // Without this, a single node owner can inflate confirmations to
+                // misrepresent alert coverage/severity.
+                // Use a deterministic H256 key derived from (alert_id, node_id) to
+                // check dedup in ProcessedMeshTransactions (lightweight sentinel).
+                let mut dedup_input = [0u8; 8];
+                dedup_input[..4].copy_from_slice(&alert_id.to_le_bytes());
+                dedup_input[4..].copy_from_slice(&confirmer_node_id);
+                let dedup_key = sp_core::hashing::blake2_256(&dedup_input);
+                let dedup_hash = H256::from(dedup_key);
+
+                ensure!(
+                    !ProcessedMeshTransactions::<T>::contains_key(dedup_hash),
+                    Error::<T>::AlertAlreadyConfirmed
+                );
+                // Store a minimal sentinel to mark this (alert, node) pair as confirmed
+                ProcessedMeshTransactions::<T>::insert(
+                    dedup_hash,
+                    <frame_system::Pallet<T>>::block_number(),
+                );
+
                 alert.confirmations += 1;
                 Ok(())
             })?;
@@ -1167,6 +1233,11 @@ pub mod pallet {
                 timestamp,
             };
 
+            // MH-6 FIX: Prevent overwriting existing block headers
+            ensure!(
+                !MeshBlockHeaders::<T>::contains_key(block_number),
+                Error::<T>::HeaderAlreadyExists
+            );
             MeshBlockHeaders::<T>::insert(block_number, header);
 
             // Update network stats
@@ -1398,32 +1469,13 @@ impl<T: Config> MeshTransactionBridge<T::AccountId> for Pallet<T> {
 }
 
 impl<T: Config> EmergencyAlertProvider<T::AccountId, BlockNumberFor<T>> for Pallet<T> {
-    fn active_alerts_for_district(_district: &BelizeDistrict) -> u32 {
-        // Count active (non-resolved) alerts
-        // In production, this would filter by district/coordinates
-        let mut count = 0u32;
-        // Note: iteration over storage maps is expensive on-chain
-        // In production, maintain a separate counter per district
-        let next_id = NextAlertId::<T>::get();
-        for id in 0..next_id {
-            if let Some(alert) = EmergencyAlerts::<T>::get(id) {
-                if !alert.resolved {
-                    count += 1;
-                }
-            }
-        }
-        count
+    fn active_alerts_for_district(district: &BelizeDistrict) -> u32 {
+        // O(1) lookup via maintained counter (H-40)
+        ActiveAlertCountPerDistrict::<T>::get(district)
     }
 
     fn has_catastrophic_alert() -> bool {
-        let next_id = NextAlertId::<T>::get();
-        for id in 0..next_id {
-            if let Some(alert) = EmergencyAlerts::<T>::get(id) {
-                if !alert.resolved && alert.severity >= AlertSeverity::Catastrophic {
-                    return true;
-                }
-            }
-        }
-        false
+        // O(1) lookup via maintained counter (H-40)
+        CatastrophicAlertCount::<T>::get() > 0
     }
 }

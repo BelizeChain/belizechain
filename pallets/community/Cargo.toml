@@ -30,8 +30,8 @@ pallet-belize-identity = { path = "../identity", default-features = false }
 frame-benchmarking = { workspace = true, default-features = false, optional = true }
 
 [dev-dependencies]
-pallet-balances = { workspace = true }
-pallet-timestamp = { workspace = true }
+pallet-balances = { workspace = true, features = ["std"] }
+pallet-timestamp = { workspace = true, features = ["std"] }
 
 [features]
 default = ["std"]

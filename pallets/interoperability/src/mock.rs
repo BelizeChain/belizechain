@@ -135,6 +135,8 @@ impl pallet_belize_interoperability::Config for Test {
     type WeightInfo = ();
     type Identity = MockIdentity;
     type ChallengePeriod = ConstU64<100>;
+    type MaxBridgePerBlock = ConstU32<5>;
+    type PQVerifier = pallet_belize_interoperability::PassthroughPQVerifier;
 }
 
 // Test account constants

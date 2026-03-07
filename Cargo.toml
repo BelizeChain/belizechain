@@ -19,6 +19,10 @@ members = [
     "pallets/quantum",
     "pallets/bns",
     "pallets/mesh",
+    "pallets/randomness",
+    "pallets/justice",
+    "pallets/whistleblower",
+    "pallets/moderation",
 ]
 
 [workspace.package]
@@ -37,6 +41,7 @@ frame-support = { git = "https://github.com/paritytech/polkadot-sdk", branch = "
 frame-system = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
 frame-system-rpc-runtime-api = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
 frame-try-runtime = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
+frame-benchmarking-cli = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512" }
 frame-system-benchmarking = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
 
 # Substrate primitives
@@ -84,7 +89,10 @@ pallet-aura = { git = "https://github.com/paritytech/polkadot-sdk", branch = "st
 pallet-balances = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
 pallet-grandpa = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
 pallet-insecure-randomness-collective-flip = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
+pallet-session = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
 pallet-sudo = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
+pallet-collective = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
+pallet-staking = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
 pallet-timestamp = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
 pallet-transaction-payment = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
 pallet-transaction-payment-rpc = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512" }

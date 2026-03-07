@@ -173,6 +173,22 @@ pub mod pallet {
         /// Maximum participation history per account
         #[pallet::constant]
         type MaxParticipationHistory: Get<u32>;
+
+        /// Maximum total supply cap – minting is rejected once
+        /// `total_issuance + reward > MaxSupply`. (CM-1 / CM-2 FIX)
+        #[pallet::constant]
+        type MaxSupply: Get<BalanceOf<Self>>;
+
+        /// Minimum number of distinct oracle attestations required before a
+        /// high-value activity (ProposalApproved, CouncilMembership) is accepted
+        /// from a self-reporting user (Phase 3B).
+        #[pallet::constant]
+        type MinAttestationsRequired: Get<u32>;
+
+        /// Origin allowed to submit oracle attestations for high-value activities.
+        /// Should be a council membership check (e.g., TechnicalCouncilMember) so
+        /// each council member can vote individually (Phase 3B).
+        type OracleAttestationOrigin: EnsureOrigin<Self::RuntimeOrigin>;
     }
 
     #[pallet::pallet]
@@ -404,6 +420,32 @@ pub mod pallet {
         ValueQuery,
     >;
 
+    // ── Phase 3B: SRS attestation for high-value activities ────────────────────────
+
+    /// Pending oracle attestations for high-value activities.
+    /// Outer key: (subject account, activity_code u8).
+    /// Inner key: oracle account that submitted the attestation.
+    /// Cleared when MinAttestationsRequired is reached.
+    #[pallet::storage]
+    pub type PendingAttestations<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat, (T::AccountId, u8),  // (subject, activity_code)
+        Blake2_128Concat, T::AccountId,         // oracle
+        bool,
+        OptionQuery,
+    >;
+
+    /// Activities confirmed through oracle attestation consensus.
+    /// Set to `true` once MinAttestationsRequired oracles agree.
+    /// Consumed (cleared) when the corresponding record_participation call succeeds.
+    #[pallet::storage]
+    pub type AttestedActivities<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat, (T::AccountId, u8),  // (subject, activity_code)
+        bool,
+        ValueQuery,
+    >;
+
     // ================================
     // Events
     // ================================
@@ -578,6 +620,20 @@ pub mod pallet {
             amount: u64,
             total_referrals: u32,
         },
+
+        /// Oracle attestation submitted for a high-value activity (Phase 3B).
+        AttestationSubmitted {
+            subject: T::AccountId,
+            oracle: T::AccountId,
+            activity_code: u8,
+            votes: u32,
+        },
+
+        /// High-value activity reached attestation quorum; recording now permitted (Phase 3B).
+        ActivityAttested {
+            subject: T::AccountId,
+            activity_code: u8,
+        },
     }
 
     // ================================
@@ -661,6 +717,12 @@ pub mod pallet {
         ReferralAlreadyClaimed,
         /// Caller is not authorized for this operation
         NotAuthorized,
+        /// Minting would exceed maximum token supply (CM-1 / CM-2 FIX)
+        SupplyCapExceeded,
+        /// High-value activity requires oracle attestation before self-reporting (Phase 3B).
+        AttestationRequired,
+        /// No pending attestation found for this (account, activity) pair (Phase 3B).
+        NoAttestationPending,
     }
 
     // ================================
@@ -684,22 +746,30 @@ pub mod pallet {
             account: T::AccountId,
             activity_code: u8,
         ) -> DispatchResult {
-            // Allow both root (for system-triggered activities) and self-reporting
-            // NOTE: In production, cross-pallet trait calls should be used for automatic recording
-            // (e.g., governance pallet calls this when a vote is cast)
-            let caller = ensure_signed(origin.clone()).or_else(|_| -> Result<T::AccountId, DispatchError> {
-                ensure_root(origin)?;
-                Ok(account.clone())
-            })?;
-
-            // If signed (not root), caller must be the account itself
-            if caller != account {
-                return Err(Error::<T>::NotAuthorized.into());
+            // Determine whether the origin is privileged (root = cross-pallet governance call).
+            // Root-origin calls bypass the Phase 3B attestation gate for high-value activities.
+            let is_privileged = ensure_root(origin.clone()).is_ok();
+            if !is_privileged {
+                let caller = ensure_signed(origin)?;
+                ensure!(caller == account, Error::<T>::NotAuthorized);
             }
 
             // Convert u8 code to ActivityType enum
             let activity = ActivityType::from_u8(activity_code)
                 .ok_or(Error::<T>::InvalidActivityType)?;
+
+            // Phase 3B: self-reporting of high-value activities requires prior oracle
+            // attestation (MinAttestationsRequired distinct oracle operators must attest).
+            // Privileged (root) calls — e.g., governance pallet cross-pallet triggers — bypass
+            // this check so on-chain automation is never blocked.
+            if !is_privileged && (activity_code == 2 || activity_code == 3) {
+                ensure!(
+                    AttestedActivities::<T>::get(&(account.clone(), activity_code)),
+                    Error::<T>::AttestationRequired
+                );
+                // Consume the attestation — one recording per attestation event
+                AttestedActivities::<T>::remove(&(account.clone(), activity_code));
+            }
 
             let current_block = frame_system::Pallet::<T>::block_number();
 
@@ -825,7 +895,8 @@ pub mod pallet {
             // One endorsement per pair per month
             let key = (who.clone(), endorsee.clone());
             let last_endorsement = LastEndorsement::<T>::get(&key);
-            let blocks_per_month: u32 = 6 * 24 * 30 * 10; // ~10s blocks = ~1 month
+            // #79 FIX: Consistent block time - 6s blocks, 1 month = 432,000 blocks
+            let blocks_per_month: u32 = 30 * 24 * 60 * 10; // 432,000 blocks (~30 days at 6s)
             
             // If last_endorsement is 0 (never endorsed), allow it
             if last_endorsement != BlockNumberFor::<T>::from(0u32) {
@@ -1268,9 +1339,14 @@ pub mod pallet {
         pub fn complete_education_module(
             origin: OriginFor<T>,
             module_id: u32,
-            _completion_proof: BoundedVec<u8, ConstU32<256>>, // Future: verify proof
+            completion_proof: BoundedVec<u8, ConstU32<256>>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
+
+            // M59 FIX: Validate completion proof is non-empty
+            // An empty proof means no verification was performed, which allows
+            // gaming the education system for free SRS points and DALLA rewards
+            ensure!(!completion_proof.is_empty(), Error::<T>::ModuleNotFound);
 
             // Get module
             let mut module = EducationModules::<T>::get(module_id)
@@ -1309,11 +1385,19 @@ pub mod pallet {
             // Update SRS - education completion increases score
             Self::update_srs_after_education(&who);
 
-            // Mint education reward to the learner
+            // Mint education reward to the learner (capped at configured max)
             // SAFETY(saturated_into): u128 reward → BalanceOf<T>. Module reward amounts are protocol-defined constants that fit within Balance.
             let reward_balance: BalanceOf<T> = module.reward_amount.saturated_into();
-            if !reward_balance.is_zero() {
-                let _ = T::Currency::deposit_creating(&who, reward_balance);
+            let max_reward = T::EducationRewardAmount::get();
+            let capped_reward = reward_balance.min(max_reward);
+            if !capped_reward.is_zero() {
+                // CM-1 FIX: Enforce supply cap before minting
+                let current_issuance = T::Currency::total_issuance();
+                ensure!(
+                    current_issuance.checked_add(&capped_reward).is_some_and(|total| total <= T::MaxSupply::get()),
+                    Error::<T>::SupplyCapExceeded
+                );
+                let _ = T::Currency::deposit_creating(&who, capped_reward);
             }
 
             Self::deposit_event(Event::EducationModuleCompleted {
@@ -1347,6 +1431,11 @@ pub mod pallet {
 
             // Check if project is active
             ensure!(project.active, Error::<T>::ProjectInactive);
+
+            // M60 FIX: Require economic commitment — reserve funds to prevent
+            // phantom contributions that inflate SRS without real participation
+            let reserve_amount: BalanceOf<T> = amount.saturated_into();
+            T::Currency::reserve(&who, reserve_amount)?;
 
             // Update contribution tracking
             let current_contribution = GreenContributions::<T>::get(&who, project_id);
@@ -1428,11 +1517,19 @@ pub mod pallet {
             referral_data.total_rewards_earned = referral_data.total_rewards_earned.saturating_add(reward);
             ReferralData::<T>::insert(&referrer, referral_data.clone());
 
-            // Mint referral reward to the referrer
+            // Mint referral reward to the referrer (capped at configured max)
             // SAFETY(saturated_into): u128 reward → BalanceOf<T>. Referral rewards are small protocol-defined values that fit within Balance.
             let reward_balance: BalanceOf<T> = reward.saturated_into();
-            if !reward_balance.is_zero() {
-                let _ = T::Currency::deposit_creating(&referrer, reward_balance);
+            let max_reward = T::ReferralRewardAmount::get();
+            let capped_reward = reward_balance.min(max_reward);
+            if !capped_reward.is_zero() {
+                // CM-2 FIX: Enforce supply cap before minting
+                let current_issuance = T::Currency::total_issuance();
+                ensure!(
+                    current_issuance.checked_add(&capped_reward).is_some_and(|total| total <= T::MaxSupply::get()),
+                    Error::<T>::SupplyCapExceeded
+                );
+                let _ = T::Currency::deposit_creating(&referrer, capped_reward);
             }
 
             Self::deposit_event(Event::ReferralClaimed {
@@ -1445,6 +1542,66 @@ pub mod pallet {
                 amount: reward,
                 total_referrals: referral_data.total_referrals,
             });
+
+            Ok(())
+        }
+
+        /// Oracle attestation for a high-value community activity (Phase 3B).
+        ///
+        /// Called by each authorized oracle operator individually to vouch that
+        /// a specific account legitimately performed a high-value activity.
+        /// Once `MinAttestationsRequired` distinct oracles agree, the activity
+        /// is marked as approved in `AttestedActivities` and the subject may
+        /// then call `record_participation` for it.
+        ///
+        /// # Arguments
+        /// * `subject`        - Account that performed the activity.
+        /// * `activity_code`  - u8 code: 2 = ProposalApproved, 3 = CouncilMembership.
+        #[pallet::call_index(13)]
+        #[pallet::weight(T::WeightInfo::attest_participation())]
+        pub fn attest_participation(
+            origin: OriginFor<T>,
+            subject: T::AccountId,
+            activity_code: u8,
+        ) -> DispatchResult {
+            T::OracleAttestationOrigin::ensure_origin(origin.clone())?;
+            let oracle = ensure_signed(origin)?;
+
+            // Only high-value activity codes are attestable
+            ensure!(
+                activity_code == 2 || activity_code == 3,
+                Error::<T>::InvalidActivityType
+            );
+
+            // Idempotent: if this oracle already attested, skip (don't double-count)
+            let key = (subject.clone(), activity_code);
+            if PendingAttestations::<T>::get(&key, &oracle).is_some() {
+                return Ok(());
+            }
+
+            PendingAttestations::<T>::insert(&key, &oracle, true);
+
+            // Count total attestations for this (subject, activity_code)
+            let vote_count = PendingAttestations::<T>::iter_prefix(&key).count() as u32;
+
+            Self::deposit_event(Event::AttestationSubmitted {
+                subject: subject.clone(),
+                oracle,
+                activity_code,
+                votes: vote_count,
+            });
+
+            // Finalize when quorum is reached
+            if vote_count >= T::MinAttestationsRequired::get() {
+                AttestedActivities::<T>::insert(&key, true);
+                // Clear pending to free storage (attestation is now consumed on record_participation)
+                let _ = PendingAttestations::<T>::clear_prefix(&key, u32::MAX, None);
+
+                Self::deposit_event(Event::ActivityAttested {
+                    subject,
+                    activity_code,
+                });
+            }
 
             Ok(())
         }
@@ -1545,7 +1702,8 @@ pub mod pallet {
                 let current_u64: u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0);
                 let record_u64: u64 = TryInto::<u64>::try_into(record.block_number).unwrap_or(0);
                 let blocks_ago_u32: u32 = current_u64.saturating_sub(record_u64) as u32;
-                let blocks_per_6_months: u32 = 6 * 24 * 30 * 10 * 6; // ~10s blocks = ~1 month
+                // #79 FIX: Consistent block time - 6s blocks, 6 months = 2,592,000 blocks
+                let blocks_per_6_months: u32 = 30 * 24 * 60 * 10 * 6; // 2,592,000 blocks
                 let months_6: u32 = blocks_ago_u32 / blocks_per_6_months;
                 
                 if months_6 >= 1u32 {
@@ -1972,12 +2130,15 @@ impl<T: pallet::Config> CommunityRank<T::AccountId> for pallet::Pallet<T> {
     fn get_community_rank(account: &T::AccountId) -> u32 {
         let srs = Self::get_srs(account);
         match srs {
+            // M61 FIX: Diminishing returns — cap multiplier at 4x (was 10x Bronze→Diamond)
+            // This prevents Diamond-tier accounts from dominating governance votes
+            // through SRS weight alone.
             Some(data) => match data.tier {
                 SRSTier::Bronze => 100,
-                SRSTier::Silver => 200,
-                SRSTier::Gold => 400,
-                SRSTier::Platinum => 700,
-                SRSTier::Diamond => 1000,
+                SRSTier::Silver => 175,   // was 200 (1.75x instead of 2x)
+                SRSTier::Gold => 250,     // was 400 (2.5x instead of 4x) 
+                SRSTier::Platinum => 325,  // was 700 (3.25x instead of 7x)
+                SRSTier::Diamond => 400,   // was 1000 (4x instead of 10x)
             },
             None => 0, // No SRS record
         }

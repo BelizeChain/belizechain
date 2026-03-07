@@ -84,6 +84,10 @@ parameter_types! {
     pub const EconomyPalletId: PalletId = PalletId(*b"bz/trsry");
     // Max supply: 501B DALLA with 6 decimals = 501_000_000_000_000_000
     pub const MaxSupply: u64 = 501_000_000_000_000_000u64;
+    pub const PublicGoodsTreasuryAccount: u64 = 101;
+    pub const PublicGoodsPercent: u8 = 10;
+    pub const WellbeingTreasuryAccount: u64 = 102;
+    pub const WellbeingPercent: u8 = 5;
 }
 
 pub struct EnsureRootOrHalfCouncil;
@@ -129,6 +133,11 @@ impl pallet_economy::Config for Test {
     type MaxSupply = MaxSupply;
     type GovernanceOrigin = EnsureRootOrHalfCouncil;
     type Oracle = MockOracleProvider;
+    type MaxMintPerBlock = ConstU32<5>;
+    type PublicGoodsTreasury = PublicGoodsTreasuryAccount;
+    type PublicGoodsRoutingPercent = PublicGoodsPercent;
+    type WellbeingTreasury = WellbeingTreasuryAccount;
+    type WellbeingFundPercent = WellbeingPercent;
 }
 
 // Build genesis storage according to the mock runtime.
@@ -152,8 +161,9 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
     let mut ext = sp_io::TestExternalities::new(t);
     ext.execute_with(|| {
         System::set_block_number(1);
-        // Set initial total supply
-        crate::TotalSupply::<Test>::put(1_000_000_000_000_000u64);
+        // Sync TotalSupply to actual pallet_balances total issuance so it stays
+        // consistent with the H-20 fix that syncs on every burn/mint operation.
+        crate::TotalSupply::<Test>::put(pallet_balances::Pallet::<Test>::total_issuance());
     });
     ext
 }

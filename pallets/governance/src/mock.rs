@@ -1,7 +1,7 @@
 use crate::{self as pallet_belize_governance, *};
 use frame_support::{
     construct_runtime, parameter_types,
-    traits::{ConstU32, Everything, Randomness},
+    traits::{ConstU32, ConstU8, Everything, Randomness},
     PalletId,
 };
 use frame_system::EnsureRoot;
@@ -25,6 +25,28 @@ impl ComplianceCheck<u64> for MockCompliance {
     fn can_participate_in_governance(account: &u64) -> bool {
         // Account 999 is restricted for testing
         *account != 999
+    }
+}
+
+// Mock behavior flag provider - no flags by default, account 998 is flagged
+pub struct MockBehaviorFlags;
+impl BehaviorFlagProvider<u64, u64> for MockBehaviorFlags {
+    fn has_active_flag(account: &u64) -> bool {
+        *account == 998
+    }
+    fn cooldown_end(account: &u64) -> Option<u64> {
+        if *account == 998 { Some(1_000_000) } else { None }
+    }
+}
+
+// Mock dual-house provider - accounts 1 and 2 are technical, 2 and 3 are governance
+pub struct MockDualHouse;
+impl DualHouseProvider<u64> for MockDualHouse {
+    fn is_technical_house_member(account: &u64) -> bool {
+        *account == 1 || *account == 2
+    }
+    fn is_governance_house_member(account: &u64) -> bool {
+        *account == 2 || *account == 3
     }
 }
 
@@ -123,6 +145,14 @@ parameter_types! {
     pub const MinimumDeposit: u128 = 1_000_000_000; // 1000 DALLA
     pub const VotingPeriod: u64 = 100_800; // 7 days in blocks
     pub const LaunchPeriod: u64 = 28_800; // 2 days in blocks
+    pub const ProposalCooldown: u64 = 0;
+    pub const EnactmentPeriodConstitutional: u64 = 200;
+    pub const EnactmentPeriodEconomic: u64 = 100;
+    pub const EnactmentPeriodStandard: u64 = 50;
+    pub const MaxVotingUnits: u32 = 1_000;
+    pub const StakeUnitSize: u128 = 1_000_000_000; // 1000 DALLA per unit
+    pub const LargeHolderStakeThreshold: u128 = 100_000_000_000; // 100K DALLA
+    pub const ExitProofValidity: u64 = 432_000; // ~30 days
 }
 
 impl pallet_belize_governance::Config for Test {
@@ -137,6 +167,21 @@ impl pallet_belize_governance::Config for Test {
     type LaunchPeriod = LaunchPeriod;
     type WeightInfo = ();
     type MaxCandidatesPerElection = ConstU32<50>;
+    type MaxConsecutiveTerms = ConstU8<3>;
+    type MaxPermanentTermExtensions = ConstU8<2>;
+    type ProposalCooldown = ProposalCooldown;
+    type EnactmentPeriodConstitutional = EnactmentPeriodConstitutional;
+    type EnactmentPeriodEconomic = EnactmentPeriodEconomic;
+    type EnactmentPeriodStandard = EnactmentPeriodStandard;
+    type QuadraticVotingEnabled = frame_support::traits::ConstBool<false>;
+    type MaxVotingUnits = MaxVotingUnits;
+    type StakeUnitSize = StakeUnitSize;
+    type LargeHolderStakeThreshold = LargeHolderStakeThreshold;
+    type LargeHolderMinParticipationRate = ConstU8<50>;
+    type ExitProofValidity = ExitProofValidity;
+    type BehaviorFlags = MockBehaviorFlags;
+    type DualHouseProvider = MockDualHouse;
+    type ConstitutionalAdminOrigin = EnsureRoot<u64>;
 }
 
 // Build genesis storage according to the mock runtime

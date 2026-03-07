@@ -30,6 +30,7 @@ sp-runtime-interface = { workspace = true }
 [dev-dependencies]
 sp-io = { workspace = true }
 sp-core = { workspace = true }
+pallet-balances = { workspace = true, features = ["std"] }
 
 [features]
 default = ["std"]

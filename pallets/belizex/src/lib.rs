@@ -33,6 +33,11 @@ use sp_std::vec::Vec;
 
 pub use pallet::*;
 
+pub mod weights;
+
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
 // LIQUIDITY_LOCK_ID removed: custody model now uses transfer-to-pool instead of locks
 
 /// Minimal trait to check KYC status of an account.
@@ -69,7 +74,8 @@ pub mod pallet {
         /// The currency used for DEX operations
         type Currency: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId> + LockableCurrency<Self::AccountId>;
 
-        /// Source of randomness for LP token generation
+        /// X-10 NOTE: Randomness source reserved for future LP token generation.
+        /// Currently unused — required by Config trait for forward compatibility.
         type Randomness: Randomness<Self::Hash, BlockNumberFor<Self>>;
 
         /// Tourism origin for fee reductions
@@ -116,16 +122,8 @@ pub mod pallet {
         type DexPalletId: Get<PalletId>;
     }
 
-        /// Liquidity provider position
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-    pub struct LiquidityPosition {
-        pub base_amount: u128,
-        pub quote_amount: u128,
-        pub lp_tokens: u128,
-        pub total_value_locked: u128,
-        pub rewards_earned: u128,
-        pub is_tourism_provider: bool,
-    }
+    // X-9 FIX: Removed dead LiquidityPosition struct (unused scaffolding).
+    // Active LP tracking uses LiquidityProvider and LPBalances storage.
 
     /// Trading order information
     #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
@@ -330,6 +328,20 @@ pub mod pallet {
     #[pallet::getter(fn dev_seed_done)]
     pub type DevSeedDone<T: Config> = StorageValue<_, bool, ValueQuery>;
 
+    /// X-1 FIX: Per-user LP token balances per trading pair.
+    /// Maps (AccountId, (base_asset, quote_asset)) → LP token amount.
+    #[pallet::storage]
+    #[pallet::getter(fn lp_balances)]
+    pub type LPBalances<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        Blake2_128Concat,
+        (u8, u8), // pair key
+        u128,
+        ValueQuery,
+    >;
+
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
         /// Initial trading pairs - simplified to avoid serde issues
@@ -398,9 +410,20 @@ pub mod pallet {
 
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        // AR-10: One-time dev seed moved from on_initialize to on_idle.
+        // The seed is non-critical at block-start; it can safely run whenever
+        // remaining weight allows rather than consuming mandatory block budget.
         fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
+            Weight::zero()
+        }
+
+        fn on_idle(_n: BlockNumberFor<T>, remaining_weight: Weight) -> Weight {
             // One-time dev seed for WUSDC/BBZD liquidity
             if !Self::dev_seed_enabled() || Self::dev_seed_done() {
+                return Weight::zero();
+            }
+            // Require at least 50M ref_time to safely execute.
+            if remaining_weight.ref_time() < 50_000_000 {
                 return Weight::zero();
             }
 
@@ -510,6 +533,11 @@ pub mod pallet {
             executor: T::AccountId,
             amount: u128,
         },
+        /// Order cancelled by creator
+        OrderCancelled {
+            order_id: u32,
+            creator: T::AccountId,
+        },
         /// Tourism trader verified
         TourismTraderVerified {
             trader: T::AccountId,
@@ -556,6 +584,8 @@ pub mod pallet {
         Paused,
         /// Oracle rate unavailable or stale
         OracleRateUnavailable,
+        /// Insufficient LP tokens for withdrawal
+        InsufficientLPTokens,
     }
 
     #[pallet::call]
@@ -630,8 +660,22 @@ pub mod pallet {
             let base_amount_u128: u128 = base_amount.saturated_into();
             let quote_amount_u128: u128 = quote_amount.saturated_into();
 
-            // Calculate LP tokens to mint (constant-product AMM: sqrt(x * y))
-            let lp_tokens = base_amount_u128.saturating_mul(quote_amount_u128).integer_sqrt();
+            // Calculate LP tokens to mint
+            // M47 FIX: Use proportional formula for existing pools, sqrt only for initial
+            let lp_tokens = if pair.total_lp_tokens == 0 {
+                // Initial deposit: sqrt(base * quote) — standard constant-product AMM
+                base_amount_u128.saturating_mul(quote_amount_u128).integer_sqrt()
+            } else {
+                // Subsequent deposits: min(base/base_reserve, quote/quote_reserve) * total_lp
+                // This preserves pool ratio and prevents LP value dilution
+                let lp_from_base = base_amount_u128
+                    .saturating_mul(pair.total_lp_tokens)
+                    / pair.base_reserve.max(1);
+                let lp_from_quote = quote_amount_u128
+                    .saturating_mul(pair.total_lp_tokens)
+                    / pair.quote_reserve.max(1);
+                lp_from_base.min(lp_from_quote)
+            };
             
             let min_lp_tokens_u128: u128 = min_lp_tokens;
             ensure!(lp_tokens >= min_lp_tokens_u128, Error::<T>::SlippageExceeded);
@@ -651,6 +695,11 @@ pub mod pallet {
             pair.total_lp_tokens = pair.total_lp_tokens.saturating_add(lp_tokens);
 
             TradingPairs::<T>::insert(pair_key, &pair);
+
+            // X-1 FIX: Track LP tokens per user per pair
+            LPBalances::<T>::mutate(&who, pair_key, |balance| {
+                *balance = balance.saturating_add(lp_tokens);
+            });
 
             // Update liquidity provider info
             LiquidityProviders::<T>::mutate(&who, |maybe_provider| {
@@ -930,6 +979,15 @@ pub mod pallet {
             let mut amount: u128 = amount_in.saturated_into();
             let mut total_treasury_fee: u128 = 0;
 
+            // X-2 FIX: Transfer input tokens from trader to DEX pool before executing hops
+            let pool = Self::pool_account();
+            T::Currency::transfer(
+                &who,
+                &pool,
+                amount_in.saturated_into(),
+                ExistenceRequirement::KeepAlive,
+            )?;
+
             for w in path.windows(2) {
                 let a = w[0];
                 let b = w[1];
@@ -980,15 +1038,25 @@ pub mod pallet {
 
             ensure!(amount >= min_amount_out, Error::<T>::SlippageExceeded);
 
-            // Transfer aggregated treasury fee once
+            // X-2 FIX: Transfer final output tokens from DEX pool to trader
+            let amount_out_balance: <T::Currency as Currency<T::AccountId>>::Balance =
+                amount.saturated_into();
+            T::Currency::transfer(
+                &pool,
+                &who,
+                amount_out_balance,
+                ExistenceRequirement::AllowDeath,
+            )?;
+
+            // Transfer aggregated treasury fee from pool to treasury
             if total_treasury_fee > 0 {
                 let treasury = T::Treasury::get();
                 T::Currency::transfer(
-                    &who,
+                    &pool,
                     &treasury,
                     // SAFETY(saturated_into): u128 → Balance; total fee ≤ amount_in which originated as Balance.
                     total_treasury_fee.saturated_into(),
-                    frame_support::traits::ExistenceRequirement::KeepAlive,
+                    frame_support::traits::ExistenceRequirement::AllowDeath,
                 )?;
             }
 
@@ -1044,6 +1112,127 @@ pub mod pallet {
                 Ok(())
             })?;
             Self::deposit_event(Event::PairStatusUpdated { base_asset, quote_asset, active });
+            Ok(())
+        }
+
+        /// Remove liquidity from a trading pair (X-1 FIX)
+        ///
+        /// Burns `lp_tokens` from the caller's LP balance and returns proportional
+        /// base and quote reserves from the pool.
+        #[pallet::call_index(9)]
+        #[pallet::weight(T::WeightInfo::add_liquidity())] // similar weight profile
+        pub fn remove_liquidity(
+            origin: OriginFor<T>,
+            base_asset: u8,
+            quote_asset: u8,
+            lp_tokens: u128,
+            min_base_amount: u128,
+            min_quote_amount: u128,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // Require KYC
+            ensure!(T::Kyc::is_kyc_ok(&who), Error::<T>::KycRequired);
+
+            // Check global pause
+            ensure!(!GlobalPaused::<T>::get(), Error::<T>::Paused);
+
+            ensure!(lp_tokens > 0, Error::<T>::BelowMinimumAmount);
+
+            let pair_key: (u8, u8) = (base_asset, quote_asset);
+            let mut pair = Self::trading_pairs(pair_key)
+                .ok_or(Error::<T>::PairNotFound)?;
+
+            ensure!(pair.active, Error::<T>::PairNotActive);
+
+            // Check LP balance
+            let user_lp = LPBalances::<T>::get(&who, pair_key);
+            ensure!(user_lp >= lp_tokens, Error::<T>::InsufficientLPTokens);
+            ensure!(pair.total_lp_tokens > 0, Error::<T>::InsufficientLiquidity);
+
+            // Calculate proportional share of reserves
+            let base_amount = lp_tokens
+                .saturating_mul(pair.base_reserve)
+                / pair.total_lp_tokens;
+            let quote_amount = lp_tokens
+                .saturating_mul(pair.quote_reserve)
+                / pair.total_lp_tokens;
+
+            // Slippage protection
+            ensure!(base_amount >= min_base_amount, Error::<T>::SlippageExceeded);
+            ensure!(quote_amount >= min_quote_amount, Error::<T>::SlippageExceeded);
+
+            // Transfer funds from pool back to provider
+            let pool = Self::pool_account();
+            let total_return: <T::Currency as Currency<T::AccountId>>::Balance =
+                base_amount.saturating_add(quote_amount).saturated_into();
+            T::Currency::transfer(
+                &pool,
+                &who,
+                total_return,
+                ExistenceRequirement::AllowDeath,
+            )?;
+
+            // Update pair reserves and total LP tokens
+            pair.base_reserve = pair.base_reserve.saturating_sub(base_amount);
+            pair.quote_reserve = pair.quote_reserve.saturating_sub(quote_amount);
+            pair.total_lp_tokens = pair.total_lp_tokens.saturating_sub(lp_tokens);
+            TradingPairs::<T>::insert(pair_key, &pair);
+
+            // Burn LP tokens from user
+            LPBalances::<T>::mutate(&who, pair_key, |balance| {
+                *balance = balance.saturating_sub(lp_tokens);
+            });
+
+            // Update liquidity provider info
+            LiquidityProviders::<T>::mutate(&who, |maybe_provider| {
+                if let Some(provider) = maybe_provider.as_mut() {
+                    provider.total_value_locked = provider
+                        .total_value_locked
+                        .saturating_sub(base_amount.saturating_add(quote_amount));
+                }
+            });
+
+            Self::deposit_event(Event::LiquidityRemoved {
+                provider: who,
+                pair: (base_asset, quote_asset),
+                base_amount,
+                quote_amount,
+                lp_tokens,
+            });
+
+            Ok(())
+        }
+
+        /// Cancel an open limit order (H-24 fix: creator-only cancellation)
+        ///
+        /// Only the original creator may cancel. Removes the order from the
+        /// orderbook and emits `OrderCancelled`.
+        #[pallet::call_index(10)]
+        #[pallet::weight(T::WeightInfo::cancel_order())]
+        pub fn cancel_order(
+            origin: OriginFor<T>,
+            order_id: u32,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // Check global pause
+            ensure!(!GlobalPaused::<T>::get(), Error::<T>::Paused);
+
+            let order = OrderBook::<T>::get(order_id)
+                .ok_or(Error::<T>::OrderNotFound)?;
+
+            // Only the creator may cancel their own order
+            ensure!(order.creator == who, Error::<T>::Unauthorized);
+
+            // Remove from orderbook
+            OrderBook::<T>::remove(order_id);
+
+            Self::deposit_event(Event::OrderCancelled {
+                order_id,
+                creator: who,
+            });
+
             Ok(())
         }
     }
@@ -1111,6 +1300,12 @@ pub mod pallet {
             Self::tourism_traders(account)
         }
 
+        /// X-8 FIX: Get total LP balance across all pairs for an account
+        pub fn get_lp_balance(account: &T::AccountId) -> u128 {
+            LPBalances::<T>::iter_prefix(account)
+                .fold(0u128, |acc, (_, bal)| acc.saturating_add(bal))
+        }
+
         /// Get effective trading fee with volume tier discount
         pub fn get_effective_fee_rate(account: &T::AccountId, is_tourism: bool) -> u32 {
             let base_fee = T::TradingFeeRate::get(); // e.g., 30 bps (0.3%)
@@ -1160,48 +1355,60 @@ pub trait WeightInfo {
     fn execute_trade() -> Weight;
     fn register_tourism_trader() -> Weight;
     fn place_order() -> Weight;
+    fn cancel_order() -> Weight;
     fn pause() -> Weight;
     fn resume() -> Weight;
     fn set_pair_status() -> Weight;
+    fn remove_liquidity() -> Weight;
 }
 
 impl WeightInfo for () {
     fn create_pair() -> Weight {
-        Weight::from_parts(15_000_000, 0)
+        Weight::from_parts(15_000_000, 2048)
             .saturating_add(RocksDbWeight::get().reads(1))
             .saturating_add(RocksDbWeight::get().writes(1))
     }
     fn add_liquidity() -> Weight {
-        Weight::from_parts(30_000_000, 0)
+        Weight::from_parts(30_000_000, 3584)
             .saturating_add(RocksDbWeight::get().reads(3))
             .saturating_add(RocksDbWeight::get().writes(2))
     }
     fn execute_trade() -> Weight {
-        Weight::from_parts(25_000_000, 0)
+        Weight::from_parts(25_000_000, 2048)
             .saturating_add(RocksDbWeight::get().reads(4))
             .saturating_add(RocksDbWeight::get().writes(2))
     }
     fn register_tourism_trader() -> Weight {
-        Weight::from_parts(10_000_000, 0)
+        Weight::from_parts(10_000_000, 1536)
             .saturating_add(RocksDbWeight::get().writes(1))
     }
     fn place_order() -> Weight {
-        Weight::from_parts(20_000_000, 0)
+        Weight::from_parts(20_000_000, 2560)
             .saturating_add(RocksDbWeight::get().reads(3))
             .saturating_add(RocksDbWeight::get().writes(2))
     }
+    fn cancel_order() -> Weight {
+        Weight::from_parts(20_000_000, 1024)
+            .saturating_add(RocksDbWeight::get().reads(2))
+            .saturating_add(RocksDbWeight::get().writes(1))
+    }
     fn pause() -> Weight {
-        Weight::from_parts(5_000_000, 0)
+        Weight::from_parts(5_000_000, 512)
             .saturating_add(RocksDbWeight::get().writes(1))
     }
     fn resume() -> Weight {
-        Weight::from_parts(5_000_000, 0)
+        Weight::from_parts(5_000_000, 512)
             .saturating_add(RocksDbWeight::get().writes(1))
     }
     fn set_pair_status() -> Weight {
-        Weight::from_parts(10_000_000, 0)
+        Weight::from_parts(10_000_000, 2560)
             .saturating_add(RocksDbWeight::get().reads(1))
             .saturating_add(RocksDbWeight::get().writes(1))
+    }
+    fn remove_liquidity() -> Weight {
+        Weight::from_parts(45_000_000, 2048)
+            .saturating_add(RocksDbWeight::get().reads(4))
+            .saturating_add(RocksDbWeight::get().writes(4))
     }
 }
 

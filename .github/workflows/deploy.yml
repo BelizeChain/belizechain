@@ -55,6 +55,49 @@ jobs:
       - name: Run tests
         run: cargo test --release --workspace
 
+  # ── 1c. Coverage gate (must reach 100%) ──────────────────────────────
+  coverage:
+    name: 📊 Coverage Gate (100%)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.90.0"
+          targets: wasm32-unknown-unknown
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler libclang-dev
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-cov-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-cov-
+
+      - name: Install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin --locked
+
+      - name: Run coverage (enforce 100%)
+        # .tarpaulin.toml is picked up automatically.
+        # Excludes service.rs and rpc.rs (infrastructure layer).
+        # Fails the job if coverage drops below 100%.
+        run: cargo tarpaulin
+
+      - name: Upload coverage report (Lcov → Codecov)
+        uses: codecov/codecov-action@v4
+        with:
+          files: target/coverage/lcov.info
+          fail_ci_if_error: false   # coverage upload is best-effort; gate is tarpaulin
+
   # ── 1b. Run pallet benchmarks (smoke test) ───────────
   benchmark:
     name: ⚖️ Benchmark Smoke Test

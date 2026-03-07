@@ -437,3 +437,290 @@ pub(crate) fn staging_config() -> Result<ChainSpec, String> {
     )?)
     .build())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sp_core::sr25519;
+
+    // ── authority_keys_from_seed ───────────────────────────────────────────
+
+    #[test]
+    fn test_authority_keys_from_seed_deterministic() {
+        let keys1 = authority_keys_from_seed("Alice");
+        let keys2 = authority_keys_from_seed("Alice");
+        assert_eq!(keys1.0, keys2.0, "AuraId must be deterministic for the same seed");
+        assert_eq!(keys1.1, keys2.1, "GrandpaId must be deterministic for the same seed");
+    }
+
+    #[test]
+    fn test_authority_keys_from_seed_distinct_for_different_seeds() {
+        let alice = authority_keys_from_seed("Alice");
+        let bob = authority_keys_from_seed("Bob");
+        assert_ne!(alice.0, bob.0, "Different seeds must yield different AuraIds");
+        assert_ne!(alice.1, bob.1, "Different seeds must yield different GrandpaIds");
+    }
+
+    // ── get_account_id_from_seed ───────────────────────────────────────────
+
+    #[test]
+    fn test_get_account_id_from_seed_deterministic() {
+        let id1 = get_account_id_from_seed::<sr25519::Public>("Alice");
+        let id2 = get_account_id_from_seed::<sr25519::Public>("Alice");
+        assert_eq!(id1, id2, "Same seed must produce the same AccountId every time");
+    }
+
+    #[test]
+    fn test_get_account_id_from_seed_distinct_accounts() {
+        let alice = get_account_id_from_seed::<sr25519::Public>("Alice");
+        let bob = get_account_id_from_seed::<sr25519::Public>("Bob");
+        let charlie = get_account_id_from_seed::<sr25519::Public>("Charlie");
+        assert_ne!(alice, bob);
+        assert_ne!(alice, charlie);
+        assert_ne!(bob, charlie);
+    }
+
+    #[test]
+    fn test_stash_accounts_differ_from_base_accounts() {
+        let alice = get_account_id_from_seed::<sr25519::Public>("Alice");
+        let alice_stash = get_account_id_from_seed::<sr25519::Public>("Alice//stash");
+        assert_ne!(alice, alice_stash, "stash account must differ from the base account");
+    }
+
+    // ── mainnet_genesis safety guard ───────────────────────────────────────
+
+    #[test]
+    fn test_mainnet_genesis_blocked_when_keys_not_configured() {
+        let result = mainnet_genesis();
+        assert!(
+            result.is_err(),
+            "mainnet_genesis must return Err when MAINNET_KEYS_CONFIGURED = false"
+        );
+        let msg = result.unwrap_err();
+        assert!(
+            msg.contains("SECURITY"),
+            "Error must contain 'SECURITY' keyword; got: {msg}"
+        );
+    }
+
+    // ── testnet_genesis structure ──────────────────────────────────────────
+
+    #[test]
+    fn test_testnet_genesis_succeeds_with_single_authority() {
+        let alice_keys = authority_keys_from_seed("Alice");
+        let alice_acct = get_account_id_from_seed::<sr25519::Public>("Alice");
+        let result = testnet_genesis(
+            vec![alice_keys],
+            alice_acct.clone(),
+            vec![alice_acct],
+            false,
+        );
+        assert!(result.is_ok(), "testnet_genesis must succeed with valid inputs");
+    }
+
+    #[test]
+    fn test_testnet_genesis_balances_match_endowed_accounts() {
+        let alice_acct = get_account_id_from_seed::<sr25519::Public>("Alice");
+        let bob_acct = get_account_id_from_seed::<sr25519::Public>("Bob");
+        let genesis = testnet_genesis(
+            vec![authority_keys_from_seed("Alice")],
+            alice_acct.clone(),
+            vec![alice_acct, bob_acct],
+            false,
+        )
+        .unwrap();
+        let balances = genesis["balances"]["balances"].as_array().unwrap();
+        assert_eq!(
+            balances.len(),
+            2,
+            "genesis must fund exactly as many accounts as given in endowed_accounts"
+        );
+    }
+
+    #[test]
+    fn test_testnet_genesis_aura_authority_count() {
+        let alice_acct = get_account_id_from_seed::<sr25519::Public>("Alice");
+        let genesis = testnet_genesis(
+            vec![
+                authority_keys_from_seed("Alice"),
+                authority_keys_from_seed("Bob"),
+            ],
+            alice_acct.clone(),
+            vec![alice_acct],
+            false,
+        )
+        .unwrap();
+        let authorities = genesis["aura"]["authorities"].as_array().unwrap();
+        assert_eq!(authorities.len(), 2, "aura must list exactly 2 authorities");
+    }
+
+    #[test]
+    fn test_testnet_genesis_grandpa_authority_count() {
+        let alice_acct = get_account_id_from_seed::<sr25519::Public>("Alice");
+        let genesis = testnet_genesis(
+            vec![authority_keys_from_seed("Alice")],
+            alice_acct.clone(),
+            vec![alice_acct],
+            false,
+        )
+        .unwrap();
+        let authorities = genesis["grandpa"]["authorities"].as_array().unwrap();
+        assert_eq!(authorities.len(), 1, "grandpa must have 1 authority entry");
+    }
+
+    #[test]
+    fn test_testnet_genesis_grandpa_weight_is_one() {
+        let alice_acct = get_account_id_from_seed::<sr25519::Public>("Alice");
+        let genesis = testnet_genesis(
+            vec![authority_keys_from_seed("Alice")],
+            alice_acct.clone(),
+            vec![alice_acct],
+            false,
+        )
+        .unwrap();
+        // Each grandpa entry is [key, weight]. Weight must be 1 for uniform voting power.
+        let entry = &genesis["grandpa"]["authorities"].as_array().unwrap()[0];
+        let weight = entry.as_array().unwrap()[1].as_u64().unwrap();
+        assert_eq!(weight, 1, "grandpa authority weight must be 1");
+    }
+
+    #[test]
+    fn test_testnet_genesis_sudo_key_is_set() {
+        let alice_acct = get_account_id_from_seed::<sr25519::Public>("Alice");
+        let genesis = testnet_genesis(
+            vec![authority_keys_from_seed("Alice")],
+            alice_acct.clone(),
+            vec![alice_acct],
+            false,
+        )
+        .unwrap();
+        assert!(
+            !genesis["sudo"]["key"].is_null(),
+            "sudo key must be present and non-null in testnet genesis"
+        );
+    }
+
+    #[test]
+    fn test_testnet_genesis_identity_config_present() {
+        let alice_acct = get_account_id_from_seed::<sr25519::Public>("Alice");
+        let genesis = testnet_genesis(
+            vec![authority_keys_from_seed("Alice")],
+            alice_acct.clone(),
+            vec![alice_acct],
+            false,
+        )
+        .unwrap();
+        assert!(!genesis["identity"].is_null(), "identity pallet genesis config must be present");
+        assert!(
+            !genesis["identity"]["operationFee"].is_null(),
+            "identity operationFee must be configured"
+        );
+        assert!(
+            !genesis["identity"]["paused"].is_null(),
+            "identity paused flag must be configured"
+        );
+    }
+
+    #[test]
+    fn test_testnet_genesis_governance_council_nonempty() {
+        let alice_acct = get_account_id_from_seed::<sr25519::Public>("Alice");
+        let genesis = testnet_genesis(
+            vec![authority_keys_from_seed("Alice")],
+            alice_acct.clone(),
+            vec![alice_acct],
+            false,
+        )
+        .unwrap();
+        let council = genesis["governance"]["councilMembers"].as_array().unwrap();
+        assert!(
+            !council.is_empty(),
+            "governance council must have at least one member in testnet genesis"
+        );
+    }
+
+    #[test]
+    fn test_testnet_genesis_community_education_modules() {
+        let alice_acct = get_account_id_from_seed::<sr25519::Public>("Alice");
+        let genesis = testnet_genesis(
+            vec![authority_keys_from_seed("Alice")],
+            alice_acct.clone(),
+            vec![alice_acct],
+            false,
+        )
+        .unwrap();
+        let modules = genesis["community"]["educationModules"].as_array().unwrap();
+        assert_eq!(modules.len(), 4, "testnet genesis must include exactly 4 education modules");
+    }
+
+    #[test]
+    fn test_testnet_genesis_community_green_projects() {
+        let alice_acct = get_account_id_from_seed::<sr25519::Public>("Alice");
+        let genesis = testnet_genesis(
+            vec![authority_keys_from_seed("Alice")],
+            alice_acct.clone(),
+            vec![alice_acct],
+            false,
+        )
+        .unwrap();
+        let projects = genesis["community"]["greenProjects"].as_array().unwrap();
+        assert_eq!(projects.len(), 5, "testnet genesis must include exactly 5 green projects");
+    }
+
+    #[test]
+    fn test_testnet_genesis_empty_endowed_accounts_produces_empty_balances() {
+        let alice_acct = get_account_id_from_seed::<sr25519::Public>("Alice");
+        let genesis = testnet_genesis(
+            vec![authority_keys_from_seed("Alice")],
+            alice_acct,
+            vec![], // no endowed accounts
+            false,
+        )
+        .unwrap();
+        let balances = genesis["balances"]["balances"].as_array().unwrap();
+        assert!(
+            balances.is_empty(),
+            "empty endowed_accounts must produce empty genesis balances"
+        );
+    }
+
+    // ── ChainSpec builder functions ────────────────────────────────────────
+    //
+    // These functions require WASM_BINARY to be compiled in (built by the
+    // runtime's build.rs via substrate-wasm-builder). They will always succeed
+    // in a standard `cargo test` run where the full workspace is compiled.
+
+    #[test]
+    fn test_development_config_succeeds() {
+        development_config()
+            .expect("development_config must succeed: WASM_BINARY must be present in test build");
+    }
+
+    #[test]
+    fn test_local_testnet_config_succeeds() {
+        local_testnet_config()
+            .expect("local_testnet_config must succeed: WASM_BINARY must be present in test build");
+    }
+
+    #[test]
+    fn test_belizechain_mainnet_config_fails_until_keys_configured() {
+        // Even when WASM is available, mainnet_genesis() gate blocks the build
+        // when MAINNET_KEYS_CONFIGURED = false, so this always returns Err.
+        let result = belizechain_mainnet_config();
+        assert!(
+            result.is_err(),
+            "mainnet config must fail until real validator keys are configured"
+        );
+    }
+
+    #[test]
+    fn test_public_testnet_config_succeeds() {
+        public_testnet_config()
+            .expect("public_testnet_config must succeed in test build");
+    }
+
+    #[test]
+    fn test_staging_config_succeeds() {
+        staging_config()
+            .expect("staging_config must succeed in test build");
+    }
+}

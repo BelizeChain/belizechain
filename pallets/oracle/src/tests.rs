@@ -527,15 +527,15 @@ fn verify_identity_works() {
         let id_hash = [1u8; 32];
         let provider: BoundedVec<u8, ConstU32<64>> = b"Onfido".to_vec().try_into().unwrap();
 
-        assert_ok!(Oracle::verify_identity(
-            RuntimeOrigin::signed(ALICE),
+        // Two oracle votes needed to reach quorum and finalize
+        verify_identity_with_quorum(
             account,
             kyc_level.to_u8(),
             id_hash,
             provider,
             true,  // biometric_verified
             true,  // address_verified
-        ));
+        );
 
         // Check identity is stored
         let identity_info = Oracle::identity_verifications(account).unwrap();
@@ -553,16 +553,15 @@ fn get_kyc_level_works() {
         let id_hash = [2u8; 32];
         let provider: BoundedVec<u8, ConstU32<64>> = b"Jumio".to_vec().try_into().unwrap();
 
-        // Verify identity
-        assert_ok!(Oracle::verify_identity(
-            RuntimeOrigin::signed(ALICE),
+        // Two oracle votes needed to finalize
+        verify_identity_with_quorum(
             account,
             kyc_level.to_u8(),
             id_hash,
             provider,
             false,
             true,
-        ));
+        );
 
         // Check helper function
         assert_eq!(Oracle::get_kyc_level(&account), Some(KycLevel::Basic));
@@ -577,16 +576,15 @@ fn kyc_transaction_limits_work() {
         let id_hash = [3u8; 32];
         let provider: BoundedVec<u8, ConstU32<64>> = b"Gov-Belize".to_vec().try_into().unwrap();
 
-        // Verify identity
-        assert_ok!(Oracle::verify_identity(
-            RuntimeOrigin::signed(ALICE),
+        // Two oracle votes needed to finalize
+        verify_identity_with_quorum(
             account,
             kyc_level.to_u8(),
             id_hash,
             provider,
             true,
             true,
-        ));
+        );
 
         // Check transaction limits
         let tx_limit = Oracle::get_transaction_limit(&account);
@@ -605,16 +603,15 @@ fn meets_kyc_requirement_works() {
         let id_hash = [4u8; 32];
         let provider: BoundedVec<u8, ConstU32<64>> = b"Onfido".to_vec().try_into().unwrap();
 
-        // Verify identity at Enhanced level
-        assert_ok!(Oracle::verify_identity(
-            RuntimeOrigin::signed(ALICE),
+        // Two oracle votes needed to finalize
+        verify_identity_with_quorum(
             account,
             kyc_level.to_u8(),
             id_hash,
             provider,
             true,
             true,
-        ));
+        );
 
         // Should meet Basic and Enhanced requirements
         assert!(Oracle::meets_kyc_requirement(&account, KycLevel::None));
@@ -805,5 +802,165 @@ fn land_valuation_zero_allowed() {
         let land_info = Oracle::land_registry_data(property_id).unwrap();
         assert_eq!(land_info.valuation, 0);
         assert_eq!(land_info.owner, owner);
+    });
+}
+
+// ================================
+// IoT Device Tests
+// ================================
+
+#[test]
+fn register_iot_device_works() {
+    new_test_ext().execute_with(|| {
+        let device_id = [1u8; 32];
+        assert_ok!(Oracle::register_iot_device(
+            RuntimeOrigin::signed(ALICE),
+            device_id,
+            2, // IoTSensor
+            Some((174500, -176000)), // Belmopan coords (scaled)
+        ));
+        let device = Oracle::get_iot_device(device_id).unwrap();
+        assert_eq!(device.owner, ALICE);
+        assert!(!device.verified);
+        assert_eq!(device.data_submissions, 0);
+    });
+}
+
+#[test]
+fn register_iot_device_duplicate_fails() {
+    new_test_ext().execute_with(|| {
+        let device_id = [2u8; 32];
+        assert_ok!(Oracle::register_iot_device(RuntimeOrigin::signed(ALICE), device_id, 0, None));
+        assert_noop!(
+            Oracle::register_iot_device(RuntimeOrigin::signed(BOB), device_id, 0, None),
+            Error::<Test>::DeviceAlreadyRegistered
+        );
+    });
+}
+
+#[test]
+fn submit_iot_data_works() {
+    new_test_ext().execute_with(|| {
+        let device_id = [3u8; 32];
+        // Register the device
+        assert_ok!(Oracle::register_iot_device(RuntimeOrigin::signed(ALICE), device_id, 2, None));
+
+        let data: BoundedVec<u8, ConstU32<256>> = vec![1u8; 32].try_into().unwrap();
+        let data_hash = [0xABu8; 32];
+
+        assert_ok!(Oracle::submit_iot_data(
+            RuntimeOrigin::signed(ALICE),
+            device_id,
+            0,    // feed_type_index: IotTemperature or similar
+            None, // no domain
+            data,
+            data_hash,
+            None, // no location override
+            90,   // accuracy
+            85,   // timeliness
+            95,   // completeness
+            88,   // consistency
+            80,   // provenance
+        ));
+
+        let device = Oracle::get_iot_device(device_id).unwrap();
+        assert_eq!(device.data_submissions, 1);
+
+        // Stats should exist for ALICE after submission
+        let stats = Oracle::get_operator_stats(&ALICE);
+        assert!(stats.is_some());
+    });
+}
+
+#[test]
+fn submit_iot_data_wrong_owner_fails() {
+    new_test_ext().execute_with(|| {
+        let device_id = [4u8; 32];
+        assert_ok!(Oracle::register_iot_device(RuntimeOrigin::signed(ALICE), device_id, 2, None));
+
+        let data: BoundedVec<u8, ConstU32<256>> = vec![1u8; 8].try_into().unwrap();
+        assert_noop!(
+            Oracle::submit_iot_data(
+                RuntimeOrigin::signed(BOB), // BOB is not ALICE's device owner
+                device_id,
+                0, None, data, [0u8; 32], None,
+                90, 85, 95, 88, 80,
+            ),
+            Error::<Test>::NotDeviceOwner
+        );
+    });
+}
+
+#[test]
+fn verify_iot_device_works() {
+    new_test_ext().execute_with(|| {
+        let device_id = [5u8; 32];
+        assert_ok!(Oracle::register_iot_device(RuntimeOrigin::signed(CHARLIE), device_id, 3, None));
+        assert!(!Oracle::is_device_verified(device_id));
+
+        // ALICE is an oracle operator (from genesis) and can verify
+        assert_ok!(Oracle::verify_iot_device(RuntimeOrigin::signed(ALICE), device_id));
+        assert!(Oracle::is_device_verified(device_id));
+    });
+}
+
+#[test]
+fn verify_iot_device_non_operator_fails() {
+    new_test_ext().execute_with(|| {
+        let device_id = [6u8; 32];
+        assert_ok!(Oracle::register_iot_device(RuntimeOrigin::signed(CHARLIE), device_id, 3, None));
+        // CHARLIE is not an operator
+        assert_noop!(
+            Oracle::verify_iot_device(RuntimeOrigin::signed(CHARLIE), device_id),
+            Error::<Test>::NotAuthorizedOperator
+        );
+    });
+}
+
+#[test]
+fn claim_oracle_rewards_no_stats_fails() {
+    new_test_ext().execute_with(|| {
+        // CHARLIE has never submitted oracle data
+        assert_noop!(
+            Oracle::claim_oracle_rewards(RuntimeOrigin::signed(CHARLIE)),
+            Error::<Test>::NoStatsFound
+        );
+    });
+}
+
+#[test]
+fn claim_oracle_rewards_works() {
+    new_test_ext().execute_with(|| {
+        // Directly populate stats for ALICE with enough submissions to earn rewards.
+        //
+        // Reward formula: base * volume_factor * quality_factor * domain_multiplier * uptime_factor / 10000
+        // With total=2000, agritech=2000, quality=1000, uptime=10000:
+        //   volume=2, quality=10, domain=300000/(2000*100)=1, uptime=10
+        //   reward = 100_000_000_000_000 * 2 * 10 * 1 * 10 / 10000 = 2_000_000_000_000
+        crate::OracleOperatorStatsMap::<Test>::insert(ALICE, crate::types::OracleOperatorStats {
+            total_submissions:    2_000,
+            avg_quality_score:    1_000,
+            agritech_submissions: 2_000,
+            marine_submissions:   0,
+            education_submissions:0,
+            tech_submissions:     0,
+            general_submissions:  0,
+            uptime_percentage:    10_000,
+            last_active:          1u64,
+            total_rewards:        0,
+        });
+
+        // Fund treasury (account 999) so the transfer succeeds.
+        assert_ok!(Balances::force_set_balance(
+            RuntimeOrigin::root(),
+            999u64,
+            3_000_000_000_000u64,
+        ));
+
+        let alice_before = Balances::free_balance(ALICE);
+        assert_ok!(Oracle::claim_oracle_rewards(RuntimeOrigin::signed(ALICE)));
+
+        // Balance should have increased by the reward amount
+        assert!(Balances::free_balance(ALICE) > alice_before);
     });
 }

@@ -40,6 +40,11 @@ use pallet_belize_common::{
 
 pub use pallet::*;
 
+pub mod weights;
+
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
 const LAND_REGISTRY_ID: PalletId = PalletId(*b"bz/landr");
 
 #[frame_support::pallet]
@@ -395,6 +400,10 @@ pub mod pallet {
         SurveyorRegistered {
             surveyor: T::AccountId,
         },
+        /// LL-4 FIX: Surveyor removed
+        SurveyorRemoved {
+            surveyor: T::AccountId,
+        },
     }
 
     #[pallet::error]
@@ -431,6 +440,8 @@ pub mod pallet {
         AccountSanctioned,
         /// Maximum properties per account reached
         MaxPropertiesReached,
+        /// LL-4 FIX: Surveyor not found in registry
+        SurveyorNotFound,
     }
 
     #[pallet::call]
@@ -625,7 +636,7 @@ pub mod pallet {
                 // SAFETY(saturated_into): u64 → u64 is identity; the `now` value is
                 // already u64 from the block number conversion above.
                 transferred_at: now.saturated_into(),
-                government_approved: true, // Could require separate approval step
+                government_approved: false, // Requires separate government approval via approve_transfer
                 tax_paid: transfer_tax,
                 transfer_type: transfer_type.clone(),
             };
@@ -759,6 +770,28 @@ pub mod pallet {
 
             Ok(())
         }
+
+        /// LL-4 FIX: Remove a government surveyor from the registry
+        #[pallet::call_index(5)]
+        #[pallet::weight(T::WeightInfo::register_surveyor())]
+        pub fn remove_surveyor(
+            origin: OriginFor<T>,
+            surveyor: T::AccountId,
+        ) -> DispatchResult {
+            T::GovernmentOrigin::ensure_origin(origin)?;
+
+            ensure!(
+                GovernmentSurveyors::<T>::contains_key(&surveyor),
+                Error::<T>::SurveyorNotFound
+            );
+            GovernmentSurveyors::<T>::remove(&surveyor);
+
+            Self::deposit_event(Event::SurveyorRemoved {
+                surveyor,
+            });
+
+            Ok(())
+        }
     }
 
     impl<T: Config> Pallet<T> {
@@ -845,10 +878,18 @@ pub mod pallet {
         }
         
         fn verify_anchor_chain(hash: [u8; 32]) -> bool {
+            // M65 FIX: Depth-limit anchor chain traversal to prevent O(n²) DoS
+            const MAX_CHAIN_DEPTH: u32 = 100;
             let mut current_hash = hash;
             let mut version = u32::MAX; // Start with max, should decrease as we go back
+            let mut depth = 0u32;
             
             loop {
+                depth = depth.saturating_add(1);
+                if depth > MAX_CHAIN_DEPTH {
+                    return false; // Chain too deep, reject
+                }
+
                 let anchor = match LandAnchors::<T>::get(current_hash) {
                     Some(a) => a,
                     None => return false, // Broken chain
@@ -880,10 +921,18 @@ pub mod pallet {
         }
         
         fn get_anchor_history(hash: [u8; 32]) -> Vec<TemporalAnchor<BlockNumberFor<T>>> {
+            // M65 FIX: Depth-limit history traversal to prevent unbounded loops
+            const MAX_HISTORY_DEPTH: u32 = 100;
             let mut history = Vec::new();
             let mut current_hash = hash;
+            let mut depth = 0u32;
             
             while let Some(anchor) = LandAnchors::<T>::get(current_hash) {
+                depth = depth.saturating_add(1);
+                if depth > MAX_HISTORY_DEPTH {
+                    break; // Truncate history at max depth
+                }
+
                 let previous_hash = anchor.previous_hash;
                 history.push(anchor);
                 
@@ -916,23 +965,23 @@ pub trait WeightInfo {
 
 impl WeightInfo for () {
     fn register_property() -> Weight {
-        Weight::from_parts(35_000_000, 0)
+        Weight::from_parts(35_000_000, 512)
             .saturating_add(Weight::from_parts(0, 5000))
     }
     fn transfer_property() -> Weight {
-        Weight::from_parts(40_000_000, 0)
+        Weight::from_parts(40_000_000, 512)
             .saturating_add(Weight::from_parts(0, 6000))
     }
     fn verify_property() -> Weight {
-        Weight::from_parts(15_000_000, 0)
+        Weight::from_parts(15_000_000, 512)
             .saturating_add(Weight::from_parts(0, 2000))
     }
     fn survey_property() -> Weight {
-        Weight::from_parts(25_000_000, 0)
+        Weight::from_parts(25_000_000, 512)
             .saturating_add(Weight::from_parts(0, 3500))
     }
     fn register_surveyor() -> Weight {
-        Weight::from_parts(10_000_000, 0)
+        Weight::from_parts(10_000_000, 512)
             .saturating_add(Weight::from_parts(0, 1500))
     }
 }

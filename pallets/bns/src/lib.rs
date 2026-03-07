@@ -23,6 +23,9 @@ mod tests;
 pub mod types;
 pub mod weights;
 
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
 pub use pallet::*;
 pub use types::*;
 pub use weights::*;
@@ -297,6 +300,11 @@ pub mod pallet {
             domain: BoundedVec<u8, ConstU32<128>>,
             owner: T::AccountId,
         },
+        /// External domain verification requested (pending governance approval) [domain, owner]
+        ExternalDomainVerificationRequested {
+            domain: BoundedVec<u8, ConstU32<128>>,
+            owner: T::AccountId,
+        },
         /// Subdomain created [subdomain, parent_domain, owner, delegated]
         SubdomainCreated {
             subdomain: BoundedVec<u8, T::MaxDomainLength>,
@@ -536,6 +544,9 @@ pub mod pallet {
             if let Some(locked_until) = domain_record.locked_until {
                 ensure!(current_block >= locked_until, Error::<T>::DomainLocked);
             }
+
+            // M64 FIX: Remove any existing marketplace listing to prevent stale listings
+            DomainListings::<T>::remove(&domain);
 
             // Update domain record
             domain_record.owner = new_owner.clone();
@@ -1030,7 +1041,7 @@ pub mod pallet {
                 .map_err(|_| Error::<T>::DomainTooLong)?;
 
             // Get external domain info
-            let mut external_info = ExternalDomains::<T>::get(&external_bounded)
+            let external_info = ExternalDomains::<T>::get(&external_bounded)
                 .ok_or(Error::<T>::DomainNotFound)?;
 
             // Verify ownership
@@ -1042,18 +1053,16 @@ pub mod pallet {
 
             // NOTE: In production, this would call an oracle or off-chain worker
             // to verify the DNS TXT record: belize-verify=<verification_token>
-            // For now, we'll require governance approval or manual verification
+            // Verification is NOT auto-approved — requires separate governance approval
 
-            // Mark as verified
-            external_info.verified = true;
-            verification.verified = true;
+            // Record the verification attempt but do NOT mark as verified
+            // A governance/root call should be used to actually approve verification
             verification.attempts = verification.attempts.saturating_add(1);
             verification.last_attempt = frame_system::Pallet::<T>::block_number();
 
-            ExternalDomains::<T>::insert(&external_bounded, external_info);
             DomainVerification::<T>::insert(&external_bounded, verification);
 
-            Self::deposit_event(Event::ExternalDomainVerified {
+            Self::deposit_event(Event::ExternalDomainVerificationRequested {
                 domain: external_bounded,
                 owner: who,
             });
@@ -1358,6 +1367,7 @@ pub mod pallet {
         }
 
         /// Generate verification token for external domain
+        /// BNS-3 FIX: Added parent_hash and extrinsics_root for unpredictability
         fn generate_verification_token(
             account: &T::AccountId,
             domain: &BoundedVec<u8, ConstU32<128>>,
@@ -1368,6 +1378,10 @@ pub mod pallet {
             data.extend_from_slice(&account.encode());
             data.extend_from_slice(&domain.encode());
             data.extend_from_slice(&frame_system::Pallet::<T>::block_number().encode());
+            // Add parent block hash for unpredictability (cannot be predicted before block is sealed)
+            data.extend_from_slice(&frame_system::Pallet::<T>::parent_hash().encode());
+            // Add extrinsic count for additional entropy from current block execution state
+            data.extend_from_slice(&frame_system::Pallet::<T>::extrinsic_count().encode());
             
             let hash = <T as frame_system::Config>::Hashing::hash(&data);
             let mut token = [0u8; 32];

@@ -21,6 +21,9 @@
 //! - User redeems 100 bBZD → Chain burns bBZD → Central Bank transfers BZ$100 off-chain
 //! - DALLA is NOT used as collateral (separate token for gas/fees/governance)
 
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
 #[cfg(test)]
 mod mock;
 
@@ -38,8 +41,8 @@ use frame_support::{
 };
 use frame_system::pallet_prelude::*;
 use sp_runtime::{
-    traits::Saturating,
-    Permill, RuntimeDebug,
+    traits::{Saturating, Zero},
+    SaturatedConversion, Permill, RuntimeDebug,
 };
 use codec::{Encode, Decode, MaxEncodedLen};
 use scale_info::TypeInfo;
@@ -47,7 +50,7 @@ use frame_support::weights::{Weight, constants::RocksDbWeight};
 
 // ===== CONSTANTS =====
 
-const TREASURY_ID: PalletId = PalletId(*b"bz/trsry");
+const TREASURY_ID: PalletId = PalletId(*b"py/trsry");
 
 /// Blocks per year (assuming 6 second block time)
 /// 60 seconds/min * 60 min/hour * 24 hours/day * 365.25 days/year / 6 seconds/block
@@ -66,10 +69,7 @@ pub trait WeightInfo {
     fn set_minter_authorization() -> Weight;
     fn update_reserves() -> Weight;
     fn pay_tourism_incentive() -> Weight; 
-    fn send_remittance() -> Weight;
     fn update_inflation() -> Weight;
-    fn update_peg_rate() -> Weight;
-    fn emergency_shutdown() -> Weight;
     fn burn_dalla() -> Weight;
     fn governance_burn() -> Weight;
 }
@@ -79,73 +79,55 @@ pub struct SubstrateWeight<T>(sp_std::marker::PhantomData<T>);
 
 impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
     fn issue_bbzd() -> Weight {
-        Weight::from_parts(25_000_000, 0)
+        Weight::from_parts(25_000_000, 2560)
             .saturating_add(RocksDbWeight::get().reads(3))  // CentralBankReserves, TotalBbzdSupply, AuthorizedMinters
             .saturating_add(RocksDbWeight::get().writes(2))  // BBZDBalances, TotalBbzdSupply
     }
     
     fn redeem_bbzd() -> Weight {
-        Weight::from_parts(30_000_000, 0)
+        Weight::from_parts(30_000_000, 1024)
             .saturating_add(RocksDbWeight::get().reads(2))  // BBZDBalances, TotalBbzdSupply
             .saturating_add(RocksDbWeight::get().writes(4))  // BBZDBalances, TotalBbzdSupply, RedemptionRequests, NextRedemptionId
     }
     
     fn process_redemption() -> Weight {
-        Weight::from_parts(20_000_000, 0)
+        Weight::from_parts(20_000_000, 1024)
             .saturating_add(RocksDbWeight::get().reads(2))  // AuthorizedMinters, RedemptionRequests
             .saturating_add(RocksDbWeight::get().writes(1))  // RedemptionRequests
     }
     
     fn set_minter_authorization() -> Weight {
-        Weight::from_parts(15_000_000, 0)
+        Weight::from_parts(15_000_000, 1024)
             .saturating_add(RocksDbWeight::get().reads(0))
             .saturating_add(RocksDbWeight::get().writes(1))  // AuthorizedMinters
     }
     
     fn update_reserves() -> Weight {
-        Weight::from_parts(18_000_000, 0)
+        Weight::from_parts(18_000_000, 2560)
             .saturating_add(RocksDbWeight::get().reads(2))  // CentralBankReserves, TotalBbzdSupply
             .saturating_add(RocksDbWeight::get().writes(1))  // CentralBankReserves
     }
     
     fn pay_tourism_incentive() -> Weight {
-        Weight::from_parts(50_000_000, 0)
+        Weight::from_parts(50_000_000, 2048)
             .saturating_add(RocksDbWeight::get().reads(3))
             .saturating_add(RocksDbWeight::get().writes(2))
     }
     
-    fn send_remittance() -> Weight {
-        Weight::from_parts(40_000_000, 0)
-            .saturating_add(RocksDbWeight::get().reads(2))
-            .saturating_add(RocksDbWeight::get().writes(1))
-    }
-    
     fn update_inflation() -> Weight {
-        Weight::from_parts(15_000_000, 0)
+        Weight::from_parts(15_000_000, 1536)
             .saturating_add(RocksDbWeight::get().reads(1))
             .saturating_add(RocksDbWeight::get().writes(1))
-    }
-    
-    fn update_peg_rate() -> Weight {
-        Weight::from_parts(20_000_000, 0)
-            .saturating_add(RocksDbWeight::get().reads(1))
-            .saturating_add(RocksDbWeight::get().writes(1))
-    }
-    
-    fn emergency_shutdown() -> Weight {
-        Weight::from_parts(100_000_000, 0)
-            .saturating_add(RocksDbWeight::get().reads(5))
-            .saturating_add(RocksDbWeight::get().writes(3))
     }
     
     fn burn_dalla() -> Weight {
-        Weight::from_parts(30_000_000, 0)
+        Weight::from_parts(30_000_000, 2048)
             .saturating_add(RocksDbWeight::get().reads(2))
             .saturating_add(RocksDbWeight::get().writes(2))
     }
     
     fn governance_burn() -> Weight {
-        Weight::from_parts(35_000_000, 0)
+        Weight::from_parts(35_000_000, 1024)
             .saturating_add(RocksDbWeight::get().reads(2))
             .saturating_add(RocksDbWeight::get().writes(2))
     }
@@ -153,49 +135,9 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 
 // ===== TYPE DEFINITIONS =====
 
-/// Multi-signature treasury operation
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-pub struct MultiSigOperation<AccountId, Balance, BlockNumber> {
-    /// Operation ID
-    pub operation_id: u32,
-    /// Operation type
-    pub operation_type: TreasuryOperationType,
-    /// Amount involved
-    pub amount: Balance,
-    /// Destination account (if applicable)
-    pub destination: Option<AccountId>,
-    /// Required signatures
-    pub required_signatures: u32,
-    /// Current signatures
-    pub signatures: BoundedVec<AccountId, ConstU32<20>>,
-    /// Block when operation was created
-    pub created_at: BlockNumber,
-    /// Block when operation expires
-    pub expires_at: BlockNumber,
-    /// Operation status
-    pub status: OperationStatus,
-    /// Operation metadata
-    pub metadata: BoundedVec<u8, ConstU32<512>>,
-}
-
-/// Types of treasury operations requiring multi-signature
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-pub enum TreasuryOperationType {
-    /// Government treasury withdrawal
-    GovernmentWithdrawal,
-    /// Ministry budget allocation
-    MinistryAllocation,
-    /// Emergency fund access
-    EmergencyFunding,
-    /// Economic stimulus distribution
-    StimulusDistribution,
-    /// Monetary policy change
-    MonetaryPolicyChange,
-    /// Cross-border payment authorization
-    CrossBorderPayment,
-    /// Treasury reserve management
-    ReserveManagement,
-}
+// E-7 FIX: Removed dead code types (MultiSigOperation, TreasuryOperationType,
+// AccountType, OperationStatus). These were unused scaffolding for future multi-sig
+// treasury operations. Will be re-introduced when multi-sig is implemented.
 
 /// Tourism spending categories for different incentive rates
 #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
@@ -214,40 +156,9 @@ pub enum TourismCategory {
     Cultural,
 }
 
-/// Account types for transaction limits
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, Default)]
-pub enum AccountType {
-    /// Regular citizen account
-    #[default]
-    Citizen,
-    /// Business account
-    Business,
-    /// Government account (unlimited but requires multi-sig)
-    Government,
-    /// Tourism account (higher limits for visitors)
-    Tourism,
-    /// Ministry account (2-of-3 signatures)
-    Ministry,
-    /// Emergency account (3-of-5 signatures with time delays)
-    Emergency,
-}
-
-/// Operation execution status
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-pub enum OperationStatus {
-    /// Pending signatures
-    Pending,
-    /// Ready for execution
-    ReadyToExecute,
-    /// Successfully executed
-    Executed,
-    /// Operation expired
-    Expired,
-    /// Operation cancelled
-    Cancelled,
-    /// Operation failed during execution
-    Failed,
-}
+// E-7 FIX: AccountType and OperationStatus removed (dead code).
+// AccountType was scaffolding for transaction limit tiers.
+// OperationStatus tracked multi-sig operation lifecycle.
 
 /// Economic metrics for monitoring
 #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
@@ -307,6 +218,7 @@ pub use pallet::*;
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
+    use frame_support::traits::Imbalance;
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
@@ -334,6 +246,40 @@ pub mod pallet {
         
         /// Oracle for merchant verification only (NOT used for bBZD peg)
         type Oracle: OracleProvider<Self::AccountId>;
+
+        // ── AR-15: Rate limiting ──────────────────────────────────────────────
+        /// Maximum times a single account may call `mint_bbzd` per block.
+        /// Prevents DoS flooding of the Central Bank mint extrinsic.
+        #[pallet::constant]
+        type MaxMintPerBlock: Get<u32>;
+
+        // ── Phase 2C: Progressive public-goods routing ────────────────────────
+
+        /// Account that accumulates the public-goods share of annual inflation.
+        /// Distinct from the main treasury so funds can be governed separately.
+        type PublicGoodsTreasury: Get<Self::AccountId>;
+
+        /// Percentage of annual inflation (0–100) redirected to `PublicGoodsTreasury`.
+        /// The remainder goes to the main `Treasury`.  Set to 0 to disable.
+        #[pallet::constant]
+        type PublicGoodsRoutingPercent: Get<u8>;
+
+        // ── Phase 5B: Wellbeing treasury routing ──────────────────────────────
+
+        /// Account that accumulates the wellbeing sub-share carved out of the
+        /// public-goods allocation each year.  Funded via governance
+        /// `WellbeingFunding` proposals and used for mental-health / digital-
+        /// wellness programmes.
+        type WellbeingTreasury: Get<Self::AccountId>;
+
+        /// Percentage (0–100) of the *public-goods* portion of annual inflation
+        /// that is further redirected to `WellbeingTreasury`.
+        /// Example: PublicGoodsRoutingPercent=20, WellbeingFundPercent=10
+        ///   → 10 % of the PG allocation (= 2 % of total inflation) goes to
+        ///     wellbeing, the rest stays in the PG treasury.
+        /// Set to 0 to disable.
+        #[pallet::constant]
+        type WellbeingFundPercent: Get<u8>;
     }
     
     /// Oracle provider trait for merchant verification only
@@ -407,10 +353,51 @@ pub mod pallet {
     /// Last block number when inflation was applied
     pub type LastInflationBlock<T: Config> = StorageValue<_, BlockNumberFor<T>, ValueQuery>;
 
+    // AR-15: Per-account per-block call counter for mint_bbzd rate limiting.
+    // Key: (AccountId, last_block_number). Cleared lazily each new block.
+    #[pallet::storage]
+    /// Rate limit: number of mint_bbzd calls by account in the current block.
+    pub type MintCallsThisBlock<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        u32,
+        ValueQuery,
+    >;
+
+    // Tracks the block number when MintCallsThisBlock was last reset.
+    #[pallet::storage]
+    pub type LastMintRateLimitBlock<T: Config> = StorageValue<_, BlockNumberFor<T>, ValueQuery>;
+
+    // ── Phase 2C: Public-goods treasury accounting ────────────────────────────
+
+    #[pallet::storage]
+    #[pallet::getter(fn cumulative_public_goods_inflation)]
+    /// Cumulative DALLA minted to the public-goods treasury via progressive
+    /// inflation routing since chain genesis.  Purely informational; does not
+    /// gate any behaviour.
+    pub type CumulativePublicGoodsInflation<T: Config> = StorageValue<
+        _,
+        <T::Currency as Currency<T::AccountId>>::Balance,
+        ValueQuery,
+    >;
+
+    // ── Phase 5B: Wellbeing treasury accounting ───────────────────────────────
+
+    #[pallet::storage]
+    #[pallet::getter(fn cumulative_wellbeing_inflation)]
+    /// Cumulative DALLA minted to the wellbeing treasury since chain genesis.
+    /// This amount is carved from the public-goods annual inflation share.
+    pub type CumulativeWellbeingInflation<T: Config> = StorageValue<
+        _,
+        <T::Currency as Currency<T::AccountId>>::Balance,
+        ValueQuery,
+    >;
+
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         fn on_initialize(n: BlockNumberFor<T>) -> Weight {
-            let mut weight = Weight::from_parts(5_000_000, 0);
+            let mut weight = Weight::from_parts(5_000_000, 512);
             
             // Check if a year has passed since last inflation
             let last_inflation = LastInflationBlock::<T>::get();
@@ -422,7 +409,7 @@ pub mod pallet {
             
             // Apply annual inflation if BLOCKS_PER_YEAR have passed
             if blocks_passed >= BLOCKS_PER_YEAR as u64 {
-                let current_supply = TotalSupply::<T>::get();
+                let current_supply = T::Currency::total_issuance();
                 let max_supply = T::MaxSupply::get();
                 
                 // Calculate inflation amount (2% of current supply)
@@ -432,30 +419,91 @@ pub mod pallet {
             let new_supply = current_supply.saturating_add(inflation_amount);
             
             if new_supply <= max_supply {
-                    // Mint to treasury
                     let treasury = T::Treasury::get();
-                    
-                    // Deposit inflation to treasury
-                    let _ = T::Currency::deposit_creating(&treasury, inflation_amount);
-                    
-                    // Update total supply
+
+                    // ── Phase 2C: Progressive public-goods routing ────────────
+                    // Route `PublicGoodsRoutingPercent`% of inflation to the
+                    // public-goods treasury; remainder goes to main treasury.
+                    let routing_percent: u128 = T::PublicGoodsRoutingPercent::get().min(100) as u128;
+                    let total_u128: u128 = inflation_amount.saturated_into::<u128>();
+                    let pg_u128: u128 = total_u128.saturating_mul(routing_percent) / 100;
+                    let main_u128: u128 = total_u128.saturating_sub(pg_u128);
+
+                    // ── Phase 5B: Carve wellbeing sub-portion from PG allocation ──
+                    let wb_percent: u128 = T::WellbeingFundPercent::get().min(100) as u128;
+                    let wb_u128: u128 = pg_u128.saturating_mul(wb_percent) / 100;
+                    let pg_net_u128: u128 = pg_u128.saturating_sub(wb_u128);
+
+                    let pg_amount: <T::Currency as Currency<T::AccountId>>::Balance =
+                        pg_net_u128.saturated_into();
+                    let wb_amount: <T::Currency as Currency<T::AccountId>>::Balance =
+                        wb_u128.saturated_into();
+                    let main_amount: <T::Currency as Currency<T::AccountId>>::Balance =
+                        main_u128.saturated_into();
+
+                    if pg_amount > Zero::zero() {
+                        let pg_treasury = T::PublicGoodsTreasury::get();
+                        let _ = T::Currency::deposit_creating(&pg_treasury, pg_amount);
+                        CumulativePublicGoodsInflation::<T>::mutate(|acc| {
+                            *acc = acc.saturating_add(pg_amount);
+                        });
+                    }
+
+                    if wb_amount > Zero::zero() {
+                        let wb_treasury = T::WellbeingTreasury::get();
+                        let _ = T::Currency::deposit_creating(&wb_treasury, wb_amount);
+                        CumulativeWellbeingInflation::<T>::mutate(|acc| {
+                            *acc = acc.saturating_add(wb_amount);
+                        });
+                    }
+
+                    if main_amount > Zero::zero() {
+                        let _ = T::Currency::deposit_creating(&treasury, main_amount);
+                    }
+
+                    // Sync TotalSupply to authoritative TotalIssuance (H-20)
+                    let new_supply = T::Currency::total_issuance();
                     TotalSupply::<T>::put(new_supply);
-                    
+
                     // Update last inflation block
                     LastInflationBlock::<T>::put(n);
-                    
+
                     // Emit event
                     Self::deposit_event(Event::AnnualInflationApplied {
                         amount: inflation_amount,
                         new_supply,
                     });
-                    
+
                     weight = weight.saturating_add(T::WeightInfo::update_inflation());
                 }
                 // If max supply would be exceeded, don't apply inflation (hard cap reached)
             }
             
             weight
+        }
+
+        /// Verify critical economic invariants at runtime.
+        ///
+        /// Invariants:
+        /// 1. TotalBbzdSupply ≤ CentralBankReserves (1:1 backing)
+        /// 2. TotalBbzdSupply ≤ MaxSupply (hard cap)
+        fn integrity_test() {
+            let supply = TotalBbzdSupply::<T>::get();
+            let reserves = CentralBankReserves::<T>::get();
+            assert!(
+                supply <= reserves,
+                "INVARIANT VIOLATION: TotalBbzdSupply ({}) > CentralBankReserves ({})",
+                supply,
+                reserves,
+            );
+            // MaxSupply is a Balance; convert to u128 for comparison.
+            let max_u128: u128 = TotalSupply::<T>::get().try_into().unwrap_or(u128::MAX);
+            assert!(
+                supply <= max_u128,
+                "INVARIANT VIOLATION: TotalBbzdSupply ({}) > MaxSupply ({})",
+                supply,
+                max_u128,
+            );
         }
     }
 
@@ -483,6 +531,10 @@ pub mod pallet {
         MaxSupplyReached,
         /// Cannot burn more than available supply
         InsufficientSupplyToBurn,
+        /// Pending redemption queue is full
+        RedemptionQueueFull,
+        /// AR-15: Account has exceeded the maximum mint_bbzd calls permitted per block.
+        RateLimitExceeded,
         /// Exchange rate not available from Oracle
         ExchangeRateUnavailable,
         /// Merchant not verified by Oracle
@@ -594,6 +646,7 @@ pub mod pallet {
             deposit_reference: BoundedVec<u8, ConstU32<64>>,
         ) -> DispatchResult {
             let minter = ensure_signed(origin)?;
+            Self::check_mint_rate_limit(&minter)?;
             
             // Ensure non-zero amount
             ensure!(amount > 0, Error::<T>::AmountMustBeNonZero);
@@ -705,7 +758,7 @@ pub mod pallet {
             // Track pending redemption ID for easy discovery by UIs/tests
             PendingRedemptionIds::<T>::try_mutate(|ids| {
                 ids.try_push(redemption_id)
-                    .map_err(|_| Error::<T>::MaxSupplyReached)
+                    .map_err(|_| Error::<T>::RedemptionQueueFull)
             })?;
             
             // Update total supply
@@ -956,17 +1009,24 @@ pub mod pallet {
                 Error::<T>::InsufficientBalance
             );
             
-        // Slash tokens (effectively burning them)
-        let _imbalance = T::Currency::slash(&who, amount);
-        
-        // Update total supply
-        TotalSupply::<T>::mutate(|supply| {
-            *supply = supply.saturating_sub(amount);
-        });
-        
-        let new_supply = TotalSupply::<T>::get();            Self::deposit_event(Event::DallaBurned {
+            // Slash tokens (effectively burning them)
+            // slash() returns (NegativeImbalance, remaining) — remaining is the amount that could NOT be slashed
+            let (imbalance, remaining) = T::Currency::slash(&who, amount);
+            let actually_burned = imbalance.peek();
+
+            // Drop imbalance — this decrements TotalIssuance
+            drop(imbalance);
+
+            // Sync TotalSupply to authoritative TotalIssuance (fixes H-20 desync & H-21 double-decrement)
+            TotalSupply::<T>::put(T::Currency::total_issuance());
+
+            // If slash was incomplete, ensure caller is aware
+            ensure!(remaining.is_zero(), Error::<T>::InsufficientBalance);
+
+            let new_supply = T::Currency::total_issuance();
+            Self::deposit_event(Event::DallaBurned {
                 who,
-                amount,
+                amount: actually_burned,
                 new_supply,
             });
             
@@ -1014,15 +1074,20 @@ pub mod pallet {
             );
             
             // Slash from treasury
-        let _imbalance = T::Currency::slash(&treasury, amount);
-        
-        // Update total supply
-        TotalSupply::<T>::mutate(|supply| {
-            *supply = supply.saturating_sub(amount);
-        });
-        
-        let new_supply = TotalSupply::<T>::get();            Self::deposit_event(Event::GovernanceBurn {
-                amount,
+            let (imbalance, remaining) = T::Currency::slash(&treasury, amount);
+            let actually_burned = imbalance.peek();
+
+            // Drop imbalance — decrements TotalIssuance
+            drop(imbalance);
+
+            // Sync TotalSupply to authoritative TotalIssuance (fixes H-20/H-21)
+            TotalSupply::<T>::put(T::Currency::total_issuance());
+
+            ensure!(remaining.is_zero(), Error::<T>::InsufficientBalance);
+
+            let new_supply = T::Currency::total_issuance();
+            Self::deposit_event(Event::GovernanceBurn {
+                amount: actually_burned,
                 new_supply,
             });
             
@@ -1036,6 +1101,20 @@ pub mod pallet {
         /// Get treasury account
         pub fn treasury_account() -> T::AccountId {
             TREASURY_ID.into_account_truncating()
+        }
+
+        /// Check per-account mint rate limit for the current block.
+        fn check_mint_rate_limit(who: &T::AccountId) -> frame_support::dispatch::DispatchResult {
+            let current_block = frame_system::Pallet::<T>::block_number();
+            let last_block = LastMintRateLimitBlock::<T>::get();
+            if current_block != last_block {
+                let _ = MintCallsThisBlock::<T>::clear(u32::MAX, None);
+                LastMintRateLimitBlock::<T>::put(current_block);
+            }
+            let count = MintCallsThisBlock::<T>::get(who).saturating_add(1);
+            ensure!(count <= T::MaxMintPerBlock::get(), Error::<T>::RateLimitExceeded);
+            MintCallsThisBlock::<T>::insert(who, count);
+            Ok(())
         }
 
         /// Get tourism incentive rate for category

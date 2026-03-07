@@ -18,6 +18,7 @@ frame-system = { workspace = true }
 sp-core = { workspace = true }
 sp-runtime = { workspace = true }
 sp-std = { workspace = true }
+frame-benchmarking = { workspace = true, optional = true }
 
 # Additional dependencies
 serde = { workspace = true, features = ["derive"], optional = true }
@@ -39,6 +40,7 @@ std = [
     "sp-core/std",
     "sp-runtime/std",
     "sp-std/std",
+    "frame-benchmarking?/std",
     "serde",
     "log/std",
     "pallet-balances/std",
@@ -48,6 +50,7 @@ std = [
 runtime-benchmarks = [
     "frame-support/runtime-benchmarks",
     "frame-system/runtime-benchmarks",
+    "frame-benchmarking/runtime-benchmarks",
 ]
 try-runtime = [
     "frame-support/try-runtime",

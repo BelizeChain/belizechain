@@ -13,19 +13,21 @@ use codec::{Encode, Decode, MaxEncodedLen};
 use frame_support::{
     pallet_prelude::*,
     traits::{
-        Currency, ReservableCurrency, Get, ExistenceRequirement,
+        Currency, ReservableCurrency, Get, ExistenceRequirement, WithdrawReasons,
     },
     BoundedVec,
     weights::{Weight, constants::RocksDbWeight},
 };
 use frame_system::pallet_prelude::*;
 use sp_runtime::{
-    traits::{SaturatedConversion, Saturating},
+    traits::{SaturatedConversion, Saturating, Zero},
     RuntimeDebug,
 };
 use scale_info::TypeInfo;
 
 pub use pallet::*;
+
+pub mod weights;
 
 /// Maximum quantum job ID length (UUID format: "550e8400-e29b-41d4-a716-446655440000")
 pub const MAX_JOB_ID_LENGTH: u32 = 64;
@@ -82,6 +84,10 @@ pub mod pallet {
         /// Fee for minting achievement NFT (in DALLA smallest unit)
         #[pallet::constant]
         type NFTMintingFee: Get<<Self::Currency as Currency<Self::AccountId>>::Balance>;
+
+        /// Treasury account for marketplace fees (Q-1 FIX)
+        #[pallet::constant]
+        type Treasury: Get<Self::AccountId>;
 
         /// Weight information for extrinsics
         type WeightInfo: WeightInfo;
@@ -355,6 +361,8 @@ pub mod pallet {
         pub achievement_type: AchievementType,
         /// NFT owner
         pub owner: AccountId,
+        /// Original minter — immutable after creation; royalties go here (Q-2 FIX)
+        pub original_minter: AccountId,
         /// Metadata URI (IPFS/Arweave)
         pub metadata_uri: BoundedVec<u8, ConstU32<MAX_METADATA_URI_LENGTH>>,
         /// Block when NFT was minted
@@ -1221,10 +1229,15 @@ pub mod pallet {
             ensure!(job.submitter == owner || job.executor.as_ref() == Some(&owner), 
                 Error::<T>::NotAuthorized);
 
-            // Charge minting fee
+            // Charge minting fee (burned as deflationary mechanism)
+            // TODO: Route to treasury when Treasury config type is added
             let mint_fee = T::NFTMintingFee::get();
-            T::Currency::reserve(&owner, mint_fee)
-                .map_err(|_| Error::<T>::InsufficientBalance)?;
+            let _imbalance = T::Currency::withdraw(
+                &owner,
+                mint_fee,
+                WithdrawReasons::FEE,
+                ExistenceRequirement::KeepAlive,
+            ).map_err(|_| Error::<T>::InsufficientBalance)?;
 
             // Check if job was verified (Phase 2.3.2)
             let verification_approved = if let Some(request) = VerificationRequests::<T>::get(&job_id) {
@@ -1266,6 +1279,7 @@ pub mod pallet {
                 job_id: job_id.clone(),
                 achievement_type: achievement_type.clone(),
                 owner: owner.clone(),
+                original_minter: owner.clone(), // Q-2 FIX: immutable original minter
                 metadata_uri,
                 minted_at: current_block,
                 transferable,
@@ -1369,8 +1383,8 @@ pub mod pallet {
             // SAFETY(saturated_into): u64 → BlockNumberFor<T>. The expiry is derived from current block + duration, both bounded by chain lifetime.
             let expiry: BlockNumberFor<T> = expiry_u64.saturated_into();
 
-            // Store original minter (owner when first minted)
-            let original_minter = nft.owner.clone(); // In production, track original minter separately
+            // Q-2 FIX: Use the immutable original_minter from the NFT struct
+            let original_minter = nft.original_minter.clone();
 
             let listing = NFTListing {
                 nft_id,
@@ -1428,17 +1442,21 @@ pub mod pallet {
                 .saturating_sub(royalty)
                 .saturating_sub(marketplace_fee);
 
-            // Transfer funds
+            // Q-1 FIX: Route marketplace fee to treasury account
+            let treasury = T::Treasury::get();
+
+            // Transfer seller amount
             T::Currency::transfer(&buyer, &listing.seller, seller_amount, ExistenceRequirement::KeepAlive)?;
+            
+            // Transfer marketplace fee to treasury
+            if marketplace_fee > Zero::zero() {
+                T::Currency::transfer(&buyer, &treasury, marketplace_fee, ExistenceRequirement::KeepAlive)?;
+            }
             
             // Pay royalty to original minter if not seller
             if listing.original_minter != listing.seller {
                 T::Currency::transfer(&buyer, &listing.original_minter, royalty, ExistenceRequirement::KeepAlive)?;
             }
-
-            // Pay marketplace fee to treasury (could be pallet account or governance)
-            // For now, add to seller if no treasury setup
-            // T::Currency::transfer(&buyer, &treasury_account, marketplace_fee, ExistenceRequirement::KeepAlive)?;
 
             // Transfer NFT
             QuantumAchievements::<T>::try_mutate(nft_id, |maybe_nft| {
@@ -2051,72 +2069,72 @@ pub trait WeightInfo {
 
 impl WeightInfo for () {
     fn submit_quantum_job() -> Weight {
-        Weight::from_parts(25_000_000, 0)
+        Weight::from_parts(25_000_000, 2560)
             .saturating_add(RocksDbWeight::get().reads(3))
             .saturating_add(RocksDbWeight::get().writes(5))
     }
     fn update_job_status() -> Weight {
-        Weight::from_parts(15_000_000, 0)
+        Weight::from_parts(15_000_000, 2048)
             .saturating_add(RocksDbWeight::get().reads(2))
             .saturating_add(RocksDbWeight::get().writes(2))
     }
     fn record_quantum_result() -> Weight {
-        Weight::from_parts(20_000_000, 0)
+        Weight::from_parts(20_000_000, 1536)
             .saturating_add(RocksDbWeight::get().reads(2))
             .saturating_add(RocksDbWeight::get().writes(3))
     }
     fn verify_quantum_result() -> Weight {
-        Weight::from_parts(15_000_000, 0)
+        Weight::from_parts(15_000_000, 1536)
             .saturating_add(RocksDbWeight::get().reads(1))
             .saturating_add(RocksDbWeight::get().writes(1))
     }
     fn mint_achievement_nft() -> Weight {
-        Weight::from_parts(20_000_000, 0)
+        Weight::from_parts(20_000_000, 1536)
             .saturating_add(RocksDbWeight::get().reads(2))
             .saturating_add(RocksDbWeight::get().writes(3))
     }
     fn transfer_nft() -> Weight {
-        Weight::from_parts(10_000_000, 0)
+        Weight::from_parts(10_000_000, 2048)
             .saturating_add(RocksDbWeight::get().reads(1))
             .saturating_add(RocksDbWeight::get().writes(1))
     }
     fn list_nft() -> Weight {
-        Weight::from_parts(12_000_000, 0)
+        Weight::from_parts(12_000_000, 2560)
             .saturating_add(RocksDbWeight::get().reads(3))  // Read NFT + check listings + auctions
             .saturating_add(RocksDbWeight::get().writes(2))  // Create listing + counter
     }
     fn buy_nft() -> Weight {
-        Weight::from_parts(25_000_000, 0)
+        Weight::from_parts(25_000_000, 1536)
             .saturating_add(RocksDbWeight::get().reads(2))  // Read listing + NFT
             .saturating_add(RocksDbWeight::get().writes(2))  // Transfer NFT + remove listing
     }
     fn delist_nft() -> Weight {
-        Weight::from_parts(10_000_000, 0)
+        Weight::from_parts(10_000_000, 2560)
             .saturating_add(RocksDbWeight::get().reads(1))  // Read listing
             .saturating_add(RocksDbWeight::get().writes(1))  // Remove listing
     }
     fn bridge_to_ethereum() -> Weight {
-        Weight::from_parts(18_000_000, 0)
+        Weight::from_parts(18_000_000, 4096)
             .saturating_add(RocksDbWeight::get().reads(4))  // Read NFT + check listings/auctions + bridge requests
             .saturating_add(RocksDbWeight::get().writes(2))  // Create bridge request + counter
     }
     fn bridge_to_parachain() -> Weight {
-        Weight::from_parts(20_000_000, 0)
+        Weight::from_parts(20_000_000, 2048)
             .saturating_add(RocksDbWeight::get().reads(4))  // Read NFT + check listings/auctions + bridge requests
             .saturating_add(RocksDbWeight::get().writes(2))  // Create bridge request + counter + XCM send
     }
     fn request_verification() -> Weight {
-        Weight::from_parts(15_000_000, 0)
+        Weight::from_parts(15_000_000, 2560)
             .saturating_add(RocksDbWeight::get().reads(2))  // Read job + result
             .saturating_add(RocksDbWeight::get().writes(1))  // Create verification request
     }
     fn submit_verification() -> Weight {
-        Weight::from_parts(20_000_000, 0)
+        Weight::from_parts(20_000_000, 2560)
             .saturating_add(RocksDbWeight::get().reads(3))  // Read request + job + result
             .saturating_add(RocksDbWeight::get().writes(3))  // Update request + job + reputation
     }
     fn cancel_bridge() -> Weight {
-        Weight::from_parts(12_000_000, 0)
+        Weight::from_parts(12_000_000, 1024)
             .saturating_add(RocksDbWeight::get().reads(2))  // Read bridge request + NFT
             .saturating_add(RocksDbWeight::get().writes(2))  // Remove bridge request + unlock NFT
     }
@@ -2128,8 +2146,8 @@ impl WeightInfo for () {
 //   cargo build --release --features runtime-benchmarks
 //   ./target/release/belizechain-node benchmark pallet --pallet pallet_belize_quantum
 // Then update weights.rs with benchmark results
-// #[cfg(feature = "runtime-benchmarks")]
-// pub mod benchmarking;
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
 
 // Testing modules
 #[cfg(test)]

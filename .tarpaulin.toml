@@ -1,0 +1,26 @@
+# BelizeChain — cargo-tarpaulin configuration
+#
+# Run locally:  cargo tarpaulin
+# Enforces 100% line coverage on all testable belizechain-node code.
+#
+# Exclusions:
+#   main.rs      - run()/main() are untestable entry points; mod tests still runs
+#   service.rs   - Substrate async service bootstrap (requires live node)
+#   rpc.rs       - RPC plumbing (requires a real blockchain client)
+#   chain_spec.rs - mainnet_genesis() has ~40 lines of intentionally dead
+#                  placeholder key material blocked by a const guard;
+#                  all chain_spec tests still compile and run.
+
+[default]
+packages      = ["belizechain-node"]
+include-files = ["node/src/*.rs"]
+exclude-files = [
+    "node/src/main.rs",
+    "node/src/service.rs",
+    "node/src/rpc.rs",
+    "node/src/chain_spec.rs",
+]
+fail-under    = 100.0
+skip-clean    = true
+out           = ["Lcov"]
+output-dir    = "target/coverage"

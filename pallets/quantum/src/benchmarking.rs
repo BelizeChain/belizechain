@@ -1,564 +1,431 @@
-//! Benchmarking setup for pallet-quantum
+//! Benchmarks for pallet-belize-quantum (v2 API)
+//!
+//! Covers 14 WeightInfo functions:
+//!   submit_quantum_job, update_job_status, record_quantum_result,
+//!   verify_quantum_result (Root), mint_achievement_nft,
+//!   transfer_nft, list_nft, buy_nft, delist_nft,
+//!   bridge_to_ethereum, bridge_to_parachain, cancel_bridge,
+//!   request_verification, submit_verification
+
+#![cfg(feature = "runtime-benchmarks")]
 
 use super::*;
-use crate::Pallet as Quantum;
-use frame_benchmarking::{account, benchmarks, impl_benchmark_test_suite, whitelisted_caller};
-use frame_support::traits::Currency;
+use frame_benchmarking::v2::*;
 use frame_system::RawOrigin;
+use frame_support::traits::Currency;
+use sp_runtime::BoundedVec;
+use sp_std::vec;
 
-const SEED: u32 = 0;
+const MAX_JOB_ID_LEN: u32 = 64;
 
-benchmarks! {
-    submit_quantum_job {
-        let caller: T::AccountId = whitelisted_caller();
-        let job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>> = 
-            b"benchmark_job_001".to_vec().try_into().unwrap();
-        let circuit_hash = [1u8; 32];
-        let num_qubits = 10u16;
-        let circuit_depth = 100u32;
-        let num_shots = 1024u32;
-        
-        // Fund the caller
-        T::Currency::make_free_balance_be(&caller, BalanceOf::<T>::max_value());
-        
-    }: _(RawOrigin::Signed(caller.clone()), job_id.clone(), 4,  // Qiskit
-            circuit_hash, num_qubits, circuit_depth, num_shots)
-    verify {
-        assert!(QuantumJobs::<T>::contains_key(&job_id));
-    }
-
-    update_job_status {
-        let caller: T::AccountId = whitelisted_caller();
-        let executor: T::AccountId = account("executor", 0, SEED);
-        let job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>> = 
-            b"benchmark_job_002".to_vec().try_into().unwrap();
-        let circuit: BoundedVec<u8, ConstU32<MAX_CIRCUIT_SIZE>> = 
-            b"OPENQASM 2.0; qreg q[5];".to_vec().try_into().unwrap();
-        
-        T::Currency::make_free_balance_be(&caller, BalanceOf::<T>::max_value());
-        
-        // Submit job first
-        Quantum::<T>::submit_quantum_job(
-            RawOrigin::Signed(caller.clone()).into(),
-            job_id.clone(),
-            4,  // Qiskit
-            [1u8; 32],  // circuit_hash
-            10u16,  // num_qubits
-            100u32,  // circuit_depth
-            1024u32,  // num_shots
-        ).unwrap();
-        
-    }: _(RawOrigin::Signed(executor.clone()), job_id.clone(), 1)
-    verify {
-        let job = QuantumJobs::<T>::get(&job_id).unwrap();
-        assert_eq!(job.status, 1);
-    }
-
-    record_quantum_result {
-        let caller: T::AccountId = whitelisted_caller();
-        let executor: T::AccountId = account("executor", 0, SEED);
-        let job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>> = 
-            b"benchmark_job_003".to_vec().try_into().unwrap();
-        let circuit: BoundedVec<u8, ConstU32<MAX_CIRCUIT_SIZE>> = 
-            b"OPENQASM 2.0; qreg q[5];".to_vec().try_into().unwrap();
-        let result: BoundedVec<u8, ConstU32<MAX_RESULT_SIZE>> = 
-            b"{'counts': {'00': 512, '11': 512}}".to_vec().try_into().unwrap();
-        let accuracy = 95u8;
-        
-        T::Currency::make_free_balance_be(&caller, BalanceOf::<T>::max_value());
-        T::Currency::make_free_balance_be(&executor, BalanceOf::<T>::max_value());
-        
-        // Submit job
-        Quantum::<T>::submit_quantum_job(
-            RawOrigin::Signed(caller).into(),
-            job_id.clone(),
-            4,  // Qiskit
-            [1u8; 32],  // circuit_hash
-            10u16,  // num_qubits
-            100u32,  // circuit_depth
-            1024u32,  // num_shots
-        ).unwrap();
-        
-    }: _(RawOrigin::Signed(executor), job_id.clone(), result, accuracy)
-    verify {
-        assert!(QuantumResults::<T>::contains_key(&job_id));
-    }
-
-    verify_quantum_result {
-        let caller: T::AccountId = whitelisted_caller();
-        let executor: T::AccountId = account("executor", 0, SEED);
-        let verifier: T::AccountId = account("verifier", 0, SEED);
-        let job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>> = 
-            b"benchmark_job_004".to_vec().try_into().unwrap();
-        let circuit: BoundedVec<u8, ConstU32<MAX_CIRCUIT_SIZE>> = 
-            b"OPENQASM 2.0; qreg q[5];".to_vec().try_into().unwrap();
-        let result: BoundedVec<u8, ConstU32<MAX_RESULT_SIZE>> = 
-            b"result_data".to_vec().try_into().unwrap();
-        let proof: BoundedVec<u8, ConstU32<256>> = 
-            b"verification_proof".to_vec().try_into().unwrap();
-        
-        T::Currency::make_free_balance_be(&caller, BalanceOf::<T>::max_value());
-        T::Currency::make_free_balance_be(&executor, BalanceOf::<T>::max_value());
-        
-        // Submit and record result
-        Quantum::<T>::submit_quantum_job(
-            RawOrigin::Signed(caller).into(),
-            job_id.clone(),
-            4,  // Qiskit
-            [1u8; 32],  // circuit_hash
-            10u16,  // num_qubits
-            100u32,  // circuit_depth
-            1024u32,  // num_shots
-        ).unwrap();
-        
-        Quantum::<T>::record_quantum_result(
-            RawOrigin::Signed(executor).into(),
-            job_id.clone(),
-            result,
-            result,  // verification_proof
-            95,
-        ).unwrap();
-        
-    }: _(RawOrigin::Signed(verifier), job_id.clone(), proof)
-    verify {
-        let job = QuantumJobs::<T>::get(&job_id).unwrap();
-        assert_eq!(job.verification_status, VerificationStatus::Verified);
-    }
-
-    mint_achievement_nft {
-        let caller: T::AccountId = whitelisted_caller();
-        let executor: T::AccountId = account("executor", 0, SEED);
-        let job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>> = 
-            b"benchmark_job_005".to_vec().try_into().unwrap();
-        let circuit: BoundedVec<u8, ConstU32<MAX_CIRCUIT_SIZE>> = 
-            b"OPENQASM 2.0; qreg q[5];".to_vec().try_into().unwrap();
-        let result: BoundedVec<u8, ConstU32<MAX_RESULT_SIZE>> = 
-            b"result_data".to_vec().try_into().unwrap();
-        
-        T::Currency::make_free_balance_be(&caller, BalanceOf::<T>::max_value());
-        T::Currency::make_free_balance_be(&executor, BalanceOf::<T>::max_value());
-        
-        // Submit and record result
-        Quantum::<T>::submit_quantum_job(
-            RawOrigin::Signed(caller.clone()).into(),
-            job_id.clone(),
-            4,  // Qiskit
-            [1u8; 32],  // circuit_hash
-            10u16,  // num_qubits
-            100u32,  // circuit_depth
-            1024u32,  // num_shots
-        ).unwrap();
-        
-        Quantum::<T>::record_quantum_result(
-            RawOrigin::Signed(executor).into(),
-            job_id.clone(),
-            result,
-            result,  // verification_proof
-            95,
-        ).unwrap();
-        
-    }: _(RawOrigin::Signed(caller), job_id, 0,  // FirstQuantumJob
-            true, 10u16, 95u8)
-    verify {
-        assert_eq!(NFTCounter::<T>::get(), 1);
-    }
-
-    transfer_nft {
-        let caller: T::AccountId = whitelisted_caller();
-        let recipient: T::AccountId = account("recipient", 0, SEED);
-        let executor: T::AccountId = account("executor", 0, SEED);
-        let job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>> = 
-            b"benchmark_job_006".to_vec().try_into().unwrap();
-        let circuit: BoundedVec<u8, ConstU32<MAX_CIRCUIT_SIZE>> = 
-            b"OPENQASM 2.0; qreg q[5];".to_vec().try_into().unwrap();
-        let result: BoundedVec<u8, ConstU32<MAX_RESULT_SIZE>> = 
-            b"result_data".to_vec().try_into().unwrap();
-        
-        T::Currency::make_free_balance_be(&caller, BalanceOf::<T>::max_value());
-        T::Currency::make_free_balance_be(&executor, BalanceOf::<T>::max_value());
-        
-        // Create NFT
-        Quantum::<T>::submit_quantum_job(
-            RawOrigin::Signed(caller.clone()).into(),
-            job_id.clone(),
-            4,  // Qiskit
-            [1u8; 32],  // circuit_hash
-            10u16,  // num_qubits
-            100u32,  // circuit_depth
-            1024u32,  // num_shots
-        ).unwrap();
-        
-        Quantum::<T>::record_quantum_result(
-            RawOrigin::Signed(executor).into(),
-            job_id.clone(),
-            result,
-            result,  // verification_proof
-            95,
-        ).unwrap();
-        
-        Quantum::<T>::mint_achievement_nft(
-            RawOrigin::Signed(caller.clone()).into(),
-            job_id,
-            0,  // FirstQuantumJob
-            true,
-            10,
-            95,
-        ).unwrap();
-        
-        let nft_id = 0;
-        
-    }: _(RawOrigin::Signed(caller), nft_id, recipient.clone())
-    verify {
-        let nft = QuantumAchievements::<T>::get(nft_id).unwrap();
-        assert_eq!(nft.owner, recipient);
-    }
-
-    list_nft {
-        let caller: T::AccountId = whitelisted_caller();
-        let executor: T::AccountId = account("executor", 0, SEED);
-        let job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>> = 
-            b"benchmark_job_007".to_vec().try_into().unwrap();
-        let circuit: BoundedVec<u8, ConstU32<MAX_CIRCUIT_SIZE>> = 
-            b"OPENQASM 2.0; qreg q[5];".to_vec().try_into().unwrap();
-        let result: BoundedVec<u8, ConstU32<MAX_RESULT_SIZE>> = 
-            b"result_data".to_vec().try_into().unwrap();
-        
-        T::Currency::make_free_balance_be(&caller, BalanceOf::<T>::max_value());
-        T::Currency::make_free_balance_be(&executor, BalanceOf::<T>::max_value());
-        
-        // Create NFT
-        Quantum::<T>::submit_quantum_job(
-            RawOrigin::Signed(caller.clone()).into(),
-            job_id.clone(),
-            4,  // Qiskit
-            [1u8; 32],  // circuit_hash
-            10u16,  // num_qubits
-            100u32,  // circuit_depth
-            1024u32,  // num_shots
-        ).unwrap();
-        
-        Quantum::<T>::record_quantum_result(
-            RawOrigin::Signed(executor).into(),
-            job_id.clone(),
-            result,
-            result,  // verification_proof
-            95,
-        ).unwrap();
-        
-        Quantum::<T>::mint_achievement_nft(
-            RawOrigin::Signed(caller.clone()).into(),
-            job_id,
-            0,  // FirstQuantumJob
-            true,
-            10,
-            95,
-        ).unwrap();
-        
-        let nft_id = 0;
-        let price = 1_000_000_000_000u32.into();
-        let duration = 100u32.into();
-        
-    }: _(RawOrigin::Signed(caller), nft_id, price, duration)
-    verify {
-        assert!(NFTListings::<T>::contains_key(nft_id));
-    }
-
-    buy_nft {
-        let seller: T::AccountId = account("seller", 0, SEED);
-        let buyer: T::AccountId = whitelisted_caller();
-        let executor: T::AccountId = account("executor", 0, SEED);
-        let job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>> = 
-            b"benchmark_job_008".to_vec().try_into().unwrap();
-        let circuit: BoundedVec<u8, ConstU32<MAX_CIRCUIT_SIZE>> = 
-            b"OPENQASM 2.0; qreg q[5];".to_vec().try_into().unwrap();
-        let result: BoundedVec<u8, ConstU32<MAX_RESULT_SIZE>> = 
-            b"result_data".to_vec().try_into().unwrap();
-        
-        T::Currency::make_free_balance_be(&seller, BalanceOf::<T>::max_value());
-        T::Currency::make_free_balance_be(&buyer, BalanceOf::<T>::max_value());
-        T::Currency::make_free_balance_be(&executor, BalanceOf::<T>::max_value());
-        
-        // Create and list NFT
-        Quantum::<T>::submit_quantum_job(
-            RawOrigin::Signed(seller.clone()).into(),
-            job_id.clone(),
-            4,  // Qiskit
-            [1u8; 32],  // circuit_hash
-            10u16,  // num_qubits
-            100u32,  // circuit_depth
-            1024u32,  // num_shots
-        ).unwrap();
-        
-        Quantum::<T>::record_quantum_result(
-            RawOrigin::Signed(executor).into(),
-            job_id.clone(),
-            result,
-            result,  // verification_proof
-            95,
-        ).unwrap();
-        
-        Quantum::<T>::mint_achievement_nft(
-            RawOrigin::Signed(seller.clone()).into(),
-            job_id,
-            0,  // FirstQuantumJob
-            true,
-            10,
-            95,
-        ).unwrap();
-        
-        let nft_id = 0;
-        Quantum::<T>::list_nft(
-            RawOrigin::Signed(seller).into(),
-            nft_id,
-            1_000_000_000_000u32.into(),
-            100u32.into(),
-        ).unwrap();
-        
-    }: _(RawOrigin::Signed(buyer.clone()), nft_id)
-    verify {
-        let nft = QuantumAchievements::<T>::get(nft_id).unwrap();
-        assert_eq!(nft.owner, buyer);
-    }
-
-    delist_nft {
-        let caller: T::AccountId = whitelisted_caller();
-        let executor: T::AccountId = account("executor", 0, SEED);
-        let job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>> = 
-            b"benchmark_job_009".to_vec().try_into().unwrap();
-        let circuit: BoundedVec<u8, ConstU32<MAX_CIRCUIT_SIZE>> = 
-            b"OPENQASM 2.0; qreg q[5];".to_vec().try_into().unwrap();
-        let result: BoundedVec<u8, ConstU32<MAX_RESULT_SIZE>> = 
-            b"result_data".to_vec().try_into().unwrap();
-        
-        T::Currency::make_free_balance_be(&caller, BalanceOf::<T>::max_value());
-        T::Currency::make_free_balance_be(&executor, BalanceOf::<T>::max_value());
-        
-        // Create and list NFT
-        Quantum::<T>::submit_quantum_job(
-            RawOrigin::Signed(caller.clone()).into(),
-            job_id.clone(),
-            4,  // Qiskit
-            [1u8; 32],  // circuit_hash
-            10u16,  // num_qubits
-            100u32,  // circuit_depth
-            1024u32,  // num_shots
-        ).unwrap();
-        
-        Quantum::<T>::record_quantum_result(
-            RawOrigin::Signed(executor).into(),
-            job_id.clone(),
-            result,
-            result,  // verification_proof
-            95,
-        ).unwrap();
-        
-        Quantum::<T>::mint_achievement_nft(
-            RawOrigin::Signed(caller.clone()).into(),
-            job_id,
-            0,  // FirstQuantumJob
-            true,
-            10,
-            95,
-        ).unwrap();
-        
-        let nft_id = 0;
-        Quantum::<T>::list_nft(
-            RawOrigin::Signed(caller.clone()).into(),
-            nft_id,
-            1_000_000_000_000u32.into(),
-            100u32.into(),
-        ).unwrap();
-        
-    }: _(RawOrigin::Signed(caller), nft_id)
-    verify {
-        assert!(!NFTListings::<T>::contains_key(nft_id));
-    }
-
-    bridge_to_ethereum {
-        let caller: T::AccountId = whitelisted_caller();
-        let executor: T::AccountId = account("executor", 0, SEED);
-        let job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>> = 
-            b"benchmark_job_010".to_vec().try_into().unwrap();
-        let circuit: BoundedVec<u8, ConstU32<MAX_CIRCUIT_SIZE>> = 
-            b"OPENQASM 2.0; qreg q[5];".to_vec().try_into().unwrap();
-        let result: BoundedVec<u8, ConstU32<MAX_RESULT_SIZE>> = 
-            b"result_data".to_vec().try_into().unwrap();
-        let eth_address: BoundedVec<u8, ConstU32<64>> = 
-            b"0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0".to_vec().try_into().unwrap();
-        
-        T::Currency::make_free_balance_be(&caller, BalanceOf::<T>::max_value());
-        T::Currency::make_free_balance_be(&executor, BalanceOf::<T>::max_value());
-        
-        // Create NFT
-        Quantum::<T>::submit_quantum_job(
-            RawOrigin::Signed(caller.clone()).into(),
-            job_id.clone(),
-            4,  // Qiskit
-            [1u8; 32],  // circuit_hash
-            10u16,  // num_qubits
-            100u32,  // circuit_depth
-            1024u32,  // num_shots
-        ).unwrap();
-        
-        Quantum::<T>::record_quantum_result(
-            RawOrigin::Signed(executor).into(),
-            job_id.clone(),
-            result,
-            result,  // verification_proof
-            95,
-        ).unwrap();
-        
-        Quantum::<T>::mint_achievement_nft(
-            RawOrigin::Signed(caller.clone()).into(),
-            job_id,
-            0,  // FirstQuantumJob
-            true,
-            10,
-            95,
-        ).unwrap();
-        
-        let nft_id = 0;
-        
-    }: _(RawOrigin::Signed(caller), nft_id, eth_address)
-    verify {
-        assert!(BridgeRequests::<T>::contains_key(nft_id));
-    }
-
-    bridge_to_parachain {
-        let caller: T::AccountId = whitelisted_caller();
-        let executor: T::AccountId = account("executor", 0, SEED);
-        let job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>> = 
-            b"benchmark_job_011".to_vec().try_into().unwrap();
-        let circuit: BoundedVec<u8, ConstU32<MAX_CIRCUIT_SIZE>> = 
-            b"OPENQASM 2.0; qreg q[5];".to_vec().try_into().unwrap();
-        let result: BoundedVec<u8, ConstU32<MAX_RESULT_SIZE>> = 
-            b"result_data".to_vec().try_into().unwrap();
-        let recipient: BoundedVec<u8, ConstU32<64>> = 
-            b"5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY".to_vec().try_into().unwrap();
-        
-        T::Currency::make_free_balance_be(&caller, BalanceOf::<T>::max_value());
-        T::Currency::make_free_balance_be(&executor, BalanceOf::<T>::max_value());
-        
-        // Create NFT
-        Quantum::<T>::submit_quantum_job(
-            RawOrigin::Signed(caller.clone()).into(),
-            job_id.clone(),
-            4,  // Qiskit
-            [1u8; 32],  // circuit_hash
-            10u16,  // num_qubits
-            100u32,  // circuit_depth
-            1024u32,  // num_shots
-        ).unwrap();
-        
-        Quantum::<T>::record_quantum_result(
-            RawOrigin::Signed(executor).into(),
-            job_id.clone(),
-            result,
-            result,  // verification_proof
-            95,
-        ).unwrap();
-        
-        Quantum::<T>::mint_achievement_nft(
-            RawOrigin::Signed(caller.clone()).into(),
-            job_id,
-            0,  // FirstQuantumJob
-            true,
-            10,
-            95,
-        ).unwrap();
-        
-        let nft_id = 0;
-        let parachain_id = 1000u32;
-        
-    }: _(RawOrigin::Signed(caller), nft_id, parachain_id, recipient)
-    verify {
-        assert!(BridgeRequests::<T>::contains_key(nft_id));
-    }
-
-    request_verification {
-        let caller: T::AccountId = whitelisted_caller();
-        let executor: T::AccountId = account("executor", 0, SEED);
-        let job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>> = 
-            b"benchmark_job_012".to_vec().try_into().unwrap();
-        let circuit: BoundedVec<u8, ConstU32<MAX_CIRCUIT_SIZE>> = 
-            b"OPENQASM 2.0; qreg q[5];".to_vec().try_into().unwrap();
-        let result: BoundedVec<u8, ConstU32<MAX_RESULT_SIZE>> = 
-            b"result_data".to_vec().try_into().unwrap();
-        
-        T::Currency::make_free_balance_be(&caller, BalanceOf::<T>::max_value());
-        T::Currency::make_free_balance_be(&executor, BalanceOf::<T>::max_value());
-        
-        // Submit and record result
-        Quantum::<T>::submit_quantum_job(
-            RawOrigin::Signed(caller.clone()).into(),
-            job_id.clone(),
-            4,  // Qiskit
-            [1u8; 32],  // circuit_hash
-            10u16,  // num_qubits
-            100u32,  // circuit_depth
-            1024u32,  // num_shots
-        ).unwrap();
-        
-        Quantum::<T>::record_quantum_result(
-            RawOrigin::Signed(executor).into(),
-            job_id.clone(),
-            result,
-            result,  // verification_proof
-            95,
-        ).unwrap();
-        
-    }: _(RawOrigin::Signed(caller), job_id.clone(), 3u8)
-    verify {
-        assert!(VerificationRequests::<T>::contains_key(&job_id));
-    }
-
-    submit_verification {
-        let caller: T::AccountId = whitelisted_caller();
-        let executor: T::AccountId = account("executor", 0, SEED);
-        let validator: T::AccountId = account("validator", 0, SEED);
-        let job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>> = 
-            b"benchmark_job_013".to_vec().try_into().unwrap();
-        let circuit: BoundedVec<u8, ConstU32<MAX_CIRCUIT_SIZE>> = 
-            b"OPENQASM 2.0; qreg q[5];".to_vec().try_into().unwrap();
-        let result: BoundedVec<u8, ConstU32<MAX_RESULT_SIZE>> = 
-            b"result_data".to_vec().try_into().unwrap();
-        
-        T::Currency::make_free_balance_be(&caller, BalanceOf::<T>::max_value());
-        T::Currency::make_free_balance_be(&executor, BalanceOf::<T>::max_value());
-        
-        // Submit, record, and request verification
-        Quantum::<T>::submit_quantum_job(
-            RawOrigin::Signed(caller.clone()).into(),
-            job_id.clone(),
-            4,  // Qiskit
-            [1u8; 32],  // circuit_hash
-            10u16,  // num_qubits
-            100u32,  // circuit_depth
-            1024u32,  // num_shots
-        ).unwrap();
-        
-        Quantum::<T>::record_quantum_result(
-            RawOrigin::Signed(executor).into(),
-            job_id.clone(),
-            result,
-            result,  // verification_proof
-            95,
-        ).unwrap();
-        
-        Quantum::<T>::request_verification(
-            RawOrigin::Signed(caller).into(),
-            job_id.clone(),
-            3,
-        ).unwrap();
-        
-        let result_hash = [0u8; 32];
-        
-    }: _(RawOrigin::Signed(validator), job_id.clone(), 0,  // Approve
-            90u8, result_hash)
-    verify {
-        let request = VerificationRequests::<T>::get(&job_id).unwrap();
-        assert_eq!(request.verifications.len(), 1);
-    }
+/// Create a funded account for benchmarks
+fn funded_account<T: Config>(name: &'static str, index: u32) -> T::AccountId {
+    let caller: T::AccountId = account(name, index, 0);
+    let amount = T::Currency::minimum_balance().saturating_mul(1_000_000u32.into());
+    T::Currency::make_free_balance_be(&caller, amount);
+    caller
 }
 
-impl_benchmark_test_suite!(Quantum, crate::mock::new_test_ext(), crate::mock::Test);
+/// Create a valid job_id BoundedVec
+fn make_job_id<T: Config>(seed: u8) -> BoundedVec<u8, ConstU32<MAX_JOB_ID_LEN>> {
+    let mut id = vec![b'j', b'o', b'b', b'-'];
+    id.push(b'0' + (seed % 10));
+    BoundedVec::try_from(id).expect("job id within bounds")
+}
+
+/// Insert a quantum job directly into storage, bypassing extrinsic validation.
+fn insert_quantum_job<T: Config>(
+    submitter: &T::AccountId,
+    job_id: &BoundedVec<u8, ConstU32<MAX_JOB_ID_LEN>>,
+) {
+    let current_block = frame_system::Pallet::<T>::block_number();
+    let cost = T::Currency::minimum_balance().saturating_mul(100u32.into());
+
+    let job = QuantumJob {
+        job_id: job_id.clone(),
+        submitter: submitter.clone(),
+        backend: QuantumBackend::Qiskit,
+        circuit_hash: [1u8; 32],
+        num_qubits: 5,
+        circuit_depth: 10,
+        num_shots: 100,
+        status: JobStatus::Pending,
+        submission_time: current_block,
+        completion_time: None,
+        result_hash: None,
+        verification_status: VerificationStatus::Unverified,
+        dalla_cost: cost,
+        executor: None,
+    };
+
+    QuantumJobs::<T>::insert(job_id, job);
+    let mut jobs = JobsByAccount::<T>::get(submitter);
+    let _ = jobs.try_push(job_id.clone());
+    JobsByAccount::<T>::insert(submitter, jobs);
+
+    // Reserve funds to match extrinsic behaviour
+    let _ = T::Currency::reserve(submitter, cost);
+}
+
+/// Insert a quantum result for a job
+fn insert_quantum_result<T: Config>(
+    executor: &T::AccountId,
+    job_id: &BoundedVec<u8, ConstU32<MAX_JOB_ID_LEN>>,
+) {
+    let current_block = frame_system::Pallet::<T>::block_number();
+    let proof: BoundedVec<u8, ConstU32<256>> =
+        BoundedVec::try_from(vec![0u8; 32]).expect("proof within bounds");
+
+    let result = QuantumResult {
+        job_id: job_id.clone(),
+        result_data_hash: [2u8; 32],
+        verification_proof: proof,
+        accuracy_score: 95,
+        validator: BoundedVec::try_from(vec![1u8; 32]).unwrap_or_default(),
+        recorded_at: current_block.saturated_into::<u32>(),
+    };
+
+    QuantumResults::<T>::insert(job_id, result);
+
+    // Mark job as completed with executor
+    QuantumJobs::<T>::mutate(job_id, |maybe_job| {
+        if let Some(job) = maybe_job {
+            job.status = JobStatus::Completed;
+            job.executor = Some(executor.clone());
+            job.completion_time = Some(current_block);
+        }
+    });
+}
+
+/// Insert a QuantumAchievement (NFT) directly into storage
+fn insert_nft<T: Config>(owner: &T::AccountId, nft_id: u64, transferable: bool) {
+    let current_block = frame_system::Pallet::<T>::block_number();
+    let metadata: BoundedVec<u8, ConstU32<256>> =
+        BoundedVec::try_from(b"ipfs://benchmark".to_vec()).expect("metadata within bounds");
+
+    let nft = QuantumAchievement {
+        nft_id,
+        job_id: BoundedVec::try_from(b"bench-nft".to_vec()).unwrap_or_default(),
+        achievement_type: AchievementType::FirstQuantumJob,
+        owner: owner.clone(),
+        original_minter: owner.clone(), // Q-2 FIX
+        metadata_uri: metadata,
+        minted_at: current_block,
+        transferable,
+        rarity: NFTRarity::Common,
+        category: NFTCategory::Special,
+        rarity_score: 100,
+        circuit_qubits: 5,
+        accuracy: 90,
+    };
+
+    QuantumAchievements::<T>::insert(nft_id, nft);
+    NFTCounter::<T>::put(nft_id + 1);
+}
+
+/// Insert an NFT listing directly into storage
+fn insert_listing<T: Config>(
+    nft_id: u64,
+    seller: &T::AccountId,
+    price: <T::Currency as Currency<T::AccountId>>::Balance,
+) {
+    let current_block = frame_system::Pallet::<T>::block_number();
+    // SAFETY(saturated_into): benchmark helper; expiry = current + 1000 blocks.
+    let expiry_u64: u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0) + 1000u64;
+    let expiry: BlockNumberFor<T> = expiry_u64.saturated_into();
+
+    let listing = NFTListing {
+        nft_id,
+        original_minter: seller.clone(),
+        seller: seller.clone(),
+        price,
+        expiry,
+        listed_at: current_block,
+    };
+
+    NFTListings::<T>::insert(nft_id, listing);
+    ListingCounter::<T>::mutate(|c| *c = c.saturating_add(1));
+}
+
+/// Insert a bridge request directly into storage
+fn insert_bridge<T: Config>(nft_id: u64, owner: &T::AccountId) {
+    let current_block = frame_system::Pallet::<T>::block_number();
+    let recipient: BoundedVec<u8, ConstU32<64>> =
+        BoundedVec::try_from(vec![0xABu8; 20]).expect("recipient within bounds");
+
+    let request = BridgeRequest {
+        nft_id,
+        owner: owner.clone(),
+        destination: ChainDestination::Ethereum,
+        recipient,
+        requested_at: current_block,
+        claimed: false,
+        claim_tx_hash: None,
+    };
+
+    BridgeRequests::<T>::insert(nft_id, request);
+    BridgeCounter::<T>::mutate(|c| *c = c.saturating_add(1));
+
+    // Lock NFT
+    QuantumAchievements::<T>::mutate(nft_id, |maybe_nft| {
+        if let Some(nft) = maybe_nft {
+            nft.transferable = false;
+        }
+    });
+}
+
+/// Insert a verification request for a job
+fn insert_verification_request<T: Config>(
+    job_id: &BoundedVec<u8, ConstU32<MAX_JOB_ID_LEN>>,
+) {
+    let current_block = frame_system::Pallet::<T>::block_number();
+    let created: u32 = current_block.saturated_into::<u32>();
+
+    let request = VerificationRequest {
+        job_id: job_id.clone(),
+        required_verifications: 3,
+        verifications: BoundedVec::default(),
+        approvals: 0,
+        rejections: 0,
+        consensus_reached: false,
+        consensus_result: None,
+        created_at: created,
+        deadline: created + 1000,
+    };
+
+    VerificationRequests::<T>::insert(job_id, request);
+}
+
+#[benchmarks]
+mod benchmarks {
+    use super::*;
+
+    #[benchmark]
+    fn submit_quantum_job() {
+        let caller = funded_account::<T>("submitter", 0);
+        let job_id = make_job_id::<T>(1);
+
+        #[extrinsic_call]
+        submit_quantum_job(
+            RawOrigin::Signed(caller),
+            job_id,
+            0u8,         // backend_index: Simulator
+            [1u8; 32],   // circuit_hash
+            5u16,        // num_qubits
+            10u32,       // circuit_depth
+            100u32,      // num_shots
+        );
+    }
+
+    #[benchmark]
+    fn update_job_status() {
+        let caller = funded_account::<T>("submitter", 0);
+        let job_id = make_job_id::<T>(2);
+        insert_quantum_job::<T>(&caller, &job_id);
+
+        #[extrinsic_call]
+        update_job_status(
+            RawOrigin::Signed(caller),
+            job_id,
+            1u8,  // status_index: Running
+        );
+    }
+
+    #[benchmark]
+    fn record_quantum_result() {
+        let submitter = funded_account::<T>("submitter", 0);
+        let executor = funded_account::<T>("executor", 1);
+        let job_id = make_job_id::<T>(3);
+        insert_quantum_job::<T>(&submitter, &job_id);
+
+        // Set job status to Running with executor
+        QuantumJobs::<T>::mutate(&job_id, |maybe_job| {
+            if let Some(job) = maybe_job {
+                job.status = JobStatus::Running;
+                job.executor = Some(executor.clone());
+            }
+        });
+
+        let proof: BoundedVec<u8, ConstU32<256>> =
+            BoundedVec::try_from(vec![0u8; 32]).expect("proof within bounds");
+
+        #[extrinsic_call]
+        record_quantum_result(
+            RawOrigin::Signed(executor),
+            job_id,
+            [2u8; 32],  // result_data_hash
+            proof,       // verification_proof
+            95u8,        // accuracy_score
+        );
+    }
+
+    // Root-only extrinsic
+    #[benchmark]
+    fn verify_quantum_result() {
+        let submitter = funded_account::<T>("submitter", 0);
+        let executor = funded_account::<T>("executor", 1);
+        let job_id = make_job_id::<T>(4);
+        insert_quantum_job::<T>(&submitter, &job_id);
+        insert_quantum_result::<T>(&executor, &job_id);
+
+        #[extrinsic_call]
+        verify_quantum_result(
+            RawOrigin::Root,
+            job_id,
+            true,  // verification_passed
+        );
+    }
+
+    #[benchmark]
+    fn mint_achievement_nft() {
+        let caller = funded_account::<T>("minter", 0);
+        let executor = funded_account::<T>("executor", 1);
+        let job_id = make_job_id::<T>(5);
+        insert_quantum_job::<T>(&caller, &job_id);
+        insert_quantum_result::<T>(&executor, &job_id);
+
+        // Ensure NFTCounter starts at 0
+        NFTCounter::<T>::put(0u64);
+
+        #[extrinsic_call]
+        mint_achievement_nft(
+            RawOrigin::Signed(caller),
+            job_id,
+            0u8,    // achievement_type_index: FirstQuantumJob
+            true,   // transferable
+            5u16,   // circuit_qubits
+            90u8,   // accuracy
+        );
+    }
+
+    #[benchmark]
+    fn transfer_nft() {
+        let owner = funded_account::<T>("owner", 0);
+        let recipient: T::AccountId = account("recipient", 1, 0);
+        let nft_id = 100u64;
+        insert_nft::<T>(&owner, nft_id, true);
+
+        #[extrinsic_call]
+        transfer_nft(RawOrigin::Signed(owner), nft_id, recipient);
+    }
+
+    #[benchmark]
+    fn list_nft() {
+        let seller = funded_account::<T>("seller", 0);
+        let nft_id = 200u64;
+        insert_nft::<T>(&seller, nft_id, true);
+
+        let price = T::Currency::minimum_balance().saturating_mul(50u32.into());
+        let duration: BlockNumberFor<T> = 1000u32.into();
+
+        #[extrinsic_call]
+        list_nft(RawOrigin::Signed(seller), nft_id, price, duration);
+    }
+
+    #[benchmark]
+    fn buy_nft() {
+        let seller = funded_account::<T>("seller", 0);
+        let buyer = funded_account::<T>("buyer", 1);
+        let nft_id = 300u64;
+        insert_nft::<T>(&seller, nft_id, true);
+
+        let price = T::Currency::minimum_balance().saturating_mul(50u32.into());
+        insert_listing::<T>(nft_id, &seller, price);
+
+        #[extrinsic_call]
+        buy_nft(RawOrigin::Signed(buyer), nft_id);
+    }
+
+    #[benchmark]
+    fn delist_nft() {
+        let seller = funded_account::<T>("seller", 0);
+        let nft_id = 400u64;
+        insert_nft::<T>(&seller, nft_id, true);
+
+        let price = T::Currency::minimum_balance().saturating_mul(50u32.into());
+        insert_listing::<T>(nft_id, &seller, price);
+
+        #[extrinsic_call]
+        delist_nft(RawOrigin::Signed(seller), nft_id);
+    }
+
+    #[benchmark]
+    fn bridge_to_ethereum() {
+        let owner = funded_account::<T>("owner", 0);
+        let nft_id = 500u64;
+        insert_nft::<T>(&owner, nft_id, true);
+
+        // 20-byte Ethereum address
+        let recipient: BoundedVec<u8, ConstU32<64>> =
+            BoundedVec::try_from(vec![0xABu8; 20]).expect("recipient within bounds");
+
+        #[extrinsic_call]
+        bridge_to_ethereum(RawOrigin::Signed(owner), nft_id, recipient);
+    }
+
+    #[benchmark]
+    fn bridge_to_parachain() {
+        let owner = funded_account::<T>("owner", 0);
+        let nft_id = 600u64;
+        insert_nft::<T>(&owner, nft_id, true);
+
+        let recipient: BoundedVec<u8, ConstU32<64>> =
+            BoundedVec::try_from(vec![0xCDu8; 32]).expect("recipient within bounds");
+
+        #[extrinsic_call]
+        bridge_to_parachain(RawOrigin::Signed(owner), nft_id, 2000u32, recipient);
+    }
+
+    #[benchmark]
+    fn cancel_bridge() {
+        let owner = funded_account::<T>("owner", 0);
+        let nft_id = 700u64;
+        insert_nft::<T>(&owner, nft_id, true);
+        insert_bridge::<T>(nft_id, &owner);
+
+        #[extrinsic_call]
+        cancel_bridge(RawOrigin::Signed(owner), nft_id);
+    }
+
+    #[benchmark]
+    fn request_verification() {
+        let submitter = funded_account::<T>("submitter", 0);
+        let executor = funded_account::<T>("executor", 1);
+        let job_id = make_job_id::<T>(6);
+        insert_quantum_job::<T>(&submitter, &job_id);
+        insert_quantum_result::<T>(&executor, &job_id);
+
+        #[extrinsic_call]
+        request_verification(
+            RawOrigin::Signed(submitter),
+            job_id,
+            3u8,  // required_verifications
+        );
+    }
+
+    #[benchmark]
+    fn submit_verification() {
+        let submitter = funded_account::<T>("submitter", 0);
+        let executor = funded_account::<T>("executor", 1);
+        let validator = funded_account::<T>("validator", 2);
+        let job_id = make_job_id::<T>(7);
+        insert_quantum_job::<T>(&submitter, &job_id);
+        insert_quantum_result::<T>(&executor, &job_id);
+        insert_verification_request::<T>(&job_id);
+
+        #[extrinsic_call]
+        submit_verification(
+            RawOrigin::Signed(validator),
+            job_id,
+            0u8,        // vote_index: Approve
+            90u8,       // confidence
+            [3u8; 32],  // result_hash
+        );
+    }
+
+    impl_benchmark_test_suite!(
+        Pallet,
+        crate::mock::new_test_ext(),
+        crate::mock::Test
+    );
+}

@@ -232,6 +232,8 @@ pub struct EmergencyAlert<AccountId, BlockNumber> {
     pub relay_count: u32,
     /// Number of confirmations from mesh nodes in affected area
     pub confirmations: u32,
+    /// Belize district where the alert originated
+    pub district: BelizeDistrict,
 }
 
 /// Emergency severity levels

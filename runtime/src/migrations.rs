@@ -40,21 +40,22 @@ pub enum MigrationStep {
     Failed,
 }
 
-// On-chain version tracker — stored as a raw storage value in `frame_system`
-// auxiliary storage under a well-known key so it persists across upgrades.
-frame_support::parameter_types! {
-    pub const MigrationVersionKey: [u8; 32] = *b"belizechain::migration_version!!";
-}
+// MG-1 FIX: Use hashed storage key instead of raw unhashed bytes
+// The key is the twox_128 hash of the prefix, giving a proper namespaced key.
+const MIGRATION_VERSION_KEY: &[u8] = b"belizechain::migration_version";
 
 /// Read the on-chain migration version.
+/// MG-1 FIX: Uses twox_128 hashed key for proper storage namespacing.
 fn on_chain_version() -> u32 {
-    frame_support::storage::unhashed::get::<u32>(b"belizechain::migration_version!!")
+    let key = sp_core::hashing::twox_128(MIGRATION_VERSION_KEY);
+    frame_support::storage::unhashed::get::<u32>(&key)
         .unwrap_or(0)
 }
 
 /// Write the on-chain migration version.
 fn set_on_chain_version(v: u32) {
-    frame_support::storage::unhashed::put::<u32>(b"belizechain::migration_version!!", &v);
+    let key = sp_core::hashing::twox_128(MIGRATION_VERSION_KEY);
+    frame_support::storage::unhashed::put::<u32>(&key, &v);
 }
 
 /// Template for pallet storage migrations
@@ -129,17 +130,21 @@ impl<T: frame_system::Config> OnRuntimeUpgrade for CoordinatedUpgrade<T> {
             total_weight = total_weight.saturating_add(
                 Weight::from_parts(1_000_000, 0) // bookkeeping weight
             );
+            // MG-2 FIX: Advance version per-step for rollback safety
+            set_on_chain_version(1);
         }
 
         // ── Add new version gates above this line ──
         // if on_chain < 2 {
         //     log::info!("  ↳ Applying migration V1 → V2 ...");
         //     total_weight = total_weight.saturating_add(MigrateXxx::<T>::on_runtime_upgrade());
+        //     set_on_chain_version(2); // MG-2: advance after each step
         // }
 
-        set_on_chain_version(CURRENT_RUNTIME_VERSION);
+        // MG-2 FIX: Version is now advanced per-step above. Only log completion.
         log::info!(
-            "✅ Runtime upgrade completed: now at migration version {CURRENT_RUNTIME_VERSION}"
+            "✅ Runtime upgrade completed: now at migration version {}",
+            on_chain_version()
         );
         total_weight
     }

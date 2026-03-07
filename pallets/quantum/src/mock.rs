@@ -89,6 +89,7 @@ parameter_types! {
     pub const DallaPerQubit: u128 = 1_000_000; // 0.000001 DALLA per qubit
     pub const DallaPerShot: u128 = 100_000; // 0.0000001 DALLA per shot
     pub const NFTMintingFee: u128 = 500_000_000_000; // 0.5 DALLA
+    pub const QuantumTreasuryAccount: u64 = 100; // Mock treasury account
 }
 
 impl pallet_quantum::Config for Test {
@@ -97,6 +98,7 @@ impl pallet_quantum::Config for Test {
     type DallaPerQubit = DallaPerQubit;
     type DallaPerShot = DallaPerShot;
     type NFTMintingFee = NFTMintingFee;
+    type Treasury = QuantumTreasuryAccount;
     type WeightInfo = ();
 }
 

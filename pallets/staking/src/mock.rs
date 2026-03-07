@@ -122,6 +122,19 @@ parameter_types! {
     pub const BaseReward: u128 = 100_000_000; // 100 DALLA per epoch
     pub const EpochDuration: u64 = 100; // 100 blocks per epoch
     pub const UnbondingPeriod: u64 = 100; // 100 blocks unbonding
+    pub const TestMaxSupply: u128 = 501_000_000_000_000_000; // 501B DALLA
+}
+
+// Mock justice provider — always report pending review so slashes
+// bypass the escrow path and apply directly (testing the direct slash flow).
+pub struct MockJustice;
+impl pallet_belize_staking::JusticeProvider<u64, u128> for MockJustice {
+    fn try_escrow_slash(_account: &u64, _amount: u128) -> frame_support::dispatch::DispatchResult {
+        Ok(())
+    }
+    fn has_pending_review(_account: &u64) -> bool {
+        true
+    }
 }
 
 impl pallet_belize_staking::Config for Test {
@@ -134,7 +147,9 @@ impl pallet_belize_staking::Config for Test {
     type BaseReward = BaseReward;
     type EpochDuration = EpochDuration;
     type UnbondingPeriod = UnbondingPeriod;
+    type MaxSupply = TestMaxSupply;
     type WeightInfo = ();
+    type JusticeProvider = MockJustice;
 }
 
 // Test accounts

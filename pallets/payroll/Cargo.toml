@@ -16,6 +16,7 @@ frame-system = { workspace = true, default-features = false }
 sp-runtime = { workspace = true, default-features = false }
 sp-std = { workspace = true, default-features = false }
 sp-core = { workspace = true, default-features = false }
+frame-benchmarking = { workspace = true, default-features = false, optional = true }
 
 [dev-dependencies]
 pallet-balances = { workspace = true, default-features = true }
@@ -32,6 +33,7 @@ std = [
     "sp-runtime/std",
     "sp-std/std",
     "sp-core/std",
+    "frame-benchmarking?/std",
 ]
 try-runtime = [
     "frame-support/try-runtime",
@@ -40,4 +42,5 @@ try-runtime = [
 runtime-benchmarks = [
     "frame-support/runtime-benchmarks",
     "frame-system/runtime-benchmarks",
+    "frame-benchmarking/runtime-benchmarks",
 ]

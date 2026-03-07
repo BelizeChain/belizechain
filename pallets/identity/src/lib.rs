@@ -30,6 +30,11 @@ use sp_runtime::traits::Zero;
 
 pub use pallet::*;
 
+pub mod weights;
+
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
 #[cfg(test)]
 mod mock;
 
@@ -578,7 +583,9 @@ pub mod pallet {
 
             Identities::<T>::try_mutate(id, |maybe| -> DispatchResult {
                 let rec = maybe.as_mut().ok_or(Error::<T>::IdentityNotFound)?;
-                ensure!(rec.accounts.contains(&who), Error::<T>::IdentityNotFound);
+                // M50 FIX: Only primary account owner (first account) can link new accounts
+                // This prevents unauthorized delegation chains from compromised linked accounts
+                ensure!(!rec.accounts.is_empty() && rec.accounts[0] == who, Error::<T>::IdentityNotFound);
                 rec.accounts.try_push(new_account.clone()).map_err(|_| Error::<T>::TooManyAccounts)?;
                 Ok(())
             })?;
@@ -595,7 +602,11 @@ pub mod pallet {
             let id = IdentityOf::<T>::get(&who).ok_or(Error::<T>::IdentityNotFound)?;
             Identities::<T>::try_mutate(id, |maybe| -> DispatchResult {
                 let rec = maybe.as_mut().ok_or(Error::<T>::IdentityNotFound)?;
-                ensure!(rec.accounts.contains(&who), Error::<T>::IdentityNotFound);
+                // I-7 FIX: Only primary account (first linked) can update DID doc
+                ensure!(
+                    !rec.accounts.is_empty() && rec.accounts[0] == who,
+                    Error::<T>::IdentityNotFound
+                );
                 rec.did_doc_cid = Some(cid.clone());
                 Ok(())
             })?;
@@ -614,15 +625,25 @@ pub mod pallet {
             if !required.is_zero() {
                 ensure!(IssuerBonds::<T>::get(attr_e, issuer.clone()) >= required, Error::<T>::BondInsufficient);
             }
+            // I-4 FIX: Prevent duplicate issuer registration
             match attr_e {
                 AttributeType::Ssn => {
-                    SsnIssuers::<T>::try_mutate(|v| v.try_push(issuer.clone()).map_err(|_| Error::<T>::TooManyAccounts))?;
+                    SsnIssuers::<T>::try_mutate(|v| {
+                        ensure!(!v.contains(&issuer), Error::<T>::AlreadyAttested);
+                        v.try_push(issuer.clone()).map_err(|_| Error::<T>::TooManyAccounts)
+                    })?;
                 }
                 AttributeType::Passport => {
-                    PassportIssuers::<T>::try_mutate(|v| v.try_push(issuer.clone()).map_err(|_| Error::<T>::TooManyAccounts))?;
+                    PassportIssuers::<T>::try_mutate(|v| {
+                        ensure!(!v.contains(&issuer), Error::<T>::AlreadyAttested);
+                        v.try_push(issuer.clone()).map_err(|_| Error::<T>::TooManyAccounts)
+                    })?;
                 }
                 AttributeType::Biometrics => {
-                    BiometricIssuers::<T>::try_mutate(|v| v.try_push(issuer.clone()).map_err(|_| Error::<T>::TooManyAccounts))?;
+                    BiometricIssuers::<T>::try_mutate(|v| {
+                        ensure!(!v.contains(&issuer), Error::<T>::AlreadyAttested);
+                        v.try_push(issuer.clone()).map_err(|_| Error::<T>::TooManyAccounts)
+                    })?;
                 }
             }
             Self::deposit_event(Event::IssuerAdded { attr, issuer });
@@ -656,10 +677,13 @@ pub mod pallet {
         #[pallet::weight(T::WeightInfo::admin_simple())]
         pub fn set_standard_version(origin: OriginFor<T>, attr: u8, version: u32) -> DispatchResult {
             T::AdminOrigin::ensure_origin(origin)?;
+            // I-5 FIX: Return error for Biometrics instead of silent no-op
             match AttributeType::from(attr) {
                 AttributeType::Ssn => SsnStandardVersion::<T>::put(version),
                 AttributeType::Passport => PassportStandardVersion::<T>::put(version),
-                AttributeType::Biometrics => {},
+                AttributeType::Biometrics => {
+                    return Err(Error::<T>::NoAttestation.into()); // No BiometricsStandardVersion storage exists
+                },
             }
             Self::deposit_event(Event::StandardVersionUpdated { attr, version });
             Ok(())
@@ -747,6 +771,12 @@ pub mod pallet {
                 status: AttestationStatus::Active,
             };
             if PassportAttestations::<T>::contains_key(id) { /* no-op */ }
+            // Remove stale hash index entry if SSN was previously issued
+            if let Some(old_att) = SsnAttestations::<T>::get(id) {
+                if old_att.hash != hash {
+                    SsnHashIndex::<T>::remove(old_att.hash);
+                }
+            }
             SsnAttestations::<T>::insert(id, att);
             SsnHashIndex::<T>::insert(hash, id);
             Self::append_history(id, AttributeType::Ssn, HistoryAction::Issued);
@@ -905,7 +935,7 @@ pub mod pallet {
             ensure!(!FlaggedIssuers::<T>::get(attr_e, issuer.clone()), Error::<T>::IssuerFlagged);
             let amount = IssuerBonds::<T>::get(attr_e, issuer.clone());
             ensure!(!amount.is_zero(), Error::<T>::BondNotFound);
-            T::Currency::transfer(&Self::account_id(), &issuer, amount, ExistenceRequirement::AllowDeath)?;
+            T::Currency::transfer(&Self::account_id(), &issuer, amount, ExistenceRequirement::KeepAlive)?;
             IssuerBonds::<T>::remove(attr_e, issuer.clone());
             Self::deposit_event(Event::IssuerBondWithdrawn { attr, issuer, amount });
             Ok(())
@@ -931,7 +961,7 @@ pub mod pallet {
             ensure!(current >= amount, Error::<T>::BondInsufficient);
             let new_bal = current - amount;
             IssuerBonds::<T>::insert(attr_e, issuer.clone(), new_bal);
-            T::Currency::transfer(&Self::account_id(), &T::Treasury::get(), amount, ExistenceRequirement::AllowDeath)?;
+            T::Currency::transfer(&Self::account_id(), &T::Treasury::get(), amount, ExistenceRequirement::KeepAlive)?;
             Self::deposit_event(Event::IssuerBondSlashed { attr, issuer, amount });
             Ok(())
         }
@@ -957,7 +987,7 @@ pub mod pallet {
                 ensure!(current >= slash_amount, Error::<T>::BondInsufficient);
                 let new_bal = current - slash_amount;
                 IssuerBonds::<T>::insert(attr_e, issuer.clone(), new_bal);
-                T::Currency::transfer(&Self::account_id(), &T::Treasury::get(), slash_amount, ExistenceRequirement::AllowDeath)?;
+                T::Currency::transfer(&Self::account_id(), &T::Treasury::get(), slash_amount, ExistenceRequirement::KeepAlive)?;
                 Self::deposit_event(Event::IssuerBondSlashed { attr, issuer, amount: slash_amount });
             }
             Ok(())
@@ -1000,15 +1030,11 @@ pub mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
-        /// Check KYC level via Oracle (for cross-pallet verification)
-        /// Returns Oracle KYC level if available, otherwise checks on-chain attestations
+        /// Check KYC level via on-chain attestations first, Oracle as supplement
+        /// M51 FIX: On-chain attestations take priority over Oracle to prevent
+        /// compromised oracle from overriding verified on-chain KYC state
         pub fn get_verified_kyc_level(who: &T::AccountId) -> Option<u8> {
-            // First check Oracle for external verification
-            if let Some(oracle_level) = T::Oracle::get_kyc_level(who) {
-                return Some(oracle_level);
-            }
-            
-            // Fallback to on-chain attestations
+            // Check on-chain attestations first (immutable, verifiable)
             let now = frame_system::Pallet::<T>::block_number();
             if Self::kyc_state(who, KycLevel::L3, now) == KycState::Valid {
                 return Some(3);
@@ -1019,17 +1045,19 @@ pub mod pallet {
             if Self::kyc_state(who, KycLevel::L1, now) == KycState::Valid {
                 return Some(1);
             }
+            
+            // Fallback to Oracle for external verification (supplementary)
+            if let Some(oracle_level) = T::Oracle::get_kyc_level(who) {
+                return Some(oracle_level);
+            }
+            
             Some(0) // L0 - no verification
         }
         
         /// Check if account meets KYC requirement (for cross-pallet use)
+        /// M51 FIX: On-chain verification takes priority over Oracle
         pub fn meets_kyc_requirement_level(who: &T::AccountId, required_level: u8) -> bool {
-            // Check via Oracle first
-            if T::Oracle::meets_kyc_requirement(who, required_level) {
-                return true;
-            }
-            
-            // Fallback to on-chain verification
+            // Check on-chain verification first
             let now = frame_system::Pallet::<T>::block_number();
             let kyc_level = match required_level {
                 0 => KycLevel::L0,
@@ -1037,7 +1065,16 @@ pub mod pallet {
                 2 => KycLevel::L2,
                 _ => KycLevel::L3,
             };
-            matches!(Self::kyc_state(who, kyc_level, now), KycState::Valid | KycState::Grace)
+            if matches!(Self::kyc_state(who, kyc_level, now), KycState::Valid | KycState::Grace) {
+                return true;
+            }
+            
+            // Fallback to Oracle as supplementary verification
+            if T::Oracle::meets_kyc_requirement(who, required_level) {
+                return true;
+            }
+            
+            false
         }
         
         /// Check if account is sanctioned (via Oracle)
@@ -1111,32 +1148,32 @@ pub trait WeightInfo {
 impl WeightInfo for () {
     fn register_identity() -> frame_support::weights::Weight {
         // reads: NextIdentityId, writes: NextIdentityId, Identities, IdentityOf
-        Weight::from_parts(25_000_000, 0)
+        Weight::from_parts(25_000_000, 512)
             .saturating_add(frame_support::weights::constants::RocksDbWeight::get().reads(1))
             .saturating_add(frame_support::weights::constants::RocksDbWeight::get().writes(3))
     }
     fn link_account() -> frame_support::weights::Weight {
-        Weight::from_parts(20_000_000, 0)
+        Weight::from_parts(20_000_000, 1024)
             .saturating_add(frame_support::weights::constants::RocksDbWeight::get().reads(2))
             .saturating_add(frame_support::weights::constants::RocksDbWeight::get().writes(2))
     }
     fn update_did() -> frame_support::weights::Weight {
-        Weight::from_parts(15_000_000, 0)
+        Weight::from_parts(15_000_000, 512)
             .saturating_add(frame_support::weights::constants::RocksDbWeight::get().reads(1))
             .saturating_add(frame_support::weights::constants::RocksDbWeight::get().writes(1))
     }
     fn admin_simple() -> frame_support::weights::Weight {
-        Weight::from_parts(10_000_000, 0)
+        Weight::from_parts(10_000_000, 512)
             .saturating_add(frame_support::weights::constants::RocksDbWeight::get().reads(1))
             .saturating_add(frame_support::weights::constants::RocksDbWeight::get().writes(1))
     }
     fn issue_attestation() -> frame_support::weights::Weight {
-        Weight::from_parts(40_000_000, 0)
+        Weight::from_parts(40_000_000, 1536)
             .saturating_add(frame_support::weights::constants::RocksDbWeight::get().reads(3))
             .saturating_add(frame_support::weights::constants::RocksDbWeight::get().writes(3))
     }
     fn revoke() -> frame_support::weights::Weight {
-        Weight::from_parts(15_000_000, 0)
+        Weight::from_parts(15_000_000, 512)
             .saturating_add(frame_support::weights::constants::RocksDbWeight::get().reads(1))
             .saturating_add(frame_support::weights::constants::RocksDbWeight::get().writes(1))
     }

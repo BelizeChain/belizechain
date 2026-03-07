@@ -68,7 +68,7 @@ use frame_support::{
     pallet_prelude::*,
     traits::{Currency, ReservableCurrency, UnixTime, Get},
     BoundedVec,
-    weights::{Weight, constants::RocksDbWeight},
+    weights::Weight,
 };
 use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
@@ -82,6 +82,13 @@ mod mock;
 mod tests;
 
 pub use pallet::*;
+
+pub mod weights;
+/// Runtime API declaration for off-chain compliance queries (AR-11).
+pub mod runtime_api;
+
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
 
 // ===== TYPE DEFINITIONS =====
 
@@ -216,6 +223,8 @@ pub enum ActionType {
     AccountWhitelisted,
     /// Account restricted
     AccountRestricted,
+    /// Restriction lifted from account
+    RestrictionLifted,
     /// Suspicious activity reported
     SuspiciousActivityReported,
     /// Compliance check performed
@@ -252,64 +261,6 @@ pub trait WeightInfo {
     fn remove_sanctions_entry() -> Weight;
     fn check_compliance() -> Weight;
     fn update_verification_level() -> Weight;
-}
-
-/// Default weight implementation
-pub struct SubstrateWeight<T>(sp_std::marker::PhantomData<T>);
-
-impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
-    fn verify_account() -> Weight {
-        Weight::from_parts(50_000_000, 0)
-            .saturating_add(RocksDbWeight::get().reads(3))
-            .saturating_add(RocksDbWeight::get().writes(2))
-    }
-    
-    fn update_risk_level() -> Weight {
-        Weight::from_parts(35_000_000, 0)
-            .saturating_add(RocksDbWeight::get().reads(2))
-            .saturating_add(RocksDbWeight::get().writes(1))
-    }
-    
-    fn whitelist_account() -> Weight {
-        Weight::from_parts(30_000_000, 0)
-            .saturating_add(RocksDbWeight::get().reads(1))
-            .saturating_add(RocksDbWeight::get().writes(1))
-    }
-    
-    fn restrict_account() -> Weight {
-        Weight::from_parts(40_000_000, 0)
-            .saturating_add(RocksDbWeight::get().reads(2))
-            .saturating_add(RocksDbWeight::get().writes(2))
-    }
-    
-    fn flag_suspicious_activity() -> Weight {
-        Weight::from_parts(60_000_000, 0)
-            .saturating_add(RocksDbWeight::get().reads(2))
-            .saturating_add(RocksDbWeight::get().writes(2))
-    }
-    
-    fn add_sanctions_entry() -> Weight {
-        Weight::from_parts(45_000_000, 0)
-            .saturating_add(RocksDbWeight::get().reads(1))
-            .saturating_add(RocksDbWeight::get().writes(1))
-    }
-    
-    fn remove_sanctions_entry() -> Weight {
-        Weight::from_parts(35_000_000, 0)
-            .saturating_add(RocksDbWeight::get().reads(1))
-            .saturating_add(RocksDbWeight::get().writes(1))
-    }
-    
-    fn check_compliance() -> Weight {
-        Weight::from_parts(25_000_000, 0)
-            .saturating_add(RocksDbWeight::get().reads(3))
-    }
-    
-    fn update_verification_level() -> Weight {
-        Weight::from_parts(40_000_000, 0)
-            .saturating_add(RocksDbWeight::get().reads(2))
-            .saturating_add(RocksDbWeight::get().writes(1))
-    }
 }
 
 #[frame_support::pallet]
@@ -562,6 +513,9 @@ pub mod pallet {
             let verification_level = VerificationLevel::from_u8(level);
             let risk = Self::u8_to_risk_level(risk_level);
             
+            // CP-4 FIX: Capture previous level before mutation
+            let was_unverified = status.verification_level == VerificationLevel::None;
+
             status.verification_level = verification_level;
             status.risk_level = risk;
             status.last_verification = now;
@@ -576,10 +530,12 @@ pub mod pallet {
                 b"Verification level updated".to_vec(),
             )?;
 
-            // Update stats
-            let (mut verified, restricted, suspicious, sanctions) = ComplianceStats::<T>::get();
-            verified = verified.saturating_add(1);
-            ComplianceStats::<T>::put((verified, restricted, suspicious, sanctions));
+            // CP-4 FIX: Only increment verified counter if account was not previously verified
+            if was_unverified && verification_level != VerificationLevel::None {
+                let (mut verified, restricted, suspicious, sanctions) = ComplianceStats::<T>::get();
+                verified = verified.saturating_add(1);
+                ComplianceStats::<T>::put((verified, restricted, suspicious, sanctions));
+            }
 
             Self::deposit_event(Event::VerificationLevelUpdated { account, level: verification_level.as_u8() });
             
@@ -722,10 +678,15 @@ pub mod pallet {
 
             Self::create_audit_record(
                 &account,
-                ActionType::AccountRestricted,
+                ActionType::RestrictionLifted,
                 true,
                 b"Restriction lifted".to_vec(),
             )?;
+
+            // CP-3 FIX: Decrement restricted counter
+            let (verified, mut restricted, suspicious, sanctions) = ComplianceStats::<T>::get();
+            restricted = restricted.saturating_sub(1);
+            ComplianceStats::<T>::put((verified, restricted, suspicious, sanctions));
 
             Self::deposit_event(Event::RestrictionLifted { account });
             
@@ -854,9 +815,14 @@ pub mod pallet {
             Ok(())
         }
 
-        /// Update verification level based on BelizeIdentity KYC status
+        /// Sync verification level from identity / refresh expired verification
         ///
-        /// This should be called periodically or triggered by BelizeIdentity events
+        /// H-31 fix: replaces placeholder with real logic.
+        /// If the caller's last verification is older than `VerificationValidityPeriod`,
+        /// the verification level is downgraded to `None` and the account is flagged
+        /// as restricted until re-verified by compliance authority.
+        /// Otherwise the last-verification timestamp is refreshed and an audit
+        /// record is written.
         ///
         /// # Parameters
         /// - `origin`: Signed by the account itself
@@ -867,16 +833,42 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            // This is a placeholder - actual implementation would integrate with BelizeIdentity
-            // to check KYC level and update verification level accordingly
-            
-            // For now, just create an audit record
-            Self::create_audit_record(
-                &who,
-                ActionType::ComplianceCheckPerformed,
-                true,
-                b"Verification synced from identity".to_vec(),
-            )?;
+            let now = T::UnixTime::now().as_secs();
+            let validity_period = T::VerificationValidityPeriod::get();
+
+            let mut status = ComplianceStatusOf::<T>::get(&who);
+
+            if status.last_verification > 0
+                && now.saturating_sub(status.last_verification) > validity_period
+            {
+                // Verification has expired — downgrade to None and restrict
+                status.verification_level = VerificationLevel::None;
+                status.restricted = true;
+                ComplianceStatusOf::<T>::insert(&who, &status);
+
+                Self::create_audit_record(
+                    &who,
+                    ActionType::ComplianceCheckPerformed,
+                    false,
+                    b"Verification expired, level reset".to_vec(),
+                )?;
+
+                Self::deposit_event(Event::VerificationLevelUpdated {
+                    account: who,
+                    level: VerificationLevel::None as u8,
+                });
+            } else {
+                // Still valid — refresh timestamp and log
+                status.last_verification = now;
+                ComplianceStatusOf::<T>::insert(&who, &status);
+
+                Self::create_audit_record(
+                    &who,
+                    ActionType::ComplianceCheckPerformed,
+                    true,
+                    b"Verification synced and refreshed".to_vec(),
+                )?;
+            }
 
             Ok(())
         }
@@ -908,8 +900,15 @@ pub mod pallet {
             };
 
             AuditRecords::<T>::try_mutate(account, |records| -> DispatchResult {
-                records.try_push(record)
-                    .map_err(|_| Error::<T>::AuditRecordsOverflow)?;
+                // If the BoundedVec is full, evict the oldest record to make room
+                if records.try_push(record.clone()).is_err() {
+                    // Remove the first (oldest) record and retry
+                    if !records.is_empty() {
+                        records.remove(0);
+                    }
+                    records.try_push(record)
+                        .map_err(|_| Error::<T>::AuditRecordsOverflow)?;
+                }
                 Ok(())
             })?;
 
@@ -1001,6 +1000,7 @@ pub mod pallet {
                 ActionType::RiskAssessmentUpdated => 1,
                 ActionType::AccountWhitelisted => 2,
                 ActionType::AccountRestricted => 3,
+                ActionType::RestrictionLifted => 8,
                 ActionType::SuspiciousActivityReported => 4,
                 ActionType::ComplianceCheckPerformed => 5,
                 ActionType::SanctionsScreened => 6,
@@ -1037,30 +1037,30 @@ pub mod pallet {
 // Implement default weights for () to match runtime wiring
 impl WeightInfo for () {
     fn verify_account() -> Weight {
-        Weight::from_parts(50_000_000, 0)
+        Weight::from_parts(50_000_000, 512)
     }
     fn update_risk_level() -> Weight {
-        Weight::from_parts(35_000_000, 0)
+        Weight::from_parts(35_000_000, 512)
     }
     fn whitelist_account() -> Weight {
-        Weight::from_parts(30_000_000, 0)
+        Weight::from_parts(30_000_000, 512)
     }
     fn restrict_account() -> Weight {
-        Weight::from_parts(40_000_000, 0)
+        Weight::from_parts(40_000_000, 512)
     }
     fn flag_suspicious_activity() -> Weight {
-        Weight::from_parts(60_000_000, 0)
+        Weight::from_parts(60_000_000, 512)
     }
     fn add_sanctions_entry() -> Weight {
-        Weight::from_parts(45_000_000, 0)
+        Weight::from_parts(45_000_000, 512)
     }
     fn remove_sanctions_entry() -> Weight {
-        Weight::from_parts(35_000_000, 0)
+        Weight::from_parts(35_000_000, 512)
     }
     fn check_compliance() -> Weight {
-        Weight::from_parts(25_000_000, 0)
+        Weight::from_parts(25_000_000, 512)
     }
     fn update_verification_level() -> Weight {
-        Weight::from_parts(40_000_000, 0)
+        Weight::from_parts(40_000_000, 512)
     }
 }

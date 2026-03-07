@@ -27,8 +27,9 @@ const BLOCKS_PER_YEAR: u32 = 5_256_000;
 pub mod pallet {
     use super::*;
     use frame_support::pallet_prelude::*;
+    use frame_support::traits::Currency as CurrencyTrait;
     use frame_system::pallet_prelude::*;
-    use sp_runtime::traits::Saturating;
+    use sp_runtime::traits::{Saturating, SaturatedConversion};
     use crate::types::*;
     use crate::weights::WeightInfo;
     use sp_std::vec::Vec;
@@ -42,6 +43,18 @@ pub mod pallet {
         /// Origin that can add/remove oracle operators
         type OracleAdminOrigin: EnsureOrigin<Self::RuntimeOrigin>;
 
+        // ── AR-7: Currency for oracle reward payouts ─────────────────────────
+        /// The currency used to pay oracle operators.
+        ///
+        /// Rewards are transferred from the treasury account; operators must have
+        /// accumulated at least 1 DALLA-equivalent in stats before claiming.
+        type Currency: frame_support::traits::Currency<Self::AccountId>;
+
+        /// Treasury account that funds oracle reward payouts (AR-7).
+        ///
+        /// In BelizeChain this is the main treasury, derived from `TreasuryPalletId`.
+        type TreasuryAccount: frame_support::traits::Get<Self::AccountId>;
+
         /// Maximum number of oracle operators
         #[pallet::constant]
         type MaxOperators: Get<u32>;
@@ -53,6 +66,17 @@ pub mod pallet {
         /// Minimum number of operators required for consensus
         #[pallet::constant]
         type MinConsensusOperators: Get<u32>;
+
+        /// Minimum distinct oracle operators that must submit matching KYC data
+        /// before it is committed on-chain (Phase 3A — oracle plurality).
+        /// Separate from MinConsensusOperators so identity requirements can be stricter.
+        #[pallet::constant]
+        type MinOracleAgreement: Get<u32>;
+
+        /// Duration (blocks) of governance cooldown applied when a behavior flag
+        /// reaches consensus (Phase 5A).  Default: 14,400 blocks ≈ 24 hours.
+        #[pallet::constant]
+        type BehaviorCooldownBlocks: Get<BlockNumberFor<Self>>;
 
         /// Weight information for extrinsics
         type WeightInfo: WeightInfo;
@@ -169,7 +193,78 @@ pub mod pallet {
         OptionQuery,
     >;
 
-    // ===== GENESIS CONFIGURATION =====
+    // ── Phase 3A: KYC oracle plurality ──────────────────────────────────────────
+
+    /// Staging area: KYC submissions awaiting consensus.
+    /// Outer key: subject account.  Inner key: oracle operator.
+    /// Value: (kyc_level_u8, id_hash) — the specific attestation the oracle is vouching for.
+    /// Cleared once MinOracleAgreement is reached or a dispute is resolved.
+    #[pallet::storage]
+    pub type PendingKycSubmissions<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat, T::AccountId,   // subject
+        Blake2_128Concat, T::AccountId,   // oracle operator
+        (u8, [u8; 32]),
+        OptionQuery,
+    >;
+
+    /// Leading KYC vote state per subject: (kyc_level, id_hash, agreement_count).
+    /// When agreement_count >= T::MinOracleAgreement, data is finalized and
+    /// written to IdentityVerifications.
+    #[pallet::storage]
+    pub type KycLeadingVote<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat, T::AccountId,
+        (u8, [u8; 32], u32),
+        OptionQuery,
+    >;
+
+    /// Dispute flag — set when two oracle operators submit conflicting KYC data
+    /// for the same subject.  Admin must call `resolve_kyc_dispute` before fresh
+    /// votes are accepted for that subject.
+    #[pallet::storage]
+    pub type OracleDisputeFlag<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat, T::AccountId,
+        bool,
+        ValueQuery,
+    >;
+
+    // ===== PHASE 5A: BEHAVIOR FLAG STORAGE =====
+
+    /// Active behavior flags per account.
+    /// Each flag is set only when `MinOracleAgreement` oracle operators agree.
+    /// 0 = CompulsiveActivity, 1 = RewardLoopDetected, 2 = AutomatedActingPattern
+    #[pallet::storage]
+    pub type BehaviorFlags<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat, T::AccountId,
+        u8,           // BehaviorFlag variant as u8
+        OptionQuery,
+    >;
+
+    /// Block number at which an account's behavior-flag cooldown expires.
+    /// After this block the account resumes normal governance participation.
+    #[pallet::storage]
+    pub type BehaviorFlagCooldown<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat, T::AccountId,
+        BlockNumberFor<T>,
+        OptionQuery,
+    >;
+
+    /// Staged behavior-flag votes from oracle operators before consensus is reached.
+    /// DoubleMap: (account, oracle_operator) → flag_type_u8
+    #[pallet::storage]
+    pub type PendingBehaviorFlags<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat, T::AccountId,
+        Blake2_128Concat, T::AccountId,
+        u8,
+        OptionQuery,
+    >;
+
+    // ===== GENESIS CONFIGURATION =
 
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
@@ -282,6 +377,48 @@ pub mod pallet {
             base_currency: u8,
             quote_currency: u8,
         },
+        /// KYC vote staged by oracle operator; waiting for consensus (Phase 3A).
+        KycVoteStaged {
+            subject: T::AccountId,
+            oracle: T::AccountId,
+            kyc_level: u8,
+            votes_so_far: u32,
+        },
+        /// KYC oracle plurality reached; identity data committed on-chain (Phase 3A).
+        KycConsensusReached {
+            subject: T::AccountId,
+            kyc_level: u8,
+            oracle_count: u32,
+        },
+        /// Conflicting KYC submissions detected; data frozen pending admin resolution (Phase 3A).
+        KycDisputeFlagged {
+            subject: T::AccountId,
+        },
+        /// KYC dispute resolved by admin; fresh oracle submissions now accepted (Phase 3A).
+        KycDisputeResolved {
+            subject: T::AccountId,
+        },
+
+        // ── Phase 5A: Behavior flags ──────────────────────────────────────────
+
+        /// Oracle operator staged a behavior-flag vote; waiting for consensus (Phase 5A).
+        BehaviorFlagVoteStaged {
+            account: T::AccountId,
+            oracle: T::AccountId,
+            flag_type: u8,
+            votes_so_far: u32,
+        },
+        /// Oracle plurality agreed on a behavior flag — governance cooldown applied (Phase 5A).
+        /// flag_type: 0=CompulsiveActivity, 1=RewardLoopDetected, 2=AutomatedActingPattern
+        BehaviorFlagged {
+            account: T::AccountId,
+            flag_type: u8,
+            cooldown_until: BlockNumberFor<T>,
+        },
+        /// Behavior flag cleared by admin after manual review (Phase 5A).
+        BehaviorFlagCleared {
+            account: T::AccountId,
+        },
     }
 
     // ===== ERRORS =====
@@ -343,6 +480,20 @@ pub mod pallet {
         NoStatsFound,
         /// No rewards available
         NoRewardsAvailable,
+        /// Treasury account does not hold enough balance to pay the reward
+        InsufficientTreasuryBalance,
+        /// A KYC dispute is active for this subject; admin must call resolve_kyc_dispute first (Phase 3A).
+        KycDisputeActive,
+        /// This oracle already submitted identical KYC data for this subject (Phase 3A).
+        AlreadyVotedSameKyc,
+        /// No active KYC dispute to resolve (Phase 3A).
+        NoKycDisputeActive,
+        /// This oracle already submitted a behavior flag vote for this account (Phase 5A).
+        AlreadyVotedBehaviorFlag,
+        /// Behavior flag type is invalid (must be 0, 1, or 2) (Phase 5A).
+        InvalidBehaviorFlagType,
+        /// No active behavior flag to clear (Phase 5A).
+        NoBehaviorFlagActive,
     }
 
     // ===== CALL FUNCTIONS (EXTRINSICS) =====
@@ -445,7 +596,12 @@ pub mod pallet {
             license: BoundedVec<u8, ConstU32<MAX_CERT_LEN>>,
             location: Option<(i32, i32)>,
         ) -> DispatchResult {
-            let _operator = ensure_signed(origin)?;
+            let operator = ensure_signed(origin)?;
+
+            ensure!(
+                OracleOperators::<T>::get(&operator),
+                Error::<T>::NotAuthorizedOperator
+            );
 
             // Convert u8 to MerchantCategory
             let category = Self::u8_to_merchant_category(category)?;
@@ -549,30 +705,92 @@ pub mod pallet {
                 Error::<T>::NotAuthorizedOperator
             );
 
-            // Convert u8 to KycLevel
-            let kyc_level = Self::u8_to_kyc_level(kyc_level)?;
+            // Phase 3A: reject if a dispute is active for this subject
+            ensure!(
+                !OracleDisputeFlag::<T>::get(&account),
+                Error::<T>::KycDisputeActive
+            );
 
-            let current_block = frame_system::Pallet::<T>::block_number();
-            // KYC expires after 1 year
-            let expiry_block = current_block.saturating_add(BLOCKS_PER_YEAR.into());
+            // Reject duplicate vote from same oracle for same (kyc_level, id_hash)
+            let key = (kyc_level, id_hash);
+            if let Some(prev) = PendingKycSubmissions::<T>::get(&account, &operator) {
+                ensure!(prev != key, Error::<T>::AlreadyVotedSameKyc);
+                // Oracle is changing its vote — remove old submission before re-staging
+                PendingKycSubmissions::<T>::remove(&account, &operator);
+            }
 
-            let identity_info = IdentityInfo {
-                account: account.clone(),
-                kyc_level,
-                id_hash,
-                provider,
-                verified_at: current_block,
-                expires_at: expiry_block,
-                biometric_verified,
-                address_verified,
-            };
+            // Stage the vote
+            PendingKycSubmissions::<T>::insert(&account, &operator, key);
 
-            IdentityVerifications::<T>::insert(&account, identity_info);
-
-            Self::deposit_event(Event::IdentityVerified {
-                account,
-                kyc_level: kyc_level.to_u8(),
+            // Update the leading-vote tally
+            let min_agreement = T::MinOracleAgreement::get();
+            let (new_count, finalize) = KycLeadingVote::<T>::mutate_exists(&account, |entry| {
+                match entry {
+                    None => {
+                        // First submission — becomes the leader
+                        *entry = Some((kyc_level, id_hash, 1u32));
+                        (1u32, false)
+                    }
+                    Some((lkl, lhash, count)) if *lkl == kyc_level && *lhash == id_hash => {
+                        // Matches leader — increment
+                        *count = count.saturating_add(1);
+                        let c = *count;
+                        (c, c >= min_agreement)
+                    }
+                    Some(_) => {
+                        // Conflicts with leading vote — flag dispute
+                        (0u32, false)
+                    }
+                }
             });
+
+            // Detect dispute: mutate_exists returned 0 meaning conflict branch was hit
+            if new_count == 0 {
+                OracleDisputeFlag::<T>::insert(&account, true);
+                Self::deposit_event(Event::KycDisputeFlagged { subject: account });
+                return Ok(());
+            }
+
+            Self::deposit_event(Event::KycVoteStaged {
+                subject: account.clone(),
+                oracle: operator,
+                kyc_level,
+                votes_so_far: new_count,
+            });
+
+            // Finalize when quorum is reached
+            if finalize {
+                let resolved_level = Self::u8_to_kyc_level(kyc_level)?;
+                let current_block = frame_system::Pallet::<T>::block_number();
+                let expiry_block = current_block.saturating_add(BLOCKS_PER_YEAR.into());
+
+                let identity_info = IdentityInfo {
+                    account: account.clone(),
+                    kyc_level: resolved_level,
+                    id_hash,
+                    provider,
+                    verified_at: current_block,
+                    expires_at: expiry_block,
+                    biometric_verified,
+                    address_verified,
+                };
+
+                IdentityVerifications::<T>::insert(&account, identity_info);
+
+                // Clear staging storage
+                let _ = PendingKycSubmissions::<T>::clear_prefix(&account, u32::MAX, None);
+                KycLeadingVote::<T>::remove(&account);
+
+                Self::deposit_event(Event::KycConsensusReached {
+                    subject: account.clone(),
+                    kyc_level,
+                    oracle_count: new_count,
+                });
+                Self::deposit_event(Event::IdentityVerified {
+                    account,
+                    kyc_level,
+                });
+            }
 
             Ok(())
         }
@@ -802,7 +1020,18 @@ pub mod pallet {
             Ok(())
         }
 
-        /// Claim oracle rewards for data contributions
+        /// Claim oracle rewards for data contributions (AR-7)
+        ///
+        /// Calculates the operator's earned DALLA from quality, volume, and uptime
+        /// scores, then transfers the amount from the treasury.  On success the
+        /// per-operator statistics counters are reset so the same work cannot be
+        /// double-claimed.
+        ///
+        /// # Errors
+        ///
+        /// - `NoStatsFound` — caller has never submitted oracle data.
+        /// - `NoRewardsAvailable` — calculated reward rounds to zero.
+        /// - `InsufficientTreasuryBalance` — treasury cannot cover the reward.
         #[pallet::weight(T::WeightInfo::claim_oracle_rewards())]
         #[pallet::call_index(11)]
         pub fn claim_oracle_rewards(
@@ -814,26 +1043,51 @@ pub mod pallet {
                 .ok_or(Error::<T>::NoStatsFound)?;
 
             // Calculate rewards based on contributions
-            let reward = Self::calculate_oracle_reward(&stats);
+            let reward_u128 = Self::calculate_oracle_reward(&stats);
+            ensure!(reward_u128 > 0, Error::<T>::NoRewardsAvailable);
 
-            ensure!(reward > 0, Error::<T>::NoRewardsAvailable);
-
-            // Record payout in Economy pallet for treasury accounting
-            // NOTE: Actual token transfer is handled by Economy pallet's treasury
-            // This integration point allows Economy pallet to track oracle expenditures
-            // 
-            // In runtime configuration, Economy pallet should implement:
-            // - `record_oracle_payout(operator: AccountId, amount: u128)` 
-            // - Treasury multi-sig approval for large oracle rewards
-            // - DALLA token distribution from OracleRewardPool
+            // ── AR-7: Execute the actual DALLA transfer ───────────────────────
             //
-            // Clear stats after claiming (prevents double-claiming)
-            OracleOperatorStatsMap::<T>::remove(&operator);
-            
-            // For Phase 3, emit event for manual treasury distribution
+            // Convert u128 reward to the Currency::Balance type.
+            // `saturated_into` is safe here: Balance is also u128-backed in
+            // BelizeChain so there is no information loss.
+            let reward: <T::Currency as frame_support::traits::Currency<T::AccountId>>::Balance =
+                reward_u128.saturated_into();
+
+            let treasury = T::TreasuryAccount::get();
+            let treasury_balance = T::Currency::free_balance(&treasury);
+
+            ensure!(
+                treasury_balance >= reward,
+                Error::<T>::InsufficientTreasuryBalance
+            );
+
+            T::Currency::transfer(
+                &treasury,
+                &operator,
+                reward,
+                frame_support::traits::ExistenceRequirement::KeepAlive,
+            )?;
+
+            // Reset stats to prevent double-claiming the same work.
+            // Active status and last_active timestamp are preserved so the
+            // operator can continue accumulating rewards immediately.
+            OracleOperatorStatsMap::<T>::mutate(&operator, |maybe_stats| {
+                if let Some(s) = maybe_stats {
+                    s.total_submissions = 0;
+                    s.agritech_submissions = 0;
+                    s.marine_submissions = 0;
+                    s.education_submissions = 0;
+                    s.tech_submissions = 0;
+                    s.general_submissions = 0;
+                    s.avg_quality_score = 0;
+                    s.uptime_percentage = 0;
+                }
+            });
+
             Self::deposit_event(Event::OracleRewardsClaimed {
                 operator,
-                amount: reward,
+                amount: reward_u128,
             });
 
             Ok(())
@@ -865,6 +1119,143 @@ pub mod pallet {
                 quote_currency,
                 price,
             });
+
+            Ok(())
+        }
+
+        /// Resolve a KYC oracle dispute for the given subject account (Phase 3A).
+        ///
+        /// Clears the dispute flag and all pending KYC votes so fresh oracle
+        /// submissions can restart the consensus process.  Only callable by
+        /// `OracleAdminOrigin` (governance council).
+        #[pallet::weight(T::WeightInfo::resolve_kyc_dispute())]
+        #[pallet::call_index(13)]
+        pub fn resolve_kyc_dispute(
+            origin: OriginFor<T>,
+            account: T::AccountId,
+        ) -> DispatchResult {
+            T::OracleAdminOrigin::ensure_origin(origin)?;
+
+            ensure!(
+                OracleDisputeFlag::<T>::get(&account),
+                Error::<T>::NoKycDisputeActive
+            );
+
+            OracleDisputeFlag::<T>::remove(&account);
+            KycLeadingVote::<T>::remove(&account);
+            let _ = PendingKycSubmissions::<T>::clear_prefix(&account, u32::MAX, None);
+
+            Self::deposit_event(Event::KycDisputeResolved { subject: account });
+
+            Ok(())
+        }
+
+        // ===== PHASE 5A: BEHAVIOR FLAG EXTRINSICS =====
+
+        /// Submit a behavior-flag vote for an account via oracle consensus.
+        ///
+        /// Each oracle operator submits their assessment.  Once `MinOracleAgreement`
+        /// operators agree on the same flag type, the flag becomes active and a
+        /// governance-cooldown of `BehaviorCooldownBlocks` is applied.
+        ///
+        /// Flag types (flag_type_u8):
+        ///   0 = CompulsiveActivity    — >50 governance actions in 24 h
+        ///   1 = RewardLoopDetected    — variable-reward exploitation pattern
+        ///   2 = AutomatedActingPattern — bot-like distinct from human variance
+        ///
+        /// ## Safety
+        /// Multi-oracle consensus (MinOracleAgreement) prevents unilateral Nawal suppression.
+        #[pallet::weight(Weight::from_parts(15_000_000, 1024)
+            .saturating_add(T::DbWeight::get().reads(3))
+            .saturating_add(T::DbWeight::get().writes(2)))]
+        #[pallet::call_index(14)]
+        pub fn submit_behavior_flag(
+            origin: OriginFor<T>,
+            account: T::AccountId,
+            flag_type_u8: u8,
+        ) -> DispatchResult {
+            let oracle = ensure_signed(origin)?;
+
+            // Only registered oracle operators may flag
+            ensure!(
+                OracleOperators::<T>::contains_key(&oracle),
+                Error::<T>::NotAuthorizedOperator
+            );
+
+            // Validate flag type (0-2 are valid)
+            ensure!(flag_type_u8 <= 2, Error::<T>::InvalidBehaviorFlagType);
+
+            // Prevent duplicate vote from same operator
+            ensure!(
+                !PendingBehaviorFlags::<T>::contains_key(&account, &oracle),
+                Error::<T>::AlreadyVotedBehaviorFlag
+            );
+
+            // Record this operator's vote
+            PendingBehaviorFlags::<T>::insert(&account, &oracle, flag_type_u8);
+
+            // Count votes matching this flag type (bounded by MaxOperators)
+            let max_ops = T::MaxOperators::get() as usize;
+            let agreeing_votes: u32 = PendingBehaviorFlags::<T>::iter_prefix(&account)
+                .take(max_ops)
+                .filter(|(_, f)| *f == flag_type_u8)
+                .count() as u32;
+
+            let threshold = T::MinOracleAgreement::get();
+
+            Self::deposit_event(Event::BehaviorFlagVoteStaged {
+                account: account.clone(),
+                oracle,
+                flag_type: flag_type_u8,
+                votes_so_far: agreeing_votes,
+            });
+
+            if agreeing_votes >= threshold {
+                // Consensus reached — activate flag
+                BehaviorFlags::<T>::insert(&account, flag_type_u8);
+
+                // Set cooldown end block (~24 hours at 6 s/block = 14,400 blocks)
+                let cooldown_end = frame_system::Pallet::<T>::block_number()
+                    .saturating_add(T::BehaviorCooldownBlocks::get());
+                BehaviorFlagCooldown::<T>::insert(&account, cooldown_end);
+
+                // Clear pending votes
+                let _ = PendingBehaviorFlags::<T>::clear_prefix(&account, u32::MAX, None);
+
+                Self::deposit_event(Event::BehaviorFlagged {
+                    account,
+                    flag_type: flag_type_u8,
+                    cooldown_until: cooldown_end,
+                });
+            }
+
+            Ok(())
+        }
+
+        /// Clear a behavior flag after manual admin review.
+        ///
+        /// Callable only by `OracleAdminOrigin`.  Used when Nawal oracle assessment
+        /// is disputed or when sufficient time and rehabilitation has occurred.
+        #[pallet::weight(Weight::from_parts(10_000_000, 512)
+            .saturating_add(T::DbWeight::get().reads(1))
+            .saturating_add(T::DbWeight::get().writes(2)))]
+        #[pallet::call_index(15)]
+        pub fn clear_behavior_flag(
+            origin: OriginFor<T>,
+            account: T::AccountId,
+        ) -> DispatchResult {
+            T::OracleAdminOrigin::ensure_origin(origin)?;
+
+            ensure!(
+                BehaviorFlags::<T>::contains_key(&account),
+                Error::<T>::NoBehaviorFlagActive
+            );
+
+            BehaviorFlags::<T>::remove(&account);
+            BehaviorFlagCooldown::<T>::remove(&account);
+            let _ = PendingBehaviorFlags::<T>::clear_prefix(&account, u32::MAX, None);
+
+            Self::deposit_event(Event::BehaviorFlagCleared { account });
 
             Ok(())
         }
@@ -929,7 +1320,9 @@ pub mod pallet {
             // Collect all recent submissions
             let mut submissions: Vec<u128> = Vec::new();
             
-            for (operator, _) in OracleOperators::<T>::iter() {
+            // SECURITY: Bound iteration to MaxOperators to prevent DoS (H-29)
+            let max_ops = T::MaxOperators::get() as usize;
+            for (operator, _) in OracleOperators::<T>::iter().take(max_ops) {
                 if let Some((price, block)) = PriceSubmissions::<T>::get(pair, &operator) {
                     // Only include fresh data
                     if current_block.saturating_sub(block) <= max_staleness {
@@ -1002,7 +1395,32 @@ pub mod pallet {
             false
         }
 
+        // ── Phase 5A: Behavior flag public API ──────────────────────────────
+
+        /// Returns `true` if `account` has an active behavior flag and its
+        /// cooldown period has not yet expired.  Used by governance and economy
+        /// pallets as an addiction-loop circuit breaker.
+        pub fn has_active_behavior_flag(account: &T::AccountId) -> bool {
+            if !BehaviorFlags::<T>::contains_key(account) {
+                return false;
+            }
+            // If cooldown has expired, treat the flag as lapsed
+            if let Some(cooldown_end) = BehaviorFlagCooldown::<T>::get(account) {
+                let now = frame_system::Pallet::<T>::block_number();
+                return now < cooldown_end;
+            }
+            false
+        }
+
+        /// Returns the block at which the behavior-flag cooldown ends, if active.
+        pub fn behavior_cooldown_end(account: &T::AccountId) -> Option<BlockNumberFor<T>> {
+            let end = BehaviorFlagCooldown::<T>::get(account)?;
+            let now = frame_system::Pallet::<T>::block_number();
+            if now < end { Some(end) } else { None }
+        }
+
         /// Get current exchange rate for currency pair
+        /// O-4 FIX: Corrected brace alignment for stale rate diagnostics
         pub fn get_exchange_rate(pair: CurrencyPair) -> Option<u128> {
             let current_block = frame_system::Pallet::<T>::block_number();
             let max_staleness = T::MaxDataStaleness::get();
@@ -1011,25 +1429,26 @@ pub mod pallet {
             if let Some((price, last_update)) = ManualExchangeRates::<T>::get(pair) {
                 if current_block.saturating_sub(last_update) <= max_staleness {
                     return Some(price);
-                }
+                } else {
                     // Emit diagnostics for stale manual rate
                     Self::deposit_event(Event::ExchangeRateStale {
                         base_currency: pair.base.to_u8(),
                         quote_currency: pair.quote.to_u8(),
                     });
+                }
             }
 
             // Fall back to aggregated price feed
             if let Some(feed) = PriceFeeds::<T>::get(pair) {
                 if current_block.saturating_sub(feed.last_update) <= max_staleness {
                     return Some(feed.price);
-                }
                 } else {
                     // Emit diagnostics for stale aggregated feed
                     Self::deposit_event(Event::ExchangeRateStale {
                         base_currency: pair.base.to_u8(),
                         quote_currency: pair.quote.to_u8(),
                     });
+                }
             }
             None
         }

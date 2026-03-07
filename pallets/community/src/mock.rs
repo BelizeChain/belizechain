@@ -95,6 +95,7 @@ parameter_types! {
     pub const MaxTitleLength: u32 = 128;
     pub const MaxDescriptionLength: u32 = 1024;
     pub const MaxParticipationHistory: u32 = 1000;
+    pub const MaxSupply: u64 = 501_000_000_000_000; // 501B in mock units
 }
 
 impl pallet_belize_community::Config for Test {
@@ -110,7 +111,10 @@ impl pallet_belize_community::Config for Test {
     type MaxTitleLength = MaxTitleLength;
     type MaxDescriptionLength = MaxDescriptionLength;
     type MaxParticipationHistory = MaxParticipationHistory;
+    type MaxSupply = MaxSupply;
     type WeightInfo = ();
+    type MinAttestationsRequired = frame_support::traits::ConstU32<2>;
+    type OracleAttestationOrigin = frame_system::EnsureRoot<u64>;
 }
 
 // Build genesis storage according to the mock runtime.
@@ -141,4 +145,10 @@ pub fn run_to_block(n: u64) {
     while System::block_number() < n {
         System::set_block_number(System::block_number() + 1);
     }
+}
+
+/// Pre-attest a high-value activity so `record_participation` won't reject it.
+/// Must be called inside `execute_with` each time before recording activity code 2 or 3.
+pub fn attest_activity(account: u64, activity_code: u8) {
+    crate::AttestedActivities::<Test>::insert((account, activity_code), true);
 }
