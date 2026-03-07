@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
 
 env:
-  REGISTRY: belizechainregistry.azurecr.io
+  REGISTRY: belizechainacr.azurecr.io
   IMAGE_NAME: belizechain-node
   NODE_NAME: "BelizeChain-Testnet-Validator-1"
 
@@ -190,110 +190,124 @@ jobs:
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
           cache-to:   type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
 
-  # ── 3. Deploy to Azure VM ─────────────────────────────
+  # ── 3. Deploy to AKS ──────────────────────────────────
   deploy:
-    name: 🚀 Deploy to Testnet
+    name: 🚀 Deploy to Testnet (AKS)
     needs: build
     runs-on: ubuntu-latest
     environment:
       name: testnet               # add environment protection rules in GitHub Settings
-    env:
-      ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
-      ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
-      DEPLOY_NODE_NAME: "BelizeChain-Testnet-Validator-1"
 
     steps:
-      - name: Setup SSH
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set AKS context
+        uses: azure/aks-set-context@v4
+        with:
+          resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          cluster-name: ${{ secrets.AKS_CLUSTER_NAME }}
+
+      - name: Create namespace (if needed)
+        run: kubectl create namespace belizechain --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy to AKS
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
+          cat <<EOFK | kubectl apply -f -
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: belizechain-node
+            namespace: belizechain
+            labels:
+              app: belizechain-node
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: belizechain-node
+            template:
+              metadata:
+                labels:
+                  app: belizechain-node
+              spec:
+                containers:
+                  - name: belizechain-node
+                    image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+                    ports:
+                      - containerPort: 30333
+                        name: p2p
+                      - containerPort: 9944
+                        name: rpc
+                      - containerPort: 9615
+                        name: metrics
+                    args:
+                      - "--chain"
+                      - "/etc/belizechain/testnet-chain-spec-raw.json"
+                      - "--base-path"
+                      - "/data"
+                      - "--name"
+                      - "${{ env.NODE_NAME }}"
+                      - "--validator"
+                      - "--alice"
+                      - "--force-authoring"
+                      - "--rpc-port"
+                      - "9944"
+                      - "--rpc-cors"
+                      - "all"
+                      - "--unsafe-rpc-external"
+                      - "--rpc-methods"
+                      - "Safe"
+                      - "--prometheus-port"
+                      - "9615"
+                      - "--prometheus-external"
+                      - "--trie-cache-size"
+                      - "268435456"
+                      - "--state-pruning"
+                      - "archive"
+                    volumeMounts:
+                      - name: blockchain-data
+                        mountPath: /data
+                    resources:
+                      requests:
+                        cpu: "500m"
+                        memory: "1Gi"
+                      limits:
+                        cpu: "1500m"
+                        memory: "3Gi"
+                volumes:
+                  - name: blockchain-data
+                    emptyDir: {}
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: belizechain-node
+            namespace: belizechain
+          spec:
+            selector:
+              app: belizechain-node
+            ports:
+              - name: p2p
+                port: 30333
+                targetPort: 30333
+              - name: rpc
+                port: 9944
+                targetPort: 9944
+              - name: metrics
+                port: 9615
+                targetPort: 9615
+            type: LoadBalancer
+          EOFK
 
-      - name: Deploy via SSH
-        continue-on-error: true
+      - name: Wait for rollout
+        run: kubectl rollout status deployment/belizechain-node -n belizechain --timeout=300s
+
+      - name: Verify deployment
         run: |
-          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
-            -i ~/.ssh/deploy_key \
-            "${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}" bash -s << ENDSSH
-          set -euo pipefail
-
-          REGISTRY="belizechainregistry.azurecr.io"
-          IMAGE="\$REGISTRY/belizechain-node:latest"
-          CONTAINER="belizechain-node"
-
-          echo "🔑 Logging in to ACR…"
-          echo "${ACR_PASSWORD}" | docker login "\$REGISTRY" \
-            -u "${ACR_USERNAME}" --password-stdin
-
-          echo "⬇️  Pulling latest image…"
-          docker pull "\$IMAGE"
-
-          echo "🛑 Stopping previous container (if any)…"
-          docker stop "\$CONTAINER" 2>/dev/null || true
-          docker rm   "\$CONTAINER" 2>/dev/null || true
-
-          docker network create belizechain-net 2>/dev/null || true
-
-          # Generate a persistent node key if one doesn't exist yet
-          NODE_KEY_DIR="/opt/belizechain"
-          NODE_KEY_FILE="\$NODE_KEY_DIR/node-key"
-          sudo mkdir -p "\$NODE_KEY_DIR"
-          if [ ! -f "\$NODE_KEY_FILE" ]; then
-            echo "🔑 Generating new node identity key…"
-            openssl rand -hex 32 | tr -d '\n' | sudo tee "\$NODE_KEY_FILE" > /dev/null
-            sudo chmod 644 "\$NODE_KEY_FILE"
-          else
-            echo "🔑 Using existing node identity key — regenerating to fix format"
-            openssl rand -hex 32 | tr -d '\n' | sudo tee "\$NODE_KEY_FILE" > /dev/null
-            sudo chmod 644 "\$NODE_KEY_FILE"
-          fi
-
-          echo "🚀 Starting blockchain node…"
-          docker run -d \
-            --name "\$CONTAINER" \
-            --restart unless-stopped \
-            --network belizechain-net \
-            -p 30333:30333 \
-            -p 9944:9944 \
-            -p 9615:9615 \
-            -v blockchain-data:/data \
-            -v "\$NODE_KEY_FILE":/etc/belizechain/node-key:ro \
-            "\$IMAGE" \
-            --chain /etc/belizechain/testnet-chain-spec-raw.json \
-            --base-path /data \
-            --node-key-file /etc/belizechain/node-key \
-            --name "${DEPLOY_NODE_NAME}" \
-            --validator \
-            --alice \
-            --force-authoring \
-            --rpc-port 9944 \
-            --rpc-cors all \
-            --unsafe-rpc-external \
-            --rpc-methods Safe \
-            --prometheus-port 9615 \
-            --prometheus-external \
-            --trie-cache-size 268435456 \
-            --state-pruning archive \
-            --telemetry-url "wss://telemetry.polkadot.io/submit/ 0"
-
-          echo "⏳ Waiting for node to become healthy…"
-          for i in \$(seq 1 30); do
-            if curl -sf -X POST -H "Content-Type: application/json" \
-                 -d '{"jsonrpc":"2.0","id":1,"method":"system_health","params":[]}' \
-                 http://localhost:9944 > /dev/null 2>&1; then
-              echo "✅ Node is healthy!"
-              docker logs --tail 10 "\$CONTAINER"
-              exit 0
-            fi
-            echo "   attempt \$i/30 …"
-            sleep 5
-          done
-
-          echo "❌ Node failed health check after 150 s"
-          docker logs --tail 50 "\$CONTAINER"
-          exit 1
-          ENDSSH
-
-      - name: Cleanup SSH key
-        if: always()
-        run: rm -f ~/.ssh/deploy_key
+          kubectl get pods -n belizechain -o wide
+          kubectl get svc -n belizechain
