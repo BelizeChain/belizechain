@@ -131,17 +131,19 @@ jobs:
       - name: Build with runtime-benchmarks feature
         run: cargo build --release --features runtime-benchmarks
 
-      - name: Run benchmark smoke test (frame-system baseline)
+      - name: Run benchmark smoke test (pallet-balances baseline)
         run: |
           ./target/release/belizechain-node benchmark pallet \
             --chain dev \
-            --pallet frame_system \
+            --pallet pallet_balances \
             --extrinsic '*' \
             --steps 2 \
             --repeat 1 \
             --output /dev/null \
             2>&1 | head -50
         # Smoke test only — 2 steps, 1 repeat is enough to verify benchmarks compile and run.
+        # Uses pallet_balances instead of frame_system to avoid the polkadot-sdk stable2512
+        # frame-storage-access-test-runtime wasm-builder bug triggered by frame-system-benchmarking.
         # Full benchmarking (--steps 50 --repeat 20) should be run before releases.
 
   # ── 2. Build Docker image & push to ACR ───────────────

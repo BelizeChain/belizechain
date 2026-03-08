@@ -1506,16 +1506,12 @@ pub type EventRecord = frame_system::EventRecord<
 
 // Benchmark configuration
 #[cfg(feature = "runtime-benchmarks")]
-impl frame_system_benchmarking::Config for Runtime {}
-
-#[cfg(feature = "runtime-benchmarks")]
 impl frame_benchmarking::baseline::Config for Runtime {}
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benches {
     frame_benchmarking::define_benchmarks!(
         [frame_benchmarking, BaselineBench::<Runtime>]
-        [frame_system, SystemBench::<Runtime>]
         [pallet_balances, Balances]
         [pallet_timestamp, Timestamp]
         [pallet_session, Session]
@@ -1802,7 +1798,6 @@ impl_runtime_apis! {
         ) {
             use frame_benchmarking::{baseline, BenchmarkList};
             use frame_support::traits::StorageInfoTrait;
-            use frame_system_benchmarking::Pallet as SystemBench;
             use baseline::Pallet as BaselineBench;
 
             let mut list = Vec::<BenchmarkList>::new();
@@ -1816,7 +1811,6 @@ impl_runtime_apis! {
             config: frame_benchmarking::BenchmarkConfig,
         ) -> Result<Vec<frame_benchmarking::BenchmarkBatch>, alloc::string::String> {
             use frame_benchmarking::{baseline, BenchmarkBatch};
-            use frame_system_benchmarking::Pallet as SystemBench;
             use baseline::Pallet as BaselineBench;
 
             use sp_storage::TrackedStorageKey;
