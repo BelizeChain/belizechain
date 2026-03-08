@@ -1514,7 +1514,6 @@ mod benches {
         [frame_benchmarking, BaselineBench::<Runtime>]
         [pallet_balances, Balances]
         [pallet_timestamp, Timestamp]
-        [pallet_session, Session]
         [pallet_sudo, Sudo]
         [pallet_belize_economy, Economy]
         [pallet_belize_identity, Identity]

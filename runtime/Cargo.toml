@@ -80,7 +80,7 @@ log = { workspace = true, default-features = false }
 hex-literal = "0.4"
 
 [build-dependencies]
-substrate-wasm-builder = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512" }
+substrate-wasm-builder = "23.0.0"
 
 [features]
 default = ["std"]
@@ -147,8 +147,6 @@ runtime-benchmarks = [
     "frame-support/runtime-benchmarks",
     "frame-system/runtime-benchmarks",
     "pallet-balances/runtime-benchmarks",
-    "pallet-grandpa/runtime-benchmarks",
-    "pallet-session/runtime-benchmarks",
     "pallet-sudo/runtime-benchmarks",
     "pallet-collective/runtime-benchmarks",
     "pallet-timestamp/runtime-benchmarks",
