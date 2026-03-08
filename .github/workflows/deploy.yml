@@ -254,6 +254,8 @@ jobs:
                       - "/data"
                       - "--name"
                       - "${{ env.NODE_NAME }}"
+                      - "--node-key"
+                      - "${{ secrets.NODE_KEY }}"
                       - "--validator"
                       - "--alice"
                       - "--force-authoring"
