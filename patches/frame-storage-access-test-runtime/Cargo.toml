@@ -1,0 +1,33 @@
+# Dummy patch for frame-storage-access-test-runtime
+#
+# frame-benchmarking-cli (stable2512) depends on this crate, whose build.rs
+# invokes substrate-wasm-builder which panics outside the polkadot-sdk
+# workspace ("Failed to find entry for package frame-storage-access-test-runtime").
+#
+# This patch provides WASM_BINARY = None so the node compiles.
+# Only the `benchmark storage` subcommand is affected; `benchmark pallet`
+# (our actual use) works fine without the test-runtime WASM blob.
+
+[package]
+name = "frame-storage-access-test-runtime"
+version = "0.6.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+codec = { package = "parity-scale-codec", version = "3.6", default-features = false, features = ["derive"] }
+sp-core = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
+sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
+sp-trie = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
+
+[features]
+default = ["std"]
+std = [
+    "codec/std",
+    "sp-core/std",
+    "sp-runtime/std",
+    "sp-trie/std",
+]
+runtime-benchmarks = [
+    "sp-runtime/runtime-benchmarks",
+]
