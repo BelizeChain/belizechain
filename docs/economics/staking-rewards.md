@@ -25,7 +25,7 @@ Annual (solo validator): ~54.4M DALLA
 ```
 
 **Distribution among validators:**
-- 21 active validators (Aura consensus)
+- 21 active validators (BABE consensus)
 - Rewards split proportionally by stake
 
 ```python

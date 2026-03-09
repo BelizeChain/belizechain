@@ -20,12 +20,15 @@ BelizeChain Runtime
 ├── System Pallets (8)
 │   ├── System - Core blockchain functionality
 │   ├── Timestamp - Block timestamps
-│   ├── Aura - Block production (Authority Round)
+│   ├── Babe - Block production (VRF-based, PoUW-weighted)
 │   ├── Grandpa - Block finalization
+│   ├── Session - Validator rotation (epoch-based)
+│   ├── Historical - Session history for equivocation proofs
+│   ├── Authorship - Block author tracking
+│   ├── Offences - Equivocation reporting and slashing
 │   ├── Balances - Account balances
 │   ├── TransactionPayment - Transaction fees
-│   ├── Sudo - Superuser access (testnet only)
-│   └── RandomnessCollectiveFlip - On-chain randomness
+│   └── Sudo - Superuser access (testnet only)
 │
 └── Custom Pallets (13)
     ├── Economy - DALLA/bBZD tokens + treasury
@@ -82,7 +85,7 @@ impl pallet_belize_economy::OracleProvider<AccountId> for EconomyOracleProvider 
 ## Runtime Configuration
 
 ### Block Production
-- **Block Time**: 6 seconds (Aura consensus)
+- **Block Time**: 6 seconds (BABE consensus, 14,400-block epochs)
 - **Max Block Weight**: 2,000,000,000,000 (2 seconds of ref time)
 - **Max Block Length**: 5 * 1024 * 1024 (5 MB)
 

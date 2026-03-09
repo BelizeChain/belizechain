@@ -50,7 +50,7 @@ Welcome to the BelizeChain Bug Bounty Program! We're committed to building the m
   
 - **System Pallets:**
   - `frame-system`, `pallet-balances`, `pallet-timestamp`
-  - `pallet-aura`, `pallet-grandpa` (consensus)
+  - `pallet-babe`, `pallet-grandpa`, `pallet-session`, `pallet-offences` (consensus)
   - `pallet-transaction-payment`, `pallet-sudo`
 
 #### **Smart Contracts (ink! WASM)**

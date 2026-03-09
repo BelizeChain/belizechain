@@ -19,7 +19,6 @@ members = [
     "pallets/quantum",
     "pallets/bns",
     "pallets/mesh",
-    "pallets/randomness",
     "pallets/justice",
     "pallets/whistleblower",
     "pallets/moderation",
@@ -48,7 +47,8 @@ frame-system-benchmarking = { git = "https://github.com/paritytech/polkadot-sdk"
 sp-api = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
 sp-block-builder = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
 sp-blockchain = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512" }
-sp-consensus-aura = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
+sp-consensus-babe = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
+sp-staking = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
 sp-consensus-grandpa = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
 sp-core = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
 sp-genesis-builder = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
@@ -71,7 +71,7 @@ sc-chain-spec = { git = "https://github.com/paritytech/polkadot-sdk", branch = "
 sc-cli = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512" }
 sc-client-api = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512" }
 sc-consensus = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512" }
-sc-consensus-aura = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512" }
+sc-consensus-babe = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512" }
 sc-consensus-grandpa = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512" }
 sc-executor = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512" }
 sc-keystore = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512" }
@@ -85,7 +85,9 @@ sc-transaction-pool = { git = "https://github.com/paritytech/polkadot-sdk", bran
 sc-transaction-pool-api = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512" }
 
 # Polkadot SDK pallets (standard runtime modules)
-pallet-aura = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
+pallet-authorship = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
+pallet-babe = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
+pallet-offences = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
 pallet-balances = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
 pallet-grandpa = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
 pallet-insecure-randomness-collective-flip = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }

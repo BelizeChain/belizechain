@@ -20,7 +20,7 @@ frame-try-runtime = { workspace = true, default-features = false, optional = tru
 # Substrate primitives
 sp-api = { workspace = true, default-features = false }
 sp-block-builder = { workspace = true, default-features = false }
-sp-consensus-aura = { workspace = true, default-features = false }
+sp-consensus-babe = { workspace = true, default-features = false }
 sp-consensus-grandpa = { workspace = true, default-features = false }
 sp-core = { workspace = true, default-features = false }
 sp-genesis-builder = { workspace = true, default-features = false }
@@ -34,7 +34,9 @@ sp-transaction-pool = { workspace = true, default-features = false }
 sp-version = { workspace = true, default-features = false }
 
 # Substrate pallets
-pallet-aura = { workspace = true, default-features = false }
+pallet-authorship = { workspace = true, default-features = false }
+pallet-babe = { workspace = true, default-features = false }
+pallet-offences = { workspace = true, default-features = false }
 pallet-balances = { workspace = true, default-features = false }
 pallet-grandpa = { workspace = true, default-features = false }
 pallet-session = { workspace = true, default-features = false, features = ["historical"] }
@@ -63,13 +65,12 @@ pallet-belize-payroll = { path = "../pallets/payroll", default-features = false 
 pallet-belize-quantum = { path = "../pallets/quantum", default-features = false }
 pallet-belize-bns = { path = "../pallets/bns", default-features = false }
 pallet-belize-mesh = { path = "../pallets/mesh", default-features = false }
-pallet-belize-randomness = { path = "../pallets/randomness", default-features = false }
 pallet-belize-justice = { path = "../pallets/justice", default-features = false }
 pallet-belize-moderation = { path = "../pallets/moderation", default-features = false }
 pallet-belize-whistleblower = { path = "../pallets/whistleblower", default-features = false }
 
-# Additional Substrate pallets for functionality
-pallet-insecure-randomness-collective-flip = { workspace = true, default-features = false }
+sp-staking = { workspace = true, default-features = false }
+
 
 # General dependencies
 codec = { workspace = true, default-features = false, features = ["derive"] }
@@ -92,7 +93,9 @@ std = [
     "frame-system/std",
     "frame-system-rpc-runtime-api/std",
     "frame-try-runtime?/std",
-    "pallet-aura/std",
+    "pallet-authorship/std",
+    "pallet-babe/std",
+    "pallet-offences/std",
     "pallet-balances/std",
     "pallet-grandpa/std",
     "pallet-session/std",
@@ -101,7 +104,6 @@ std = [
     "pallet-timestamp/std",
     "pallet-transaction-payment/std",
     "pallet-transaction-payment-rpc-runtime-api/std",
-    "pallet-insecure-randomness-collective-flip/std",
     "pallet-contracts/std",
     "pallet-belize-economy/std",
     "pallet-belize-identity/std",
@@ -118,13 +120,13 @@ std = [
     "pallet-belize-quantum/std",
     "pallet-belize-bns/std",
     "pallet-belize-mesh/std",
-    "pallet-belize-randomness/std",
     "pallet-belize-justice/std",
     "pallet-belize-whistleblower/std",
     "pallet-belize-moderation/std",
     "sp-api/std",
     "sp-block-builder/std",
-    "sp-consensus-aura/std",
+    "sp-consensus-babe/std",
+    "sp-staking/std",
     "sp-consensus-grandpa/std",
     "sp-core/std",
     "sp-genesis-builder/std",
@@ -152,6 +154,8 @@ runtime-benchmarks = [
     "pallet-timestamp/runtime-benchmarks",
     "pallet-transaction-payment/runtime-benchmarks",
     "pallet-contracts/runtime-benchmarks",
+    "pallet-babe/runtime-benchmarks",
+    "pallet-offences/runtime-benchmarks",
     "pallet-belize-economy/runtime-benchmarks",
     "pallet-belize-identity/runtime-benchmarks",
     "pallet-belize-governance/runtime-benchmarks",
@@ -167,7 +171,6 @@ runtime-benchmarks = [
     "pallet-belize-quantum/runtime-benchmarks",
     "pallet-belize-bns/runtime-benchmarks",
     "pallet-belize-mesh/runtime-benchmarks",
-    "pallet-belize-randomness/runtime-benchmarks",
     "pallet-belize-justice/runtime-benchmarks",
     "pallet-belize-whistleblower/runtime-benchmarks",
     "pallet-belize-moderation/runtime-benchmarks",
@@ -179,7 +182,9 @@ try-runtime = [
     "frame-executive/try-runtime",
     "frame-support/try-runtime",
     "frame-system/try-runtime",
-    "pallet-aura/try-runtime",
+    "pallet-authorship/try-runtime",
+    "pallet-babe/try-runtime",
+    "pallet-offences/try-runtime",
     "pallet-balances/try-runtime",
     "pallet-grandpa/try-runtime",
     "pallet-session/try-runtime",
@@ -187,7 +192,6 @@ try-runtime = [
     "pallet-collective/try-runtime",
     "pallet-timestamp/try-runtime",
     "pallet-transaction-payment/try-runtime",
-    "pallet-insecure-randomness-collective-flip/try-runtime",
     "pallet-belize-economy/try-runtime",
     "pallet-belize-identity/try-runtime",
     "pallet-belize-governance/try-runtime",
@@ -201,7 +205,6 @@ try-runtime = [
     "pallet-belize-oracle/try-runtime",
     "pallet-belize-quantum/try-runtime",
     "pallet-belize-mesh/try-runtime",
-    "pallet-belize-randomness/try-runtime",
     "pallet-belize-justice/try-runtime",
     "pallet-belize-whistleblower/try-runtime",
     "pallet-belize-moderation/try-runtime",

@@ -834,7 +834,7 @@ BelizeChain
 
 **Detection Signs:**
 - Finality lag >60 seconds (GRANDPA stalled)
-- No new blocks produced (Aura failure)
+- No new blocks produced (BABE failure)
 - Validator logs show errors (session rotation failed)
 
 **Response Steps:**
@@ -858,8 +858,8 @@ BelizeChain
    # Check GRANDPA finality
    polkadot-js-api rpc.grandpa.roundState
    
-   # Check Aura authorities
-   polkadot-js-api query.aura.authorities
+   # Check BABE authorities
+   polkadot-js-api query.babe.authorities
    
    # Common issues:
    # - Validator offline (health check fails)

@@ -7,13 +7,13 @@
 ## 🔬 PoUW Consensus Architecture
 
 ### **Phase 1: Hybrid Cryptography (Launch)**
-- **Block Production**: AURA (Sr25519) with 6-second blocks
+- **Block Production**: BABE (Sr25519, VRF-based) with 6-second blocks
 - **Finality**: GRANDPA with Ed25519 signatures
 - **Quantum Preparation**: Falcon signature integration in parallel
 - **Migration Timeline**: 1 months to full quantum
 
 ### **Phase 2: Full Quantum (Target)**
-- **Block Production**: Quantum-enhanced AURA with Falcon signatures
+- **Block Production**: Quantum-enhanced BABE with Falcon signatures
 - **Finality**: Quantum-resistant GRANDPA
 - **Random Beacon**: Azure Quantum true random numbers
 - **Post-Quantum Security**: Full Falcon/Dilithium implementation

@@ -7,7 +7,7 @@ The sovereign blockchain node implementation for Belize, built on Substrate fram
 This package implements the BelizeChain node binary, which runs the blockchain network and exposes:
 - P2P networking for block propagation and consensus
 - RPC endpoints for client applications (Maya Wallet, Blue Hole Portal)
-- Consensus mechanism (Aura + GRANDPA)
+- Consensus mechanism (BABE + GRANDPA)
 - Runtime integration with all 16 custom pallets
 
 ## 🏗️ Architecture
@@ -207,7 +207,7 @@ curl -H "Content-Type: application/json" \
   --chain belize \
   --scheme Sr25519 \
   --suri "your-secret-phrase" \
-  --key-type aura
+  --key-type babe
 ```
 
 ## 📚 Related Documentation

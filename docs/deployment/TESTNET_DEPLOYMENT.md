@@ -31,7 +31,7 @@ The BelizeChain Testnet is a production-ready test environment for:
 - Community governance testing
 
 **Network Specifications**:
-- **Consensus**: Aura (Block Production) + Grandpa (Finality)
+- **Consensus**: BABE (Block Production) + Grandpa (Finality)
 - **Block Time**: 6 seconds
 - **Finality**: ~30 seconds (5 blocks)
 - **Validators**: 21 initial validators (expandable to 100)
@@ -240,7 +240,7 @@ belizechain-node build-spec \
           ["5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty", 500000000000000000]
         ]
       },
-      "aura": {
+      "babe": {
         "authorities": [
           "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
           "5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty"

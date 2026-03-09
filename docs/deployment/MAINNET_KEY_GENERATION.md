@@ -12,7 +12,7 @@ The current `chain_spec.rs` contains placeholder keys marked with `TODO` comment
 
 ### 1. **Validator Keys** (3+ nodes recommended)
 Each validator requires two key types:
-- **Aura (Sr25519)**: Block production (consensus)
+- **BABE (Sr25519)**: Block production (consensus)
 - **Grandpa (Ed25519)**: Block finalization (GRANDPA consensus)
 
 ### 2. **Treasury/Root Account**
@@ -38,8 +38,8 @@ Each validator requires two key types:
 # Install subkey
 cargo install --force --git https://github.com/paritytech/polkadot-sdk subkey
 
-# Generate Aura keys (Sr25519)
-subkey generate --scheme Sr25519 --output-type json > validator1_aura.json
+# Generate BABE keys (Sr25519)
+subkey generate --scheme Sr25519 --output-type json > validator1_babe.json
 
 # Generate Grandpa keys (Ed25519)
 subkey generate --scheme Ed25519 --output-type json > validator1_grandpa.json
@@ -52,7 +52,7 @@ subkey generate --scheme Ed25519 --output-type json > validator1_grandpa.json
 1. Navigate to https://polkadot.js.org/apps/
 2. Go to **Settings** → **Developer**
 3. Use **Accounts** → **Add account** → **Advanced creation options**
-4. Select **Sr25519** for Aura, **Ed25519** for Grandpa
+4. Select **Sr25519** for BABE, **Ed25519** for Grandpa
 5. **Save mnemonics SECURELY** (hardware wallet recommended)
 
 ### Method 3: Hardware Wallet (Most Secure)
@@ -76,7 +76,7 @@ For production mainnet, use hardware wallets (Ledger, Polkadot Vault):
 ### Step 2: Extract Public Keys
 
 From your JSON files or hardware wallet, extract:
-- Aura Public Key (Sr25519, starts with `0x...`)
+- BABE Public Key (Sr25519, starts with `0x...`)
 - Grandpa Public Key (Ed25519, starts with `0x...`)
 - Treasury Account ID (SS58 format: `5G...` or `5H...`)
 
@@ -86,27 +86,27 @@ Replace line 181-186:
 
 ```rust
 // ❌ BEFORE (INSECURE - development keys)
-let initial_authorities: Vec<(AuraId, GrandpaId)> = vec![
+let initial_authorities: Vec<(BabeId, GrandpaId)> = vec![
     authority_keys_from_seed("ValidatorOne"),
     authority_keys_from_seed("ValidatorTwo"),
     authority_keys_from_seed("ValidatorThree"),
 ];
 
 // ✅ AFTER (SECURE - production keys)
-let initial_authorities: Vec<(AuraId, GrandpaId)> = vec![
+let initial_authorities: Vec<(BabeId, GrandpaId)> = vec![
     (
         // Validator 1 - Belize City Node
-        hex!["YOUR_VALIDATOR1_AURA_PUBLIC_KEY"].unchecked_into(),
+        hex!["YOUR_VALIDATOR1_BABE_PUBLIC_KEY"].unchecked_into(),
         hex!["YOUR_VALIDATOR1_GRANDPA_PUBLIC_KEY"].unchecked_into(),
     ),
     (
         // Validator 2 - Belmopan Node  
-        hex!["YOUR_VALIDATOR2_AURA_PUBLIC_KEY"].unchecked_into(),
+        hex!["YOUR_VALIDATOR2_BABE_PUBLIC_KEY"].unchecked_into(),
         hex!["YOUR_VALIDATOR2_GRANDPA_PUBLIC_KEY"].unchecked_into(),
     ),
     (
         // Validator 3 - San Ignacio Node
-        hex!["YOUR_VALIDATOR3_AURA_PUBLIC_KEY"].unchecked_into(),
+        hex!["YOUR_VALIDATOR3_BABE_PUBLIC_KEY"].unchecked_into(),
         hex!["YOUR_VALIDATOR3_GRANDPA_PUBLIC_KEY"].unchecked_into(),
     ),
 ];
@@ -195,7 +195,7 @@ Before mainnet launch:
 
 | Type | Format | Example | Usage |
 |------|--------|---------|-------|
-| **Aura (Sr25519)** | Hex (66 chars) | `0x1234...abcd` | Block production |
+| **BABE (Sr25519)** | Hex (66 chars) | `0x1234...abcd` | Block production |
 | **Grandpa (Ed25519)** | Hex (66 chars) | `0x5678...ef01` | Block finalization |
 | **Account ID** | Hex (66 chars) or SS58 | `0xabcd...`, `5GrwvaEF5...` | Treasury, issuers |
 

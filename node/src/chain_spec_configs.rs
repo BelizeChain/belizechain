@@ -10,7 +10,7 @@ use belizechain_runtime::{Balance, DOLLARS as DALLA};
 pub struct NetworkConfig {
     pub name: String,
     pub id: String,
-    pub initial_authorities: Vec<(String, String)>, // (aura_seed, grandpa_seed)
+    pub initial_authorities: Vec<(String, String)>, // (babe_seed, grandpa_seed)
     pub initial_allocation: Vec<(String, Balance)>, // (account_seed, balance)
     pub enable_sudo: bool,
     pub enable_faucet: bool,
@@ -270,10 +270,10 @@ mod tests {
             NetworkConfig::local_testnet(),
             NetworkConfig::mainnet(),
         ] {
-            for (aura_seed, grandpa_seed) in &config.initial_authorities {
+            for (babe_seed, grandpa_seed) in &config.initial_authorities {
                 assert!(
-                    !aura_seed.is_empty(),
-                    "aura seed must not be empty in config '{}'", config.id
+                    !babe_seed.is_empty(),
+                    "babe seed must not be empty in config '{}'", config.id
                 );
                 assert!(
                     !grandpa_seed.is_empty(),

@@ -47,11 +47,16 @@
 
 ### 1.3 Consensus
 
+> **UPDATE (2026-03):** Block production migrated from Aura to BABE (VRF-based slot assignment).
+> PoUW `quality_score` now drives BABE authority weights. `pallet_session` + `pallet_offences`
+> wired for validator rotation and equivocation slashing.
+
 | Component | Configuration |
 |-----------|---------------|
-| Block Production | **Aura** (slot-based round-robin) |
+| Block Production | **BABE** (VRF-based slot assignment with PoUW-weighted authorities) |
 | Finality | **GRANDPA** (BFT finality gadget) |
 | MaxAuthorities | 32 |
+| EpochDuration | 14,400 blocks (~24h at 6s/block) |
 | MinimumPeriod | 3,000 ms |
 | Justification Period | 512 blocks |
 | Gossip Duration | 333 ms |
@@ -66,7 +71,10 @@ Enabled via `pallet_contracts` ("GEM Smart Contract Platform"):
 
 ### 1.5 Randomness
 
-**WARNING**: Uses `pallet_insecure_randomness_collective_flip` — block-hash based, manipulable by validators. Must migrate to BABE/VRF before mainnet.
+> **UPDATE (2026-03):** Migrated to `pallet_babe::RandomnessFromOneEpochAgo` — VRF-based,
+> unbiasable epoch randomness. `pallet_insecure_randomness_collective_flip` removed.
+
+~~**WARNING**: Uses `pallet_insecure_randomness_collective_flip` — block-hash based, manipulable by validators. Must migrate to BABE/VRF before mainnet.~~ **RESOLVED.**
 
 ### 1.6 construct_runtime! Pallet Index
 
@@ -74,12 +82,12 @@ Enabled via `pallet_contracts` ("GEM Smart Contract Platform"):
 |-------|--------|------|
 | 0 | System | Substrate |
 | 1 | Timestamp | Substrate |
-| 2 | Aura | Substrate |
+| 2 | Babe | Substrate |
 | 3 | Grandpa | Substrate |
 | 4 | Balances | Substrate |
 | 5 | TransactionPayment | Substrate |
 | 6 | Sudo | Substrate |
-| 7 | RandomnessCollectiveFlip | Substrate |
+| 7 | *(removed)* | *(randomness now via BABE VRF)* |
 | 8 | Contracts | Substrate |
 | 9 | Economy | **BelizeChain** |
 | 10 | Identity | **BelizeChain** |
@@ -123,7 +131,7 @@ Executive = frame_executive::Executive<
 
 ### 1.9 Runtime APIs Implemented
 
-Core, Metadata, BlockBuilder, TaggedTransactionQueue, OffchainWorkerApi, AuraApi, SessionKeys, GrandpaApi, AccountNonceApi, TransactionPaymentApi, GenesisBuilder, ContractsApi.
+Core, Metadata, BlockBuilder, TaggedTransactionQueue, OffchainWorkerApi, BabeApi, SessionKeys, GrandpaApi, AccountNonceApi, TransactionPaymentApi, GenesisBuilder, ContractsApi.
 
 ### 1.10 Node Service
 

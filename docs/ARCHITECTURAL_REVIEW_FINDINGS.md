@@ -147,18 +147,14 @@ type EmergencyOrigin = EnsureRoot<AccountId>;
 
 ### Finding AR-2: Aura/GRANDPA Without Session Pallet (CRITICAL)
 
-**The runtime uses Aura (slot-based round-robin) + GRANDPA (BFT finality) but does NOT include `pallet_session`.**
+> **RESOLVED (2026-03):** Migrated to BABE + GRANDPA with `pallet_session`, `pallet_session::historical`,
+> `pallet_offences`, and `pallet_authorship`. `BelizeSessionManager` bridges `pallet_belize_staking`
+> validator set to session rotation. BABE authority weights driven by PoUW `quality_score`.
+> Equivocation reporting and automated slashing via `BelizeSlashHandler` are fully wired.
 
-**Impact**:
-- Validator set is fixed at genesis — no on-chain rotation
-- The staking pallet's `join_validators`/`leave_validators` extrinsics modify staking storage but **do not affect Aura/GRANDPA authority sets**
-- There is no mechanism to rotate session keys
-- If a validator's keys are compromised, they cannot be rotated without a runtime upgrade
-- The custom consensus pallet models "consensus rounds" but these are **overlay abstractions** — they don't control actual block production
+~~**The runtime uses Aura (slot-based round-robin) + GRANDPA (BFT finality) but does NOT include `pallet_session`.**~~
 
-**Industry comparison**: Every production Substrate chain (Polkadot, Kusama, Acala, Moonbeam) uses `pallet_session` + `pallet_staking` (or equivalent) to rotate validator sets. Masterchain and Besu both have explicit validator rotation protocols.
-
-**Severity**: CRITICAL — **Without session management, validator rotation is impossible**. This is a fundamental gap for a production permissioned chain.
+~~**Severity**: CRITICAL~~ — **RESOLVED.** Session management, validator rotation, and equivocation slashing are now fully operational.
 
 ---
 
@@ -211,19 +207,14 @@ The consensus pallet (`pallet_belize_consensus`, 1,020 lines) implements:
 - Validator selection based on AI contribution quality (70% quality + 30% stake)
 - Post-quantum signature validation
 
-**However**: None of this affects actual block production. Aura selects block producers via round-robin from the genesis authority set. The "consensus" pallet is an **incentive overlay**, not a consensus mechanism.
+**However**: None of this affects actual block production. ~~Aura selects block producers via round-robin from the genesis authority set.~~ The "consensus" pallet is an **incentive overlay**, not a consensus mechanism.
 
-**Impact**:
-- "PoUW" (Proof of Useful Work) is a marketing claim that doesn't match the implementation
-- Validators who produce bad AI work keep producing blocks
-- AI quality scores have no effect on block production rights
-- The "consensus round" abstraction operates independently of Aura slots
+> **PARTIALLY RESOLVED (2026-03):** PoUW `quality_score` now drives BABE authority weights via
+> `inject_pouw_weights()` in `BelizeSessionManager::start_session()`. Higher AI work quality
+> → higher VRF winning probability. The "consensus" pallet remains a separate overlay but
+> its scores now have real block-production impact through the staking pallet's `quality_score`.
 
-**Recommendation**: Either:
-1. Integrate with `pallet_session` so AI quality scores influence validator selection, or
-2. Rename to `pallet_ai_incentives` to accurately reflect its purpose
-
-**Severity**: HIGH (architectural misrepresentation, not a security vulnerability)
+~~**Severity**: HIGH~~ — **PARTIALLY RESOLVED.** AI quality scores now influence block production rights via BABE weights.
 
 ---
 
@@ -411,12 +402,12 @@ The codebase has unit tests and integration tests, but no formal invariant testi
 
 | Aspect | Analysis |
 |--------|----------|
-| **Attack surface** | Aura round-robin guarantees block production turns |
-| **Block withholding** | Can withhold blocks to manipulate `pallet_insecure_randomness_collective_flip` |
+| **Attack surface** | BABE VRF-based slot assignment with PoUW-weighted authorities |
+| **Block withholding** | Randomness now from BABE epoch VRF — not manipulable by single validator |
 | **AI work gaming** | Can submit garbage AI work — no penalty affects block production (AR-5) |
 | **Collusion threshold** | GRANDPA finality requires 2/3+1 honest validators. With 32 max, need 22 honest |
-| **Key compromise** | No session rotation (AR-2) — compromised keys are permanent |
-| **Mitigation** | Staking slashing exists but is Root-only (AR-1). No automated slashing |
+| **Key compromise** | Session rotation via `pallet_session` — keys can be rotated each epoch |
+| **Mitigation** | Automated equivocation slashing via `BelizeSlashHandler` + `pallet_offences` |
 
 **Risk Level**: HIGH — A compromised validator has persistent, unrevocable access.
 
@@ -489,8 +480,8 @@ The codebase has unit tests and integration tests, but no formal invariant testi
 
 | Dimension | BelizeChain | Masterchain (Russia) | Hyperledger Besu | Quorum (ConsenSys) | Cosmos SDK (Permissioned) |
 |-----------|-------------|---------------------|------------------|---------------------|--------------------------|
-| **Consensus** | Aura+GRANDPA | Tendermint BFT | IBFT 2.0 / QBFT | Istanbul BFT | Tendermint BFT |
-| **Validator Rotation** | ❌ None (no session pallet) | ✅ Epoch-based | ✅ Contract-based | ✅ Contract-based | ✅ Staking + slashing |
+| **Consensus** | BABE+GRANDPA (PoUW-weighted VRF) | Tendermint BFT | IBFT 2.0 / QBFT | Istanbul BFT | Tendermint BFT |
+| **Validator Rotation** | ✅ Epoch-based (pallet_session) | ✅ Epoch-based | ✅ Contract-based | ✅ Contract-based | ✅ Staking + slashing |
 | **Identity Model** | DID + KYC attestations | PKI certificates | Account permissioning | Account permissioning | x/auth + custom |
 | **Privacy** | Hashed PII, attestation-based | Confidential transactions | Privacy groups | Tessera (private tx) | None by default |
 | **Smart Contracts** | ink!/Wasm (pallet_contracts) | Solidity/EVM | Solidity/EVM | Solidity/EVM | CosmWasm (optional) |
@@ -548,20 +539,11 @@ type CouncilOrigin = pallet_collective::EnsureProportionAtLeast<AccountId, Counc
 
 #### R-2: Add pallet_session for Validator Rotation
 
-```rust
-// Add to construct_runtime:
-Session: pallet_session,
-// Implement SessionManager trait bridging staking → session → Aura/GRANDPA
-```
+> **RESOLVED (2026-03).** `pallet_session` with `BelizeSessionManager` bridges
+> `pallet_belize_staking::Validators` → BABE/GRANDPA authority rotation.
+> Session keys = `{ babe: Babe, grandpa: Grandpa }`. Epoch = 14,400 blocks (~24h).
 
-This requires:
-1. Adding `pallet_session` to `Cargo.toml` and `construct_runtime!`
-2. Implementing `SessionManager` trait on the staking pallet
-3. Defining session keys (Aura + GRANDPA)
-4. Setting epoch/session length
-5. Wiring authority discovery
-
-**Effort**: 2–3 weeks
+~~**Effort**: 2–3 weeks~~ — **DONE.**
 
 ---
 
@@ -580,23 +562,11 @@ Replace with governance-based root calls. After R-1 is complete:
 
 #### R-4: Replace Insecure Randomness
 
-```rust
-// BEFORE:
-RandomnessCollectiveFlip: pallet_insecure_randomness_collective_flip,
+> **RESOLVED (2026-03).** Using `pallet_babe::RandomnessFromOneEpochAgo` — VRF-based,
+> unbiasable epoch randomness. All 6 pallet consumers migrated. `pallet_insecure_randomness_collective_flip`
+> and custom `pallet_belize_randomness` (commit-reveal) both removed.
 
-// AFTER (option A - if using BABE):
-// Inherent VRF randomness from BABE consensus
-
-// AFTER (option B - commit-reveal for Aura chains):
-// Custom commit-reveal randomness pallet
-```
-
-For a permissioned Aura chain, implement a simple commit-reveal scheme:
-1. Each validator commits `H(random || nonce)` at block N
-2. Reveals `random || nonce` at block N+1
-3. Chain randomness = XOR of all revealed values
-
-**Effort**: 2 weeks
+~~**Effort**: 2 weeks~~ — **DONE.**
 
 ---
 

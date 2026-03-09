@@ -1,4 +1,4 @@
-use sp_consensus_aura::sr25519::AuthorityId as AuraId;
+use sp_consensus_babe::AuthorityId as BabeId;
 use sp_consensus_grandpa::AuthorityId as GrandpaId;
 use sp_core::{Pair, Public, sr25519};
 use sp_runtime::{
@@ -8,7 +8,7 @@ use sp_runtime::{
 use sc_service::ChainType;
 use frame_support::{BoundedVec, pallet_prelude::ConstU32};
 
-use belizechain_runtime::{AccountId, WASM_BINARY};
+use belizechain_runtime::{AccountId, BABE_GENESIS_EPOCH_CONFIG, WASM_BINARY};
 use crate::chain_spec_configs::NetworkConfig;
 
 /// Specialized `ChainSpec`. This is a specialization of the general Substrate ChainSpec type.
@@ -31,10 +31,10 @@ where
     AccountPublic::from(get_from_seed::<TPublic>(seed)).into_account()
 }
 
-/// Generate an Aura authority key.
-pub fn authority_keys_from_seed(s: &str) -> (AuraId, GrandpaId) {
+/// Generate a BABE authority key.
+pub fn authority_keys_from_seed(s: &str) -> (BabeId, GrandpaId) {
     (
-        get_from_seed::<AuraId>(s),
+        get_from_seed::<BabeId>(s),
         get_from_seed::<GrandpaId>(s),
     )
 }
@@ -114,7 +114,7 @@ pub fn belizechain_mainnet_config() -> Result<ChainSpec, String> {
 
 /// Configure initial storage state for BelizeChain.
 fn testnet_genesis(
-    initial_authorities: Vec<(AuraId, GrandpaId)>,
+    initial_authorities: Vec<(BabeId, GrandpaId)>,
     root_key: AccountId,
     endowed_accounts: Vec<AccountId>,
     _enable_println: bool,
@@ -130,8 +130,9 @@ fn testnet_genesis(
                 .map(|k| (k, endowment))
                 .collect::<Vec<_>>(),
         },
-        "aura": {
-            "authorities": initial_authorities.iter().map(|x| x.0.clone()).collect::<Vec<_>>(),
+        "babe": {
+            "authorities": initial_authorities.iter().map(|x| (x.0.clone(), 1u64)).collect::<Vec<_>>(),
+            "epochConfig": Some(BABE_GENESIS_EPOCH_CONFIG),
         },
         "grandpa": {
             "authorities": initial_authorities
@@ -290,11 +291,11 @@ fn mainnet_genesis() -> Result<serde_json::Value, String> {
     // before setting MAINNET_KEYS_CONFIGURED = true.
     //
     // Example (DO NOT USE — generate your own):
-    //   let aura_key = AuraId::from_slice(&hex!("...")).unwrap();
+    //   let babe_key = BabeId::from_slice(&hex!("...")).unwrap();
     //   let gran_key = GrandpaId::from_slice(&hex!("...")).unwrap();
     //
     // PLACEHOLDER keys (will be rejected at runtime by the guard above):
-    let initial_authorities: Vec<(AuraId, GrandpaId)> = vec![
+    let initial_authorities: Vec<(BabeId, GrandpaId)> = vec![
         authority_keys_from_seed("ValidatorOne"),
         authority_keys_from_seed("ValidatorTwo"),
         authority_keys_from_seed("ValidatorThree"),
@@ -320,8 +321,9 @@ fn mainnet_genesis() -> Result<serde_json::Value, String> {
                 .map(|k| (k, endowment))
                 .collect::<Vec<_>>(),
         },
-        "aura": {
-            "authorities": initial_authorities.iter().map(|x| x.0.clone()).collect::<Vec<_>>(),
+        "babe": {
+            "authorities": initial_authorities.iter().map(|x| (x.0.clone(), 1u64)).collect::<Vec<_>>(),
+            "epochConfig": Some(BABE_GENESIS_EPOCH_CONFIG),
         },
         "grandpa": {
             "authorities": initial_authorities
@@ -372,10 +374,10 @@ fn mainnet_genesis() -> Result<serde_json::Value, String> {
 pub(crate) fn public_testnet_config() -> Result<ChainSpec, String> {
     let config = NetworkConfig::public_testnet();
     
-    let authorities: Vec<(AuraId, GrandpaId)> = config.initial_authorities
+    let authorities: Vec<(BabeId, GrandpaId)> = config.initial_authorities
         .iter()
-        .map(|(aura_seed, grandpa_seed)| {
-            authority_keys_from_seed(&format!("{}{}", aura_seed, grandpa_seed))
+        .map(|(babe_seed, grandpa_seed)| {
+            authority_keys_from_seed(&format!("{}{}", babe_seed, grandpa_seed))
         })
         .collect();
     
@@ -408,10 +410,10 @@ pub(crate) fn public_testnet_config() -> Result<ChainSpec, String> {
 pub(crate) fn staging_config() -> Result<ChainSpec, String> {
     let config = NetworkConfig::staging();
     
-    let authorities: Vec<(AuraId, GrandpaId)> = config.initial_authorities
+    let authorities: Vec<(BabeId, GrandpaId)> = config.initial_authorities
         .iter()
-        .map(|(aura_seed, grandpa_seed)| {
-            authority_keys_from_seed(&format!("{}{}", aura_seed, grandpa_seed))
+        .map(|(babe_seed, grandpa_seed)| {
+            authority_keys_from_seed(&format!("{}{}", babe_seed, grandpa_seed))
         })
         .collect();
     
@@ -449,7 +451,7 @@ mod tests {
     fn test_authority_keys_from_seed_deterministic() {
         let keys1 = authority_keys_from_seed("Alice");
         let keys2 = authority_keys_from_seed("Alice");
-        assert_eq!(keys1.0, keys2.0, "AuraId must be deterministic for the same seed");
+        assert_eq!(keys1.0, keys2.0, "BabeId must be deterministic for the same seed");
         assert_eq!(keys1.1, keys2.1, "GrandpaId must be deterministic for the same seed");
     }
 
@@ -457,7 +459,7 @@ mod tests {
     fn test_authority_keys_from_seed_distinct_for_different_seeds() {
         let alice = authority_keys_from_seed("Alice");
         let bob = authority_keys_from_seed("Bob");
-        assert_ne!(alice.0, bob.0, "Different seeds must yield different AuraIds");
+        assert_ne!(alice.0, bob.0, "Different seeds must yield different BabeIds");
         assert_ne!(alice.1, bob.1, "Different seeds must yield different GrandpaIds");
     }
 
@@ -538,7 +540,7 @@ mod tests {
     }
 
     #[test]
-    fn test_testnet_genesis_aura_authority_count() {
+    fn test_testnet_genesis_babe_authority_count() {
         let alice_acct = get_account_id_from_seed::<sr25519::Public>("Alice");
         let genesis = testnet_genesis(
             vec![
@@ -550,8 +552,8 @@ mod tests {
             false,
         )
         .unwrap();
-        let authorities = genesis["aura"]["authorities"].as_array().unwrap();
-        assert_eq!(authorities.len(), 2, "aura must list exactly 2 authorities");
+        let authorities = genesis["babe"]["authorities"].as_array().unwrap();
+        assert_eq!(authorities.len(), 2, "babe must list exactly 2 authorities");
     }
 
     #[test]

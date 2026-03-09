@@ -16,7 +16,7 @@ This document establishes a comprehensive performance and scalability framework 
 | Metric | Target | Rationale |
 |--------|--------|-----------|
 | **Transaction Throughput** | 600-1,000 TPS | Substrate baseline, adequate for 400k citizens |
-| **Block Production Time** | 6 seconds | Polkadot standard (Aura consensus) |
+| **Block Production Time** | 6 seconds | Polkadot standard (BABE consensus) |
 | **Finality Time** | 12-18 seconds | GRANDPA finality (2-3 blocks) |
 | **RPC Response Time** | <100ms (P95) | Sub-second user experience |
 | **State Database Size** | <500 GB year 1 | Manageable with state pruning |

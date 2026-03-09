@@ -34,7 +34,7 @@ use frame_system::EnsureRoot;
 use pallet_collective::{EnsureMember, EnsureProportionMoreThan, EnsureProportionAtLeast};
 use pallet_grandpa::AuthorityId as GrandpaId;
 use sp_api::impl_runtime_apis;
-use sp_consensus_aura::sr25519::AuthorityId as AuraId;
+use sp_consensus_babe::AuthorityId as BabeId;
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata, H256};
 use sp_runtime::{
     generic, impl_opaque_keys,
@@ -82,7 +82,7 @@ pub mod opaque {
 
     impl_opaque_keys! {
         pub struct SessionKeys {
-            pub aura: Aura,
+            pub babe: Babe,
             pub grandpa: Grandpa,
         }
     }
@@ -94,7 +94,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     impl_name: Cow::Borrowed("belizechain"),
     authoring_version: 1,
     // AR-2: bumped to 101 — pallet_session added (validator rotation enabled).
-    spec_version: 102,
+    spec_version: 103,
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 1,
@@ -155,13 +155,38 @@ impl frame_system::Config for Runtime {
     type MaxConsumers = ConstU32<16>;
 }
 
-impl pallet_aura::Config for Runtime {
-    type AuthorityId = AuraId;
-    // AR-2: Use Session pallet to track disabled validators instead of ()
+parameter_types! {
+    /// BABE epoch duration in slots (= blocks at 6 s/slot).
+    /// Aligned with SessionPeriod so epoch boundary = session boundary.
+    pub const BabeEpochDuration: u64 = 14_400; // ~24 hours
+    /// Expected block time in milliseconds.
+    pub const ExpectedBlockTime: u64 = 6000; // 6 seconds
+    /// How long equivocation reports remain valid (10 epochs).
+    pub const ReportLongevity: u64 =
+        BabeEpochDuration::get() * 10;
+}
+
+/// Genesis epoch configuration for BABE.
+/// c = (1, 4): each VRF slot has a 1-in-4 chance of being a primary slot.
+/// PrimaryAndSecondaryVRFSlots: empty primary slots are filled by secondary
+/// VRF winners, guaranteeing block liveness even with skewed PoUW weights.
+pub const BABE_GENESIS_EPOCH_CONFIG: sp_consensus_babe::BabeEpochConfiguration =
+    sp_consensus_babe::BabeEpochConfiguration {
+        c: (1, 4),
+        allowed_slots: sp_consensus_babe::AllowedSlots::PrimaryAndSecondaryVRFSlots,
+    };
+
+impl pallet_babe::Config for Runtime {
+    type EpochDuration = BabeEpochDuration;
+    type ExpectedBlockTime = ExpectedBlockTime;
+    type EpochChangeTrigger = pallet_babe::ExternalTrigger;
     type DisabledValidators = Session;
+    type WeightInfo = ();
     type MaxAuthorities = ConstU32<32>;
-    type AllowMultipleBlocksPerSlot = ConstBool<false>;
-    type SlotDuration = pallet_aura::MinimumPeriodTimesTwo<Self>;
+    type MaxNominators = ConstU32<0>;
+    type KeyOwnerProof = sp_session::MembershipProof;
+    type EquivocationReportSystem =
+        pallet_babe::EquivocationReportSystem<Self, Offences, Historical, ReportLongevity>;
 }
 
 impl pallet_grandpa::Config for Runtime {
@@ -170,21 +195,83 @@ impl pallet_grandpa::Config for Runtime {
     type MaxAuthorities = ConstU32<32>;
     type MaxNominators = ConstU32<0>;
     type MaxSetIdSessionEntries = ConstU64<0>;
-    type KeyOwnerProof = sp_core::Void;
-    type EquivocationReportSystem = ();
+    type KeyOwnerProof = sp_session::MembershipProof;
+    type EquivocationReportSystem =
+        pallet_grandpa::EquivocationReportSystem<Self, Offences, Historical, ReportLongevity>;
+}
+
+// ── Equivocation / Offences infrastructure ───────────────────────────────────
+
+/// Trivial full-identification: we have no Substrate-native staking, so the
+/// identification payload carried in equivocation reports is just unit.
+pub struct FullIdentificationOf;
+impl sp_runtime::traits::Convert<AccountId, Option<()>> for FullIdentificationOf {
+    fn convert(_: AccountId) -> Option<()> {
+        Some(())
+    }
+}
+
+impl pallet_authorship::Config for Runtime {
+    type FindAuthor = pallet_session::FindAccountFromAuthorIndex<Self, Babe>;
+    type EventHandler = ();
+}
+
+impl pallet_session::historical::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type FullIdentification = ();
+    type FullIdentificationOf = FullIdentificationOf;
+}
+
+/// Bridges `pallet_offences` reports into `pallet_belize_staking::slash_validator`.
+///
+/// When BABE or GRANDPA equivocation is detected and reported via `pallet_offences`,
+/// this handler applies the computed slash fraction against the offending validator's
+/// stake using the existing PoUW slashing infrastructure with `ConsensusViolation`.
+pub struct BelizeSlashHandler;
+
+impl sp_staking::offence::OnOffenceHandler<
+    AccountId,
+    pallet_session::historical::IdentificationTuple<Runtime>,
+    Weight,
+> for BelizeSlashHandler {
+    fn on_offence(
+        offenders: &[sp_staking::offence::OffenceDetails<
+            AccountId,
+            pallet_session::historical::IdentificationTuple<Runtime>,
+        >],
+        slash_fraction: &[Perbill],
+        _session: sp_staking::SessionIndex,
+    ) -> Weight {
+        for (detail, &fraction) in offenders.iter().zip(slash_fraction.iter()) {
+            let (ref account, _) = detail.offender;
+            // Best-effort: ignore errors (validator may have already left)
+            let _ = pallet_belize_staking::Pallet::<Runtime>::slash_validator(
+                account,
+                fraction,
+                pallet_belize_staking::SlashReason::ConsensusViolation,
+            );
+        }
+        Weight::zero()
+    }
+}
+
+impl pallet_offences::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type IdentificationTuple = pallet_session::historical::IdentificationTuple<Runtime>;
+    type OnOffenceHandler = BelizeSlashHandler;
 }
 
 // ── AR-2: pallet_session — Validator rotation ────────────────────────────────
 //
 // Before this fix all validator rotation lived in `pallet_belize_staking`
-// storage but was never surfaced to Aura/GRANDPA, meaning the block-production
+// storage but was never surfaced to BABE/GRANDPA, meaning the block-production
 // authority set was frozen at genesis.  Adding `pallet_session` bridges the two
 // layers so that:
 //  1. When a validator calls `join_validators` / `leave_validators` the new set
 //     is queued for the next session boundary.
 //  2. At each `SessionPeriod` boundary `BelizeSessionManager::new_session` reads
 //     the live `Validators` map and returns the updated authority list.
-//  3. Aura rotates its slot-assignment table; GRANDPA rotates its voter set.
+//  3. BABE rotates its VRF authority set; GRANDPA rotates its voter set.
 //  4. Compromised keys can be rotated via `Session::set_keys` without a runtime
 //     upgrade (fixing the key-rotation gap identified in AR-2).
 
@@ -199,7 +286,7 @@ parameter_types! {
 ///
 /// `new_session` is called by `pallet_session` at each epoch boundary.  It reads
 /// the live validator set from `pallet_belize_staking::Validators` and returns the
-/// accounts as the next authority list.  `pallet_session` will then signal Aura
+/// accounts as the next authority list.  `pallet_session` will then signal BABE
 /// and GRANDPA to rotate to this new set at the start of the following session.
 pub struct BelizeSessionManager;
 
@@ -215,7 +302,49 @@ impl pallet_session::SessionManager<AccountId> for BelizeSessionManager {
 
     fn end_session(_end_index: u32) {}
 
-    fn start_session(_start_index: u32) {}
+    fn start_session(_start_index: u32) {
+        inject_pouw_weights();
+    }
+}
+
+/// Override BABE authority weights with PoUW quality scores.
+///
+/// Called in `start_session` AFTER `pallet_babe::OneSessionHandler`
+/// has set `weight = 1` for every authority.  Rewrites `Authorities`
+/// and `NextAuthorities` so each validator's VRF winning probability
+/// is proportional to their `quality_score` (range 1–100).
+fn inject_pouw_weights() {
+    let babe_key_type = KeyTypeId(*b"babe");
+
+    // Current epoch authorities
+    let mut current = pallet_babe::Authorities::<Runtime>::get().into_inner();
+    for (id, w) in current.iter_mut() {
+        if let Some(acct) =
+            pallet_session::Pallet::<Runtime>::key_owner(babe_key_type, id.as_ref())
+        {
+            *w = pallet_belize_staking::Validators::<Runtime>::get(&acct)
+                .map(|info| (info.quality_score as u64).max(1))
+                .unwrap_or(1);
+        }
+    }
+    pallet_babe::Authorities::<Runtime>::put(
+        frame_support::WeakBoundedVec::force_from(current, Some("PoUW weights")),
+    );
+
+    // Queued next-epoch authorities
+    let mut next = pallet_babe::NextAuthorities::<Runtime>::get().into_inner();
+    for (id, w) in next.iter_mut() {
+        if let Some(acct) =
+            pallet_session::Pallet::<Runtime>::key_owner(babe_key_type, id.as_ref())
+        {
+            *w = pallet_belize_staking::Validators::<Runtime>::get(&acct)
+                .map(|info| (info.quality_score as u64).max(1))
+                .unwrap_or(1);
+        }
+    }
+    pallet_babe::NextAuthorities::<Runtime>::put(
+        frame_support::WeakBoundedVec::force_from(next, Some("PoUW weights")),
+    );
 }
 
 impl pallet_session::Config for Runtime {
@@ -228,7 +357,7 @@ impl pallet_session::Config for Runtime {
     type NextSessionRotation = pallet_session::PeriodicSessions<SessionPeriod, SessionOffset>;
     /// Read validator set from BelizeChain staking pallet.
     type SessionManager = BelizeSessionManager;
-    /// Let session keys (Aura + GRANDPA) drive the authority rotation.
+    /// Let session keys (BABE + GRANDPA) drive the authority rotation.
     type SessionHandler = <opaque::SessionKeys as sp_runtime::traits::OpaqueKeys>::KeyTypeIdProviders;
     type Keys = opaque::SessionKeys;
     type WeightInfo = pallet_session::weights::SubstrateWeight<Runtime>;
@@ -242,7 +371,7 @@ impl pallet_session::Config for Runtime {
 
 impl pallet_timestamp::Config for Runtime {
     type Moment = u64;
-    type OnTimestampSet = Aura;
+    type OnTimestampSet = Babe;
     type MinimumPeriod = ConstU64<3000>;
     type WeightInfo = ();
 }
@@ -284,13 +413,6 @@ impl pallet_sudo::Config for Runtime {
     type WeightInfo = pallet_sudo::weights::SubstrateWeight<Runtime>;
 }
 
-// SECURITY WARNING: `pallet_insecure_randomness_collective_flip` uses block-hash
-// based randomness that is manipulable by block producers. It MUST NOT be relied
-// upon for security-critical decisions (e.g. financial lotteries, leader election).
-// TODO(security): Migrate to BABE epoch-randomness or an off-chain VRF oracle
-// before mainnet launch. Tracking issue: RANDOMNESS-MIGRATION.
-impl pallet_insecure_randomness_collective_flip::Config for Runtime {}
-
 // ==================== GEM SMART CONTRACT PLATFORM ====================
 // Configuration for pallet-contracts (ink! smart contract execution)
 // This enables the GEM smart contract ecosystem for BelizeChain
@@ -310,7 +432,7 @@ parameter_types! {
 
 impl pallet_contracts::Config for Runtime {
     type Time = Timestamp;
-    type Randomness = BelizeRandomness;
+    type Randomness = pallet_babe::RandomnessFromOneEpochAgo<Runtime>;
     type Currency = Balances;
     type RuntimeEvent = RuntimeEvent;
     type RuntimeCall = RuntimeCall;
@@ -622,7 +744,7 @@ impl pallet_belize_identity::Config for Runtime {
 
 impl pallet_belize_governance::Config for Runtime {
     type Currency = Balances;
-    type Randomness = BelizeRandomness;
+    type Randomness = pallet_babe::RandomnessFromOneEpochAgo<Runtime>;
     type CouncilOrigin = TechnicalCouncilMajority;
     type CommunityOrigin = GovernanceCouncilMajority;
     type ComplianceProvider = GovernanceComplianceProvider;
@@ -684,7 +806,7 @@ impl pallet_belize_compliance::Config for Runtime {
 
 impl pallet_belize_staking::Config for Runtime {
     type Currency = Balances;
-    type Randomness = BelizeRandomness;
+    type Randomness = pallet_babe::RandomnessFromOneEpochAgo<Runtime>;
     type Identity = StakingIdentityProvider;
     type OracleVerifier = StakingOracleVerifier;
     type MaxValidators = ConstU32<100>;
@@ -729,7 +851,7 @@ impl pallet_belize_payroll::Config for Runtime {
 
 impl pallet_belize_interoperability::Config for Runtime {
     type Currency = Balances;
-    type Randomness = BelizeRandomness;
+    type Randomness = pallet_babe::RandomnessFromOneEpochAgo<Runtime>;
     type Time = Timestamp;
     type GovernanceOrigin = GovernanceCouncilMajority;
     type Treasury = TreasuryAccount;
@@ -749,7 +871,7 @@ impl pallet_belize_interoperability::Config for Runtime {
 
 impl pallet_belize_belizex::Config for Runtime {
     type Currency = Balances;
-    type Randomness = BelizeRandomness;
+    type Randomness = pallet_babe::RandomnessFromOneEpochAgo<Runtime>;
     type TradingFeeRate = ConstU32<30>; // 0.3%
     type TourismDiscountRate = ConstU32<50>; // 0.5% discount
     type MinLiquidityAmount = ConstU128<1_000_000_000_000>; // 1 DALLA
@@ -778,7 +900,7 @@ impl pallet_belize_landledger::Config for Runtime {
 
 impl pallet_belize_consensus::Config for Runtime {
     type Currency = Balances;
-    type Randomness = BelizeRandomness;
+    type Randomness = pallet_babe::RandomnessFromOneEpochAgo<Runtime>;
     type UnixTime = Timestamp;
     type AIAuthorityOrigin = TechnicalCouncilMember;
     type Staking = ConsensusStakingProvider;
@@ -863,16 +985,6 @@ impl pallet_belize_mesh::Config for Runtime {
     type WeightInfo = pallet_belize_mesh::weights::SubstrateWeight<Runtime>;
 }
 
-// AR-3: Commit-reveal randomness configuration
-// Epoch = 100 commit blocks + 100 reveal blocks ≈ ~20 minutes at 6 s/block.
-// Requires ≥ 3 of up to 5 contributors to reveal for a valid seed.
-impl pallet_belize_randomness::Config for Runtime {
-    type CommitDuration = ConstU32<100>;   // 100 blocks ≈ 10 min commit window
-    type RevealDuration = ConstU32<100>;   // 100 blocks ≈ 10 min reveal window
-    type MinReveals = ConstU32<3>;         // ≥ 3 reveals required (bias-resistant)
-    type MaxContributors = ConstU32<5>;    // Up to 5 contributors per epoch
-}
-
 // =============================================================================
 // Phase 4A: Justice Pallet Configuration
 // Dispute resolution with mediator council and cooling-off rehabilitation.
@@ -947,7 +1059,7 @@ construct_runtime!(
     pub struct Runtime {
         System: frame_system,
         Timestamp: pallet_timestamp,
-        Aura: pallet_aura,
+        Babe: pallet_babe,
         Grandpa: pallet_grandpa,
         Balances: pallet_balances,
         TransactionPayment: pallet_transaction_payment,
@@ -959,13 +1071,11 @@ construct_runtime!(
         GovernanceCouncil: pallet_collective::<Instance2>,
         // AR-2: pallet_session enables on-chain validator set rotation.
         // At each SessionPeriod boundary (≈24 h) BelizeSessionManager reads
-        // pallet_belize_staking::Validators and rotates Aura/GRANDPA authority sets.
+        // pallet_belize_staking::Validators and rotates BABE/GRANDPA authority sets.
         Session: pallet_session,
-        RandomnessCollectiveFlip: pallet_insecure_randomness_collective_flip,
-        // AR-3: Commit-reveal randomness — replaces insecure block-hash randomness
-        // for all BelizeChain pallets. RandomnessCollectiveFlip is kept for any
-        // third-party (pallet_contracts) still using it.
-        BelizeRandomness: pallet_belize_randomness,
+        Authorship: pallet_authorship,
+        Historical: pallet_session::historical,
+        Offences: pallet_offences,
 
         // Spike Smart Contract Platform
         Contracts: pallet_contracts,
@@ -1489,6 +1599,25 @@ pub type SignedExtra = (
 pub type UncheckedExtrinsic =
     generic::UncheckedExtrinsic<Address, RuntimeCall, Signature, SignedExtra>;
 pub type SignedPayload = generic::SignedPayload<RuntimeCall, SignedExtra>;
+
+// Offchain transaction support — required by BABE/GRANDPA equivocation reporting
+impl<C> frame_system::offchain::CreateTransactionBase<C> for Runtime
+where
+    RuntimeCall: From<C>,
+{
+    type Extrinsic = UncheckedExtrinsic;
+    type RuntimeCall = RuntimeCall;
+}
+
+impl<LocalCall> frame_system::offchain::CreateBare<LocalCall> for Runtime
+where
+    RuntimeCall: From<LocalCall>,
+{
+    fn create_bare(call: RuntimeCall) -> UncheckedExtrinsic {
+        generic::UncheckedExtrinsic::new_bare(call).into()
+    }
+}
+
 pub type Executive = frame_executive::Executive<
     Runtime,
     Block,
@@ -1600,13 +1729,50 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_consensus_aura::AuraApi<Block, AuraId> for Runtime {
-        fn slot_duration() -> sp_consensus_aura::SlotDuration {
-            sp_consensus_aura::SlotDuration::from_millis(Aura::slot_duration())
+    impl sp_consensus_babe::BabeApi<Block> for Runtime {
+        fn configuration() -> sp_consensus_babe::BabeConfiguration {
+            let epoch_config = Babe::epoch_config().unwrap_or(BABE_GENESIS_EPOCH_CONFIG);
+            sp_consensus_babe::BabeConfiguration {
+                slot_duration: Babe::slot_duration(),
+                epoch_length: BabeEpochDuration::get(),
+                c: epoch_config.c,
+                authorities: Babe::authorities().to_vec(),
+                randomness: Babe::randomness(),
+                allowed_slots: epoch_config.allowed_slots,
+            }
         }
 
-        fn authorities() -> Vec<AuraId> {
-            pallet_aura::Authorities::<Runtime>::get().into_inner()
+        fn current_epoch_start() -> sp_consensus_babe::Slot {
+            Babe::current_epoch_start()
+        }
+
+        fn current_epoch() -> sp_consensus_babe::Epoch {
+            Babe::current_epoch()
+        }
+
+        fn next_epoch() -> sp_consensus_babe::Epoch {
+            Babe::next_epoch()
+        }
+
+        fn generate_key_ownership_proof(
+            _slot: sp_consensus_babe::Slot,
+            authority_id: BabeId,
+        ) -> Option<sp_consensus_babe::OpaqueKeyOwnershipProof> {
+            use codec::Encode;
+            Historical::prove((sp_consensus_babe::KEY_TYPE, authority_id))
+                .map(|p| p.encode())
+                .map(sp_consensus_babe::OpaqueKeyOwnershipProof::new)
+        }
+
+        fn submit_report_equivocation_unsigned_extrinsic(
+            equivocation_proof: sp_consensus_babe::EquivocationProof<<Block as BlockT>::Header>,
+            key_owner_proof: sp_consensus_babe::OpaqueKeyOwnershipProof,
+        ) -> Option<()> {
+            let key_owner_proof = key_owner_proof.decode()?;
+            Babe::submit_unsigned_equivocation_report(
+                equivocation_proof,
+                key_owner_proof,
+            )
         }
     }
 
@@ -1632,20 +1798,27 @@ impl_runtime_apis! {
         }
 
         fn submit_report_equivocation_unsigned_extrinsic(
-            _equivocation_proof: sp_consensus_grandpa::EquivocationProof<
+            equivocation_proof: sp_consensus_grandpa::EquivocationProof<
                 <Block as BlockT>::Hash,
                 NumberFor<Block>,
             >,
-            _key_owner_proof: sp_consensus_grandpa::OpaqueKeyOwnershipProof,
+            key_owner_proof: sp_consensus_grandpa::OpaqueKeyOwnershipProof,
         ) -> Option<()> {
-            None
+            let key_owner_proof = key_owner_proof.decode()?;
+            Grandpa::submit_unsigned_equivocation_report(
+                equivocation_proof,
+                key_owner_proof,
+            )
         }
 
         fn generate_key_ownership_proof(
             _set_id: sp_consensus_grandpa::SetId,
-            _authority_id: GrandpaId,
+            authority_id: GrandpaId,
         ) -> Option<sp_consensus_grandpa::OpaqueKeyOwnershipProof> {
-            None
+            use codec::Encode;
+            Historical::prove((sp_consensus_grandpa::KEY_TYPE, authority_id))
+                .map(|p| p.encode())
+                .map(sp_consensus_grandpa::OpaqueKeyOwnershipProof::new)
         }
     }
 

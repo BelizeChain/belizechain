@@ -332,7 +332,7 @@ This document defines the comprehensive penetration testing requirements for Bel
 3. Measure: Slashing activation, network recovery
 
 **Expected Result:**
-- Double-signing detected (Aura/GRANDPA)
+- Double-signing detected (BABE/GRANDPA equivocation)
 - Validators slashed (10% stake penalty)
 - Equivocation reports submitted on-chain
 
@@ -379,7 +379,7 @@ This document defines the comprehensive penetration testing requirements for Bel
 5. Measure: MEV extracted, victim slippage
 
 **Expected Result:**
-- Transaction ordering randomization (Aura slots)
+- Transaction ordering randomization (BABE VRF slots)
 - Slippage protection (maxSlippage parameter)
 - Private transaction pool (optional, not implemented yet)
 
