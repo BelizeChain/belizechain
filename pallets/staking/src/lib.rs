@@ -1183,11 +1183,12 @@ pub mod pallet {
                 // Update contribution count
                 stats.contribution_count = stats.contribution_count.saturating_add(1);
 
-                // Update rolling average quality
-                let total_quality = (stats.avg_quality as u32)
-                    .saturating_mul(stats.contribution_count.saturating_sub(1))
-                    .saturating_add(quality_score as u32);
-                stats.avg_quality = (total_quality / stats.contribution_count) as u8;
+                // Update rolling average quality (use u64 intermediate to prevent
+                // overflow when avg_quality * (count-1) exceeds u32::MAX at ~16.8M contributions)
+                let total_quality = (stats.avg_quality as u64)
+                    .saturating_mul(stats.contribution_count.saturating_sub(1) as u64)
+                    .saturating_add(quality_score as u64);
+                stats.avg_quality = (total_quality / stats.contribution_count as u64) as u8;
 
                 // Update total volume
                 stats.total_volume = stats.total_volume.saturating_add(volume_kb as u64);

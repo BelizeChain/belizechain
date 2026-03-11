@@ -1,0 +1,90 @@
+# cargo-deny configuration for BelizeChain
+# Run: cargo deny check
+# Docs: https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+# Targets to check (BelizeChain validators run on x86-64 Linux)
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "wasm32-unknown-unknown",
+]
+
+# ── Advisories ──────────────────────────────────────────────────────────
+[advisories]
+# Deny all advisories by default
+vulnerability = "deny"
+unmaintained = "warn"
+unsound = "warn"
+yanked = "deny"
+notice = "warn"
+
+# Advisories we've triaged as not-applicable for BelizeChain
+# Each must have a justification comment
+ignore = [
+    # wasmtime WASI resource exhaustion — wasmtime-wasi is NOT in our dependency
+    # tree; WASI subsystem is not compiled into BelizeChain's binary
+    "RUSTSEC-2026-0020",
+
+    # wasmtime WASI fields panic — same reason as above, wasmtime-wasi absent
+    "RUSTSEC-2026-0021",
+
+    # wasmtime unsound shared linear memory — Substrate does not use WebAssembly
+    # shared linear memory; RustSec severity 1.8 (low)
+    "RUSTSEC-2025-0118",
+
+    # ring AES panic — only triggers with overflow-checks enabled, which is
+    # disabled in release builds. SDK-blocked at ring 0.16.x (needs SDK update
+    # for ring 0.17.x). Tracked for SDK upgrade.
+    "RUSTSEC-2025-0009",
+]
+
+# ── Licenses ────────────────────────────────────────────────────────────
+[licenses]
+# BelizeChain is MIT-licensed; allow compatible licenses
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Zlib",
+    "BSL-1.0",
+    "CC0-1.0",
+    "OpenSSL",
+    "MPL-2.0",           # Weak copyleft, compatible with MIT in usage
+    "BlueOak-1.0.0",
+]
+# Confidence threshold for license detection
+confidence-threshold = 0.8
+
+# ring uses a custom license that is ISC-style
+[[licenses.clarify]]
+name = "ring"
+expression = "MIT AND ISC AND OpenSSL"
+license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
+
+# ── Bans ────────────────────────────────────────────────────────────────
+[bans]
+# Deny multiple versions of the same crate (warn for now — Substrate has many)
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+
+# ── Sources ─────────────────────────────────────────────────────────────
+[sources]
+# Only allow crates.io and known trusted git sources
+unknown-registry = "deny"
+unknown-git = "deny"
+
+[sources.allow-org]
+# Only these GitHub organizations are trusted for git dependencies
+github = ["paritytech", "AcalaNetwork", "nicira", "AztecProtocol"]
+
+# Allow our own organization
+[sources.allow-git]
+# BelizeChain organization repos
+list = [
+    "https://github.com/BelizeChain/belizechain",
+]

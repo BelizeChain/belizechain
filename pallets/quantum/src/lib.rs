@@ -851,6 +851,8 @@ pub mod pallet {
         NFTLockedInBridge,
         /// Bridge already claimed on destination chain
         BridgeAlreadyClaimed,
+        /// Arithmetic overflow in financial calculation
+        ArithmeticOverflow,
     }
 
     #[pallet::call]
@@ -1436,8 +1438,8 @@ pub mod pallet {
             let royalty_rate = 5u32; // 5%
             let marketplace_fee_rate = 2u32; // 2%
 
-            let royalty = sale_price * royalty_rate.into() / 100u32.into();
-            let marketplace_fee = sale_price * marketplace_fee_rate.into() / 100u32.into();
+            let royalty = sale_price.saturating_mul(royalty_rate.into()) / 100u32.into();
+            let marketplace_fee = sale_price.saturating_mul(marketplace_fee_rate.into()) / 100u32.into();
             let seller_amount = sale_price
                 .saturating_sub(royalty)
                 .saturating_sub(marketplace_fee);

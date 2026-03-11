@@ -494,6 +494,8 @@ pub mod pallet {
         InvalidBehaviorFlagType,
         /// No active behavior flag to clear (Phase 5A).
         NoBehaviorFlagActive,
+        /// Quality metric value exceeds maximum (must be 0-100).
+        InvalidQualityMetric,
     }
 
     // ===== CALL FUNCTIONS (EXTRINSICS) =====
@@ -937,6 +939,11 @@ pub mod pallet {
                 Error::<T>::NotDeviceOwner
             );
 
+            // Quality metrics are documented as 0-100 scale; reject out-of-range values
+            ensure!(accuracy <= 100 && timeliness <= 100 && completeness <= 100
+                && consistency <= 100 && provenance <= 100,
+                Error::<T>::InvalidQualityMetric);
+
             let current_block = frame_system::Pallet::<T>::block_number();
 
             // Convert indices to enums
@@ -1341,18 +1348,21 @@ pub mod pallet {
             submissions.sort_unstable();
             let median_price = if submissions.len().is_multiple_of(2) {
                 let mid = submissions.len() / 2;
-                (submissions[mid - 1] + submissions[mid]) / 2
+                let a = submissions[mid - 1];
+                let b = submissions[mid];
+                // Overflow-safe average: a/2 + b/2 + (a%2 + b%2)/2
+                a / 2 + b / 2 + (a % 2 + b % 2) / 2
             } else {
                 submissions[submissions.len() / 2]
             };
 
-            // Calculate variance (max - min as percentage)
+            // Calculate variance (max - min as percentage of median, in basis points)
             let min_price = submissions[0];
             let max_price = submissions[submissions.len() - 1];
             let variance = if median_price > 0 {
-                ((max_price - min_price) * 10000) / median_price // Basis points
+                (max_price - min_price).saturating_mul(10000) / median_price
             } else {
-                0
+                0u128
             };
 
             let feed_data = PriceFeedData {
@@ -1360,7 +1370,7 @@ pub mod pallet {
                 price: median_price,
                 num_submissions: submissions.len() as u32,
                 last_update: current_block,
-                variance: variance as u32,
+                variance: variance.min(u32::MAX as u128) as u32,
             };
 
             PriceFeeds::<T>::insert(pair, feed_data);

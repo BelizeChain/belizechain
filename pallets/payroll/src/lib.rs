@@ -1074,11 +1074,11 @@ pub mod pallet {
             let current_block = frame_system::Pallet::<T>::block_number();
 
             let employee_count = if department_id == 0 {
-                Employees::<T>::iter_prefix(&employer).count() as u32
+                Employees::<T>::iter_prefix(&employer).count().min(u32::MAX as usize) as u32
             } else {
                 Employees::<T>::iter_prefix(&employer)
                     .filter(|(_, e)| e.department_id == department_id)
-                    .count() as u32
+                    .count().min(u32::MAX as usize) as u32
             };
 
             let schedule = PayrollSchedule {
@@ -1433,14 +1433,14 @@ pub mod pallet {
 
         /// Get employee count for an employer
         pub fn get_employee_count(employer: &T::AccountId) -> u32 {
-            Employees::<T>::iter_prefix(employer).count() as u32
+            Employees::<T>::iter_prefix(employer).count().min(u32::MAX as usize) as u32
         }
 
         /// Get employee count by department
         pub fn get_department_employee_count(employer: &T::AccountId, department_id: u32) -> u32 {
             Employees::<T>::iter_prefix(employer)
                 .filter(|(_, e)| e.department_id == department_id)
-                .count() as u32
+                .count().min(u32::MAX as usize) as u32
         }
     }
 }

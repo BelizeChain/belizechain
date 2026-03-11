@@ -932,7 +932,8 @@ pub mod pallet {
             let now = T::UnixTime::now().as_secs();
             let validity_period = T::VerificationValidityPeriod::get();
             
-            status.last_verification + validity_period > now
+            // ARITH-COMP-01 FIX: use saturating_sub to avoid theoretical u64 overflow
+            now.saturating_sub(status.last_verification) <= validity_period
         }
 
         /// Check if account can participate in validator operations

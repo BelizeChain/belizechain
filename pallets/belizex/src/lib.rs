@@ -28,6 +28,7 @@ use sp_runtime::{
 
 use codec::{Encode, Decode, MaxEncodedLen};
 use scale_info::TypeInfo;
+use sp_core::U256;
 use sp_std::vec::Vec;
 // use sp_std::collections::btree_map::BTreeMap; // No per-pair LP token map stored currently
 
@@ -586,6 +587,10 @@ pub mod pallet {
         OracleRateUnavailable,
         /// Insufficient LP tokens for withdrawal
         InsufficientLPTokens,
+        /// Arithmetic overflow in financial calculation
+        ArithmeticOverflow,
+        /// Order ID space exhausted
+        OrderIdOverflow,
     }
 
     #[pallet::call]
@@ -664,16 +669,30 @@ pub mod pallet {
             // M47 FIX: Use proportional formula for existing pools, sqrt only for initial
             let lp_tokens = if pair.total_lp_tokens == 0 {
                 // Initial deposit: sqrt(base * quote) — standard constant-product AMM
-                base_amount_u128.saturating_mul(quote_amount_u128).integer_sqrt()
+                let product = U256::from(base_amount_u128)
+                    .checked_mul(U256::from(quote_amount_u128))
+                    .ok_or(Error::<T>::ArithmeticOverflow)?;
+                let lp_u256 = product.integer_sqrt();
+                let lp: u128 = lp_u256.try_into()
+                    .map_err(|_| Error::<T>::ArithmeticOverflow)?;
+                lp
             } else {
                 // Subsequent deposits: min(base/base_reserve, quote/quote_reserve) * total_lp
                 // This preserves pool ratio and prevents LP value dilution
-                let lp_from_base = base_amount_u128
-                    .saturating_mul(pair.total_lp_tokens)
-                    / pair.base_reserve.max(1);
-                let lp_from_quote = quote_amount_u128
-                    .saturating_mul(pair.total_lp_tokens)
-                    / pair.quote_reserve.max(1);
+                let lp_from_base: u128 = U256::from(base_amount_u128)
+                    .checked_mul(U256::from(pair.total_lp_tokens))
+                    .ok_or(Error::<T>::ArithmeticOverflow)?
+                    .checked_div(U256::from(pair.base_reserve.max(1)))
+                    .ok_or(Error::<T>::ArithmeticOverflow)?
+                    .try_into()
+                    .map_err(|_| Error::<T>::ArithmeticOverflow)?;
+                let lp_from_quote: u128 = U256::from(quote_amount_u128)
+                    .checked_mul(U256::from(pair.total_lp_tokens))
+                    .ok_or(Error::<T>::ArithmeticOverflow)?
+                    .checked_div(U256::from(pair.quote_reserve.max(1)))
+                    .ok_or(Error::<T>::ArithmeticOverflow)?
+                    .try_into()
+                    .map_err(|_| Error::<T>::ArithmeticOverflow)?;
                 lp_from_base.min(lp_from_quote)
             };
             
@@ -913,6 +932,7 @@ pub mod pallet {
             ensure!(price > 0, Error::<T>::InvalidPrice);
 
             let order_id = Self::next_order_id();
+            ensure!(order_id < u32::MAX, Error::<T>::OrderIdOverflow);
             let current_block = frame_system::Pallet::<T>::block_number();
             let current_u64: u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0);
             let expires_in_u64: u64 = TryInto::<u64>::try_into(expires_in_blocks).unwrap_or(0);
@@ -1151,12 +1171,20 @@ pub mod pallet {
             ensure!(pair.total_lp_tokens > 0, Error::<T>::InsufficientLiquidity);
 
             // Calculate proportional share of reserves
-            let base_amount = lp_tokens
-                .saturating_mul(pair.base_reserve)
-                / pair.total_lp_tokens;
-            let quote_amount = lp_tokens
-                .saturating_mul(pair.quote_reserve)
-                / pair.total_lp_tokens;
+            let base_amount: u128 = U256::from(lp_tokens)
+                .checked_mul(U256::from(pair.base_reserve))
+                .ok_or(Error::<T>::ArithmeticOverflow)?
+                .checked_div(U256::from(pair.total_lp_tokens))
+                .ok_or(Error::<T>::ArithmeticOverflow)?
+                .try_into()
+                .map_err(|_| Error::<T>::ArithmeticOverflow)?;
+            let quote_amount: u128 = U256::from(lp_tokens)
+                .checked_mul(U256::from(pair.quote_reserve))
+                .ok_or(Error::<T>::ArithmeticOverflow)?
+                .checked_div(U256::from(pair.total_lp_tokens))
+                .ok_or(Error::<T>::ArithmeticOverflow)?
+                .try_into()
+                .map_err(|_| Error::<T>::ArithmeticOverflow)?;
 
             // Slippage protection
             ensure!(base_amount >= min_base_amount, Error::<T>::SlippageExceeded);
@@ -1252,10 +1280,14 @@ pub mod pallet {
             ensure!(amount_in > 0, Error::<T>::BelowMinimumAmount);
             ensure!(reserve_in > 0 && reserve_out > 0, Error::<T>::InsufficientLiquidity);
 
-            let numerator = amount_in.saturating_mul(reserve_out);
-            let denominator = reserve_in.saturating_add(amount_in);
-            
-            Ok(numerator / denominator)
+            let numerator = U256::from(amount_in)
+                .checked_mul(U256::from(reserve_out))
+                .ok_or(Error::<T>::ArithmeticOverflow)?;
+            let denominator = U256::from(reserve_in).saturating_add(U256::from(amount_in));
+            let result: u128 = (numerator / denominator)
+                .try_into()
+                .map_err(|_| Error::<T>::ArithmeticOverflow)?;
+            Ok(result)
         }
 
         /// Get current price for a trading pair

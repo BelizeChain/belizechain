@@ -4574,10 +4574,10 @@ pub mod pallet {
             let current_block = frame_system::Pallet::<T>::block_number();
             ensure!(current_block > referendum.voting_end, Error::<T>::VotingPeriodNotEnded);
 
-            // Calculate participation percentage
+            // Calculate participation percentage (capped at 100 to prevent u8 wrap)
             let eligible_voters = ReferendumEligibleVoters::<T>::get(referendum_id);
             let participation_percentage = if eligible_voters > 0 {
-                ((referendum.total_votes as u64 * 100) / eligible_voters as u64) as u8
+                ((referendum.total_votes as u64 * 100) / eligible_voters as u64).min(100) as u8
             } else {
                 0
             };

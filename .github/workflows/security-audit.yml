@@ -1,0 +1,88 @@
+# ─────────────────────────────────────────────────────────
+# BelizeChain — Automated Security Audit
+# Runs cargo audit on every push/PR that touches dependencies,
+# plus a weekly scheduled scan every Monday at 6am UTC.
+# ─────────────────────────────────────────────────────────
+
+name: Security Audit
+
+on:
+  push:
+    branches: [belizechain]
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+  pull_request:
+    branches: [belizechain]
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+  schedule:
+    # Every Monday at 6am UTC — catches new RustSec advisories
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  # ── 1. cargo audit — advisory database scan ─────────────
+  audit:
+    name: 🔒 Cargo Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.90.0"
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Run cargo audit
+        run: |
+          cargo audit --deny warnings 2>&1 | tee cargo_audit_output.txt || true
+          # Fail on vulnerabilities, but allow known-triaged warnings
+          cargo audit 2>&1
+        continue-on-error: false
+
+      - name: Upload audit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-audit-results
+          path: cargo_audit_output.txt
+          retention-days: 90
+
+  # ── 2. cargo deny — license + ban + source checks ──────
+  deny:
+    name: 🛡️ Cargo Deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cargo-deny
+        run: |
+          curl -L https://github.com/EmbarkStudios/cargo-deny/releases/latest/download/cargo-deny-x86_64-unknown-linux-musl.tar.gz \
+            | tar xzf - -C /usr/local/bin --strip-components=1
+          cargo-deny --version
+
+      - name: Run cargo deny check
+        run: cargo deny check 2>&1
+
+  # ── 3. Yanked crate detection ──────────────────────────
+  yanked:
+    name: 📦 Yanked Crate Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.90.0"
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Check for yanked crates
+        run: cargo audit --deny yanked 2>&1

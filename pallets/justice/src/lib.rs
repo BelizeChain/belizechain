@@ -272,6 +272,8 @@ pub mod pallet {
         MediatorNotFound,
         /// Caller must be the target of the dispute to appeal.
         NotDisputeTarget,
+        /// slash_bps exceeds maximum of 10_000 (100%).
+        SlashBpsExceedsMaximum,
     }
 
     // ── Extrinsics ────────────────────────────────────────────────────────────
@@ -356,7 +358,10 @@ pub mod pallet {
             let resolution = match resolution_code {
                 0 => DisputeResolution::Dismissed,
                 1 => DisputeResolution::Upheld,
-                2 => DisputeResolution::Mediated { slash_bps },
+                2 => {
+                    ensure!(slash_bps <= 10_000, Error::<T>::SlashBpsExceedsMaximum);
+                    DisputeResolution::Mediated { slash_bps }
+                }
                 _ => return Err(Error::<T>::InvalidDisputeStatus.into()),
             };
 

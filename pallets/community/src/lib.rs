@@ -1701,7 +1701,7 @@ pub mod pallet {
                 // Time decay: 10% bonus per 6 months of sustained activity
                 let current_u64: u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0);
                 let record_u64: u64 = TryInto::<u64>::try_into(record.block_number).unwrap_or(0);
-                let blocks_ago_u32: u32 = current_u64.saturating_sub(record_u64) as u32;
+                let blocks_ago_u32: u32 = current_u64.saturating_sub(record_u64).min(u32::MAX as u64) as u32;
                 // #79 FIX: Consistent block time - 6s blocks, 6 months = 2,592,000 blocks
                 let blocks_per_6_months: u32 = 30 * 24 * 60 * 10 * 6; // 2,592,000 blocks
                 let months_6: u32 = blocks_ago_u32 / blocks_per_6_months;
@@ -1733,7 +1733,7 @@ pub mod pallet {
                 return 500; // Neutral start
             }
 
-            let success_rate = (proposals.approved * 1000u32) / proposals.total;
+            let success_rate = (proposals.approved.saturating_mul(1000u32)) / proposals.total;
             success_rate.min(1_000)
         }
 
@@ -1766,13 +1766,13 @@ pub mod pallet {
                 project_count = project_count.saturating_add(1);
             }
             
-            // Base score: 1 point per 100 units contributed
-            let amount_score = (total_contributed / 100) as u32;
+            // Base score: 1 point per 100 units contributed (compute in u64 to avoid truncation)
+            let amount_score = total_contributed / 100;
             
             // Diversity bonus: 100 points per unique project
-            let diversity_bonus = project_count.saturating_mul(100);
+            let diversity_bonus = project_count.saturating_mul(100) as u64;
             
-            amount_score.saturating_add(diversity_bonus).min(1_500)
+            amount_score.saturating_add(diversity_bonus).min(1_500) as u32
         }
 
         /// Convert score to tier
@@ -2225,9 +2225,9 @@ impl<T: Config> PoUWContributor<T::AccountId> for Pallet<T> {
         honesty_score: u32,
     ) -> Result<(), &'static str> {
         // Calculate weighted PoUW score: Quality (40%) + Timeliness (30%) + Honesty (30%)
-        let weighted_score = (quality_score * 40 / 100)
-            .saturating_add(timeliness_score * 30 / 100)
-            .saturating_add(honesty_score * 30 / 100);
+        let weighted_score = (quality_score.saturating_mul(40) / 100)
+            .saturating_add(timeliness_score.saturating_mul(30) / 100)
+            .saturating_add(honesty_score.saturating_mul(30) / 100);
         
         // Record as participation activity
         let current_block = frame_system::Pallet::<T>::block_number();
