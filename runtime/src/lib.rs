@@ -194,7 +194,9 @@ impl pallet_grandpa::Config for Runtime {
     type WeightInfo = ();
     type MaxAuthorities = ConstU32<32>;
     type MaxNominators = ConstU32<0>;
-    type MaxSetIdSessionEntries = ConstU64<0>;
+    // CRYPTO-001 fix: retain 7 historical set IDs so GRANDPA equivocation
+    // proofs from recent authority rotations can still be verified and slashed.
+    type MaxSetIdSessionEntries = ConstU64<7>;
     type KeyOwnerProof = sp_session::MembershipProof;
     type EquivocationReportSystem =
         pallet_grandpa::EquivocationReportSystem<Self, Offences, Historical, ReportLongevity>;
