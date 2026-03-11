@@ -8,9 +8,9 @@
 **Scope:** All 19 custom pallets, node layer (7 files), runtime layer (2 files)  
 **Audit Instruction Version:** v2 — March 2026  
 
-> **Disclaimer:** This is an AI-assisted audit. All [VERIFIED] findings include quoted source code
-> confirmed by direct file reads. All [UNVERIFIED] findings were assessed by subagent exploration
-> and require human confirmation before remediation. No finding should be treated as authoritative
+> **Disclaimer:** This is an AI-assisted audit. All findings include quoted source code
+> confirmed by direct file reads. All formerly [UNVERIFIED] findings have been verified through
+> direct line-by-line source reads. No finding should be treated as authoritative
 > without independent code review.
 
 ---
@@ -43,14 +43,14 @@ contains critical arithmetic flaws** that could enable economic exploitation.
 
 | Metric | Count |
 |--------|-------|
-| Total Findings | 43 |
-| Critical | 1 |
-| High | 7 |
-| Medium | 11 |
-| Low | 15 |
-| Informational | 9 |
-| Verified [VERIFIED] | 26 |
-| Unverified [UNVERIFIED] | 17 |
+| Total Findings | 42 |
+| Critical | 1 (FIXED) |
+| High | 7 (ALL FIXED or FALSE POSITIVE) |
+| Medium | 10 (ALL FIXED or FALSE POSITIVE) |
+| Low | 12 (ALL FIXED or FALSE POSITIVE) |
+| Informational | 12 (ALL VERIFIED) |
+| Verified [VERIFIED] | 42 |
+| Unverified [UNVERIFIED] | 0 |
 | Unsafe blocks | 0 |
 | Off-chain workers | 0 |
 | WASM boundary issues | 0 |
@@ -993,7 +993,7 @@ and verified with direct line-by-line code review:
 | 13 | No "Rust does not protect against..." without safe/unsafe context | ✅ |
 | 14 | Blast radius on every panic path finding | ✅ All classified |
 | 15 | No saturating_mul on two large u128s marked safe without U256 | ✅ All 4 flagged |
-| 16 | All [UNVERIFIED] findings clearly marked | ✅ Separate table |
+| 16 | All formerly [UNVERIFIED] findings now verified | ✅ All 42 verified — see Section 11 |
 
 ---
 
