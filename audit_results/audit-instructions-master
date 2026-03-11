@@ -1,0 +1,675 @@
+# BelizeChain — Cryptographic Audit: Master Prompt (v1)
+
+---
+
+## ⚠️ AI AUDITOR OPERATING RULES — READ BEFORE PROCEEDING
+
+This audit covers key generation, signing schemes, hash functions, and cryptographic
+primitives across BelizeChain's runtime and node layer. Cryptographic audits are
+particularly prone to AI hallucination because:
+
+1. Many crypto vulnerabilities are **configuration issues**, not code bugs — they look correct at a glance
+2. Substrate's crypto stack has well-known defaults that this codebase **partially overrides**
+3. Several **known issues already exist in this codebase** (documented with AR- prefixes) — the
+   auditor must distinguish between acknowledged issues and new findings
+
+**Violating any rule below invalidates the finding.**
+
+---
+
+### RULE 1 — QUOTE THE CODE, THEN MAKE THE CLAIM
+
+Every finding must open with the exact code excerpt that demonstrates the issue:
+```
+File: runtime/src/lib.rs
+Line: ~180
+Code: type MaxSetIdSessionEntries = ConstU64<0>;
+```
+No quote = `UNVERIFIED`. Do not report `UNVERIFIED` items in the main Findings Table.
+
+---
+
+### RULE 2 — CONFIDENCE MARKERS ARE MANDATORY
+
+| Marker | Meaning |
+|---|---|
+| `[VERIFIED]` | Exact code read and quoted |
+| `[INFERRED]` | Logical conclusion from code read — needs confirmation |
+| `[ASSUMED]` | Based on Substrate conventions — not confirmed in this repo |
+| `[UNVERIFIED]` | File not read — do not report as finding |
+
+---
+
+### RULE 3 — DISTINGUISH ACKNOWLEDGED VS NEW FINDINGS
+
+This codebase uses `AR-` prefixed comments to acknowledge known issues. Before
+reporting any finding, search for a corresponding `AR-` comment nearby. If one
+exists, classify the finding as:
+
+- `[ACKNOWLEDGED — AR-N]` — already known, report in a separate "Acknowledged Issues" table
+- `[NEW FINDING]` — not previously acknowledged, report in main Findings Table
+
+The most important acknowledged issue for this audit:
+```rust
+// AR-6: Passthrough verifier — replace with a real Falcon/Dilithium
+// host-function verifier before mainnet deployment.
+type PQVerifier = pallet_belize_interoperability::PassthroughPQVerifier;
+```
+This is Critical severity but already acknowledged. It must appear in the report
+but must NOT be counted as a new finding.
+
+---
+
+### RULE 4 — DO NOT ASSUME SUBSTRATE CRYPTO DEFAULTS
+
+The following Substrate defaults have been **verified as present** in this codebase
+from reading `runtime/src/lib.rs` and `node/src/service.rs`. Do not re-verify these
+as findings — they are confirmed correct:
+
+- ✅ `type Hashing = BlakeTwo256` — standard, secure
+- ✅ `type Hash = H256` — standard 256-bit hash
+- ✅ BABE using sr25519 (`AuthorityId = BabeId`)
+- ✅ GRANDPA using ed25519 (`AuthorityId = GrandpaId`)
+- ✅ `justification_import: Some(Box::new(grandpa_block_import))` — present
+- ✅ GRANDPA `EquivocationReportSystem` wired
+- ✅ BABE `EquivocationReportSystem` wired
+- ✅ `SS58Prefix = 1981` — custom, non-conflicting with other chains
+- ✅ `AllowedSlots::PrimaryAndSecondaryVRFSlots` — correct for liveness
+
+Do not report any of the above as vulnerabilities. Doing so wastes audit time and
+inflates the findings count with false positives.
+
+---
+
+### RULE 5 — THE BENCHMARK BYPASS IS THE MOST DANGEROUS PATTERN IN THIS CODEBASE
+
+The following pattern appears **at least 12 times** in `runtime/src/lib.rs`:
+
+```rust
+#[cfg(feature = "runtime-benchmarks")]
+return true;  // or Some(3), or false for is_sanctioned
+#[cfg(not(feature = "runtime-benchmarks"))]
+// real check here
+```
+
+This pattern bypasses **KYC, sanctions screening, and identity verification** when
+the `runtime-benchmarks` feature is compiled in. For every provider struct, verify:
+
+1. Is the `runtime-benchmarks` bypass present? (quote it)
+2. Is there a CI/CD guard ensuring benchmarks are never compiled into production WASM?
+3. Could a malicious validator or node operator enable this feature in production?
+4. Is the benchmark WASM binary kept strictly separate from the production WASM binary?
+
+This is not theoretical — if `runtime-benchmarks` is accidentally compiled into the
+production runtime, **every KYC and sanctions check on the chain returns the permissive
+value**. This is a Critical finding if no build-time separation is enforced.
+
+---
+
+### RULE 6 — PQ CRYPTOGRAPHY CLAIMS REQUIRE SPECIAL TREATMENT
+
+The README mentions "Quantum-resistant cryptography" and the runtime has:
+- `type PQSignatureThreshold: Get<u32>` — set to 3
+- `type PQVerifier = pallet_belize_interoperability::PassthroughPQVerifier`
+- `PQSignatureThreshold = 3` — 3 of 5 validators
+
+`PassthroughPQVerifier` means **no post-quantum signature is actually verified**.
+The threshold of 3 is meaningless if verification always returns true.
+
+Do NOT report this as a generic "PQ not implemented" issue. Report it specifically:
+the bridge accepts any signature claiming to be a Falcon/Dilithium signature without
+verification. This means bridge transactions can be forged with zero cryptographic
+work by any party that can submit an extrinsic.
+
+You must read `pallets/interoperability/src/lib.rs` to confirm `PassthroughPQVerifier`
+implementation. If it does `fn verify(...) -> bool { true }` or similar, that is the
+exact code to quote.
+
+---
+
+### RULE 7 — RANDOMNESS PREDICTABILITY WINDOW MUST BE CALCULATED
+
+The runtime uses `pallet_babe::RandomnessFromOneEpochAgo<Runtime>` for:
+- `pallet_belize_governance` (proposal randomness)
+- `pallet_belize_staking` (validator selection)
+- `pallet_belize_interoperability` (bridge randomness)
+- `pallet_contracts` (contract randomness)
+
+`RandomnessFromOneEpochAgo` means the randomness used **now** was determined
+**one epoch ago**. With `BabeEpochDuration = 14_400` blocks at 6 seconds each:
+
+```
+Predictability window = 14,400 blocks × 6 seconds = 86,400 seconds = 24 hours
+```
+
+An attacker who can observe the epoch-ago randomness seed has **24 hours of advance
+knowledge** of any randomness-dependent outcome. For each usage site, the auditor
+must assess: can this 24-hour window be exploited?
+
+Do not claim this is automatically a Critical finding. It depends on what the
+randomness is used for. Assess each pallet independently.
+
+---
+
+### RULE 8 — SCOPE BOUNDARIES
+
+**In scope:**
+- `runtime/src/lib.rs` — all crypto configuration (already read)
+- `node/src/service.rs` — key store, BABE/GRANDPA wiring (already read)
+- `pallets/identity/src/lib.rs` — BelizeID, KYC, SSN/Passport handling
+- `pallets/interoperability/src/lib.rs` — bridge signature verification, PassthroughPQVerifier
+- `pallets/compliance/src/lib.rs` — sanctions list, AML hashing
+- `pallets/staking/src/lib.rs` — validator key management
+- `Cargo.toml` — crypto crate versions
+
+**Out of scope:**
+- Smart contract (ink!) cryptography — separate audit
+- Python test scripts — not runtime code
+- Mesh/LoRa cryptography — separate networking audit
+
+---
+
+## Context & Background
+
+**Repository**: https://github.com/BelizeChain/belizechain
+**Branch**: `belizechain`
+**Runtime**: Substrate FRAME, WASM (release mode)
+**SDK**: Polkadot SDK stable2512
+**Consensus**: BABE (sr25519 VRF) + GRANDPA (ed25519) + custom PoUW layer
+**Signature type**: `MultiSignature` — accepts sr25519, ed25519, AND ecdsa
+**Hash function**: `BlakeTwo256` (H256 output)
+**PQ claims**: PassthroughPQVerifier — NOT actually verifying PQ signatures
+**Session keys**: `{ babe: BabeId, grandpa: GrandpaId }` — two key types only
+
+---
+
+## Pre-Audit Checklist
+
+```
+[ ] Confirmed commit hash: ___________
+[ ] Confirmed PassthroughPQVerifier implementation read — fn verify returns: ___________
+[ ] Confirmed pallets/identity/src/lib.rs read — SSN/Passport stored as: ___________
+[ ] Confirmed pallets/compliance/src/lib.rs read — sanctions list hash type: ___________
+[ ] Confirmed Cargo.toml read — sp-core version: ___________
+[ ] Count of #[cfg(feature = "runtime-benchmarks")] bypass patterns in runtime: ___________
+[ ] Confirmed whether runtime-benchmarks WASM is separated from production WASM in CI: ___________
+[ ] Confirmed generate_session_keys seed entropy validation: YES / NO / NOT PRESENT
+[ ] Confirmed MaxSetIdSessionEntries = 0 impact on equivocation reporting: ___________
+[ ] Identified all pallets using RandomnessFromOneEpochAgo: ___________
+```
+
+---
+
+## Area 1 — Signing Schemes & MultiSignature Attack Surface
+
+### What is confirmed in the code
+
+From `runtime/src/lib.rs`:
+```rust
+pub type Signature = MultiSignature;
+pub type AccountId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
+```
+
+`MultiSignature` accepts **three signature schemes**: sr25519, ed25519, and ecdsa.
+This means any account can be signed with any of these three schemes.
+
+### Questions to answer
+
+1. **Scheme downgrade attack**: Can an attacker submit a transaction signed with a
+   weaker scheme (ecdsa) for an account that was created with a stronger scheme (sr25519)?
+   Does the runtime enforce that an account always uses the same signing scheme?
+
+2. **AccountId collision**: sr25519, ed25519, and ecdsa public keys all map to the
+   same 32-byte AccountId space. Is there a theoretical collision risk between
+   a valid sr25519 key and a valid ecdsa key that produces the same AccountId?
+   Read how `IdentifyAccount` resolves this for `MultiSignature`.
+
+3. **ecdsa vs sr25519 security level**: ecdsa (as used in Substrate) does not have
+   the same security properties as sr25519. Specifically, ecdsa requires a secure
+   random nonce per signature — is this guaranteed in the Substrate WASM context?
+
+4. **BABE sr25519 vs GRANDPA ed25519**: These are different schemes for good reason
+   (VRF requires sr25519, GRANDPA's BLS-adjacent voting requires ed25519). Confirm
+   both key types are **generated separately** and stored separately in the keystore.
+   A validator accidentally using the same key material for both would be a finding.
+
+### Red flags to look for
+- Any code that normalizes `MultiSignature` to a single scheme before verification
+- `AccountId` derivation that could collide across signature schemes
+- Key generation code that reuses entropy across BABE and GRANDPA keys
+
+---
+
+## Area 2 — GRANDPA `MaxSetIdSessionEntries = 0` [VERIFIED ISSUE]
+
+This is a confirmed issue from reading the code. The exact line is:
+
+```rust
+// runtime/src/lib.rs
+impl pallet_grandpa::Config for Runtime {
+    type MaxSetIdSessionEntries = ConstU64<0>;
+    // ...
+}
+```
+
+### What this means
+
+`MaxSetIdSessionEntries` controls how many historical GRANDPA set IDs are stored
+on-chain. These are required for **equivocation proof verification** — when a
+validator double-signs, the proof must reference the set ID that was active at
+the time of the equivocation.
+
+With `ConstU64<0>`, **zero historical set IDs are stored**. This means:
+
+- Equivocation proofs referencing any past set ID cannot be verified
+- A validator can double-sign and the equivocation report will fail to process
+- The `EquivocationReportSystem` is wired but effectively **non-functional** for
+  historical equivocations
+
+### Questions to answer
+
+1. Read `pallet_grandpa::EquivocationReportSystem` source — does it explicitly
+   check `MaxSetIdSessionEntries` before accepting a proof? What error does it
+   return when the set ID is not found?
+
+2. For **current-session** equivocations (same set ID, not historical), does
+   `MaxSetIdSessionEntries = 0` still prevent reporting? Or only historical?
+
+3. What is the correct value for this chain? Standard Substrate nodes use
+   `BondingDuration * SessionsPerEra` or a similar formula. For BelizeChain
+   with 24-hour sessions, a value of `7` (one week of history) would be
+   the minimum recommended.
+
+4. Is there a relationship between `MaxSetIdSessionEntries` and
+   `ReportLongevity = BabeEpochDuration * 10`? If reports are valid for
+   10 epochs but only 0 set IDs are stored, the longevity setting is meaningless.
+
+### Severity assessment
+This is at minimum **High** — equivocation slashing is disabled in practice.
+If validators know equivocation cannot be reported, this directly undermines
+GRANDPA's security model. Assess whether it reaches Critical based on whether
+current-session equivocations are also affected.
+
+---
+
+## Area 3 — Session Key Generation & Seed Entropy
+
+From `runtime/src/lib.rs` and `node/src/service.rs`:
+
+```rust
+// runtime/src/lib.rs
+fn generate_session_keys(seed: Option<Vec<u8>>) -> Vec<u8> {
+    opaque::SessionKeys::generate(seed)
+}
+```
+
+### The concern
+
+`seed: Option<Vec<u8>>` means callers can pass an **arbitrary byte string** as
+the entropy source for key generation. This is intentional for development
+(allows deterministic test keys), but dangerous in production if:
+
+1. Validators use weak or predictable seeds (e.g., their account name, "password", etc.)
+2. The RPC endpoint that calls `generate_session_keys` is publicly exposed without
+   authentication, allowing an attacker to enumerate seeds
+3. Two validators accidentally use the same seed, producing identical keys
+
+### Questions to answer
+
+1. Is `generate_session_keys` exposed via the public RPC? Check `node/src/rpc.rs`
+   — is the `author_rotateKeys` or `author_insertKey` RPC method unrestricted?
+
+2. Is there any minimum entropy requirement enforced on the seed? A 4-byte seed
+   is accepted the same as a 32-byte cryptographically random seed.
+
+3. When `seed = None`, what entropy source is used? Confirm it is the OS CSPRNG
+   and not a deterministic fallback.
+
+4. Is there documentation warning validators to use `None` (OS-generated) rather
+   than custom seeds in production?
+
+### Red flags to look for
+- `author_rotateKeys` available without authentication in RPC config
+- `generate_session_keys` called with hardcoded seeds in any test or script
+  that could be accidentally used in production
+- Seed validation missing from key insertion path
+
+---
+
+## Area 4 — PassthroughPQVerifier [ACKNOWLEDGED — AR-6, but must be quantified]
+
+From `runtime/src/lib.rs`:
+```rust
+// AR-6: Passthrough verifier — replace with a real Falcon/Dilithium
+// host-function verifier before mainnet deployment.
+type PQVerifier = pallet_belize_interoperability::PassthroughPQVerifier;
+```
+
+This is acknowledged. However the audit must still:
+
+### Step 1 — Read and quote the PassthroughPQVerifier implementation
+
+```bash
+grep -n "PassthroughPQVerifier" pallets/interoperability/src/lib.rs -A 10
+```
+
+Expected to find something like:
+```rust
+pub struct PassthroughPQVerifier;
+impl PQVerifier for PassthroughPQVerifier {
+    fn verify(_signature: &[u8], _message: &[u8], _public_key: &[u8]) -> bool {
+        true  // ← this is what needs to be quoted
+    }
+}
+```
+
+### Step 2 — Assess blast radius
+
+With `PQSignatureThreshold = 3` and a passthrough verifier:
+- Any 3 of the 5 bridge validators can submit **any bytes** as a "PQ signature"
+- The bridge will accept it as valid
+- This means the PQ signature threshold is **security theater** — it provides
+  no cryptographic guarantee
+
+The real question is: **what does the bridge do once the PQ threshold is met?**
+Does it release funds? Mint tokens? Execute cross-chain messages? The severity
+depends entirely on what actions the passing threshold authorizes.
+
+### Step 3 — Assess mainnet risk
+
+The AR-6 comment says "before mainnet deployment." Is there:
+- A CI check that blocks mainnet deployment with PassthroughPQVerifier?
+- A governance proposal required to upgrade to a real verifier?
+- A testnet-only feature flag guarding this type?
+
+If none of the above exist, this remains an unmitigated Critical for production.
+
+---
+
+## Area 5 — Benchmark Bypass of Security Controls
+
+From `runtime/src/lib.rs`, the following pattern appears across **all** provider structs:
+
+```rust
+pub fn runtime_kyc_level(account: &AccountId) -> Option<u8> {
+    #[cfg(feature = "runtime-benchmarks")]
+    return Some(3);
+    #[cfg(not(feature = "runtime-benchmarks"))]
+    Identity::get_verified_kyc_level(account)
+}
+
+pub fn runtime_is_sanctioned(account: &AccountId) -> bool {
+    #[cfg(feature = "runtime-benchmarks")]
+    return false;
+    #[cfg(not(feature = "runtime-benchmarks"))]
+    return Identity::is_account_sanctioned(account) || Oracle::is_sanctioned(account);
+}
+```
+
+### The threat model
+
+This bypass exists for valid reasons — benchmarks can't set up KYC state for
+every account. But it creates a risk if the `runtime-benchmarks` feature is
+ever compiled into production WASM.
+
+### Questions to answer
+
+1. Run: `grep -r "runtime-benchmarks" .github/ scripts/ Dockerfile` —
+   is there a CI step that explicitly builds production WASM **without**
+   `runtime-benchmarks` and verifies the binary hash?
+
+2. Is the benchmarking WASM stored separately from the production WASM?
+   Check `scripts/build_release.sh` — does it pass `--features runtime-benchmarks`?
+
+3. Could a validator node operator compile their own runtime with
+   `runtime-benchmarks` enabled and submit it as a runtime upgrade via governance?
+   (This depends on whether runtime upgrades require governance approval — check
+   `pallet_sudo` and the governance pallet's set_code path)
+
+4. Count exact number of `#[cfg(feature = "runtime-benchmarks")] return true/false/Some`
+   bypass patterns — this number should appear in the report.
+
+### Severity
+If production WASM build is not verifiably separated: **Critical**
+If build separation is enforced and documented: **Low** (accepted risk for benchmarking)
+
+---
+
+## Area 6 — Randomness Predictability (RandomnessFromOneEpochAgo)
+
+From `runtime/src/lib.rs`, these pallets all use `pallet_babe::RandomnessFromOneEpochAgo`:
+
+```rust
+// governance
+type Randomness = pallet_babe::RandomnessFromOneEpochAgo<Runtime>;
+// staking
+type Randomness = pallet_babe::RandomnessFromOneEpochAgo<Runtime>;
+// interoperability
+type Randomness = pallet_babe::RandomnessFromOneEpochAgo<Runtime>;
+// contracts
+type Randomness = pallet_babe::RandomnessFromOneEpochAgo<Runtime>;
+```
+
+**Confirmed predictability window**: 14,400 blocks × 6 seconds = **24 hours**
+
+### For each usage site, answer:
+
+**Governance randomness:**
+- What is the randomness used for? Leader election? Proposal ordering?
+- Can a validator who knows the randomness 24 hours in advance game any governance outcome?
+
+**Staking randomness:**
+- Is randomness used in validator selection, reward distribution, or PoUW scoring?
+- A validator who knows the randomness seed 24 hours ahead can optimize their
+  PoUW submissions to hit favorable selection windows
+
+**Interoperability randomness:**
+- Bridge nonce generation? Challenge period randomness?
+- 24-hour advance knowledge of bridge randomness could enable front-running attacks
+
+**Contracts randomness:**
+- Any ink! contract using `env.random()` inherits this 24-hour predictability
+- This must be documented as a limitation for contract developers
+
+### Red flags
+- Randomness used as the **sole** source of entropy for security-critical decisions
+- No warning in documentation that `RandomnessFromOneEpochAgo` is predictable
+
+---
+
+## Area 7 — Identity Pallet: Sensitive Data Handling
+
+You must read `pallets/identity/src/lib.rs` for this section. Do not answer
+these questions from assumptions.
+
+### Questions to answer
+
+1. **SSN/Passport storage**: How is sensitive PII stored? Is it:
+   - Stored in plaintext on-chain? (Critical)
+   - Stored as a hash? If so, which hash function and is it salted?
+   - Stored as a commitment with zero-knowledge proof?
+   - Stored off-chain with only a hash/commitment on-chain?
+
+2. **KYC level attestation**: Who can attest KYC levels? Is it:
+   - A single oracle operator? (Centralization risk)
+   - Multiple operators requiring `MinOracleAgreement = 3`? (Better)
+   - Are attestations signed with a known public key? Can attestations be replayed?
+
+3. **KYC expiry and renewal**: `KycValidityBlocks = 1,051,200` (~2 years).
+   What happens cryptographically when KYC expires? Is the old attestation
+   invalidated on-chain, or does it remain valid until explicitly revoked?
+
+4. **BelizeID uniqueness**: Can two accounts share the same national ID?
+   Is there a uniqueness constraint enforced cryptographically or just by storage key?
+
+5. **Revocation**: Can a compromised identity credential be revoked? What is the
+   cryptographic mechanism — is the revocation list checked on every KYC query?
+
+### Grep commands
+```bash
+grep -n "ssn\|passport\|hash\|commit\|blake\|sha\|keccak" \
+  pallets/identity/src/lib.rs -i | head -40
+
+grep -n "struct.*Identity\|pub.*pii\|pub.*document" \
+  pallets/identity/src/lib.rs -i | head -20
+```
+
+---
+
+## Area 8 — Bridge Cryptography (Interoperability Pallet)
+
+You must read `pallets/interoperability/src/lib.rs` for this section.
+
+### Questions to answer
+
+1. **Ethereum signature verification**: When verifying Ethereum-side events,
+   what signature scheme is used? secp256k1 ECDSA? Is this handled by a
+   host function or implemented in WASM Rust?
+
+2. **Bridge validator set management**: How are bridge validators' public keys
+   stored? Can a bridge validator rotate their key without a governance proposal?
+
+3. **Replay protection**: Are cross-chain messages protected against replay?
+   Is there a nonce or message ID that prevents the same bridge transaction
+   from being processed twice?
+
+4. **Challenge period cryptography**: `ChallengePeriod = 100` blocks (~10 min).
+   What cryptographic proof is required to successfully challenge a bridge
+   transaction? Who can submit a challenge?
+
+5. **PQ threshold mechanics** (beyond AR-6): Even ignoring PassthroughPQVerifier,
+   is the 3-of-5 threshold implemented correctly? Is it a simple counter or
+   a proper threshold signature scheme (e.g., Shamir, Musig2)?
+
+### Grep commands
+```bash
+grep -n "verify\|signature\|ecdsa\|secp256k1\|replay\|nonce\|challenge" \
+  pallets/interoperability/src/lib.rs -i | head -50
+
+grep -n "PassthroughPQVerifier\|PQVerifier\|fn verify" \
+  pallets/interoperability/src/lib.rs | head -20
+```
+
+---
+
+## Deliverables
+
+1. **Pre-Audit Checklist** — all fields filled in
+
+2. **Acknowledged Issues Table** (AR- prefixed items)
+   `AR-ID | Severity | Description | Mainnet Risk if Unresolved | Mitigation Present`
+
+3. **New Findings Table** (previously unknown issues)
+   `ID | Severity | Confidence | Area | File:Line | Title`
+
+4. **Detailed Findings** — for each new finding: code excerpt, description,
+   attack scenario, impact, recommendation with specific fix
+
+5. **Cryptographic Primitive Assessment**
+   A one-page summary of every crypto primitive in use:
+   - Hash functions: what, where, adequate?
+   - Signing schemes: what, where, key separation enforced?
+   - Randomness: source, predictability window, usage sites
+   - PQ readiness: current state, gap to production-ready
+
+6. **Benchmark Bypass Risk Assessment**
+   Specific section on whether `runtime-benchmarks` build separation is enforced
+
+7. **Unverified Observations** — `[ASSUMED]`/`[THEORETICAL]` items needing follow-up
+
+8. **Audit Gaps** — files not read, questions unanswered
+
+---
+
+## How to Run This Audit
+
+```bash
+# 1. Clone and checkout
+git clone https://github.com/BelizeChain/belizechain.git
+cd belizechain && git checkout belizechain
+git log --oneline -1
+
+# 2. Confirm PassthroughPQVerifier implementation (highest priority)
+grep -n "PassthroughPQVerifier\|fn verify" pallets/interoperability/src/lib.rs -A 5
+
+# 3. Count benchmark bypass patterns
+grep -rn "cfg(feature = \"runtime-benchmarks\")" runtime/src/lib.rs | wc -l
+
+# 4. Check if benchmarks feature appears in build scripts
+grep -rn "runtime-benchmarks" scripts/ .github/ Dockerfile 2>/dev/null
+
+# 5. Check SSN/Passport storage in identity pallet
+grep -n "ssn\|passport\|pii\|document_hash\|national_id" \
+  pallets/identity/src/lib.rs -i | head -30
+
+# 6. Check bridge signature verification
+grep -n "verify\|ecdsa\|secp256\|nonce\|replay" \
+  pallets/interoperability/src/lib.rs -i | head -40
+
+# 7. Check RPC exposure of key generation
+grep -n "generate_session_keys\|rotate_keys\|author_" \
+  node/src/rpc.rs 2>/dev/null | head -20
+
+# 8. Verify GRANDPA MaxSetIdSessionEntries impact
+grep -n "MaxSetIdSessionEntries\|set_id\|EquivocationProof" \
+  runtime/src/lib.rs pallets/*/src/lib.rs 2>/dev/null | head -20
+
+# 9. Check Cargo.toml for crypto crate versions
+grep -E "sp-core|sp-io|schnorrkel|ed25519|secp256k1|blake2" Cargo.toml
+```
+
+---
+
+## Severity Definitions
+
+| Severity | Definition |
+|---|---|
+| **Critical** | Cryptographic guarantee completely broken — forgeable signatures, bypassed auth |
+| **High** | Security model degraded — equivocation not slashable, predictable randomness in security decisions |
+| **Medium** | Increased attack surface, requires specific conditions to exploit |
+| **Low** | Best-practice deviation, defense-in-depth improvement |
+| **Informational** | Documentation gaps, acknowledged issues, future hardening |
+
+---
+
+## Pre-Verified Findings Reference
+
+The following findings are **already confirmed** from reading the code.
+The auditor should verify and expand them, not re-discover them:
+
+| ID | Severity | Status | Location | Description |
+|---|---|---|---|---|
+| CRYPTO-PRE-001 | Critical | `[ACKNOWLEDGED — AR-6]` | `runtime/src/lib.rs` | `PassthroughPQVerifier` — PQ signatures not verified |
+| CRYPTO-PRE-002 | High | `[VERIFIED — NEW]` | `runtime/src/lib.rs:~180` | `MaxSetIdSessionEntries = 0` — GRANDPA equivocation reporting broken |
+| CRYPTO-PRE-003 | High | `[VERIFIED — NEEDS CONFIRMATION]` | `runtime/src/lib.rs` | Benchmark bypass disables all KYC/sanctions checks when `runtime-benchmarks` compiled |
+| CRYPTO-PRE-004 | Medium | `[VERIFIED — NEEDS SCOPING]` | `runtime/src/lib.rs` | `RandomnessFromOneEpochAgo` gives 24-hour advance knowledge of randomness in 4 pallets |
+| CRYPTO-PRE-005 | Medium | `[VERIFIED — NEEDS CONFIRMATION]` | `runtime/src/lib.rs` | `generate_session_keys(seed)` accepts arbitrary entropy — no minimum entropy enforcement |
+
+Each pre-verified finding must be confirmed with a quoted code excerpt and
+expanded with a full attack scenario before inclusion in the final report.
+
+---
+
+## Anti-Hallucination Self-Check
+
+Before submitting the report:
+
+```
+[ ] Every finding in the New Findings Table has a quoted code excerpt
+[ ] PassthroughPQVerifier implementation was read and quoted — not assumed
+[ ] MaxSetIdSessionEntries = 0 impact was verified against pallet-grandpa behavior
+[ ] Benchmark bypass count matches the grep output from the Pre-Audit Checklist
+[ ] No finding claims "Substrate uses X by default" without verifying this repo uses X
+[ ] RandomnessFromOneEpochAgo predictability window is calculated, not estimated
+[ ] Identity pallet SSN/Passport storage method was read — not assumed to be hashed
+[ ] Bridge replay protection was verified from pallets/interoperability/src/lib.rs
+[ ] Pre-Verified findings are in the Acknowledged Issues table, not the New Findings table
+[ ] Report does not claim BlakeTwo256 is insecure — it is standard and secure
+[ ] Report does not flag MultiSignature as inherently insecure — it is standard Substrate
+```
+
+---
+
+*BelizeChain Cryptographic Audit Master Prompt — v1 — March 2026*
+*Built from direct analysis of runtime/src/lib.rs and node/src/service.rs.*
+*All AI outputs must be validated against actual source code before inclusion in a final report.*

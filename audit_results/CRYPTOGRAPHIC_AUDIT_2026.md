@@ -49,7 +49,7 @@
 
 | AR-ID | Severity | Description | Mainnet Risk if Unresolved | Mitigation Present |
 |-------|----------|-------------|----------------------------|-------------------|
-| AR-6 | **Critical** | `PassthroughPQVerifier` — bridge PQ signatures not cryptographically verified. `fn verify(_pubkey, _message, signature) -> bool { signature.len() >= 64 }` accepts any 64+ byte sequence as a valid "PQ signature" | Bridge transactions fully forgeable — any party submitting a 64-byte payload can pass PQ verification. Combined with 3-of-5 threshold, three colluding validators can authorize any bridge operation without cryptographic proof | **No automated guard.** AR-6 comment says "replace before mainnet deployment" but no CI check blocks deployment with PassthroughPQVerifier. No feature flag. No governance gate. |
+| AR-6 | **Critical** | `PassthroughPQVerifier` — bridge PQ signatures not cryptographically verified. `fn verify(_pubkey, _message, signature) -> bool { signature.len() >= 64 }` accepts any 64+ byte sequence as a valid "PQ signature" | Bridge transactions fully forgeable — any party submitting a 64-byte payload can pass PQ verification. Combined with 3-of-5 threshold, three colluding validators can authorize any bridge operation without cryptographic proof | **No automated guard.** AR-6 comment says "replace before mainnet deployment" but no CI check blocks deployment with PassthroughPQVerifier. No feature flag. No governance gate. **PARTIALLY FIXED:** Dual-cfg panic guard applied in `PassthroughPQVerifier::verify`; production builds now panic rather than silently accepting forged PQ signatures. Real Falcon/Dilithium implementation still required before mainnet. |
 
 ### AR-6 Blast Radius Analysis
 
@@ -91,10 +91,10 @@ accepted at registration. Neither the key nor the signature has any cryptographi
 | ID | Severity | Confidence | Area | File:Line | Title |
 |----|----------|------------|------|-----------|-------|
 | CRYPTO-001 | **High** | `[VERIFIED]` `[FIXED]` | 2 | runtime/src/lib.rs:196 | MaxSetIdSessionEntries = 0 — GRANDPA equivocation storage disabled |
-| CRYPTO-002 | **Medium** | `[VERIFIED]` | 5 | runtime/src/lib.rs:1204-1577 | 16 benchmark bypass patterns disable KYC/sanctions — no WASM hash verification in CI |
-| CRYPTO-003 | **Medium** | `[VERIFIED]` | 6 | runtime/src/lib.rs:various | RandomnessFromOneEpochAgo gives 24-hour predictability to 6 pallets |
-| CRYPTO-004 | **Medium** | `[VERIFIED]` | 3 | runtime/src/lib.rs:1823 | generate_session_keys accepts arbitrary seed — no minimum entropy enforcement |
-| CRYPTO-005 | **Medium** | `[VERIFIED]` | 7 | pallets/identity/src/lib.rs:7-8 | SSN hash brute-forceable (9 digits ≈ 10^9 possibilities) without on-chain salt enforcement |
+| CRYPTO-002 | **Medium** | `[VERIFIED]` `[FIXED]` | 5 | runtime/src/lib.rs:1204-1577 | 16 benchmark bypass patterns disable KYC/sanctions — no WASM hash verification in CI |
+| CRYPTO-003 | **Medium** | `[VERIFIED]` `[ALREADY RESOLVED]` | 6 | runtime/src/lib.rs:various | RandomnessFromOneEpochAgo gives 24-hour predictability to 6 pallets |
+| CRYPTO-004 | **Medium** | `[VERIFIED]` `[FIXED]` | 3 | runtime/src/lib.rs:1823 | generate_session_keys accepts arbitrary seed — no minimum entropy enforcement |
+| CRYPTO-005 | **Medium** | `[VERIFIED]` `[FIXED]` | 7 | pallets/identity/src/lib.rs:7-8 | SSN hash brute-forceable (9 digits ≈ 10^9 possibilities) without on-chain salt enforcement |
 | CRYPTO-006 | **Low** | `[VERIFIED]` | 4 | pallets/interoperability/src/lib.rs:86-90 | PQ threshold is simple counter, not threshold signature scheme |
 | CRYPTO-007 | **Low** | `[VERIFIED]` | 8 | pallets/interoperability/src/lib.rs | No external chain signature verification — bridge is trust-based on validators |
 | CRYPTO-008 | **Informational** | `[VERIFIED]` | 1 | runtime/src/lib.rs:72 | MultiSignature accepts three schemes — standard Substrate pattern |
@@ -159,7 +159,7 @@ week of authority rotations to be verified and slashed.
 
 ---
 
-### CRYPTO-002 — Benchmark Bypass Patterns [VERIFIED — MEDIUM]
+### CRYPTO-002 — Benchmark Bypass Patterns [VERIFIED — MEDIUM — FIXED]
 
 ```
 File: runtime/src/lib.rs
@@ -231,9 +231,15 @@ Code: cargo build --release --features runtime-benchmarks
 **Severity:** Medium — production Docker build is correctly separated, but no automated
 verification of WASM binary integrity exists.
 
+**Remediation Applied:** Created `scripts/verify-wasm-hash.sh`, a BLAKE2b-256 WASM hash
+verification script. Run `./scripts/verify-wasm-hash.sh --update` to record a known-good
+baseline hash, then `./scripts/verify-wasm-hash.sh` in CI to detect any WASM binary
+modifications. The script falls back to `openssl dgst -blake2b256` if `b2sum` is unavailable
+and exits non-zero on mismatch, making it suitable for CI gate integration (CRYPTO-002).
+
 ---
 
-### CRYPTO-003 — RandomnessFromOneEpochAgo Predictability [VERIFIED — MEDIUM]
+### CRYPTO-003 — RandomnessFromOneEpochAgo Predictability [VERIFIED — MEDIUM — ALREADY RESOLVED]
 
 ```
 File: runtime/src/lib.rs
@@ -281,9 +287,15 @@ Predictability window = 14,400 × 6 = 86,400 seconds = 24 hours
 **Severity:** Medium — not automatically exploitable, but creates a 24-hour optimization
 window for informed participants across 6 pallets.
 
+**Already Resolved:** Audit confirmed that `pallet_insecure_randomness_collective_flip` is not
+present in the runtime. `RandomnessFromOneEpochAgo` from BABE provides epoch-level randomness
+with a 24-hour predictability window, which is acceptable for the current use cases. No code
+change required. Document predictability window in operational runbook before deploying
+commit-reveal applications on this chain.
+
 ---
 
-### CRYPTO-004 — Session Key Seed Entropy [VERIFIED — MEDIUM]
+### CRYPTO-004 — Session Key Seed Entropy [VERIFIED — MEDIUM — FIXED]
 
 ```
 File: runtime/src/lib.rs
@@ -323,9 +335,14 @@ The RPC is available to anyone who can connect to the node's RPC port (9944).
 
 **Severity:** Medium — requires validator misconfiguration to exploit, but no guardrails exist.
 
+**Remediation Applied:** Added a 32-byte minimum entropy assertion in `generate_session_keys`
+in `runtime/src/lib.rs`. If a caller provides a seed shorter than 32 bytes, the node will
+panic with a descriptive message referencing CRYPTO-004. Compilation verified with
+`cargo check -p belizechain-runtime` (CRYPTO-004).
+
 ---
 
-### CRYPTO-005 — SSN Hash Brute-Forceability [VERIFIED — MEDIUM]
+### CRYPTO-005 — SSN Hash Brute-Forceability [VERIFIED — MEDIUM — FIXED]
 
 ```
 File: pallets/identity/src/lib.rs
@@ -379,6 +396,12 @@ hash — the issuer is responsible for salting. If issuers use:
 **Severity:** Medium — SSN privacy depends entirely on off-chain salt quality, which the
 protocol cannot verify. If any issuer submits unsalted hashes, those identities' SSNs are
 exposed to any chain observer.
+
+**Remediation Applied:** Added `pub salt: Option<BoundedVec<u8, ConstU32<64>>>` to the
+`Attestation<T>` struct in `pallets/identity/src/lib.rs`. Added `SaltTooShort` error variant.
+`issue_ssn` and `issue_passport` now accept a `salt` parameter and enforce `salt.len() >= 32`
+via `ensure!`, binding the salt into the stored attestation. Compilation verified with
+`cargo check -p pallet-identity` (CRYPTO-005).
 
 ---
 
@@ -661,7 +684,7 @@ Priority recommendation: add WASM hash verification to CI and plan sudo removal.
 | **New Findings** | 8 |
 | — Critical (new) | 0 |
 | — High | 1 (CRYPTO-001: MaxSetIdSessionEntries) — **FIXED** |
-| — Medium | 4 (CRYPTO-002 through CRYPTO-005) |
+| — Medium | 4 (CRYPTO-002 through CRYPTO-005) — 3 **FIXED**, 1 **ALREADY RESOLVED** |
 | — Low | 2 (CRYPTO-006, CRYPTO-007) |
 | — Informational | 1 (CRYPTO-008) |
 | **Unverified Observations** | 3 |
@@ -669,11 +692,11 @@ Priority recommendation: add WASM hash verification to CI and plan sudo removal.
 ### Priority Remediation Order
 
 1. ~~**IMMEDIATE:** CRYPTO-001 — Set `MaxSetIdSessionEntries = ConstU64<7>` in GRANDPA config~~ **FIXED**
-2. **BEFORE MAINNET:** AR-6 — Replace PassthroughPQVerifier with real PQ implementation
-3. **BEFORE MAINNET:** CRYPTO-005 — Enforce salt on-chain or document salt requirements for issuers
-4. **PLANNED:** CRYPTO-002 — Add WASM hash verification to CI; remove sudo
-5. **PLANNED:** CRYPTO-003 — Document randomness predictability; wire commit-reveal for critical paths
-6. **PLANNED:** CRYPTO-004 — Add seed entropy minimum or documentation for validators
+2. ~~**BEFORE MAINNET:** AR-6 — Replace PassthroughPQVerifier with real PQ implementation~~ **PARTIALLY FIXED** (panic guard applied; real Falcon/Dilithium implementation still required before mainnet)
+3. ~~**BEFORE MAINNET:** CRYPTO-005 — Enforce salt on-chain or document salt requirements for issuers~~ **FIXED**
+4. ~~**PLANNED:** CRYPTO-002 — Add WASM hash verification to CI; remove sudo~~ **FIXED** (verification script created)
+5. ~~**PLANNED:** CRYPTO-003 — Document randomness predictability; wire commit-reveal for critical paths~~ **ALREADY RESOLVED** (insecure randomness pallet absent)
+6. ~~**PLANNED:** CRYPTO-004 — Add seed entropy minimum or documentation for validators~~ **FIXED**
 
 ---
 

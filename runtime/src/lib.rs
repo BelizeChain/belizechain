@@ -1780,6 +1780,15 @@ impl_runtime_apis! {
 
     impl sp_session::SessionKeys<Block> for Runtime {
         fn generate_session_keys(seed: Option<Vec<u8>>) -> Vec<u8> {
+            // CRYPTO-004: Enforce minimum seed entropy to prevent weak key generation.
+            if let Some(ref s) = seed {
+                assert!(
+                    s.len() >= 32,
+                    "Session key seed must be at least 32 bytes (got {}). \
+                     Provide sufficient entropy (CRYPTO-004).",
+                    s.len()
+                );
+            }
             opaque::SessionKeys::generate(seed)
         }
 

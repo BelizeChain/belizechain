@@ -191,8 +191,10 @@ pub mod pallet {
         pub issuer: T::AccountId,
         /// Version of the standard used to issue
         pub standard_version: u32,
-        /// Salted hash of normalized attribute value (blake2_256)
+        /// Salted hash of normalized attribute value (blake2_256(salt ++ plaintext))
         pub hash: H256,
+        /// On-chain salt (≥32 bytes) used to construct `hash`. `None` for biometric attestations.
+        pub salt: Option<BoundedVec<u8, ConstU32<64>>>,
         /// Issuer asserts that format complies with standard
         pub format_ok: bool,
         /// When issued
@@ -455,6 +457,8 @@ pub mod pallet {
         BondNotFound,
         BondInsufficient,
         CannotWithdrawWhileAuthorized,
+        /// Provided salt is fewer than 32 bytes; minimum entropy not met.
+        SaltTooShort,
     }
 
     impl<T: Config> Pallet<T> {
@@ -745,6 +749,7 @@ pub mod pallet {
             origin: OriginFor<T>,
             target: T::AccountId,
             hash: H256,
+            salt: BoundedVec<u8, ConstU32<64>>,
             anchor: BoundedVec<u8, T::MaxAnchorLen>,
             format_ok: bool,
         ) -> DispatchResult {
@@ -752,6 +757,7 @@ pub mod pallet {
             ensure!(Self::is_authorized_issuer(AttributeType::Ssn, &issuer), Error::<T>::NotAuthorizedIssuer);
             ensure!(!FlaggedIssuers::<T>::get(AttributeType::Ssn, issuer.clone()), Error::<T>::IssuerFlagged);
             Self::ensure_not_paused()?;
+            ensure!(salt.len() >= 32, Error::<T>::SaltTooShort);
             Self::check_and_bump_rate(AttributeType::Ssn, &issuer)?;
             let id = IdentityOf::<T>::get(&target).ok_or(Error::<T>::IdentityNotFound)?;
             ensure!(SsnHashIndex::<T>::get(hash).map(|x| x == id).unwrap_or(true), Error::<T>::HashAlreadyTaken);
@@ -763,6 +769,7 @@ pub mod pallet {
                 issuer: issuer.clone(),
                 standard_version: SsnStandardVersion::<T>::get(),
                 hash,
+                salt: Some(salt),
                 format_ok,
                 issued_at: now,
                 valid_until: Self::add_blocks(now, valid),
@@ -791,6 +798,7 @@ pub mod pallet {
             origin: OriginFor<T>,
             target: T::AccountId,
             hash: H256,
+            salt: BoundedVec<u8, ConstU32<64>>,
             anchor: BoundedVec<u8, T::MaxAnchorLen>,
             format_ok: bool,
         ) -> DispatchResult {
@@ -798,6 +806,7 @@ pub mod pallet {
             ensure!(Self::is_authorized_issuer(AttributeType::Passport, &issuer), Error::<T>::NotAuthorizedIssuer);
             ensure!(!FlaggedIssuers::<T>::get(AttributeType::Passport, issuer.clone()), Error::<T>::IssuerFlagged);
             Self::ensure_not_paused()?;
+            ensure!(salt.len() >= 32, Error::<T>::SaltTooShort);
             Self::check_and_bump_rate(AttributeType::Passport, &issuer)?;
             let id = IdentityOf::<T>::get(&target).ok_or(Error::<T>::IdentityNotFound)?;
             ensure!(PassportHashIndex::<T>::get(hash).map(|x| x == id).unwrap_or(true), Error::<T>::HashAlreadyTaken);
@@ -809,6 +818,7 @@ pub mod pallet {
                 issuer: issuer.clone(),
                 standard_version: PassportStandardVersion::<T>::get(),
                 hash,
+                salt: Some(salt),
                 format_ok,
                 issued_at: now,
                 valid_until: Self::add_blocks(now, valid),
@@ -844,6 +854,7 @@ pub mod pallet {
                 issuer: issuer.clone(),
                 standard_version: 1,
                 hash: H256::zero(),
+                salt: None,
                 format_ok: true,
                 issued_at: now,
                 valid_until: Self::add_blocks(now, valid),

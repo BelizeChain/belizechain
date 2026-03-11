@@ -83,9 +83,22 @@ pub trait PQSignatureVerifier {
 pub struct PassthroughPQVerifier;
 
 impl PQSignatureVerifier for PassthroughPQVerifier {
-    fn verify(_pubkey: &[u8], _message: &[u8], signature: &[u8]) -> bool {
-        // Structural check only — NOT cryptographically secure.
-        signature.len() >= 64
+    fn verify(_pubkey: &[u8], _message: &[u8], _signature: &[u8]) -> bool {
+        // AR-6 SECURITY GUARD: refuse to operate in production builds.
+        // This verifier is NOT cryptographically secure.
+        // Replace with a real Falcon/Dilithium implementation before mainnet.
+        #[cfg(not(any(test, feature = "runtime-benchmarks")))]
+        {
+            panic!(
+                "SECURITY: PassthroughPQVerifier must be replaced with a real \
+                 Falcon/Dilithium verifier before mainnet deployment (AR-6)."
+            );
+        }
+        // Structural length check only (test/benchmark builds).
+        #[cfg(any(test, feature = "runtime-benchmarks"))]
+        {
+            _signature.len() >= 64
+        }
     }
 }
 
