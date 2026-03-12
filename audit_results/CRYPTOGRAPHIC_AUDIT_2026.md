@@ -49,7 +49,7 @@
 
 | AR-ID | Severity | Description | Mainnet Risk if Unresolved | Mitigation Present |
 |-------|----------|-------------|----------------------------|-------------------|
-| AR-6 | **Critical** | `PassthroughPQVerifier` — bridge PQ signatures not cryptographically verified. `fn verify(_pubkey, _message, signature) -> bool { signature.len() >= 64 }` accepts any 64+ byte sequence as a valid "PQ signature" | Bridge transactions fully forgeable — any party submitting a 64-byte payload can pass PQ verification. Combined with 3-of-5 threshold, three colluding validators can authorize any bridge operation without cryptographic proof | **No automated guard.** AR-6 comment says "replace before mainnet deployment" but no CI check blocks deployment with PassthroughPQVerifier. No feature flag. No governance gate. **PARTIALLY FIXED:** Dual-cfg panic guard applied in `PassthroughPQVerifier::verify`; production builds now panic rather than silently accepting forged PQ signatures. Real Falcon/Dilithium implementation still required before mainnet. |
+| AR-6 | **Critical** | `PassthroughPQVerifier` — bridge PQ signatures not cryptographically verified. `fn verify(_pubkey, _message, signature) -> bool { signature.len() >= 64 }` accepts any 64+ byte sequence as a valid "PQ signature" | Bridge transactions fully forgeable — any party submitting a 64-byte payload can pass PQ verification. Combined with 3-of-5 threshold, three colluding validators can authorize any bridge operation without cryptographic proof | **FIXED:** Real ML-DSA-87 (FIPS 204, Level 5) verifier implemented via `fips204` crate v0.4.6. Runtime now uses `MLDsaVerifier` (pure Rust, `no_std`-compatible). PQ public key bound updated to 2592 bytes, signature bound to 4627 bytes. Context string `b"belizechain-bridge-v1"` for domain separation. 10 unit tests covering roundtrip verification, wrong key/message/context rejection, truncated/oversized/zeroed input rejection. `PassthroughPQVerifier` retained only for mock test builds with dual-cfg panic guard on production builds. |
 
 ### AR-6 Blast Radius Analysis
 
@@ -80,9 +80,10 @@ authorize fund transfers without providing any real cryptographic proof. The
 PQ signature threshold is **security theater** — it provides identity-based
 authorization (KYC Level 3 + validator registration) but zero cryptographic guarantee.
 
-**The message being signed is `tx_id.encode()`** — a simple u32. The "public key" is
-stored in `BridgeValidator.pq_public_key: BoundedVec<u8, ConstU32<96>>` — any 96 bytes
-accepted at registration. Neither the key nor the signature has any cryptographic meaning.
+**The message being signed is `tx_id.encode()`** — a simple u32. The public key is
+stored in `BridgeValidator.pq_public_key: BoundedVec<u8, ConstU32<2592>>` — sized for
+ML-DSA-87 public keys (PK_LEN=2592). **FIXED:** `MLDsaVerifier` now cryptographically
+verifies all PQ signatures using FIPS 204 ML-DSA-87.
 
 ---
 
@@ -443,14 +444,15 @@ signature scheme (e.g., Shamir secret sharing, MuSig2, Frost).
 - Signatures are verified individually, not as a combined threshold proof
 - Collusion between 3 of 5 validators is sufficient (which is by design for N-of-M)
 - There is no key generation ceremony, no distributed key generation
-- The "public keys" stored for validators are arbitrary bytes (max 96 bytes)
+- The "public keys" stored for validators are ML-DSA-87 keys (max 2592 bytes, AR-6 **FIXED**)
 
 **This is acceptable for the current trust model** (bridge validators are KYC'd at Level 3
 with national identity verification), but is NOT a cryptographic threshold scheme. The
 security relies on identity verification, not mathematics.
 
-**Recommendation:** When implementing a real PQ verifier (replacing AR-6), consider
-a proper threshold signature scheme to reduce trust assumptions.
+**Recommendation:** Consider a proper PQ threshold signature scheme (e.g., lattice-based
+threshold signatures) to reduce trust assumptions beyond the current N-of-M individual
+signature model.
 
 **Severity:** Low — architectural limitation, not a vulnerability given the current trust model.
 
@@ -557,7 +559,7 @@ This is standard Substrate behavior and NOT a vulnerability. However:
 | **sr25519** | BABE block production, VRF slot election | ✅ Separate `babe` key type | ✅ |
 | **ed25519** | GRANDPA finality voting | ✅ Separate `gran` key type | ✅ |
 | **MultiSignature** (sr25519/ed25519/ecdsa) | Transaction signing | N/A — user choice | ✅ Standard |
-| **PassthroughPQVerifier** (NOT a real scheme) | Bridge PQ signatures | N/A | ❌ **NOT CRYPTOGRAPHIC** (AR-6) |
+| **ML-DSA-87** (FIPS 204, Level 5) via `fips204` crate | Bridge PQ signatures | ✅ Separate PQ key per validator | ✅ **FIXED** (AR-6) |
 
 ### Randomness
 
@@ -680,7 +682,7 @@ Priority recommendation: add WASM hash verification to CI and plan sudo removal.
 
 | Category | Count |
 |----------|-------|
-| **Acknowledged Issues (AR-)** | 1 (AR-6 — Critical, already tracked) |
+| **Acknowledged Issues (AR-)** | 1 (AR-6 — Critical) — **FIXED** (ML-DSA-87 implemented) |
 | **New Findings** | 8 |
 | — Critical (new) | 0 |
 | — High | 1 (CRYPTO-001: MaxSetIdSessionEntries) — **FIXED** |
@@ -692,7 +694,7 @@ Priority recommendation: add WASM hash verification to CI and plan sudo removal.
 ### Priority Remediation Order
 
 1. ~~**IMMEDIATE:** CRYPTO-001 — Set `MaxSetIdSessionEntries = ConstU64<7>` in GRANDPA config~~ **FIXED**
-2. ~~**BEFORE MAINNET:** AR-6 — Replace PassthroughPQVerifier with real PQ implementation~~ **PARTIALLY FIXED** (panic guard applied; real Falcon/Dilithium implementation still required before mainnet)
+2. ~~**BEFORE MAINNET:** AR-6 — Replace PassthroughPQVerifier with real PQ implementation~~ **FIXED** (ML-DSA-87 via `fips204` v0.4.6 — real NIST FIPS 204 Level 5 post-quantum signature verification implemented with 10 unit tests)
 3. ~~**BEFORE MAINNET:** CRYPTO-005 — Enforce salt on-chain or document salt requirements for issuers~~ **FIXED**
 4. ~~**PLANNED:** CRYPTO-002 — Add WASM hash verification to CI; remove sudo~~ **FIXED** (verification script created)
 5. ~~**PLANNED:** CRYPTO-003 — Document randomness predictability; wire commit-reveal for critical paths~~ **ALREADY RESOLVED** (insecure randomness pallet absent)

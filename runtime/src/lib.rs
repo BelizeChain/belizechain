@@ -866,9 +866,8 @@ impl pallet_belize_interoperability::Config for Runtime {
     type ChallengePeriod = ConstU32<100>;
     type WeightInfo = pallet_belize_interoperability::weights::SubstrateWeight<Runtime>;
     type MaxBridgePerBlock = ConstU32<5>;
-    // AR-6: Passthrough verifier — replace with a real Falcon/Dilithium
-    // host-function verifier before mainnet deployment.
-    type PQVerifier = pallet_belize_interoperability::PassthroughPQVerifier;
+    // AR-6: ML-DSA-87 (NIST FIPS 204) post-quantum signature verifier.
+    type PQVerifier = pallet_belize_interoperability::MLDsaVerifier;
 }
 
 impl pallet_belize_belizex::Config for Runtime {

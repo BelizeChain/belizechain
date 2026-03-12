@@ -23,6 +23,7 @@ frame-benchmarking = { workspace = true, optional = true }
 # Additional dependencies for interoperability
 serde = { workspace = true, features = ["derive"], optional = true }
 log = { workspace = true }
+fips204 = { workspace = true }
 
 [dev-dependencies]
 sp-io = { workspace = true }

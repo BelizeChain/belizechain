@@ -102,6 +102,55 @@ impl PQSignatureVerifier for PassthroughPQVerifier {
     }
 }
 
+/// Production ML-DSA-87 (NIST FIPS 204 §6) post-quantum signature verifier.
+///
+/// Uses `fips204::ml_dsa_87` — pure Rust, no_std/WASM-safe, zero C FFI.
+/// All error paths (wrong key length, wrong sig length, parse failure,
+/// bad signature) return `false` without panicking.
+///
+/// Cross-protocol replay is prevented by the domain-separation context
+/// `b"belizechain-bridge-v1"`, which must be used by all bridge validators
+/// when signing bridge transaction digests.
+///
+/// Sizes (NIST FIPS 204 ML-DSA-87):
+///   public key : fips204::ml_dsa_87::PK_LEN  (2592 bytes)
+///   signature  : fips204::ml_dsa_87::SIG_LEN  (4627 bytes)
+pub struct MLDsaVerifier;
+
+impl PQSignatureVerifier for MLDsaVerifier {
+    fn verify(pubkey: &[u8], message: &[u8], signature: &[u8]) -> bool {
+        use fips204::ml_dsa_87;
+        use fips204::traits::{SerDes, Verifier};
+
+        // Exact-length guards — reject before any deserialization.
+        if pubkey.len() != ml_dsa_87::PK_LEN {
+            return false;
+        }
+        if signature.len() != ml_dsa_87::SIG_LEN {
+            return false;
+        }
+
+        // Convert &[u8] → &[u8; N].  Cannot panic: length verified above.
+        let pk_arr: &[u8; ml_dsa_87::PK_LEN] = match pubkey.try_into() {
+            Ok(a) => a,
+            Err(_) => return false,
+        };
+        let sig_arr: &[u8; ml_dsa_87::SIG_LEN] = match signature.try_into() {
+            Ok(a) => a,
+            Err(_) => return false,
+        };
+
+        // Deserialize public key.
+        let pk = match ml_dsa_87::PublicKey::try_from_bytes(*pk_arr) {
+            Ok(k) => k,
+            Err(_) => return false,
+        };
+
+        // Domain-separated verification — prevents cross-protocol replay.
+        pk.verify(message, sig_arr, b"belizechain-bridge-v1")
+    }
+}
+
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
@@ -294,8 +343,8 @@ pub mod pallet {
     pub struct BridgeValidator<AccountId> {
         /// Validator account
         pub account: AccountId,
-        /// Post-quantum public key (Falcon/Dilithium)
-    pub pq_public_key: BoundedVec<u8, ConstU32<96>>,
+        /// Post-quantum public key (ML-DSA-87, FIPS 204)
+    pub pq_public_key: BoundedVec<u8, ConstU32<2592>>,
         /// Supported chains
     pub supported_chains: BoundedVec<BridgeChain, ConstU32<64>>,
         /// Stake amount
@@ -346,8 +395,8 @@ pub mod pallet {
         pub required_signatures: u32,
         /// Collected signatures
         pub collected_signatures: u32,
-        /// Post-quantum signature data
-    pub pq_signatures: BoundedVec<(AccountId, BoundedVec<u8, ConstU32<96>>), ConstU32<64>>, // (validator, signature)
+        /// Post-quantum signature data (ML-DSA-87)
+    pub pq_signatures: BoundedVec<(AccountId, BoundedVec<u8, ConstU32<4627>>), ConstU32<5>>, // (validator, ML-DSA-87 signature)
         /// Transaction fee
         pub fee: u128,
         /// Initiation block
@@ -894,7 +943,7 @@ pub mod pallet {
                 !bridge_tx.pq_signatures.iter().any(|(v, _)| v == &who),
                 Error::<T>::AlreadyExecuted
             );
-            let sig: BoundedVec<u8, ConstU32<96>> = pq_signature
+            let sig: BoundedVec<u8, ConstU32<4627>> = pq_signature
                 .try_into()
                 .map_err(|_| Error::<T>::InvalidPQSignature)?;
             bridge_tx
@@ -1340,7 +1389,7 @@ pub mod pallet {
                 .try_into()
                 .map_err(|_| Error::<T>::InvalidConfiguration)?;
 
-            let pq_key: BoundedVec<u8, ConstU32<96>> = pq_public_key
+            let pq_key: BoundedVec<u8, ConstU32<2592>> = pq_public_key
                 .try_into()
                 .map_err(|_| Error::<T>::InvalidPQSignature)?;
 

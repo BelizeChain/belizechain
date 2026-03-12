@@ -1390,11 +1390,11 @@ fn register_bridge_validator_unsupported_chain_fails() {
 #[test]
 fn register_bridge_validator_pq_key_too_large_fails() {
     new_test_ext().execute_with(|| {
-        // PQ key > 96 bytes exceeds BoundedVec limit
+        // PQ key > 2592 bytes (ML-DSA-87 PK_LEN) exceeds BoundedVec limit
         assert_noop!(
             Interoperability::register_bridge_validator(
                 RuntimeOrigin::signed(ALICE),
-                vec![0xAB; 200],
+                vec![0xAB; 2593],
                 vec![1],
             ),
             Error::<Test>::InvalidPQSignature
@@ -2657,4 +2657,159 @@ fn remove_bridge_validator_requires_root() {
             sp_runtime::DispatchError::BadOrigin
         );
     });
+}
+
+// ============================================================================
+// ML-DSA-87 Signature Verification Tests (AR-6)
+// ============================================================================
+
+/// Helper: generate a deterministic ML-DSA-87 keypair, sign a message with the
+/// hardcoded bridge context, and return `(pk_bytes, signature, message)`.
+fn ml_dsa_test_fixture() -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+    use fips204::ml_dsa_87;
+    use fips204::traits::{KeyGen, SerDes, Signer};
+
+    let (pk, sk) = ml_dsa_87::KG::keygen_from_seed(&[0x42u8; 32]);
+    let message = b"belizechain-bridge-test-payload".to_vec();
+    let sig = sk
+        .try_sign_with_seed(&[0x01u8; 32], &message, b"belizechain-bridge-v1")
+        .expect("ML-DSA-87 signing must succeed");
+
+    let pk_bytes = pk.into_bytes().to_vec();
+    (pk_bytes, sig.to_vec(), message)
+}
+
+#[test]
+fn ml_dsa_verify_roundtrip() {
+    let (pk_bytes, sig, message) = ml_dsa_test_fixture();
+    assert!(
+        MLDsaVerifier::verify(&pk_bytes, &message, &sig),
+        "valid ML-DSA-87 signature must verify"
+    );
+}
+
+#[test]
+fn ml_dsa_verify_wrong_pubkey() {
+    use fips204::ml_dsa_87;
+    use fips204::traits::{KeyGen, SerDes};
+
+    let (_pk_bytes, sig, message) = ml_dsa_test_fixture();
+
+    // Generate a different keypair
+    let (wrong_pk, _sk) = ml_dsa_87::KG::keygen_from_seed(&[0xFFu8; 32]);
+    let wrong_pk_bytes = wrong_pk.into_bytes().to_vec();
+
+    assert!(
+        !MLDsaVerifier::verify(&wrong_pk_bytes, &message, &sig),
+        "signature must not verify against a different public key"
+    );
+}
+
+#[test]
+fn ml_dsa_verify_corrupted_signature() {
+    let (pk_bytes, mut sig, message) = ml_dsa_test_fixture();
+
+    // Flip a byte in the middle of the signature
+    let mid = sig.len() / 2;
+    sig[mid] ^= 0xFF;
+
+    assert!(
+        !MLDsaVerifier::verify(&pk_bytes, &message, &sig),
+        "corrupted signature must not verify"
+    );
+}
+
+#[test]
+fn ml_dsa_verify_wrong_message() {
+    let (pk_bytes, sig, _message) = ml_dsa_test_fixture();
+    let wrong_message = b"wrong-message";
+
+    assert!(
+        !MLDsaVerifier::verify(&pk_bytes, wrong_message, &sig),
+        "signature must not verify for a different message"
+    );
+}
+
+#[test]
+fn ml_dsa_reject_truncated_pubkey() {
+    let (_pk_bytes, sig, message) = ml_dsa_test_fixture();
+    let short_pk = vec![0u8; 32]; // way too short for ML-DSA-87
+
+    assert!(
+        !MLDsaVerifier::verify(&short_pk, &message, &sig),
+        "truncated public key must be rejected"
+    );
+}
+
+#[test]
+fn ml_dsa_reject_truncated_signature() {
+    let (pk_bytes, _sig, message) = ml_dsa_test_fixture();
+    let short_sig = vec![0u8; 64]; // way too short for ML-DSA-87
+
+    assert!(
+        !MLDsaVerifier::verify(&pk_bytes, &message, &short_sig),
+        "truncated signature must be rejected"
+    );
+}
+
+#[test]
+fn ml_dsa_reject_oversized_inputs() {
+    let (pk_bytes, sig, message) = ml_dsa_test_fixture();
+
+    // Oversized public key
+    let mut oversized_pk = pk_bytes.clone();
+    oversized_pk.push(0x00);
+    assert!(
+        !MLDsaVerifier::verify(&oversized_pk, &message, &sig),
+        "oversized public key must be rejected"
+    );
+
+    // Oversized signature
+    let mut oversized_sig = sig.clone();
+    oversized_sig.push(0x00);
+    assert!(
+        !MLDsaVerifier::verify(&pk_bytes, &message, &oversized_sig),
+        "oversized signature must be rejected"
+    );
+}
+
+#[test]
+fn ml_dsa_verify_wrong_context() {
+    use fips204::ml_dsa_87;
+    use fips204::traits::{KeyGen, SerDes, Signer};
+
+    let (pk, sk) = ml_dsa_87::KG::keygen_from_seed(&[0x42u8; 32]);
+    let message = b"belizechain-bridge-test-payload";
+
+    // Sign with an EMPTY context instead of "belizechain-bridge-v1"
+    let sig = sk
+        .try_sign_with_seed(&[0x01u8; 32], message, &[])
+        .expect("signing must succeed");
+
+    let pk_bytes = pk.into_bytes().to_vec();
+
+    // MLDsaVerifier hardcodes b"belizechain-bridge-v1", so this must fail
+    assert!(
+        !MLDsaVerifier::verify(&pk_bytes, message, &sig.to_vec()),
+        "signature with wrong context must not verify"
+    );
+}
+
+#[test]
+fn ml_dsa_reject_empty_inputs() {
+    assert!(
+        !MLDsaVerifier::verify(&[], &[], &[]),
+        "empty inputs must be rejected"
+    );
+}
+
+#[test]
+fn ml_dsa_reject_zeroed_pubkey() {
+    let (_pk_bytes, sig, message) = ml_dsa_test_fixture();
+    let zeroed_pk = vec![0u8; 2592]; // correct length but all zeros
+
+    assert!(
+        !MLDsaVerifier::verify(&zeroed_pk, &message, &sig),
+        "zeroed public key must not verify"
+    );
 }
