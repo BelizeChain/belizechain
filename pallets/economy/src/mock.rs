@@ -1,7 +1,7 @@
 use crate as pallet_economy;
 use frame_support::{
     parameter_types,
-    traits::{ConstU32, ConstU64},
+    traits::{ConstU32, ConstU64, ConstU128},
     PalletId,
 };
 use sp_runtime::{
@@ -138,6 +138,8 @@ impl pallet_economy::Config for Test {
     type PublicGoodsRoutingPercent = PublicGoodsPercent;
     type WellbeingTreasury = WellbeingTreasuryAccount;
     type WellbeingFundPercent = WellbeingPercent;
+    type TravelRuleThreshold = ConstU128<100_000_000_000>; // 100 DALLA
+    type ComplianceReporter = (); // No-op in tests
 }
 
 // Build genesis storage according to the mock runtime.

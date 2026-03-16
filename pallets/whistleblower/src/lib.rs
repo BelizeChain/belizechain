@@ -17,6 +17,14 @@
 //! account, nonce)`.  The chain recomputes the hash; identity is revealed only
 //! at that moment and is never persisted in the report record.
 //!
+//! ## Relayer / Sponsor Pattern
+//!
+//! The `submit_report` extrinsic reserves the anti-spam bond from the **signer**,
+//! who is recorded as `bond_depositor` in the report.  The signer need not be the
+//! reporter — any trusted third party can submit on behalf of the reporter.  This
+//! provides operational anonymity: the reporter's real account never appears in any
+//! transaction.
+//!
 //! ## Reward Tiers
 //!
 //! | Category        | Reward (configurable) |
@@ -36,12 +44,14 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
 #[frame_support::pallet]
 pub mod pallet {
     use frame_support::{
         pallet_prelude::*,
         traits::{Currency, ReservableCurrency, Get},
-        BoundedVec,
     };
     use frame_system::pallet_prelude::*;
     use sp_runtime::traits::Saturating;
@@ -81,7 +91,7 @@ pub mod pallet {
         UnderReview,
         /// Verified; reward escrowed for claim.
         Verified,
-        /// Dismissed; bond refunded to reporter alias (lost — by design).
+        /// Dismissed; bond slashed from depositor.
         Dismissed,
     }
 
@@ -98,8 +108,12 @@ pub mod pallet {
         pub category: ReportCategory,
         pub submitted_at: BlockNumberFor<T>,
         pub status: ReportStatus,
-        /// Bond paid by reporter (forfeited on Dismissed, refunded on Verified).
+        /// Bond paid by the submitter (forfeited on Dismissed, refunded on Verified).
         pub bond: BalanceOf<T>,
+        /// Account that paid the anti-spam bond.  May differ from the reporter
+        /// (the `alias_hash` holder), enabling a *relayer / sponsor* pattern
+        /// for pseudonymous submission.
+        pub bond_depositor: T::AccountId,
         /// Hash of reviewer reasoning (for audit trail).
         pub reasoning_hash: Option<[u8; 32]>,
     }
@@ -109,8 +123,6 @@ pub mod pallet {
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
-        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
-
         type Currency: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
 
         /// Origin allowed to review reports (council members).
@@ -136,6 +148,15 @@ pub mod pallet {
         type ExploitReward: Get<BalanceOf<Self>>;
 
         type WeightInfo: WeightInfo;
+
+        /// Maximum total issuance of the native token.
+        /// `deposit_creating` will be rejected if it would exceed this cap.
+        #[pallet::constant]
+        type MaxDallaSupply: Get<BalanceOf<Self>>;
+
+        /// Maximum number of reports that can be submitted per block.
+        #[pallet::constant]
+        type MaxReportsPerBlock: Get<u32>;
     }
 
     // ── Storage ───────────────────────────────────────────────────────────────
@@ -174,6 +195,20 @@ pub mod pallet {
         OptionQuery,
     >;
 
+    /// Per-block report submission counter (reset each block).
+    #[pallet::storage]
+    pub type ReportsThisBlock<T: Config> = StorageValue<_, u32, ValueQuery>;
+
+    #[pallet::hooks]
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
+            ReportsThisBlock::<T>::kill();
+            // Phase-5 FIX: kill() is a DB write; account for ref_time + proof_size
+            Weight::from_parts(5_000_000, 64)
+                .saturating_add(T::DbWeight::get().writes(1))
+        }
+    }
+
     // ── Events ────────────────────────────────────────────────────────────────
 
     #[pallet::event]
@@ -185,6 +220,10 @@ pub mod pallet {
         ReportReviewed { report_id: u32, verdict: u8 /* 0=Verified, 1=Dismissed */ },
         /// Reporter revealed identity and claimed reward.
         RewardClaimed { report_id: u32, claimant: T::AccountId, amount: BalanceOf<T> },
+        /// Bond returned to depositor after report verified.
+        BondReturned { report_id: u32, depositor: T::AccountId, amount: BalanceOf<T> },
+        /// Bond slashed from depositor after report dismissed.
+        BondSlashed { report_id: u32, depositor: T::AccountId, amount: BalanceOf<T> },
         /// Governance funded the whistleblower pool.
         PoolFunded { amount: BalanceOf<T>, new_total: BalanceOf<T> },
     }
@@ -207,6 +246,12 @@ pub mod pallet {
         InsufficientPool,
         /// Reporter bond could not be reserved (insufficient balance).
         InsufficientBondBalance,
+        /// Minting reward would exceed MaxDallaSupply.
+        SupplyCapExceeded,
+        /// Per-block report submission limit reached.
+        ReportRateLimitExceeded,
+        /// Report counter has reached its maximum value.
+        ReportCounterOverflow,
     }
 
     // ── Extrinsics ────────────────────────────────────────────────────────────
@@ -216,8 +261,12 @@ pub mod pallet {
         /// Submit a pseudonymous misconduct report.
         ///
         /// `alias_hash` = blake2_256(reporter_account_bytes ++ nonce_bytes).
-        /// The bond is reserved; it is refunded if the report is Verified,
-        /// forfeited on Dismissed.
+        /// The bond is reserved from the **signer** (the "sponsor"), who may
+        /// differ from the reporter (the alias_hash holder).  This enables a
+        /// relayer pattern: a trusted third party pays the bond on behalf of
+        /// the reporter, preserving the reporter's on-chain anonymity.
+        ///
+        /// The bond is returned on Verified verdict, forfeited on Dismissed.
         #[pallet::call_index(0)]
         #[pallet::weight(T::WeightInfo::submit_report())]
         pub fn submit_report(
@@ -232,11 +281,18 @@ pub mod pallet {
             let category = ReportCategory::from_u8(category)
                 .ok_or(Error::<T>::InvalidCategory)?;
 
+            // Per-block rate limit check
+            let report_count = ReportsThisBlock::<T>::get();
+            ensure!(report_count < T::MaxReportsPerBlock::get(), Error::<T>::ReportRateLimitExceeded);
+
             // Reserve anti-spam bond from the REAL account (not stored in report)
             T::Currency::reserve(&reporter, T::ReportBond::get())
                 .map_err(|_| Error::<T>::InsufficientBondBalance)?;
 
-            let report_id = ReportCounter::<T>::mutate(|c| { *c = c.saturating_add(1); *c });
+            let report_id = ReportCounter::<T>::try_mutate(|c| {
+                *c = c.checked_add(1).ok_or(Error::<T>::ReportCounterOverflow)?;
+                Ok::<u32, Error<T>>(*c)
+            })?;
             let current_block = frame_system::Pallet::<T>::block_number();
 
             let report = Report::<T> {
@@ -247,10 +303,12 @@ pub mod pallet {
                 submitted_at: current_block,
                 status: ReportStatus::Pending,
                 bond: T::ReportBond::get(),
+                bond_depositor: reporter.clone(),
                 reasoning_hash: None,
             };
 
             Reports::<T>::insert(report_id, report);
+            ReportsThisBlock::<T>::mutate(|c| *c = c.saturating_add(1));
 
             let cat_u8 = match category {
                 ReportCategory::Fraud => 0,
@@ -288,7 +346,7 @@ pub mod pallet {
 
             match verdict {
                 0 => {
-                    // Verified — escrow reward
+                    // Verified — escrow reward and return bond to depositor
                     let reward = match report.category {
                         ReportCategory::Fraud => T::FraudReward::get(),
                         ReportCategory::SystematicAbuse => T::AbuseReward::get(),
@@ -298,9 +356,25 @@ pub mod pallet {
                     ensure!(pool >= reward, Error::<T>::InsufficientPool);
                     WhistleblowerPool::<T>::put(pool.saturating_sub(reward));
                     EscrowedReward::<T>::insert(report_id, reward);
+                    T::Currency::unreserve(&report.bond_depositor, report.bond);
+                    Self::deposit_event(Event::BondReturned {
+                        report_id,
+                        depositor: report.bond_depositor.clone(),
+                        amount: report.bond,
+                    });
                     report.status = ReportStatus::Verified;
                 }
                 1 => {
+                    // Dismissed — forfeit bond (slash from depositor)
+                    let (_imbalance, _remaining) = T::Currency::slash_reserved(
+                        &report.bond_depositor,
+                        report.bond,
+                    );
+                    Self::deposit_event(Event::BondSlashed {
+                        report_id,
+                        depositor: report.bond_depositor.clone(),
+                        amount: report.bond,
+                    });
                     report.status = ReportStatus::Dismissed;
                 }
                 _ => return Err(Error::<T>::InvalidReportStatus.into()),
@@ -343,6 +417,15 @@ pub mod pallet {
             let reward = EscrowedReward::<T>::take(report_id)
                 .ok_or(Error::<T>::NoEscrowedReward)?;
 
+            // P0-06 FIX: Check supply cap before minting
+            let new_issuance = T::Currency::total_issuance()
+                .checked_add(&reward)
+                .ok_or(Error::<T>::SupplyCapExceeded)?;
+            ensure!(
+                new_issuance <= T::MaxDallaSupply::get(),
+                Error::<T>::SupplyCapExceeded
+            );
+
             let _ = T::Currency::deposit_creating(&claimant, reward);
 
             Self::deposit_event(Event::RewardClaimed {
@@ -361,24 +444,17 @@ pub mod pallet {
             origin: OriginFor<T>,
             amount: BalanceOf<T>,
         ) -> DispatchResult {
-            let funder = T::GovernanceOrigin::ensure_origin(origin.clone())
-                .and_then(|_| ensure_signed(origin));
+            // Governance may authorize, but a signer must always provide real funds.
+            if T::GovernanceOrigin::ensure_origin(origin.clone()).is_err() {
+                ensure_signed(origin.clone())?;
+            }
+            let funder_account = ensure_signed(origin)?;
 
-            // If origin is purely a collective (no signer), skip balance transfer
-            // and just increment the pool counter as a governance accounting entry.
-            let new_total = if let Ok(funder_account) = funder {
-                // Transfer from funder account to pallet-held implicit account
-                T::Currency::reserve(&funder_account, amount)?;
-                WhistleblowerPool::<T>::mutate(|p| {
-                    *p = p.saturating_add(amount);
-                    *p
-                })
-            } else {
-                WhistleblowerPool::<T>::mutate(|p| {
-                    *p = p.saturating_add(amount);
-                    *p
-                })
-            };
+            T::Currency::reserve(&funder_account, amount)?;
+            let new_total = WhistleblowerPool::<T>::mutate(|p| {
+                *p = p.saturating_add(amount);
+                *p
+            });
 
             Self::deposit_event(Event::PoolFunded { amount, new_total });
             Ok(())

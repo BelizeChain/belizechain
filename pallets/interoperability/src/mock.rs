@@ -91,6 +91,7 @@ parameter_types! {
     pub const BridgeFeeRate: u32 = 50; // 0.5% fee (50 basis points)
     pub const PQSignatureThreshold: u32 = 5; // 5 signatures required
     pub const TreasuryAccount: u64 = 999; // Treasury account
+    pub const InteropPalletId: frame_support::PalletId = frame_support::PalletId(*b"bz/intop");
 }
 
 // Mock Identity provider for cross-chain KYC verification
@@ -137,6 +138,7 @@ impl pallet_belize_interoperability::Config for Test {
     type ChallengePeriod = ConstU64<100>;
     type MaxBridgePerBlock = ConstU32<5>;
     type PQVerifier = pallet_belize_interoperability::PassthroughPQVerifier;
+    type PalletId = InteropPalletId;
 }
 
 // Test account constants

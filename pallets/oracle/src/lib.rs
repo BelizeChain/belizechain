@@ -19,9 +19,7 @@ mod tests;
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
 
-/// Blocks per year assuming 6-second block time.
-/// 60s/min * 60min/hr * 24hr/day * 365.25 days/yr / 6s/block ≈ 5,256,000
-const BLOCKS_PER_YEAR: u32 = 5_256_000;
+// BLOCKS_PER_YEAR removed — use T::ExpiryDurationBlocks instead (C-5 fix).
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -78,6 +76,17 @@ pub mod pallet {
         #[pallet::constant]
         type BehaviorCooldownBlocks: Get<BlockNumberFor<Self>>;
 
+        /// Duration (blocks) for KYC/merchant verification expiry.
+        /// Default: 5,256,000 blocks ≈ 1 year at 6-second block time.
+        #[pallet::constant]
+        type ExpiryDurationBlocks: Get<BlockNumberFor<Self>>;
+
+        /// Maximum allowed price deviation (basis points) from existing feed.
+        /// Submissions deviating more than this from the current median are rejected.
+        /// Default: 5000 = 50%.
+        #[pallet::constant]
+        type MaxPriceDeviation: Get<u32>;
+
         /// Weight information for extrinsics
         type WeightInfo: WeightInfo;
     }
@@ -88,6 +97,11 @@ pub mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn oracle_operators)]
     pub type OracleOperators<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, bool, ValueQuery>;
+
+    /// Tracked count of oracle operators (avoids O(n) iter().count())
+    #[pallet::storage]
+    #[pallet::getter(fn operator_count)]
+    pub type OperatorCount<T: Config> = StorageValue<_, u32, ValueQuery>;
 
     /// Price submissions by operator for each currency pair
     #[pallet::storage]
@@ -496,6 +510,10 @@ pub mod pallet {
         NoBehaviorFlagActive,
         /// Quality metric value exceeds maximum (must be 0-100).
         InvalidQualityMetric,
+        /// Submitted price deviates too far from current feed median.
+        PriceDeviationTooHigh,
+        /// KYC id_hash must not be all-zeros.
+        InvalidIdHash,
     }
 
     // ===== CALL FUNCTIONS (EXTRINSICS) =====
@@ -518,7 +536,12 @@ pub mod pallet {
                 Error::<T>::OperatorAlreadyExists
             );
 
+            // O-2 FIX: Enforce MaxOperators cap using O(1) counter
+            let count = OperatorCount::<T>::get();
+            ensure!(count < T::MaxOperators::get(), Error::<T>::TooManyOperators);
+
             OracleOperators::<T>::insert(&operator, true);
+            OperatorCount::<T>::put(count.saturating_add(1));
 
             Self::deposit_event(Event::OperatorAdded { operator });
 
@@ -540,6 +563,7 @@ pub mod pallet {
             );
 
             OracleOperators::<T>::remove(&operator);
+            OperatorCount::<T>::mutate(|c| *c = c.saturating_sub(1));
 
             Self::deposit_event(Event::OperatorRemoved { operator });
 
@@ -547,7 +571,9 @@ pub mod pallet {
         }
 
         /// Submit price feed data (using u8 for currency to avoid DecodeWithMemTracking)
-        #[pallet::weight(T::WeightInfo::submit_price())]
+        // DOS-009 FIX: Operational dispatch — oracle price feeds must get
+        // through during block congestion.
+        #[pallet::weight((T::WeightInfo::submit_price(), DispatchClass::Operational))]
         #[pallet::call_index(2)]
         pub fn submit_price(
             origin: OriginFor<T>,
@@ -564,10 +590,22 @@ pub mod pallet {
 
             ensure!(price > 0, Error::<T>::InvalidPrice);
 
-            // Convert u8 to Currency enums
+            // C-3 FIX: Reject submissions that deviate too far from existing feed
             let base = Self::u8_to_currency(base_currency)?;
             let quote = Self::u8_to_currency(quote_currency)?;
             let pair = CurrencyPair { base, quote };
+
+            if let Some(feed) = PriceFeeds::<T>::get(pair) {
+                if feed.price > 0 {
+                    let max_deviation = T::MaxPriceDeviation::get() as u128;
+                    let deviation = if price > feed.price {
+                        (price - feed.price).saturating_mul(10000) / feed.price
+                    } else {
+                        (feed.price - price).saturating_mul(10000) / feed.price
+                    };
+                    ensure!(deviation <= max_deviation, Error::<T>::PriceDeviationTooHigh);
+                }
+            }
 
             let current_block = frame_system::Pallet::<T>::block_number();
 
@@ -609,7 +647,7 @@ pub mod pallet {
             let category = Self::u8_to_merchant_category(category)?;
 
             let current_block = frame_system::Pallet::<T>::block_number();
-            let expiry_block = current_block.saturating_add(BLOCKS_PER_YEAR.into());
+            let expiry_block = current_block.saturating_add(T::ExpiryDurationBlocks::get());
 
             let merchant_info = MerchantInfo {
                 merchant: merchant.clone(),
@@ -713,6 +751,10 @@ pub mod pallet {
                 Error::<T>::KycDisputeActive
             );
 
+            // C-2 FIX: Validate id_hash is non-zero and kyc_level is in valid range
+            ensure!(id_hash != [0u8; 32], Error::<T>::InvalidIdHash);
+            Self::u8_to_kyc_level(kyc_level)?;
+
             // Reject duplicate vote from same oracle for same (kyc_level, id_hash)
             let key = (kyc_level, id_hash);
             if let Some(prev) = PendingKycSubmissions::<T>::get(&account, &operator) {
@@ -764,7 +806,7 @@ pub mod pallet {
             if finalize {
                 let resolved_level = Self::u8_to_kyc_level(kyc_level)?;
                 let current_block = frame_system::Pallet::<T>::block_number();
-                let expiry_block = current_block.saturating_add(BLOCKS_PER_YEAR.into());
+                let expiry_block = current_block.saturating_add(T::ExpiryDurationBlocks::get());
 
                 let identity_info = IdentityInfo {
                     account: account.clone(),
@@ -817,6 +859,12 @@ pub mod pallet {
             );
 
             let current_block = frame_system::Pallet::<T>::block_number();
+
+            // O-4 FIX: Prevent overwriting existing property records
+            ensure!(
+                !LandRegistryData::<T>::contains_key(property_id),
+                Error::<T>::PropertyAlreadyRegistered
+            );
 
             let land_info = LandOwnershipInfo {
                 property_id,
@@ -1633,24 +1681,31 @@ pub mod pallet {
                 stats.general_submissions as u128 * ModelDomain::General.reward_multiplier() as u128;
 
             let total_submissions = stats.total_submissions.max(1) as u128;
-            let avg_domain_multiplier = total_domain_submissions / (total_submissions * 100);
 
-            // Volume factor (submissions / 1000)
-            let volume_factor = total_submissions / 1000;
+            // C-4 FIX: Multiply all numerators first, divide once at the end to avoid
+            // cascading integer truncation that zeroed rewards for <1000 submissions.
+            //
+            // numerator = base_reward * total_submissions * total_domain_submissions
+            //             * avg_quality_score * uptime_percentage
+            // denominator = 1000 (volume) * (total_submissions * 100) (domain)
+            //             * 100 (quality) * 1000 (uptime) * 10000 (final scale)
+            //           = total_submissions * 10_000_000_000_000
+            //
+            // Use u128 — max practical numerator is bounded by realistic stats values.
+            let numerator = base_reward
+                .saturating_mul(total_submissions)
+                .saturating_mul(total_domain_submissions)
+                .saturating_mul(stats.avg_quality_score as u128)
+                .saturating_mul(stats.uptime_percentage as u128);
 
-            // Quality factor (0-10 based on 0-1000 score)
-            let quality_factor = (stats.avg_quality_score as u128) / 100;
+            let denominator = total_submissions
+                .saturating_mul(10_000_000_000_000u128);
 
-            // Uptime factor (0-10 based on 0-10000 uptime percentage)
-            let uptime_factor = (stats.uptime_percentage as u128) / 1000;
+            if denominator == 0 {
+                return 0;
+            }
 
-            // Final reward calculation
-            base_reward
-                .saturating_mul(volume_factor)
-                .saturating_mul(quality_factor)
-                .saturating_mul(avg_domain_multiplier)
-                .saturating_mul(uptime_factor)
-                / 10000
+            numerator / denominator
         }
 
         /// Get IoT device info

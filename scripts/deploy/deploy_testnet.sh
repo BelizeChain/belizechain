@@ -52,6 +52,12 @@ if [ -f "./node/res/testnet-spec.json" ]; then
     echo "✅ Chain spec copied"
 fi
 
+# Copy reserved nodes configuration (P2P-FIX-003)
+if [ -f "./scripts/deploy/reserved-nodes.txt" ]; then
+    cp ./scripts/deploy/reserved-nodes.txt "$DEPLOY_DIR/"
+    echo "✅ Reserved nodes config copied"
+fi
+
 # Create systemd service file
 cat > "$DEPLOY_DIR/belizechain-testnet.service" << 'EOF'
 [Unit]
@@ -68,6 +74,11 @@ ExecStart=/opt/belizechain/belizechain-node \
     --validator \
     --name="Testnet-Validator-1" \
     --base-path=/var/lib/belizechain \
+    --reserved-nodes-file=/opt/belizechain/reserved-nodes.txt \
+    --reserved-only \
+    --no-mdns \
+    --in-peers=5 \
+    --out-peers=50 \
     --rpc-cors=all \
     --rpc-external \
     --ws-external \
@@ -106,6 +117,7 @@ sudo chown belizechain:belizechain /opt/belizechain /var/lib/belizechain
 ```bash
 sudo cp belizechain-node /opt/belizechain/
 sudo cp testnet-spec.json /opt/belizechain/ # if exists
+sudo cp reserved-nodes.txt /opt/belizechain/ # P2P-FIX-003: Required for validator peering
 sudo chmod +x /opt/belizechain/belizechain-node
 ```
 

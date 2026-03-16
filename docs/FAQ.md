@@ -301,17 +301,18 @@ Yes! Apply via Blue Hole Portal:
 
 ### Has BelizeChain been audited?
 
-**Yes**:
-- **Trail of Bits audit** (December 2025)
-  - **High severity**: 0
-  - **Medium severity**: 3 (all fixed)
-  - **Low severity**: 7 (all fixed)
-  - **Informational**: 12
-- **Penetration testing**: Network, smart contracts, web interfaces
-- **Dependency audits**: Substrate 3.0, ink! 4.0, Polkadot.js (all patched)
-- **Bug bounty**: $500-$50,000 based on severity
+**In progress** — no external professional audit has been completed yet.
 
-See [Security Audit Results](security/security-audit-results.md).
+What has been done so far:
+- **Automated security audits**: cargo-audit, cargo-clippy, custom audit tooling (see `audit_results/`)
+- **Internal peer review**: 14-phase comprehensive self-audit with 697 findings tracked
+- **Dependency audits**: Automated scanning via `cargo audit` and `cargo deny`
+
+**Planned**:
+- Professional third-party audit (firm TBD) required before mainnet launch
+- Bug bounty program (planned, not yet launched)
+
+See [Audit Framework](security/AUDIT_FRAMEWORK.md) for our audit planning.
 
 ## Troubleshooting
 

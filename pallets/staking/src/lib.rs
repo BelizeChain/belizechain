@@ -130,6 +130,11 @@ pub mod pallet {
         /// instead of being executed immediately, giving them a cooling-off period
         /// and the opportunity for mediation.  Repeat offenders bypass this path.
         type JusticeProvider: JusticeProvider<Self::AccountId, BalanceOf<Self>>;
+
+        /// S6-2: Maximum domain contributions a single operator may record per epoch.
+        /// Prevents a validator from flooding contributions to game domain bonuses.
+        #[pallet::constant]
+        type MaxDomainContributionsPerEpoch: Get<u32>;
     }
 
     /// Identity provider trait for Staking pallet
@@ -334,10 +339,7 @@ pub mod pallet {
         ValueQuery,
     >;
 
-    #[pallet::storage]
-    #[pallet::getter(fn epoch_quantum_jobs)]
-    /// Total quantum jobs executed in current epoch
-    pub type EpochQuantumJobs<T: Config> = StorageValue<_, u32, ValueQuery>;
+    // EpochQuantumJobs removed (E-7): write-only counter, never read on-chain.
 
     // ═══════════════════════════════════════════════════════════════════
     // DOMAIN-SPECIFIC PoUW INTEGRATION (Phase 3)
@@ -403,6 +405,16 @@ pub mod pallet {
     #[pallet::getter(fn epoch_domain_contributions)]
     /// Total contributions per domain in current epoch
     pub type EpochDomainContributions<T: Config> = StorageValue<_, OperatorDomainBreakdown, ValueQuery>;
+
+    #[pallet::storage]
+    /// S6-2: Per-operator epoch contribution tracker (epoch_number, count)
+    pub type OperatorEpochContributions<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        (u32, u32),
+        ValueQuery,
+    >;
 
     // GenesisConfig removed for Substrate v42 compatibility
 
@@ -518,12 +530,16 @@ pub mod pallet {
         NotAuthorizedOracle,
         /// Validator is already unbonding
         AlreadyUnbonding,
+        /// Cannot rejoin while a pending unbond exists
+        PendingUnbond,
         /// No pending unbond found
         NoPendingUnbond,
         /// Unbonding period not yet elapsed
         UnbondingNotReady,
         /// Invalid slash reason code
         InvalidSlashReason,
+        /// S6-2: Operator exceeded per-epoch domain contribution cap
+        DomainContributionCapExceeded,
     }
 
     /// Reasons for slashing validators
@@ -572,15 +588,25 @@ pub mod pallet {
         ///
         /// Invariants:
         /// 1. Every active validator has stake ≥ MinValidatorStake
+        /// 2. ValidatorCount matches actual Validators map count (CONS-018)
         fn integrity_test() {
             let min_stake = T::MinValidatorStake::get();
+            let mut actual_count = 0u32;
             for (account, info) in Validators::<T>::iter() {
                 assert!(
                     info.stake >= min_stake,
                     "INVARIANT VIOLATION: validator {:?} has stake below minimum",
                     account,
                 );
+                actual_count = actual_count.saturating_add(1);
             }
+            let stored_count = ValidatorCount::<T>::get();
+            assert!(
+                stored_count == actual_count,
+                "INVARIANT VIOLATION (CONS-018): ValidatorCount ({}) != actual validator map count ({})",
+                stored_count,
+                actual_count,
+            );
         }
     }
 
@@ -619,10 +645,16 @@ pub mod pallet {
             // Check if validator already active
             ensure!(!Validators::<T>::contains_key(&who), Error::<T>::ValidatorAlreadyActive);
 
+            // C-1 FIX: Prevent rejoin while unbonding — stake is still locked
+            ensure!(!PendingUnbonds::<T>::contains_key(&who), Error::<T>::PendingUnbond);
+
             // Check maximum validators limit using tracked count; lazily backfill if zero
             let mut validator_count = ValidatorCount::<T>::get();
             if validator_count == 0 {
-                let counted = Validators::<T>::iter_keys().fold(0u32, |acc, _| acc.saturating_add(1));
+                // DOS-011 FIX: Bound backfill iteration by MaxValidators to prevent
+                // unbounded storage scan on first call.
+                let max_vals = T::MaxValidators::get() as usize;
+                let counted = Validators::<T>::iter_keys().take(max_vals).fold(0u32, |acc, _| acc.saturating_add(1));
                 if counted > 0 {
                     ValidatorCount::<T>::put(counted);
                     validator_count = counted;
@@ -705,7 +737,7 @@ pub mod pallet {
 
         /// Withdraw stake after the unbonding period has elapsed
         #[pallet::call_index(9)]
-        #[pallet::weight(T::WeightInfo::leave_validators())]
+        #[pallet::weight(T::WeightInfo::withdraw_unbonded())]
         pub fn withdraw_unbonded(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
@@ -805,18 +837,10 @@ pub mod pallet {
                 Error::<T>::SubmissionDeadlineExceeded
             );
 
-            // Validate computation commitment:
-            // 1. Must not be all zeros (empty/uncomputed)
-            // 2. Must not be all same byte (trivial commitment)
-            // 3. Encrypted delta must be non-empty (at least 16 bytes for AES-GCM minimum)
-            ensure!(
-                computation_commitment != [0u8; 32],
-                Error::<T>::InvalidComputationCommitment
-            );
-            ensure!(
-                !computation_commitment.iter().all(|&b| b == computation_commitment[0]),
-                Error::<T>::InvalidComputationCommitment
-            );
+            // CONS-010 FIX: Verify computation commitment binds to the delta,
+            // validator, and block number.  The on-chain check ensures the commitment
+            // is H(encrypted_delta || who || current_block), preventing arbitrary
+            // 32-byte values from passing validation.
             ensure!(
                 encrypted_delta.len() >= 16,
                 Error::<T>::InvalidComputationCommitment
@@ -824,6 +848,15 @@ pub mod pallet {
             // Verify computation_log is non-trivial
             ensure!(
                 computation_log != [0u8; 32],
+                Error::<T>::InvalidComputationCommitment
+            );
+            // CONS-010: Commitment must be H(delta || who || block_number)
+            use sp_runtime::traits::Hash;
+            let expected_commitment = T::Hashing::hash_of(
+                &(encrypted_delta.as_slice(), &who, current_block.saturated_into::<u32>()),
+            );
+            ensure!(
+                computation_commitment == *expected_commitment.as_ref(),
                 Error::<T>::InvalidComputationCommitment
             );
 
@@ -890,8 +923,9 @@ pub mod pallet {
 
             ActiveFLTask::<T>::put(&fl_task);
 
-            // Clear previous submissions
-            let _ = ModelSubmissions::<T>::clear(u32::MAX, None);
+            // CONS-019 FIX: Bound storage clear to prevent unbounded weight.
+            // W-1 FIX: Use MaxValidators as bound (each validator has at most one submission).
+            let _ = ModelSubmissions::<T>::clear(T::MaxValidators::get(), None);
 
             Self::deposit_event(Event::FLTaskAssigned {
                 task_id,
@@ -901,12 +935,19 @@ pub mod pallet {
             Ok(())
         }
 
-        /// Distribute rewards for completed epoch
+        /// Distribute rewards for completed epoch.
+        ///
+        /// CONS-020 FIX: Accept both Root origin (governance/sudo) and signed
+        /// origin from any account, so epoch progression is not blocked if
+        /// the privileged caller is unavailable.
         #[pallet::call_index(4)]
-        #[pallet::weight(T::WeightInfo::distribute_rewards())]
+        // DOS-009 FIX: Operational dispatch — epoch progression must not be
+        // blocked by transaction congestion.
+        #[pallet::weight((T::WeightInfo::distribute_rewards(), DispatchClass::Operational))]
     #[allow(clippy::type_complexity)]
     pub fn distribute_rewards(origin: OriginFor<T>) -> DispatchResult {
-            ensure_root(origin)?;
+            // CONS-020: Allow permissionless triggering — anyone can advance the epoch.
+            let _ = ensure_signed_or_root(origin)?;
 
             let current_epoch = Self::current_epoch();
             let base_reward = T::BaseReward::get();
@@ -947,12 +988,15 @@ pub mod pallet {
             // Advance to next epoch
             CurrentEpoch::<T>::put(current_epoch.saturating_add(1));
 
-            // Clear submissions for next epoch
-            let _ = ModelSubmissions::<T>::clear(u32::MAX, None);
+            // CONS-019 FIX: Bound storage clears to prevent unbounded weight.
+            // W-1 FIX: Use MaxValidators as bound.
+            let _ = ModelSubmissions::<T>::clear(T::MaxValidators::get(), None);
 
             // Clear quantum stats for next epoch (Phase 2.2)
-            let _ = ValidatorQuantumStatsMap::<T>::clear(u32::MAX, None);
-            EpochQuantumJobs::<T>::kill();
+            let _ = ValidatorQuantumStatsMap::<T>::clear(T::MaxValidators::get(), None);
+
+            // W-2 FIX: Clear per-epoch domain contributions to prevent stale accumulation
+            EpochDomainContributions::<T>::kill();
 
             Self::deposit_event(Event::RewardsDistributed {
                 epoch: current_epoch,
@@ -1050,11 +1094,6 @@ pub mod pallet {
                     .min(100);
             });
 
-            // Increment epoch job counter
-            EpochQuantumJobs::<T>::mutate(|count| {
-                *count = count.saturating_add(1);
-            });
-
             Self::deposit_event(Event::QuantumContributionRecorded {
                 job_id,
                 validator,
@@ -1090,7 +1129,10 @@ pub mod pallet {
             // Check maximum validators limit using tracked count; lazily backfill if zero
             let mut validator_count = ValidatorCount::<T>::get();
             if validator_count == 0 {
-                let counted = Validators::<T>::iter_keys().fold(0u32, |acc, _| acc.saturating_add(1));
+                // DOS-011 FIX: Bound backfill iteration by MaxValidators to prevent
+                // unbounded storage scan on first call.
+                let max_vals = T::MaxValidators::get() as usize;
+                let counted = Validators::<T>::iter_keys().take(max_vals).fold(0u32, |acc, _| acc.saturating_add(1));
                 if counted > 0 {
                     ValidatorCount::<T>::put(counted);
                     validator_count = counted;
@@ -1115,17 +1157,18 @@ pub mod pallet {
                 frame_support::traits::WithdrawReasons::all(),
             );
 
-            // Create validator info
+            // CONS-008 FIX: Force-joined validators start with quality_score=1
+            // (not 80) to prevent instant BABE weight dominance without real PoUW.
             let validator_info = ValidatorInfo {
                 account: who.clone(),
                 stake,
                 compute_capacity,
                 location,
-                compliance_score: 100, // Start with full compliance
+                compliance_score: 100,
                 last_fl_contribution: frame_system::Pallet::<T>::block_number(),
-                quality_score: 80, // Starting quality score
-                timeliness_score: 90, // Starting timeliness score
-                honesty_score: 95, // Starting honesty score
+                quality_score: 1,  // CONS-008: Start at minimum until real work is submitted
+                timeliness_score: 50,
+                honesty_score: 50,
                 total_contributions: 0,
             };
 
@@ -1164,6 +1207,19 @@ pub mod pallet {
 
             // Validate quality score (0-100)
             ensure!(quality_score <= 100, Error::<T>::InvalidAccuracyScore);
+
+            // S6-2: Enforce per-epoch contribution cap to prevent gaming
+            let current_epoch = Self::current_epoch();
+            let (tracked_epoch, count) = OperatorEpochContributions::<T>::get(&operator);
+            let current_count = if tracked_epoch == current_epoch { count } else { 0 };
+            ensure!(
+                current_count < T::MaxDomainContributionsPerEpoch::get(),
+                Error::<T>::DomainContributionCapExceeded
+            );
+            OperatorEpochContributions::<T>::insert(
+                &operator,
+                (current_epoch, current_count.saturating_add(1)),
+            );
 
             let current_block = frame_system::Pallet::<T>::block_number();
             // SAFETY: BlockNumber fits in u32 (runtime uses u32 block numbers)
@@ -1270,8 +1326,15 @@ pub mod pallet {
             let bonus_reward = bonus_reward_u128.saturated_into();
             let total_reward = base_reward.saturating_add(bonus_reward);
 
-            // Mint rewards to operator
-            let _ = T::Currency::deposit_creating(&who, total_reward);
+            // CONS-033 FIX: Supply-cap guard — do not mint beyond MaxSupply.
+            let current_issuance = T::Currency::total_issuance();
+            let max_supply = T::MaxSupply::get();
+            let headroom = max_supply.saturating_sub(current_issuance);
+            let capped_reward = total_reward.min(headroom);
+
+            if !capped_reward.is_zero() {
+                let _ = T::Currency::deposit_creating(&who, capped_reward);
+            }
 
             // Record claim epoch and clear stats to prevent re-claim
             LastClaimedEpoch::<T>::insert(&who, current_epoch);
@@ -1373,47 +1436,89 @@ pub mod pallet {
                 );
             }
 
-            // Calculate average multiplier
+            // Calculate average multiplier, capped at 1.3x (13_000) to limit gaming.
+            // S6-2: Even if all contributions are in the highest-value domain (AgriTech 1.5x),
+            // the effective bonus is capped to prevent over-incentivising domain self-reporting.
+            const MAX_EFFECTIVE_MULTIPLIER: u128 = 13_000; // 1.3x cap
+
             if total_contributions > 0 {
-                total_weighted_score / total_contributions
+                let raw = total_weighted_score / total_contributions;
+                raw.min(MAX_EFFECTIVE_MULTIPLIER)
             } else {
                 GENERAL_MULTIPLIER // Default to 1.0x if no contributions
             }
         }
 
-        /// Evaluate model contribution quality based on delta size and structure
-        /// S-4 FIX: Improved entropy analysis to resist trivially gameable inputs
+        /// Evaluate model contribution quality based on delta size and Shannon entropy.
+        ///
+        /// S6-3 HARDENING: Uses proper Shannon entropy (bits/byte) instead of a
+        /// simple unique-byte count.  Real ML gradient deltas typically sit in the
+        /// 4.0–7.0 bits/byte range.  Pure random data ≈ 8.0 bits/byte, and
+        /// trivially padded data < 3.0 bits/byte — both are penalised.
+        ///
+        /// All arithmetic is integer-only (no floating point in consensus code).
+        /// Entropy is represented in milli-bits (×1000) to preserve precision.
         fn evaluate_model_quality(encrypted_delta: &[u8]) -> u8 {
             if encrypted_delta.is_empty() {
                 return 0;
             }
 
-            // Size scoring: larger deltas indicate more model parameters updated
-            let delta_size_score = match encrypted_delta.len() {
-                0..=31 => 10u32,      // Suspiciously small — likely no real computation
-                32..=127 => 30,       // Minimal update
-                128..=511 => 60,      // Moderate update
-                512..=1024 => 80,     // Substantial update
-                _ => 80,              // Capped (BoundedVec already limits to 1024)
+            // ── Size scoring ────────────────────────────────────────────────
+            let delta_size_score: u32 = match encrypted_delta.len() {
+                0..=31 => 10,       // Suspiciously small
+                32..=127 => 30,     // Minimal update
+                128..=511 => 60,    // Moderate update
+                _ => 80,            // Substantial (BoundedVec caps at 1024)
             };
 
-            // Entropy analysis: count unique bytes and check byte distribution
+            // ── Shannon entropy (milli-bits / byte) ─────────────────────────
+            // H = −Σ p_i · log2(p_i)   in integer form:
+            //   H_milli = Σ count_i · (log2(len) − log2(count_i)) * 1000 / len
+            // We approximate log2 via the position of the highest set bit plus
+            // a first-order linear interpolation, all in milli-bits.
             let mut byte_counts = [0u32; 256];
             for &b in encrypted_delta.iter() {
                 byte_counts[b as usize] = byte_counts[b as usize].saturating_add(1);
             }
-            let unique_bytes = byte_counts.iter().filter(|&&c| c > 0).count() as u32;
             let len = encrypted_delta.len() as u32;
 
-            // Entropy penalty based on unique byte ratio
-            let entropy_penalty = if unique_bytes <= 1 {
-                50u32 // All identical bytes — trivially generated
-            } else if unique_bytes <= 4 {
-                30 // Very low entropy — likely padded/repeated pattern
-            } else if unique_bytes * 100 / len.max(1) < 10 {
-                20 // Low entropy ratio — suspicious repetition
+            // Integer log2 approximation returning milli-bits (×1000).
+            // Uses highest-bit position + linear interpolation between powers of 2.
+            let log2_milli = |v: u32| -> u32 {
+                if v <= 1 {
+                    return 0;
+                }
+                let msb = 31u32.saturating_sub(v.leading_zeros());
+                let lower = 1u32 << msb;
+                let upper = lower << 1;
+                // Linear interpolation: fraction = (v - lower) / (upper - lower)
+                let frac_milli = (v - lower) as u64 * 1000 / (upper - lower) as u64;
+                msb * 1000 + frac_milli as u32
+            };
+
+            let log2_len = log2_milli(len);
+            let mut entropy_milli: u64 = 0;
+            for &c in byte_counts.iter() {
+                if c == 0 {
+                    continue;
+                }
+                // contribution = c * (log2(len) - log2(c)) in milli-bits
+                let diff = log2_len.saturating_sub(log2_milli(c));
+                entropy_milli = entropy_milli.saturating_add(c as u64 * diff as u64);
+            }
+            // Normalise to per-byte milli-bits
+            let entropy_per_byte_milli = (entropy_milli / len as u64) as u32;
+
+            // ── Entropy penalty ─────────────────────────────────────────────
+            // Ideal ML gradient range: 4.0–7.0 bits/byte (4000–7000 milli-bits)
+            let entropy_penalty: u32 = if entropy_per_byte_milli < 1_000 {
+                50 // < 1.0 bits/byte — trivially constructed (repeated bytes)
+            } else if entropy_per_byte_milli < 3_000 {
+                30 // < 3.0 bits/byte — low-entropy padding
+            } else if entropy_per_byte_milli > 7_500 {
+                25 // > 7.5 bits/byte — random garbage, not real gradients
             } else {
-                0  // Acceptable entropy
+                0  // 3.0–7.5 bits/byte — plausible ML delta
             };
 
             delta_size_score.saturating_sub(entropy_penalty).min(100) as u8
@@ -1427,11 +1532,14 @@ pub mod pallet {
                 let submission_u64: u64 = TryInto::<u64>::try_into(submission_block).unwrap_or(0);
                 let deadline_u64: u64 = TryInto::<u64>::try_into(deadline_block).unwrap_or(0);
                 let blocks_remaining_u64 = deadline_u64.saturating_sub(submission_u64);
-                let total_blocks = BlockNumberFor::<T>::from(deadline);
+                let total_blocks: u64 = BlockNumberFor::<T>::from(deadline).saturated_into::<u32>() as u64;
                 
-                // Earlier submissions get higher scores
-                // SAFETY: BlockNumber fits in u32 (runtime uses u32 block numbers)
-                let ratio = blocks_remaining_u64 * 100 / total_blocks.saturated_into::<u32>() as u64;
+                // W-4 FIX: Guard against div-by-zero when deadline == 0
+                if total_blocks == 0 {
+                    return 100; // Immediate deadline — treat as on-time
+                }
+
+                let ratio = blocks_remaining_u64 * 100 / total_blocks;
                 ratio.min(100) as u8
             } else {
                 0 // Late submission
@@ -1461,8 +1569,17 @@ pub mod pallet {
             let quantum_stats = ValidatorQuantumStatsMap::<T>::get(&validator_info.account);
             let quantum_reward = quantum_weight * Perbill::from_percent(quantum_stats.quantum_score as u32) * base_reward;
 
-            // Calculate stake/uptime bonus (simplified - in production would track uptime)
-            let stake_bonus = bonus_weight * base_reward;
+            // CONS-032 FIX: Stake bonus is proportional to validator stake.
+            // Uses Perbill::from_rational to scale bonus by the validator's
+            // share of the minimum-stake threshold — larger stakes earn more.
+            let min_stake: u128 = T::MinValidatorStake::get().saturated_into();
+            let validator_stake: u128 = validator_info.stake.saturated_into();
+            // Ratio clamped to 1.0 — validators above min_stake get full bonus
+            let stake_ratio = Perbill::from_rational(
+                validator_stake.min(min_stake.saturating_mul(10)),
+                min_stake.saturating_mul(10).max(1),
+            );
+            let stake_bonus = bonus_weight * stake_ratio * base_reward;
 
             // Combine all rewards
             
@@ -1480,29 +1597,65 @@ pub mod pallet {
             reason: SlashReason,
         ) -> DispatchResult {
             if let Some(mut validator_info) = Validators::<T>::get(validator) {
-            let slash_amount = slash_percentage * validator_info.stake;
-            
-            // Reduce stake
-            validator_info.stake = validator_info.stake.saturating_sub(slash_amount);
-            
-            // Slash from free balance (lock-only model, no reserved balance)
-            let (_imbalance, _remaining) = T::Currency::slash(validator, slash_amount);
-            // Update the lock to reflect reduced stake
-            T::Currency::set_lock(
-                STAKING_ID,
-                validator,
-                validator_info.stake,
-                frame_support::traits::WithdrawReasons::all(),
-            );                // Update slashing record
+                let slash_amount = slash_percentage * validator_info.stake;
+
+                // CONS-031 FIX: capture `remaining` to detect partial slashes
+                let (imbalance, remaining) = T::Currency::slash(validator, slash_amount);
+                let actual_slashed = slash_amount.saturating_sub(remaining);
+                if !remaining.is_zero() {
+                    log::warn!(
+                        target: "staking",
+                        "slash_validator: partial slash on {:?}: requested={:?}, actual={:?} \
+                         (insufficient free balance) (CONS-031)",
+                        validator, slash_amount, actual_slashed
+                    );
+                }
+                drop(imbalance);
+
+                validator_info.stake = validator_info.stake.saturating_sub(actual_slashed);
+                T::Currency::set_lock(
+                    STAKING_ID,
+                    validator,
+                    validator_info.stake,
+                    frame_support::traits::WithdrawReasons::all(),
+                );
                 let current_slashes = SlashingSpans::<T>::get(validator);
                 SlashingSpans::<T>::insert(validator, current_slashes.saturating_add(1));
-                
-                // Update validator info
                 Validators::<T>::insert(validator, validator_info);
-                
+
                 Self::deposit_event(Event::ValidatorSlashed {
                     validator: validator.clone(),
-                    slash_amount,
+                    slash_amount: actual_slashed,
+                    reason: reason.as_u8(),
+                });
+            } else if let Some((unbonding_stake, unlock_at)) = PendingUnbonds::<T>::get(validator) {
+                // C-2 FIX: Slash unbonding validators too — prevents slash evasion
+                // by front-running leave_validators before the slash lands.
+                let slash_amount = slash_percentage * unbonding_stake;
+                let (imbalance, remaining) = T::Currency::slash(validator, slash_amount);
+                let actual_slashed = slash_amount.saturating_sub(remaining);
+                drop(imbalance);
+
+                let new_stake = unbonding_stake.saturating_sub(actual_slashed);
+                if new_stake.is_zero() {
+                    PendingUnbonds::<T>::remove(validator);
+                    T::Currency::remove_lock(STAKING_ID, validator);
+                } else {
+                    PendingUnbonds::<T>::insert(validator, (new_stake, unlock_at));
+                    T::Currency::set_lock(
+                        STAKING_ID,
+                        validator,
+                        new_stake,
+                        frame_support::traits::WithdrawReasons::all(),
+                    );
+                }
+
+                let current_slashes = SlashingSpans::<T>::get(validator);
+                SlashingSpans::<T>::insert(validator, current_slashes.saturating_add(1));
+
+                Self::deposit_event(Event::ValidatorSlashed {
+                    validator: validator.clone(),
+                    slash_amount: actual_slashed,
                     reason: reason.as_u8(),
                 });
             }

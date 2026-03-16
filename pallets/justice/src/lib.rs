@@ -33,6 +33,9 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
 #[frame_support::pallet]
 pub mod pallet {
     use frame_support::{
@@ -42,6 +45,7 @@ pub mod pallet {
     };
     use frame_system::pallet_prelude::*;
     use sp_runtime::traits::Saturating;
+    use sp_std::vec::Vec;
     use crate::weights::WeightInfo;
 
     pub type BalanceOf<T> =
@@ -137,9 +141,6 @@ pub mod pallet {
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
-        /// The runtime event type.
-        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
-
         /// Currency used for bonds and escrowed slashes.
         type Currency: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
 
@@ -148,7 +149,8 @@ pub mod pallet {
 
         /// Origin that can issue mediator rulings (must be an approved mediator).
         /// Checked at both origin level and storage level (MediatorList).
-        type MediatorOrigin: EnsureOrigin<Self::RuntimeOrigin>;
+        /// Must return AccountId so we can verify mediator list membership.
+        type MediatorOrigin: EnsureOrigin<Self::RuntimeOrigin, Success = Self::AccountId>;
 
         /// Bond required to open a dispute — prevents frivolous filings.
         #[pallet::constant]
@@ -161,6 +163,10 @@ pub mod pallet {
         /// Maximum number of governance-appointed mediators.
         #[pallet::constant]
         type MaxMediators: Get<u32>;
+
+        /// Blocks after which an unresolved appeal auto-closes (upholds original ruling).
+        #[pallet::constant]
+        type AppealTimeout: Get<BlockNumberFor<Self>>;
 
         type WeightInfo: WeightInfo;
     }
@@ -223,6 +229,15 @@ pub mod pallet {
         ValueQuery,
     >;
 
+    /// Block number when a dispute was appealed (for appeal timeout).
+    #[pallet::storage]
+    pub type AppealedAt<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat, u32,
+        BlockNumberFor<T>,
+        OptionQuery,
+    >;
+
     // ── Events ────────────────────────────────────────────────────────────────
 
     #[pallet::event]
@@ -246,6 +261,8 @@ pub mod pallet {
         MediatorAdded { mediator: T::AccountId },
         /// Mediator removed.
         MediatorRemoved { mediator: T::AccountId },
+        /// Appeal timed out — original ruling upheld.
+        AppealTimedOut { dispute_id: u32 },
     }
 
     // ── Errors ────────────────────────────────────────────────────────────────
@@ -274,6 +291,47 @@ pub mod pallet {
         NotDisputeTarget,
         /// slash_bps exceeds maximum of 10_000 (100%).
         SlashBpsExceedsMaximum,
+    }
+
+    // ── Hooks ─────────────────────────────────────────────────────────────────
+
+    #[pallet::hooks]
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        fn on_idle(now: BlockNumberFor<T>, remaining_weight: Weight) -> Weight {
+            let base_read = T::DbWeight::get().reads(1);
+            let mut used = Weight::zero();
+            // Iterate AppealedAt entries and auto-close timed-out appeals
+            let timeout = T::AppealTimeout::get();
+            // J-03 FIX: Cap the to_close Vec to prevent unbounded memory
+            let mut to_close = Vec::with_capacity(64);
+            for (dispute_id, appealed_block) in AppealedAt::<T>::iter() {
+                used = used.saturating_add(base_read);
+                if used.any_gt(remaining_weight) {
+                    break;
+                }
+                if to_close.len() >= 64 { break; }
+                if now >= appealed_block.saturating_add(timeout) {
+                    to_close.push(dispute_id);
+                }
+            }
+            let write_cost = T::DbWeight::get().writes(1);
+            for dispute_id in to_close {
+                let cost = base_read.saturating_add(write_cost).saturating_mul(2);
+                if used.saturating_add(cost).any_gt(remaining_weight) {
+                    break;
+                }
+                used = used.saturating_add(cost);
+                if let Some(mut record) = Disputes::<T>::get(dispute_id) {
+                    if record.status == DisputeStatus::Appealed {
+                        record.status = DisputeStatus::Closed;
+                        Disputes::<T>::insert(dispute_id, record);
+                        AppealedAt::<T>::remove(dispute_id);
+                        Self::deposit_event(Event::AppealTimedOut { dispute_id });
+                    }
+                }
+            }
+            used
+        }
     }
 
     // ── Extrinsics ────────────────────────────────────────────────────────────
@@ -340,8 +398,8 @@ pub mod pallet {
             resolution_code: u8, // 0=Dismissed, 1=Upheld, 2=Mediated
             slash_bps: u32,       // only used when resolution_code == 2
         ) -> DispatchResult {
-            T::MediatorOrigin::ensure_origin(origin.clone())?;
-            let mediator = ensure_signed(origin)?;
+            // J-02 FIX: Use single EnsureOrigin pattern to extract AccountId
+            let mediator = T::MediatorOrigin::ensure_origin(origin)?;
 
             // Verify caller is in approved mediator list
             let list = MediatorList::<T>::get();
@@ -407,8 +465,9 @@ pub mod pallet {
                 }
             }
 
-            // Refund disputant bond on Dismissed (they were right)
-            if matches!(resolution, DisputeResolution::Dismissed) {
+            // J-04 FIX: Unreserve disputant bond on Upheld (dispute was correct)
+            // and Mediated (partial resolution) — not just Dismissed
+            if matches!(resolution, DisputeResolution::Dismissed | DisputeResolution::Upheld | DisputeResolution::Mediated { .. }) {
                 T::Currency::unreserve(&record.disputant, record.bond);
             }
 
@@ -447,6 +506,7 @@ pub mod pallet {
             record.appeal_evidence = Some(counter_evidence_hash);
             record.status = DisputeStatus::Appealed;
             Disputes::<T>::insert(dispute_id, record);
+            AppealedAt::<T>::insert(dispute_id, <frame_system::Pallet<T>>::block_number());
 
             Self::deposit_event(Event::RulingAppealed { dispute_id, by: caller });
 
@@ -541,7 +601,11 @@ pub mod pallet {
         /// error if the account cannot cover the reservation.
         pub fn escrow_slash(account: &T::AccountId, amount: BalanceOf<T>) -> DispatchResult {
             T::Currency::reserve(account, amount)?;
-            SlashPendingJusticeReview::<T>::insert(account, amount);
+            // J-01 FIX: Use mutate to accumulate instead of insert which overwrites
+            SlashPendingJusticeReview::<T>::mutate(account, |existing| {
+                let prev = existing.unwrap_or_default();
+                *existing = Some(prev.saturating_add(amount));
+            });
             Self::deposit_event(Event::SlashEscrowed { account: account.clone(), amount });
             Ok(())
         }

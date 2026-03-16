@@ -338,6 +338,10 @@ pub mod pallet {
         #[pallet::constant]
         type MaxSchedulesPerBlock: Get<u32>;
 
+        /// Maximum payment/salary amount per employee per period (CRIT-3)
+        #[pallet::constant]
+        type MaxPaymentAmount: Get<BalanceOf<Self>>;
+
         /// Origin that can verify employers (governance / compliance authority)
         type VerifierOrigin: EnsureOrigin<Self::RuntimeOrigin>;
         
@@ -439,6 +443,26 @@ pub mod pallet {
     /// Employer count (for statistics)
     #[pallet::storage]
     pub type EmployerCount<T: Config> = StorageValue<_, u32, ValueQuery>;
+
+    /// P0-20 FIX: O(1) employee count per employer.
+    /// Replaces unbounded `Employees::iter_prefix().count()` in extrinsics.
+    #[pallet::storage]
+    pub type EmployeeCountPerEmployer<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat, T::AccountId,
+        u32,
+        ValueQuery,
+    >;
+
+    /// P0-20 FIX: O(1) department employee count.
+    #[pallet::storage]
+    pub type DeptEmployeeCount<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat, T::AccountId,
+        Blake2_128Concat, u32,  // department_id
+        u32,
+        ValueQuery,
+    >;
 
     // ===== EVENTS =====
 
@@ -574,6 +598,8 @@ pub mod pallet {
         DepartmentNotFound,
         /// Employer profile already exists
         EmployerAlreadyRegistered,
+        /// Salary or payment amount exceeds MaxPaymentAmount cap
+        SalaryExceedsMaximum,
     }
 
     // ===== HOOKS =====
@@ -611,7 +637,14 @@ pub mod pallet {
             // worst-case iteration while ensuring we process enough candidates.
             let scan_limit = max_per_block.saturating_mul(10);
 
+            // DOS-016 FIX: Per-scan-iteration read cost — each scanned entry
+            // deserializes a PayrollSchedule even if not processed.
+            let per_scan_read = T::DbWeight::get().reads(1)
+                .saturating_add(Weight::from_parts(2_000_000, 256));
+
             for (scanned, (employer, _schedule_id, schedule)) in PayrollSchedules::<T>::iter().enumerate() {
+                // DOS-016 FIX: Account for scan iteration cost in reported weight.
+                total_weight = total_weight.saturating_add(per_scan_read);
                 // Stop if we've hit the per-block cap or the remaining weight is exhausted.
                 if processed >= max_per_block || scanned >= scan_limit {
                     break;
@@ -654,7 +687,12 @@ pub mod pallet {
         ) -> DispatchResult {
             T::VerifierOrigin::ensure_origin(origin)?;
 
-            // Create or update employer profile
+            // CRIT-1 FIX: Prevent silent overwrite of existing employer profile
+            ensure!(
+                !EmployerProfiles::<T>::contains_key(&employer),
+                Error::<T>::EmployerAlreadyRegistered
+            );
+
             let profile = EmployerProfile {
                 employer_type: employer_type.clone(),
                 verified: true,
@@ -729,10 +767,16 @@ pub mod pallet {
                 Error::<T>::PaymentTooLow
             );
 
-            // Check max employees
-            let employee_count = Employees::<T>::iter_prefix(&employer).count();
+            // CRIT-3 FIX: Cap salary to prevent unreasonable amounts
             ensure!(
-                employee_count < T::MaxEmployees::get() as usize,
+                salary <= T::MaxPaymentAmount::get(),
+                Error::<T>::SalaryExceedsMaximum
+            );
+
+            // P0-20 FIX: Use O(1) counter instead of unbounded iter_prefix().count()
+            let employee_count = EmployeeCountPerEmployer::<T>::get(&employer);
+            ensure!(
+                employee_count < T::MaxEmployees::get(),
                 Error::<T>::MaxEmployeesReached
             );
 
@@ -771,6 +815,10 @@ pub mod pallet {
                 stats.total_employees = stats.total_employees.saturating_add(1);
             });
 
+            // P0-20 FIX: Maintain O(1) employee counter
+            EmployeeCountPerEmployer::<T>::mutate(&employer, |c| *c = c.saturating_add(1));
+            DeptEmployeeCount::<T>::mutate(&employer, department_id, |c| *c = c.saturating_add(1));
+
             // If this is employer's first employee, increment employer count
             if employee_count == 0 {
                 EmployerCount::<T>::mutate(|count| {
@@ -802,10 +850,21 @@ pub mod pallet {
         ) -> DispatchResult {
             let employer = ensure_signed(origin)?;
 
+            // CRIT-2 FIX: Verify employer is still KYC'd
+            ensure!(
+                VerifiedEmployers::<T>::get(&employer),
+                Error::<T>::EmployerNotVerified
+            );
+
             ensure!(
                 Employees::<T>::contains_key(&employer, &employee),
                 Error::<T>::EmployeeNotFound
             );
+
+            // Read department before removal for counter decrement
+            let dept_id = Employees::<T>::get(&employer, &employee)
+                .map(|e| e.department_id)
+                .unwrap_or(0);
 
             // Remove employee and their deductions
             Employees::<T>::remove(&employer, &employee);
@@ -816,7 +875,10 @@ pub mod pallet {
                 stats.total_employees = stats.total_employees.saturating_sub(1);
             });
 
-            let remaining = Employees::<T>::iter_prefix(&employer).count();
+            // P0-20 FIX: Maintain O(1) employee counter
+            EmployeeCountPerEmployer::<T>::mutate(&employer, |c| *c = c.saturating_sub(1));
+            DeptEmployeeCount::<T>::mutate(&employer, dept_id, |c| *c = c.saturating_sub(1));
+            let remaining = EmployeeCountPerEmployer::<T>::get(&employer);
             if remaining == 0 {
                 EmployerCount::<T>::mutate(|count| {
                     *count = count.saturating_sub(1);
@@ -840,6 +902,12 @@ pub mod pallet {
             active: bool,
         ) -> DispatchResult {
             let employer = ensure_signed(origin)?;
+
+            // CRIT-2 FIX: Verify employer is still KYC'd
+            ensure!(
+                VerifiedEmployers::<T>::get(&employer),
+                Error::<T>::EmployerNotVerified
+            );
 
             let mut emp = Employees::<T>::get(&employer, &employee)
                 .ok_or(Error::<T>::EmployeeNotFound)?;
@@ -866,9 +934,21 @@ pub mod pallet {
         ) -> DispatchResult {
             let employer = ensure_signed(origin)?;
 
+            // CRIT-2 FIX: Verify employer is still KYC'd
+            ensure!(
+                VerifiedEmployers::<T>::get(&employer),
+                Error::<T>::EmployerNotVerified
+            );
+
             ensure!(
                 new_salary >= T::MinimumPayment::get(),
                 Error::<T>::PaymentTooLow
+            );
+
+            // CRIT-3 FIX: Cap salary to prevent unreasonable amounts
+            ensure!(
+                new_salary <= T::MaxPaymentAmount::get(),
+                Error::<T>::SalaryExceedsMaximum
             );
 
             let mut emp = Employees::<T>::get(&employer, &employee)
@@ -900,6 +980,12 @@ pub mod pallet {
             employee: T::AccountId,
         ) -> DispatchResult {
             let employer = ensure_signed(origin)?;
+
+            // CRIT-2 FIX: Verify employer is still KYC'd
+            ensure!(
+                VerifiedEmployers::<T>::get(&employer),
+                Error::<T>::EmployerNotVerified
+            );
 
             let mut emp = Employees::<T>::get(&employer, &employee)
                 .ok_or(Error::<T>::EmployeeNotFound)?;
@@ -975,6 +1061,12 @@ pub mod pallet {
         #[pallet::weight(T::WeightInfo::batch_payment(T::MaxEmployees::get()))]
         pub fn batch_payment(origin: OriginFor<T>) -> DispatchResult {
             let employer = ensure_signed(origin)?;
+
+            // CRIT-2 FIX: Verify employer is still KYC'd
+            ensure!(
+                VerifiedEmployers::<T>::get(&employer),
+                Error::<T>::EmployerNotVerified
+            );
 
             let mut total_gross: BalanceOf<T> = Zero::zero();
             let mut count = 0u32;
@@ -1073,9 +1165,12 @@ pub mod pallet {
             let schedule_id = NextScheduleId::<T>::get();
             let current_block = frame_system::Pallet::<T>::block_number();
 
+            // P0-20 FIX: Use O(1) counter instead of unbounded iter_prefix().count()
             let employee_count = if department_id == 0 {
-                Employees::<T>::iter_prefix(&employer).count().min(u32::MAX as usize) as u32
+                EmployeeCountPerEmployer::<T>::get(&employer)
             } else {
+                // Department-level counts are bounded by MaxEmployees and only used
+                // for schedule metadata — not a DoS vector since employers control their own data.
                 Employees::<T>::iter_prefix(&employer)
                     .filter(|(_, e)| e.department_id == department_id)
                     .count().min(u32::MAX as usize) as u32
@@ -1113,6 +1208,12 @@ pub mod pallet {
         ) -> DispatchResult {
             let employer = ensure_signed(origin)?;
 
+            // CRIT-2 FIX: Verify employer is still KYC'd
+            ensure!(
+                VerifiedEmployers::<T>::get(&employer),
+                Error::<T>::EmployerNotVerified
+            );
+
             let mut schedule = PayrollSchedules::<T>::get(&employer, schedule_id)
                 .ok_or(Error::<T>::ScheduleNotFound)?;
 
@@ -1143,8 +1244,10 @@ pub mod pallet {
                 Error::<T>::EmployerNotVerified
             );
 
-            // Check max departments
-            let dept_count = Departments::<T>::iter_prefix(&employer).count() as u32;
+            // P0-20 FIX: Use EmployerProfile.department_count instead of unbounded iter_prefix().count()
+            let dept_count = EmployerProfiles::<T>::get(&employer)
+                .map(|p| p.department_count)
+                .unwrap_or(0);
             ensure!(
                 dept_count < T::MaxDepartments::get(),
                 Error::<T>::MaxDepartmentsReached
@@ -1185,7 +1288,12 @@ pub mod pallet {
         ) -> DispatchResult {
             let employer = ensure_signed(origin)?;
 
-            // Verify employee exists
+            // CRIT-2 FIX: Verify employer is still KYC'd
+            ensure!(
+                VerifiedEmployers::<T>::get(&employer),
+                Error::<T>::EmployerNotVerified
+            );
+
             ensure!(
                 Employees::<T>::contains_key(&employer, &employee),
                 Error::<T>::EmployeeNotFound
@@ -1234,6 +1342,18 @@ pub mod pallet {
             category: PaymentCategory,
         ) -> DispatchResult {
             let employer = ensure_signed(origin)?;
+
+            // CRIT-2 FIX: Verify employer is still KYC'd
+            ensure!(
+                VerifiedEmployers::<T>::get(&employer),
+                Error::<T>::EmployerNotVerified
+            );
+
+            // CRIT-3 FIX: Cap bonus amount
+            ensure!(
+                amount <= T::MaxPaymentAmount::get(),
+                Error::<T>::SalaryExceedsMaximum
+            );
 
             let mut emp = Employees::<T>::get(&employer, &employee)
                 .ok_or(Error::<T>::EmployeeNotFound)?;
@@ -1433,14 +1553,14 @@ pub mod pallet {
 
         /// Get employee count for an employer
         pub fn get_employee_count(employer: &T::AccountId) -> u32 {
-            Employees::<T>::iter_prefix(employer).count().min(u32::MAX as usize) as u32
+            // P0-20 FIX: Use O(1) counter
+            EmployeeCountPerEmployer::<T>::get(employer)
         }
 
         /// Get employee count by department
         pub fn get_department_employee_count(employer: &T::AccountId, department_id: u32) -> u32 {
-            Employees::<T>::iter_prefix(employer)
-                .filter(|(_, e)| e.department_id == department_id)
-                .count().min(u32::MAX as usize) as u32
+            // P0-20 FIX: O(1) counter
+            DeptEmployeeCount::<T>::get(employer, department_id)
         }
     }
 }

@@ -83,6 +83,8 @@ parameter_types! {
     pub const MinConsensusOperators: u32 = 1; // Minimum 1 operator for testing (production should be 2+)
     pub const MinOracleAgreement: u32 = 1;
     pub const BehaviorCooldownBlocks: u64 = 50;
+    pub const ExpiryDurationBlocks: u64 = 200;
+    pub const MaxPriceDeviation: u32 = 500;
 }
 
 impl pallet_belize_oracle::Config for Test {
@@ -95,6 +97,8 @@ impl pallet_belize_oracle::Config for Test {
     type TreasuryAccount = TreasuryAccount;
     type MinOracleAgreement = MinOracleAgreement;
     type BehaviorCooldownBlocks = BehaviorCooldownBlocks;
+    type ExpiryDurationBlocks = ExpiryDurationBlocks;
+    type MaxPriceDeviation = MaxPriceDeviation;
 }
 
 // Build genesis storage according to the mock runtime

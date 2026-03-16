@@ -26,10 +26,14 @@ pub(crate) type FullClient =
     sc_service::TFullClient<Block, RuntimeApi, WasmExecutor<sp_io::SubstrateHostFunctions>>;
 type FullBackend = sc_service::TFullBackend<Block>;
 type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
+// NOTE (CONS-035): LongestChain is the standard Substrate pattern for BABE+GRANDPA.
+// Finality safety is provided by GrandpaBlockImport (rejects reorganisation past
+// finalized blocks) and BackoffAuthoringOnFinalizedHeadLagging (CONS-034).
+// FinalityTrackingSelectChain does not exist in polkadot-sdk; do NOT replace.
 
-/// The minimum period of blocks on which justifications will be
-/// imported and generated.
-const GRANDPA_JUSTIFICATION_PERIOD: u32 = 512;
+/// CONS-036 FIX: Reduced from 512 (~51 min) to 32 (~3.2 min) for faster
+/// finality signals to light clients and bridges.
+const GRANDPA_JUSTIFICATION_PERIOD: u32 = 32;
 
 pub fn new_partial(
     config: &Configuration,
@@ -180,8 +184,13 @@ pub fn new_full<
     let warp_sync = Arc::new(sc_consensus_grandpa::warp_proof::NetworkProvider::new(
         backend.clone(),
         grandpa_link.shared_authority_set().clone(),
-        Vec::default(),
+        Vec::default(), // P2P-FIX-004: Warp sync hard forks (empty = no authority set hard forks)
+        // NOTE: For warp sync security with trusted checkpoints, use --warp-sync-checkpoint CLI flag
+        // See WARP_SYNC_CHECKPOINTS constant documentation above for checkpoint management strategy
     ));
+
+    // P2P-FIX-002: Content-based block announce validation (defense-in-depth)
+    // Peer identity filtering is handled by --reserved-only (P2P-FIX-003)
 
     let (network, system_rpc_tx, tx_handler_controller, sync_service) =
         sc_service::build_network(sc_service::BuildNetworkParams {
@@ -190,7 +199,9 @@ pub fn new_full<
             transaction_pool: transaction_pool.clone(),
             spawn_handle: task_manager.spawn_handle(),
             import_queue,
-            block_announce_validator_builder: None,
+            block_announce_validator_builder: Some(Box::new(|_client| {
+                Box::new(crate::block_announce_validator::BelizeBlockAnnounceValidator::new())
+            })),
             warp_sync_config: Some(sc_service::WarpSyncConfig::WithProvider(warp_sync)),
             block_relay: None,
             metrics,
@@ -208,7 +219,7 @@ pub fn new_full<
                     transaction_pool.clone(),
                 )),
                 network_provider: Arc::new(network.clone()),
-                enable_http_requests: true,
+                enable_http_requests: false, // P2P-FIX-005: Disabled - no pallets use OCW
                 custom_extensions: |_| vec![],
             })?;
         task_manager.spawn_handle().spawn(
@@ -220,7 +231,11 @@ pub fn new_full<
 
 	let role = config.role;
 	let force_authoring = config.force_authoring;
-	let backoff_authoring_blocks: Option<()> = None;
+	// CONS-034 FIX: Enable BABE slot-skipping backoff when finality lags.
+	// A value of 10 means the node will skip authoring after producing
+	// 10 consecutive blocks without GRANDPA finality catching up.
+	let backoff_authoring_blocks =
+		Some(sc_consensus_slots::BackoffAuthoringOnFinalizedHeadLagging::default());
 	let name = config.network.node_name.clone();
 	let enable_grandpa = !config.disable_grandpa;
 	let prometheus_registry = config.prometheus_registry().cloned();
@@ -308,7 +323,8 @@ pub fn new_full<
         let grandpa_config = sc_consensus_grandpa::Config {
             // Standard GRANDPA gossip configuration (333ms gossip duration)
             gossip_duration: Duration::from_millis(333),
-            justification_generation_period: 512,
+            // CONS-036 FIX: Reduced from 512 to 32 for faster finality signals.
+            justification_generation_period: GRANDPA_JUSTIFICATION_PERIOD,
             name: Some(name),
             observer_enabled: false,
             keystore: Some(keystore_container.keystore()),

@@ -119,6 +119,147 @@ impl BootstrapNodes {
     }
 }
 
+/// Authorized validator PeerIds for block announce validation (P2P-FIX-002)
+/// 
+/// **SECURITY CRITICAL**: This list MUST contain exactly the 32 validator PeerIds
+/// that correspond to the on-chain validator set. Unauthorized PeerIds attempting
+/// to announce blocks will be disconnected immediately.
+/// 
+/// **TODO BEFORE MAINNET**: Replace placeholder PeerIds with actual validator node
+/// PeerIds generated from ed25519 node keys. Extract PeerIds by running:
+/// ```bash
+/// ./belizechain-node key inspect-node-key --file /path/to/node-key
+/// ```
+#[allow(dead_code)]
+pub struct ValidatorPeerIds;
+
+impl ValidatorPeerIds {
+    /// Mainnet validator PeerIds (MaxAuthorities = 32)
+    /// 
+    /// **PLACEHOLDER VALUES**: These are example PeerIds and MUST be replaced
+    /// with the actual PeerIds of the 32 mainnet validators before launch.
+    pub fn mainnet() -> Vec<String> {
+        vec![
+            // Bootnode validators (first 3 from BootstrapNodes)
+            "12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp".to_string(),
+            "12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMuD".to_string(),
+            "12D3KooWLmrYDLoNTyTYtRdDyZLWDe1paxzxTw5RgjmHLfzW96SX".to_string(),
+            // Remaining validators (29 placeholders - MUST REPLACE)
+            "12D3KooWPlaceholder04".to_string(),
+            "12D3KooWPlaceholder05".to_string(),
+            "12D3KooWPlaceholder06".to_string(),
+            "12D3KooWPlaceholder07".to_string(),
+            "12D3KooWPlaceholder08".to_string(),
+            "12D3KooWPlaceholder09".to_string(),
+            "12D3KooWPlaceholder10".to_string(),
+            "12D3KooWPlaceholder11".to_string(),
+            "12D3KooWPlaceholder12".to_string(),
+            "12D3KooWPlaceholder13".to_string(),
+            "12D3KooWPlaceholder14".to_string(),
+            "12D3KooWPlaceholder15".to_string(),
+            "12D3KooWPlaceholder16".to_string(),
+            "12D3KooWPlaceholder17".to_string(),
+            "12D3KooWPlaceholder18".to_string(),
+            "12D3KooWPlaceholder19".to_string(),
+            "12D3KooWPlaceholder20".to_string(),
+            "12D3KooWPlaceholder21".to_string(),
+            "12D3KooWPlaceholder22".to_string(),
+            "12D3KooWPlaceholder23".to_string(),
+            "12D3KooWPlaceholder24".to_string(),
+            "12D3KooWPlaceholder25".to_string(),
+            "12D3KooWPlaceholder26".to_string(),
+            "12D3KooWPlaceholder27".to_string(),
+            "12D3KooWPlaceholder28".to_string(),
+            "12D3KooWPlaceholder29".to_string(),
+            "12D3KooWPlaceholder30".to_string(),
+            "12D3KooWPlaceholder31".to_string(),
+            "12D3KooWPlaceholder32".to_string(),
+        ]
+    }
+
+    /// Testnet validator PeerIds (for testing block announce validation)
+    pub fn testnet() -> Vec<String> {
+        vec![
+            "12D3KooWTestNode1".to_string(),
+            "12D3KooWTestNode2".to_string(),
+        ]
+    }
+}
+
+/// Reserved nodes for validator-only peering (P2P-FIX-003)
+/// 
+/// **SECURITY CRITICAL**: Reserved nodes are the ONLY peers that validators will
+/// accept connections from. This prevents eclipse attacks by ensuring validators
+/// only peer with known, authorized nodes.
+/// 
+/// **IMPORTANT**: This list MUST be kept in sync with ValidatorPeerIds and the
+/// on-chain validator set. Each entry must correspond to a valid validator.
+/// 
+/// **TODO BEFORE MAINNET**: Replace placeholder multiaddrs with actual validator
+/// network addresses. Format: /ip4/IP/tcp/PORT/p2p/PEERID or /dns4/DOMAIN/tcp/PORT/p2p/PEERID
+#[allow(dead_code)]
+pub struct ReservedNodes;
+
+impl ReservedNodes {
+    /// Mainnet reserved nodes (all 32 validators)
+    /// 
+    /// **PLACEHOLDER VALUES**: These are example multiaddrs and MUST be replaced
+    /// with actual validator network addresses before mainnet launch.
+    pub fn mainnet() -> Vec<String> {
+        vec![
+            // Bootnode validators (replace with real addresses)
+            "/dns4/validator01.belizechain.org/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp".to_string(),
+            "/dns4/validator02.belizechain.org/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMuD".to_string(),
+            "/dns4/validator03.belizechain.org/tcp/30333/p2p/12D3KooWLmrYDLoNTyTYtRdDyZLWDe1paxzxTw5RgjmHLfzW96SX".to_string(),
+            // Remaining validators (29 placeholders - replace with real IPs/domains)
+            "/ip4/192.0.2.4/tcp/30333/p2p/12D3KooWPlaceholder04".to_string(),
+            "/ip4/192.0.2.5/tcp/30333/p2p/12D3KooWPlaceholder05".to_string(),
+            "/ip4/192.0.2.6/tcp/30333/p2p/12D3KooWPlaceholder06".to_string(),
+            "/ip4/192.0.2.7/tcp/30333/p2p/12D3KooWPlaceholder07".to_string(),
+            "/ip4/192.0.2.8/tcp/30333/p2p/12D3KooWPlaceholder08".to_string(),
+            "/ip4/192.0.2.9/tcp/30333/p2p/12D3KooWPlaceholder09".to_string(),
+            "/ip4/192.0.2.10/tcp/30333/p2p/12D3KooWPlaceholder10".to_string(),
+            "/ip4/192.0.2.11/tcp/30333/p2p/12D3KooWPlaceholder11".to_string(),
+            "/ip4/192.0.2.12/tcp/30333/p2p/12D3KooWPlaceholder12".to_string(),
+            "/ip4/192.0.2.13/tcp/30333/p2p/12D3KooWPlaceholder13".to_string(),
+            "/ip4/192.0.2.14/tcp/30333/p2p/12D3KooWPlaceholder14".to_string(),
+            "/ip4/192.0.2.15/tcp/30333/p2p/12D3KooWPlaceholder15".to_string(),
+            "/ip4/192.0.2.16/tcp/30333/p2p/12D3KooWPlaceholder16".to_string(),
+            "/ip4/192.0.2.17/tcp/30333/p2p/12D3KooWPlaceholder17".to_string(),
+            "/ip4/192.0.2.18/tcp/30333/p2p/12D3KooWPlaceholder18".to_string(),
+            "/ip4/192.0.2.19/tcp/30333/p2p/12D3KooWPlaceholder19".to_string(),
+            "/ip4/192.0.2.20/tcp/30333/p2p/12D3KooWPlaceholder20".to_string(),
+            "/ip4/192.0.2.21/tcp/30333/p2p/12D3KooWPlaceholder21".to_string(),
+            "/ip4/192.0.2.22/tcp/30333/p2p/12D3KooWPlaceholder22".to_string(),
+            "/ip4/192.0.2.23/tcp/30333/p2p/12D3KooWPlaceholder23".to_string(),
+            "/ip4/192.0.2.24/tcp/30333/p2p/12D3KooWPlaceholder24".to_string(),
+            "/ip4/192.0.2.25/tcp/30333/p2p/12D3KooWPlaceholder25".to_string(),
+            "/ip4/192.0.2.26/tcp/30333/p2p/12D3KooWPlaceholder26".to_string(),
+            "/ip4/192.0.2.27/tcp/30333/p2p/12D3KooWPlaceholder27".to_string(),
+            "/ip4/192.0.2.28/tcp/30333/p2p/12D3KooWPlaceholder28".to_string(),
+            "/ip4/192.0.2.29/tcp/30333/p2p/12D3KooWPlaceholder29".to_string(),
+            "/ip4/192.0.2.30/tcp/30333/p2p/12D3KooWPlaceholder30".to_string(),
+            "/ip4/192.0.2.31/tcp/30333/p2p/12D3KooWPlaceholder31".to_string(),
+            "/ip4/192.0.2.32/tcp/30333/p2p/12D3KooWPlaceholder32".to_string(),
+        ]
+    }
+
+    /// Testnet reserved nodes
+    pub fn testnet() -> Vec<String> {
+        vec![
+            "/dns4/testnet-validator1.belizechain.org/tcp/30333/p2p/12D3KooWTestNode1".to_string(),
+            "/dns4/testnet-validator2.belizechain.org/tcp/30333/p2p/12D3KooWTestNode2".to_string(),
+        ]
+    }
+
+    /// Local testnet reserved nodes (for development)
+    pub fn local() -> Vec<String> {
+        vec![
+            "/ip4/127.0.0.1/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp".to_string(),
+        ]
+    }
+}
+
 /// Recommended node key storage configuration
 pub fn node_key_config(_base_path: &Path, _network: &str) -> NodeKeyConfig {
     // Substrate NodeKeyConfig no longer has File variant in stable2512

@@ -86,7 +86,7 @@ impl BelizeKyc<u64, u64> for MockKyc {
 
 // Community pallet configuration
 parameter_types! {
-    pub const ProposalDepositPercentage: u32 = 10;
+    pub const ProposalDepositPercentage: u32 = 1000; // 10% in basis points
     pub const FeeExemptionMonthlyLimit: u32 = 100_000; // 100K dBZD for testing
     pub const EducationRewardAmount: u64 = 100;
     pub const ReferralRewardAmount: u64 = 100;
@@ -115,6 +115,8 @@ impl pallet_belize_community::Config for Test {
     type WeightInfo = ();
     type MinAttestationsRequired = frame_support::traits::ConstU32<2>;
     type OracleAttestationOrigin = frame_system::EnsureRoot<u64>;
+    type SrsUpdateCooldown = frame_support::traits::ConstU64<100>; // 100 blocks in tests
+    type MinProposalVoters = frame_support::traits::ConstU32<3>; // Require at least 3 voters in tests
 }
 
 // Build genesis storage according to the mock runtime.

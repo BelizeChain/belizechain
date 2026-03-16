@@ -156,7 +156,7 @@ jobs:
     # ACR credentials (ACR_USERNAME / ACR_PASSWORD) must be valid in GitHub Secrets.
     # If login fails with 403, rotate the service principal in Azure Portal and
     # update the secrets at: Settings → Secrets and variables → Actions → Secrets.
-    continue-on-error: true
+    # P0-08 FIX: Removed continue-on-error: true — failed builds must NOT trigger deployment.
     outputs:
       image_tag: ${{ steps.meta.outputs.tags }}
 
@@ -168,9 +168,10 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # P0-10 FIX: Use immutable SHA-based tag only. Removed mutable :latest tag
+          # to prevent tag mutation attacks.
           tags: |
             type=sha,prefix=
-            type=raw,value=latest
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -219,6 +220,12 @@ jobs:
 
       - name: Deploy to AKS
         run: |
+          # P2P-FIX-003: Create ConfigMap for reserved nodes
+          kubectl create configmap reserved-nodes \
+            --from-file=reserved-nodes.txt=./scripts/deploy/reserved-nodes.txt \
+            --namespace=belizechain \
+            --dry-run=client -o yaml | kubectl apply -f -
+          
           cat <<EOFK | kubectl apply -f -
           apiVersion: apps/v1
           kind: Deployment
@@ -239,7 +246,8 @@ jobs:
               spec:
                 containers:
                   - name: belizechain-node
-                    image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+                    # P0-10 FIX: Use immutable SHA-pinned image tag
+                    image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
                     ports:
                       - containerPort: 30333
                         name: p2p
@@ -254,11 +262,21 @@ jobs:
                       - "/data"
                       - "--name"
                       - "${{ env.NODE_NAME }}"
-                      - "--node-key"
-                      - "${{ secrets.NODE_KEY }}"
+                      # P0-09 FIX: Use file-based node key instead of CLI arg (prevents /proc exposure)
+                      - "--node-key-file"
+                      - "/etc/belizechain/secrets/node-key"
                       - "--validator"
-                      - "--alice"
-                      - "--force-authoring"
+                      # P0-07 FIX: Removed --alice (well-known dev key). Validator keys
+                      # must be injected via `author.insertKey` RPC or keystore file.
+                      # P1-24 FIX: Removed --force-authoring (blocks produced while unsynced)
+                      - "--reserved-nodes-file"
+                      - "/etc/belizechain/reserved-nodes.txt"
+                      - "--reserved-only"
+                      - "--no-mdns"
+                      - "--in-peers"
+                      - "5"
+                      - "--out-peers"
+                      - "50"
                       - "--rpc-port"
                       - "9944"
                       - "--rpc-cors"
@@ -276,16 +294,43 @@ jobs:
                     volumeMounts:
                       - name: blockchain-data
                         mountPath: /data
+                      - name: reserved-nodes
+                        mountPath: /etc/belizechain
+                        readOnly: true
+                      - name: node-key
+                        mountPath: /etc/belizechain/secrets
+                        readOnly: true
+                    # P1-21 FIX: Add security context
+                    securityContext:
+                      runAsNonRoot: true
+                      runAsUser: 1000
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: true
+                      capabilities:
+                        drop: ["ALL"]
                     resources:
                       requests:
                         cpu: "500m"
+                        # P0-11 FIX: Corrected YAML corruption (memory value was misplaced)
                         memory: "1Gi"
                       limits:
                         cpu: "1500m"
                         memory: "3Gi"
                 volumes:
                   - name: blockchain-data
-                    emptyDir: {}
+                    # P1-22 FIX: Use PVC instead of emptyDir to persist chain data across restarts
+                    persistentVolumeClaim:
+                      claimName: belizechain-data
+                  - name: reserved-nodes
+                    configMap:
+                      name: reserved-nodes
+                  # P0-09 FIX: Mount node key from K8s Secret
+                  - name: node-key
+                    secret:
+                      secretName: belizechain-node-key
+                      items:
+                        - key: node-key
+                          path: node-key
           ---
           apiVersion: v1
           kind: Service
@@ -305,7 +350,9 @@ jobs:
               - name: metrics
                 port: 9615
                 targetPort: 9615
-            type: LoadBalancer
+            # P1-04 FIX: ClusterIP prevents direct internet exposure of RPC/metrics.
+            # Use an Ingress or port-forward for authorized access.
+            type: ClusterIP
           EOFK
 
       - name: Wait for rollout

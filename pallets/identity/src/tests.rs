@@ -2698,11 +2698,11 @@ fn rate_limit_resets_after_window() {
 }
 
 // ============================================================================
-// PASSPORT HASH INDEX STALE ENTRY ON RE-ISSUE (KNOWN BUG)
+// PASSPORT HASH INDEX STALE ENTRY ON RE-ISSUE (BUG FIXED)
 // ============================================================================
 
 #[test]
-fn passport_reissue_does_not_clean_stale_hash() {
+fn passport_reissue_cleans_stale_hash() {
     new_test_ext().execute_with(|| {
         assert_ok!(BelizeIdentity::register_identity(
             RuntimeOrigin::signed(ALICE),
@@ -2732,9 +2732,9 @@ fn passport_reissue_does_not_clean_stale_hash() {
             true
         ));
 
-        // BUG: Old hash1 still in PassportHashIndex (unlike SSN which cleans up)
-        assert_eq!(PassportHashIndex::<Test>::get(hash1), Some(id));
-        // New hash2 is also indexed
+        // Old hash1 is cleaned up (stale hash removal works correctly)
+        assert_eq!(PassportHashIndex::<Test>::get(hash1), None);
+        // New hash2 is indexed
         assert_eq!(PassportHashIndex::<Test>::get(hash2), Some(id));
     });
 }

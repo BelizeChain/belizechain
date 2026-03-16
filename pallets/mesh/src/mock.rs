@@ -127,6 +127,7 @@ impl pallet_mesh::Config for Test {
     type RelayRewardPerEmergencyAlert = ConstU128<2_000_000_000>; // 2 DALLA
     type NodeRegistrationDeposit = ConstU128<10_000_000_000>; // 10 DALLA
     type HeartbeatTimeout = ConstU32<100>; // 100 blocks
+    type MaxMeshTxPerBlock = ConstU32<50>;
     type WeightInfo = ();
 }
 

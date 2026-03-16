@@ -391,7 +391,7 @@ groups:
 
 | Audit Type | Frequency | Provider | Last Audit |
 |------------|-----------|----------|------------|
-| **Smart Contract** | Quarterly | Trail of Bits | Q4 2024 |
+| **Smart Contract** | Quarterly | TBD (not yet engaged) | Planned |
 | **Infrastructure** | Semi-annual | NCC Group | Q3 2024 |
 | **Penetration Test** | Annual | HackerOne | Q2 2024 |
 | **Economic Model** | Annual | Gauntlet | Q1 2024 |

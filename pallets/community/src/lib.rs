@@ -117,7 +117,7 @@ pub mod pallet {
         traits::{Currency, ReservableCurrency, Get},
     };
     use frame_system::pallet_prelude::*;
-    use sp_runtime::traits::{SaturatedConversion, CheckedAdd, Zero};
+    use sp_runtime::traits::{SaturatedConversion, Saturating, CheckedAdd, Zero};
     
     use crate::weights::WeightInfo;
     use pallet_belize_identity::BelizeKyc as BelizeKycTrait;
@@ -189,6 +189,16 @@ pub mod pallet {
         /// Should be a council membership check (e.g., TechnicalCouncilMember) so
         /// each council member can vote individually (Phase 3B).
         type OracleAttestationOrigin: EnsureOrigin<Self::RuntimeOrigin>;
+
+        /// C-1/X-1: Minimum blocks between permissionless SRS recalculations
+        /// for the same account. Prevents reputation farming via rapid recalc.
+        #[pallet::constant]
+        type SrsUpdateCooldown: Get<BlockNumberFor<Self>>;
+
+        /// AUDIT FIX: Minimum number of votes required for a community proposal
+        /// to pass. Prevents 1-vote quorum attacks.
+        #[pallet::constant]
+        type MinProposalVoters: Get<u32>;
     }
 
     #[pallet::pallet]
@@ -242,6 +252,16 @@ pub mod pallet {
         _,
         Blake2_128Concat,
         (T::AccountId, T::AccountId),
+        BlockNumberFor<T>,
+        ValueQuery,
+    >;
+
+    /// C-1/X-1: Last block at which update_srs was called for each account
+    #[pallet::storage]
+    pub type LastSrsUpdate<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
         BlockNumberFor<T>,
         ValueQuery,
     >;
@@ -407,6 +427,10 @@ pub mod pallet {
         ValueQuery,
     >;
 
+    /// AUDIT FIX (CRIT-4): Track whether a referee already has ANY referrer (one-referrer-per-user)
+    #[pallet::storage]
+    pub type RefereeHasReferrer<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, bool, ValueQuery>;
+
     /// Track if referral has been claimed (referee → referrer mapping)
     #[pallet::storage]
     #[pallet::getter(fn referral_claimed)]
@@ -446,6 +470,35 @@ pub mod pallet {
         ValueQuery,
     >;
 
+    // ── P0-20 FIX: O(1) counters replacing unbounded iter_prefix().count() ─────
+
+    /// O(1) counter for pending attestation votes per (subject, activity_code).
+    #[pallet::storage]
+    pub type AttestationCount<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat, (T::AccountId, u8),
+        u32,
+        ValueQuery,
+    >;
+
+    /// O(1) counter for completed education modules per account.
+    #[pallet::storage]
+    pub type CompletedEducationCount<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat, T::AccountId,
+        u32,
+        ValueQuery,
+    >;
+
+    /// O(1) aggregate for green contributions per account: (total_amount, project_count).
+    #[pallet::storage]
+    pub type GreenContributionStats<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat, T::AccountId,
+        (u64, u32),
+        ValueQuery,
+    >;
+
     // ================================
     // Events
     // ================================
@@ -478,19 +531,7 @@ pub mod pallet {
             account: T::AccountId,
             public_display: bool,
         },
-        /// Fee exemption applied
-        FeeExemptionApplied {
-            account: T::AccountId,
-            original_fee: BalanceOf<T>,
-            discounted_fee: BalanceOf<T>,
-            tier: u8,  // SRS tier code
-        },
-        /// Monthly fee limit reached
-        FeeExemptionLimitReached {
-            account: T::AccountId,
-            used_amount: BalanceOf<T>,
-            limit: BalanceOf<T>,
-        },
+        // FeeExemptionApplied, FeeExemptionLimitReached removed (E-7): orphaned, never emitted.
         /// Fee exemption usage reset (new month)
         FeeExemptionReset {
             account: T::AccountId,
@@ -723,6 +764,14 @@ pub mod pallet {
         AttestationRequired,
         /// No pending attestation found for this (account, activity) pair (Phase 3B).
         NoAttestationPending,
+        /// C-1/X-1: SRS update called too frequently for this account
+        SrsUpdateTooFrequent,
+        /// AUDIT FIX: Proposal did not reach minimum quorum
+        InsufficientQuorum,
+        /// Referee already claimed by another referrer.
+        RefereeAlreadyReferred,
+        /// Proposal counter overflow.
+        ProposalCounterOverflow,
     }
 
     // ================================
@@ -836,6 +885,14 @@ pub mod pallet {
             ensure_signed(origin)?;
             
             let current_block = frame_system::Pallet::<T>::block_number();
+
+            // C-1/X-1: Rate-limit — enforce cooldown between recalculations
+            let last_update = LastSrsUpdate::<T>::get(&account);
+            let cooldown = T::SrsUpdateCooldown::get();
+            ensure!(
+                current_block >= last_update.saturating_add(cooldown),
+                Error::<T>::SrsUpdateTooFrequent
+            );
             
             // Verify account is BelizeID verified
             ensure!(
@@ -844,6 +901,7 @@ pub mod pallet {
             );
             
             Self::update_srs_internal(&account)?;
+            LastSrsUpdate::<T>::insert(&account, current_block);
             
             Ok(())
         }
@@ -1000,18 +1058,22 @@ pub mod pallet {
                 Error::<T>::NotVerified
             );
 
-            // Calculate 10% deposit
-            let deposit = amount / 10u32.into();
+            // Calculate deposit using configurable percentage (basis points /10000)
+            let pct = T::ProposalDepositPercentage::get();
+            let deposit = amount * pct.into() / 10_000u32.into();
             
             // Reserve deposit from proposer
             T::Currency::reserve(&who, deposit)?;
 
-            // Get next proposal ID
-            let proposal_id = ProposalCount::<T>::get();
-            ProposalCount::<T>::put(proposal_id.saturating_add(1));
+            // Get next proposal ID — checked to prevent ID collision at u32::MAX
+            let proposal_id = ProposalCount::<T>::try_mutate(|c| {
+                let id = *c;
+                *c = c.checked_add(1).ok_or(Error::<T>::ProposalCounterOverflow)?;
+                Ok::<u32, Error<T>>(id)
+            })?;
 
-            // Calculate voting deadline (7 days = ~100,800 blocks at 6s/block)
-            let voting_deadline = current_block + 100_800u32.into();
+            // Calculate voting deadline using configurable period
+            let voting_deadline = current_block + T::CommunityVotingPeriod::get();
 
             // Run ethics filter check
             let ethics_passed = Self::check_ethics_filter(&who, &beneficiary, &proposal_type)?;
@@ -1146,6 +1208,12 @@ pub mod pallet {
             // Check voting period has ended
             let current_block = frame_system::Pallet::<T>::block_number();
             ensure!(current_block > proposal.voting_deadline, Error::<T>::VotingPeriodEnded);
+
+            // AUDIT FIX: Enforce minimum quorum — prevents 1-vote majority attacks
+            ensure!(
+                proposal.total_votes >= T::MinProposalVoters::get(),
+                Error::<T>::InsufficientQuorum
+            );
 
             // Determine if approved (simple majority of weighted votes)
             let approved = proposal.votes_for > proposal.votes_against;
@@ -1378,6 +1446,9 @@ pub mod pallet {
 
             CompletedEducation::<T>::insert(&who, module_id, completion);
 
+            // P0-20 FIX: Maintain O(1) education counter
+            CompletedEducationCount::<T>::mutate(&who, |c| *c = c.saturating_add(1));
+
             // Update module completion count
             module.total_completions = module.total_completions.saturating_add(1);
             EducationModules::<T>::insert(module_id, module.clone());
@@ -1432,15 +1503,28 @@ pub mod pallet {
             // Check if project is active
             ensure!(project.active, Error::<T>::ProjectInactive);
 
-            // M60 FIX: Require economic commitment — reserve funds to prevent
-            // phantom contributions that inflate SRS without real participation
-            let reserve_amount: BalanceOf<T> = amount.saturated_into();
-            T::Currency::reserve(&who, reserve_amount)?;
+            // AUDIT FIX (CRIT-6): Transfer funds to community treasury instead of
+            // reserving (reserve had no unreserve path → permanent fund lock).
+            let transfer_amount: BalanceOf<T> = amount.saturated_into();
+            T::Currency::transfer(
+                &who,
+                &T::CommunityTreasuryAccount::get(),
+                transfer_amount,
+                frame_support::traits::ExistenceRequirement::KeepAlive,
+            )?;
 
             // Update contribution tracking
             let current_contribution = GreenContributions::<T>::get(&who, project_id);
             let new_contribution = current_contribution.saturating_add(amount);
             GreenContributions::<T>::insert(&who, project_id, new_contribution);
+
+            // P0-20 FIX: Maintain O(1) aggregate stats
+            GreenContributionStats::<T>::mutate(&who, |(total, count)| {
+                *total = total.saturating_add(amount);
+                if current_contribution == 0 {
+                    *count = count.saturating_add(1);
+                }
+            });
 
             // Update project totals
             let old_amount = project.amount_contributed;
@@ -1486,14 +1570,31 @@ pub mod pallet {
             referee: T::AccountId, // The new user who was referred
         ) -> DispatchResult {
             let referrer = ensure_signed(origin)?;
+            let current_block = frame_system::Pallet::<T>::block_number();
 
             // Prevent self-referral
             ensure!(referrer != referee, Error::<T>::InvalidReferral);
 
-            // Check if already claimed
+            // AUDIT FIX (CRIT-3): Require KYC on both referrer and referee
+            ensure!(
+                T::BelizeKyc::is_kyc_verified(&referrer, pallet_belize_identity::KycLevel::L0, current_block),
+                Error::<T>::NotVerified
+            );
+            ensure!(
+                T::BelizeKyc::is_kyc_verified(&referee, pallet_belize_identity::KycLevel::L0, current_block),
+                Error::<T>::BeneficiaryNotVerified
+            );
+
+            // Check if already claimed by this referrer
             ensure!(
                 !ReferralClaimed::<T>::get(&referee, &referrer),
                 Error::<T>::ReferralAlreadyClaimed
+            );
+
+            // AUDIT FIX (CRIT-4): Only ONE referrer per referee — prevents Sybil multi-claim
+            ensure!(
+                !RefereeHasReferrer::<T>::get(&referee),
+                Error::<T>::RefereeAlreadyReferred
             );
 
             // Verify referee exists (has some SRS data)
@@ -1504,6 +1605,7 @@ pub mod pallet {
 
             // Mark as claimed
             ReferralClaimed::<T>::insert(&referee, &referrer, true);
+            RefereeHasReferrer::<T>::insert(&referee, true);
 
             // Update referrer data
             let mut referral_data = ReferralData::<T>::get(&referrer);
@@ -1581,8 +1683,9 @@ pub mod pallet {
 
             PendingAttestations::<T>::insert(&key, &oracle, true);
 
-            // Count total attestations for this (subject, activity_code)
-            let vote_count = PendingAttestations::<T>::iter_prefix(&key).count() as u32;
+            // P0-20 FIX: O(1) counter instead of unbounded iter_prefix().count()
+            AttestationCount::<T>::mutate(&key, |c| *c = c.saturating_add(1));
+            let vote_count = AttestationCount::<T>::get(&key);
 
             Self::deposit_event(Event::AttestationSubmitted {
                 subject: subject.clone(),
@@ -1596,6 +1699,8 @@ pub mod pallet {
                 AttestedActivities::<T>::insert(&key, true);
                 // Clear pending to free storage (attestation is now consumed on record_participation)
                 let _ = PendingAttestations::<T>::clear_prefix(&key, u32::MAX, None);
+                // P0-20 FIX: Reset counter after clearing
+                AttestationCount::<T>::remove(&key);
 
                 Self::deposit_event(Event::ActivityAttested {
                     subject,
@@ -1739,7 +1844,8 @@ pub mod pallet {
 
         /// Education score from completed modules (0-2,000) - Phase 5
         fn calculate_education_score(account: &T::AccountId) -> u32 {
-            let completed_count = CompletedEducation::<T>::iter_prefix(account).count() as u32;
+            // P0-20 FIX: O(1) counter instead of unbounded iter_prefix().count()
+            let completed_count = CompletedEducationCount::<T>::get(account);
             
             // Base points: 100 per module
             let base_score = completed_count.saturating_mul(100);
@@ -1756,15 +1862,8 @@ pub mod pallet {
 
         /// Sustainability score from green contributions (0-1,500) - Phase 5
         fn calculate_sustainability_score(account: &T::AccountId) -> u32 {
-            let contributions = GreenContributions::<T>::iter_prefix(account);
-            
-            let mut total_contributed = 0u64;
-            let mut project_count = 0u32;
-            
-            for (_project_id, amount) in contributions {
-                total_contributed = total_contributed.saturating_add(amount);
-                project_count = project_count.saturating_add(1);
-            }
+            // P0-20 FIX: O(1) aggregate instead of unbounded iter_prefix()
+            let (total_contributed, project_count) = GreenContributionStats::<T>::get(account);
             
             // Base score: 1 point per 100 units contributed (compute in u64 to avoid truncation)
             let amount_score = total_contributed / 100;

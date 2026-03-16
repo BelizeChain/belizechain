@@ -139,6 +139,7 @@ impl Config for Test {
     type Oracle = MockOracle;
     type MaxOracleDeviationBps = MaxOracleDeviationBpsConst;
     type DexPalletId = DexPalletId;
+    type MaxOrdersPerAccount = ConstU32<50>;
 }
 
 parameter_types! {

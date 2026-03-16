@@ -252,6 +252,7 @@ fn remove_employee_works() {
 #[test]
 fn remove_employee_fails_not_found() {
     new_test_ext().execute_with(|| {
+        verify_employer_as_root(1, EmployerType::Enterprise);
         assert_noop!(
             Payroll::remove_employee(RuntimeOrigin::signed(1), 3),
             Error::<Test>::EmployeeNotFound
@@ -286,6 +287,7 @@ fn toggle_employee_status_works() {
 #[test]
 fn toggle_employee_status_fails_not_found() {
     new_test_ext().execute_with(|| {
+        verify_employer_as_root(1, EmployerType::Enterprise);
         assert_noop!(
             Payroll::toggle_employee_status(RuntimeOrigin::signed(1), 99, false),
             Error::<Test>::EmployeeNotFound
@@ -317,6 +319,7 @@ fn update_salary_works() {
 #[test]
 fn update_salary_fails_not_found() {
     new_test_ext().execute_with(|| {
+        verify_employer_as_root(1, EmployerType::Enterprise);
         assert_noop!(
             Payroll::update_salary(RuntimeOrigin::signed(1), 3, 15_000_000_000),
             Error::<Test>::EmployeeNotFound
@@ -399,6 +402,7 @@ fn execute_payment_works_no_deductions() {
 #[test]
 fn execute_payment_fails_not_found() {
     new_test_ext().execute_with(|| {
+        verify_employer_as_root(1, EmployerType::Enterprise);
         assert_noop!(
             Payroll::execute_payment(RuntimeOrigin::signed(1), 3),
             Error::<Test>::EmployeeNotFound
@@ -424,7 +428,10 @@ fn execute_payment_fails_inactive() {
 fn execute_payment_fails_insufficient_balance() {
     new_test_ext().execute_with(|| {
         verify_employer_as_root(1, EmployerType::Enterprise);
-        add_employee_default(1, 3, 2_000_000_000_000_000);
+        // Salary under MaxPaymentAmount but drain employer balance to trigger InsufficientBalance
+        add_employee_default(1, 3, 500_000_000_000);
+        // Transfer most of employer's balance away so payment fails
+        assert_ok!(Balances::force_set_balance(RuntimeOrigin::root(), 1, 100));
 
         assert_noop!(
             Payroll::execute_payment(RuntimeOrigin::signed(1), 3),
@@ -463,8 +470,10 @@ fn batch_payment_works() {
 fn batch_payment_fails_insufficient_balance() {
     new_test_ext().execute_with(|| {
         verify_employer_as_root(1, EmployerType::Enterprise);
-        add_employee_default(1, 3, 600_000_000_000_000);
-        add_employee_default(1, 4, 600_000_000_000_000);
+        add_employee_default(1, 3, 500_000_000_000);
+        add_employee_default(1, 4, 500_000_000_000);
+        // Drain employer balance so batch total exceeds it
+        assert_ok!(Balances::force_set_balance(RuntimeOrigin::root(), 1, 100));
 
         assert_noop!(
             Payroll::batch_payment(RuntimeOrigin::signed(1)),
@@ -533,6 +542,7 @@ fn update_schedule_works() {
 #[test]
 fn update_schedule_fails_not_found() {
     new_test_ext().execute_with(|| {
+        verify_employer_as_root(1, EmployerType::Enterprise);
         assert_noop!(
             Payroll::update_schedule(RuntimeOrigin::signed(1), 99, 50_400, true),
             Error::<Test>::ScheduleNotFound
@@ -720,9 +730,11 @@ fn issue_bonus_fails_insufficient_balance() {
     new_test_ext().execute_with(|| {
         verify_employer_as_root(1, EmployerType::Enterprise);
         add_employee_default(1, 3, 10_000_000_000);
+        // Drain employer balance so bonus exceeds it
+        assert_ok!(Balances::force_set_balance(RuntimeOrigin::root(), 1, 100));
 
         assert_noop!(
-            Payroll::issue_bonus(RuntimeOrigin::signed(1), 3, 2_000_000_000_000_000, PaymentCategory::Bonus),
+            Payroll::issue_bonus(RuntimeOrigin::signed(1), 3, 500_000_000_000, PaymentCategory::Bonus),
             Error::<Test>::InsufficientBalance
         );
     });
@@ -1575,18 +1587,22 @@ fn schedule_with_department_employee_count() {
 // ===== MISCELLANEOUS EDGE CASES =====
 
 #[test]
-fn verify_employer_re_verification_overwrites() {
+fn verify_employer_re_verification_rejected() {
     new_test_ext().execute_with(|| {
         verify_employer_as_root(1, EmployerType::Enterprise);
 
         let p1 = crate::EmployerProfiles::<Test>::get(1).unwrap();
         assert_eq!(p1.employer_type, EmployerType::Enterprise);
 
-        // Re-verify with different type — should overwrite
-        verify_employer_as_root(1, EmployerType::Government);
+        // CRIT-1: Re-verification of existing employer is rejected
+        assert_noop!(
+            Payroll::verify_employer(RuntimeOrigin::root(), 1, EmployerType::Government),
+            Error::<Test>::EmployerAlreadyRegistered
+        );
 
+        // Profile unchanged
         let p2 = crate::EmployerProfiles::<Test>::get(1).unwrap();
-        assert_eq!(p2.employer_type, EmployerType::Government);
+        assert_eq!(p2.employer_type, EmployerType::Enterprise);
     });
 }
 
@@ -1857,5 +1873,44 @@ fn on_idle_with_deductions_applied_in_scheduled_payment() {
         let emp = crate::Employees::<Test>::get(1, 3).unwrap();
         assert_eq!(emp.total_paid, salary);
         assert_eq!(emp.total_deductions, tax);
+    });
+}
+
+// ================================
+// Regression Tests — Audit Fix Verification
+// ================================
+
+/// REGRESSION (PY-1): Repeated on_idle calls at the same block must NOT
+/// double-pay employees. The schedule.next_payment guard must prevent re-entry.
+#[test]
+fn on_idle_does_not_double_pay() {
+    new_test_ext().execute_with(|| {
+        let salary = 5_000_000_000u64;
+        verify_employer_as_root(1, EmployerType::Enterprise);
+        add_employee_default(1, 3, salary);
+        assert_ok!(Payroll::create_schedule(RuntimeOrigin::signed(1), 100, 0));
+
+        // First trigger at block 101
+        System::set_block_number(101);
+        Payroll::on_idle(101, Weight::from_parts(u64::MAX, u64::MAX));
+
+        let paid_once = Balances::free_balance(3);
+        let emp = crate::Employees::<Test>::get(1, 3).unwrap();
+        assert_eq!(emp.total_paid, salary);
+
+        // Second on_idle at same block — must be a no-op
+        Payroll::on_idle(101, Weight::from_parts(u64::MAX, u64::MAX));
+        assert_eq!(Balances::free_balance(3), paid_once);
+
+        let emp2 = crate::Employees::<Test>::get(1, 3).unwrap();
+        assert_eq!(emp2.total_paid, salary); // still only paid once
+
+        // Third on_idle at intermediate block — also no-op
+        System::set_block_number(150);
+        Payroll::on_idle(150, Weight::from_parts(u64::MAX, u64::MAX));
+        assert_eq!(Balances::free_balance(3), paid_once);
+
+        let emp3 = crate::Employees::<Test>::get(1, 3).unwrap();
+        assert_eq!(emp3.total_paid, salary); // still only paid once
     });
 }

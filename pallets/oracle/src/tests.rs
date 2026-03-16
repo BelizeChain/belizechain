@@ -951,10 +951,11 @@ fn claim_oracle_rewards_works() {
         });
 
         // Fund treasury (account 999) so the transfer succeeds.
+        // C-4 fix changed reward formula — reward is now ~30_000_000_000_000
         assert_ok!(Balances::force_set_balance(
             RuntimeOrigin::root(),
             999u64,
-            3_000_000_000_000u64,
+            50_000_000_000_000u64,
         ));
 
         let alice_before = Balances::free_balance(ALICE);
@@ -962,5 +963,35 @@ fn claim_oracle_rewards_works() {
 
         // Balance should have increased by the reward amount
         assert!(Balances::free_balance(ALICE) > alice_before);
+    });
+}
+
+// ================================
+// Regression Tests — Audit Fix Verification
+// ================================
+
+/// REGRESSION (O-2): MaxOperators cap must be enforced via O(1) counter.
+/// Adding operators beyond MaxOperators (10) must fail with TooManyOperators.
+#[test]
+fn add_operator_exceeds_max_operators_fails() {
+    new_test_ext().execute_with(|| {
+        // Genesis inserts operators (ALICE, BOB) without going through add_operator,
+        // so OperatorCount starts at 0. Add 10 via extrinsic to fill the cap.
+        for id in 3..=12u64 {
+            assert_ok!(Oracle::add_operator(RuntimeOrigin::root(), id));
+        }
+        assert_eq!(Oracle::operator_count(), 10);
+
+        // The 11th add_operator call must be rejected
+        assert_noop!(
+            Oracle::add_operator(RuntimeOrigin::root(), 13u64),
+            Error::<Test>::TooManyOperators
+        );
+
+        // Removing one frees a slot
+        assert_ok!(Oracle::remove_operator(RuntimeOrigin::root(), 12u64));
+        assert_eq!(Oracle::operator_count(), 9);
+        assert_ok!(Oracle::add_operator(RuntimeOrigin::root(), 13u64));
+        assert_eq!(Oracle::operator_count(), 10);
     });
 }

@@ -49,6 +49,7 @@ sp-api = { git = "https://github.com/paritytech/polkadot-sdk", rev = "ad8a23ac25
 sp-block-builder = { git = "https://github.com/paritytech/polkadot-sdk", rev = "ad8a23ac25e6ad4f0afe27f2960565f0e8741828", default-features = false }
 sp-blockchain = { git = "https://github.com/paritytech/polkadot-sdk", rev = "ad8a23ac25e6ad4f0afe27f2960565f0e8741828" }
 sp-consensus-babe = { git = "https://github.com/paritytech/polkadot-sdk", rev = "ad8a23ac25e6ad4f0afe27f2960565f0e8741828", default-features = false }
+sp-consensus = { git = "https://github.com/paritytech/polkadot-sdk", rev = "ad8a23ac25e6ad4f0afe27f2960565f0e8741828", default-features = false }
 sp-staking = { git = "https://github.com/paritytech/polkadot-sdk", rev = "ad8a23ac25e6ad4f0afe27f2960565f0e8741828", default-features = false }
 sp-consensus-grandpa = { git = "https://github.com/paritytech/polkadot-sdk", rev = "ad8a23ac25e6ad4f0afe27f2960565f0e8741828", default-features = false }
 sp-core = { git = "https://github.com/paritytech/polkadot-sdk", rev = "ad8a23ac25e6ad4f0afe27f2960565f0e8741828", default-features = false }
@@ -74,6 +75,7 @@ sc-client-api = { git = "https://github.com/paritytech/polkadot-sdk", rev = "ad8
 sc-consensus = { git = "https://github.com/paritytech/polkadot-sdk", rev = "ad8a23ac25e6ad4f0afe27f2960565f0e8741828" }
 sc-consensus-babe = { git = "https://github.com/paritytech/polkadot-sdk", rev = "ad8a23ac25e6ad4f0afe27f2960565f0e8741828" }
 sc-consensus-grandpa = { git = "https://github.com/paritytech/polkadot-sdk", rev = "ad8a23ac25e6ad4f0afe27f2960565f0e8741828" }
+sc-consensus-slots = { git = "https://github.com/paritytech/polkadot-sdk", rev = "ad8a23ac25e6ad4f0afe27f2960565f0e8741828" }
 sc-executor = { git = "https://github.com/paritytech/polkadot-sdk", rev = "ad8a23ac25e6ad4f0afe27f2960565f0e8741828" }
 sc-keystore = { git = "https://github.com/paritytech/polkadot-sdk", rev = "ad8a23ac25e6ad4f0afe27f2960565f0e8741828" }
 sc-network = { git = "https://github.com/paritytech/polkadot-sdk", rev = "ad8a23ac25e6ad4f0afe27f2960565f0e8741828" }

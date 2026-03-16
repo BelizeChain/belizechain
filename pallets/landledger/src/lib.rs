@@ -50,7 +50,7 @@ const LAND_REGISTRY_ID: PalletId = PalletId(*b"bz/landr");
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
-    
+    use pallet_belize_identity::BelizeKyc;
     
 
     /// Property ID type - simple counter for on-chain properties
@@ -63,6 +63,9 @@ pub mod pallet {
     pub trait Config: frame_system::Config {
         /// The currency used for land transactions
         type Currency: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
+
+        /// KYC provider — registrants must have at least L1 identity verification
+        type BelizeKyc: pallet_belize_identity::BelizeKyc<Self::AccountId, BlockNumberFor<Self>>;
         
         /// Government origin for land verification
         type GovernmentOrigin: EnsureOrigin<Self::RuntimeOrigin>;
@@ -90,6 +93,10 @@ pub mod pallet {
         
         /// Weight information
         type WeightInfo: WeightInfo;
+
+        /// Maximum allowed assessed property value (prevents overflow / registry abuse)
+        #[pallet::constant]
+        type MaxPropertyPrice: Get<u128>;
     }
 
     /// Oracle provider trait for Land Ledger pallet
@@ -204,7 +211,7 @@ pub mod pallet {
     }
 
     /// Types of encumbrances
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub enum EncumbranceType {
         /// Mortgage lien
         Mortgage,
@@ -393,8 +400,13 @@ pub mod pallet {
         /// Encumbrance added
         EncumbranceAdded {
             property_id: PropertyId,
-            encumbrance_type: u8,
+            encumbrance_type: EncumbranceType,
             holder: T::AccountId,
+        },
+        /// AUDIT FIX (CRIT-02): Encumbrance removed/deactivated
+        EncumbranceRemoved {
+            property_id: PropertyId,
+            encumbrance_index: u32,
         },
         /// Surveyor registered
         SurveyorRegistered {
@@ -440,8 +452,20 @@ pub mod pallet {
         AccountSanctioned,
         /// Maximum properties per account reached
         MaxPropertiesReached,
+        /// Registrant lacks required KYC verification (L1 minimum)
+        KycNotVerified,
         /// LL-4 FIX: Surveyor not found in registry
         SurveyorNotFound,
+        /// Assessed value must be greater than zero
+        InvalidPropertyPrice,
+        /// Assessed value exceeds maximum allowed
+        PropertyPriceTooHigh,
+        /// Maximum encumbrances per property reached
+        MaxEncumbrancesReached,
+        /// Encumbrance index out of range
+        EncumbranceNotFound,
+        /// Area must be greater than zero
+        InvalidArea,
     }
 
     #[pallet::call]
@@ -460,6 +484,13 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
+            // P0-03 FIX: Require at least L1 KYC (SSN verified) for property registration
+            let current_block = frame_system::Pallet::<T>::block_number();
+            ensure!(
+                T::BelizeKyc::is_kyc_verified(&who, pallet_belize_identity::KycLevel::L1, current_block),
+                Error::<T>::KycNotVerified
+            );
+
             let property_type = match property_type_index {
                 0 => PropertyType::Residential,
                 1 => PropertyType::Commercial,
@@ -477,6 +508,13 @@ pub mod pallet {
                 description.len() <= T::MaxDescriptionLength::get() as usize,
                 Error::<T>::DescriptionTooLong
             );
+
+            // AUDIT FIX (HIGH-03): Area must be positive
+            ensure!(area_sqm > 0, Error::<T>::InvalidArea);
+
+            // Validate assessed value (non-zero, reasonable bounds)
+            ensure!(assessed_value > 0, Error::<T>::InvalidPropertyPrice);
+            ensure!(assessed_value <= T::MaxPropertyPrice::get(), Error::<T>::PropertyPriceTooHigh);
 
             // Validate coordinates (basic bounds checking for Belize)
             ensure!(
@@ -605,6 +643,22 @@ pub mod pallet {
             // Ensure property is verified for transfers
             ensure!(property.government_verified, Error::<T>::PropertyNotVerified);
 
+            // AUDIT FIX (CRIT-01): Block transfer if any active encumbrance exists
+            ensure!(
+                !property.encumbrances.iter().any(|e| e.active),
+                Error::<T>::EncumbranceExists
+            );
+
+            // AUDIT FIX (HIGH-06): Require property to be surveyed before transfer
+            ensure!(property.surveyed, Error::<T>::PropertyNotSurveyed);
+
+            // AUDIT FIX: Check buyer capacity early to avoid wasted computation
+            let buyer_properties = PropertyOwners::<T>::get(&new_owner);
+            ensure!(
+                buyer_properties.len() < 1000,
+                Error::<T>::MaxPropertiesReached
+            );
+
             // Calculate transfer tax
             let transfer_tax = transfer_price.saturating_mul(T::TransferTaxRate::get() as u128) / 10000;
 
@@ -727,12 +781,20 @@ pub mod pallet {
             // Verify surveyor authorization
             ensure!(Self::government_surveyors(&who), Error::<T>::NotAuthorizedSurveyor);
 
+            // AUDIT FIX (HIGH-03): Area must be positive
+            ensure!(verified_area_sqm > 0, Error::<T>::InvalidArea);
+
             Properties::<T>::mutate(property_id, |maybe_property| {
                 if let Some(property) = maybe_property {
                     property.surveyed = true;
                     property.area_sqm = verified_area_sqm;
                     
                     if let Some(coords) = updated_coordinates {
+                        // AUDIT FIX (HIGH-02): Validate updated coordinates
+                        if coords.0 < 15_000_000 || coords.0 > 19_000_000 ||
+                           coords.1 < -90_000_000 || coords.1 > -87_000_000 {
+                            return Err(Error::<T>::InvalidCoordinates);
+                        }
                         property.coordinates = coords;
                         property.zoning = Self::get_zoning_for_coordinates(coords)
                             .unwrap_or(property.zoning.clone());
@@ -788,6 +850,73 @@ pub mod pallet {
 
             Self::deposit_event(Event::SurveyorRemoved {
                 surveyor,
+            });
+
+            Ok(())
+        }
+
+        /// AUDIT FIX (CRIT-02): Add an encumbrance to a property (government-only)
+        #[pallet::call_index(6)]
+        #[pallet::weight(T::WeightInfo::register_surveyor())]
+        pub fn add_encumbrance(
+            origin: OriginFor<T>,
+            property_id: u32,
+            encumbrance_type: EncumbranceType,
+            holder: T::AccountId,
+            amount: Option<u128>,
+            description: Vec<u8>,
+        ) -> DispatchResult {
+            T::GovernmentOrigin::ensure_origin(origin)?;
+
+            let desc: BoundedVec<u8, ConstU32<256>> = description
+                .try_into()
+                .map_err(|_| Error::<T>::DescriptionTooLong)?;
+
+            Properties::<T>::try_mutate(property_id, |maybe_property| -> DispatchResult {
+                let property = maybe_property.as_mut().ok_or(Error::<T>::PropertyNotFound)?;
+                let encumbrance = Encumbrance {
+                    encumbrance_type: encumbrance_type.clone(),
+                    holder: holder.clone(),
+                    amount,
+                    description: desc,
+                    active: true,
+                };
+                property.encumbrances.try_push(encumbrance)
+                    .map_err(|_| Error::<T>::MaxEncumbrancesReached)?;
+                Ok(())
+            })?;
+
+            Self::deposit_event(Event::EncumbranceAdded {
+                property_id,
+                encumbrance_type,
+                holder,
+            });
+
+            Ok(())
+        }
+
+        /// AUDIT FIX (CRIT-02): Remove (deactivate) an encumbrance from a property (government-only)
+        #[pallet::call_index(7)]
+        #[pallet::weight(T::WeightInfo::register_surveyor())]
+        pub fn remove_encumbrance(
+            origin: OriginFor<T>,
+            property_id: u32,
+            encumbrance_index: u32,
+        ) -> DispatchResult {
+            T::GovernmentOrigin::ensure_origin(origin)?;
+
+            Properties::<T>::try_mutate(property_id, |maybe_property| -> DispatchResult {
+                let property = maybe_property.as_mut().ok_or(Error::<T>::PropertyNotFound)?;
+                let enc = property.encumbrances
+                    .get_mut(encumbrance_index as usize)
+                    .ok_or(Error::<T>::EncumbranceNotFound)?;
+                enc.active = false;
+                Ok(())
+            })?;
+
+            Self::deposit_event(Event::EncumbranceRemoved {
+                property_id,
+                encumbrance_index,
             });
 
             Ok(())

@@ -2,6 +2,7 @@ use super::*;
 use crate::mock::*;
 use codec::Encode;
 use frame_support::{assert_noop, assert_ok};
+use sp_runtime::traits::AccountIdConversion;
 
 // ============================================================================
 // Bridge Transaction Initiation Tests
@@ -44,14 +45,14 @@ fn initiate_bridge_works() {
 
         // Verify fee was transferred to treasury
         // fee_rate=50 basis points: fee = 100_000 * 50 / 10_000 = 500
-        let expected_fee = (bridge_amount * 50) / 10_000;
+        let expected_fee = sp_runtime::Perbill::from_rational(50u32, 10_000u32) * bridge_amount;
         let treasury_balance = Balances::free_balance(TREASURY);
         let expected_treasury = 1_000 + expected_fee; // Initial 1000 + fee
         assert_eq!(treasury_balance, expected_treasury);
 
-        // Verify fee was transferred from EVE to treasury
-        // free_balance decreases by fee (direct transfer), bridge amount is locked (set_lock)
-        assert_eq!(Balances::free_balance(EVE), initial_balance - expected_fee);
+        // CONS-027: net_amount goes to escrow, fee goes to treasury
+        // EVE's free balance decreases by the full bridge_amount
+        assert_eq!(Balances::free_balance(EVE), initial_balance - bridge_amount);
 
         // Verify NextTxId incremented
         assert_eq!(Interoperability::next_tx_id(), 1);
@@ -737,6 +738,10 @@ fn process_unlock_works() {
 
         // Manually set some locked assets
         TotalLockedAssets::<Test>::insert(BridgeChain::Ethereum, BridgeAsset::DALLA, 500_000);
+
+        // CONS-027: Fund escrow account so process_unlock can transfer from it
+        let escrow: u64 = frame_support::PalletId(*b"bz/intop").into_account_truncating();
+        Balances::force_set_balance(RuntimeOrigin::root(), escrow, 500_000).unwrap();
 
         let unlock_amount = 100_000;
 
@@ -1825,7 +1830,9 @@ fn initiate_bridge_cumulative_locks() {
         };
         ChainConfigurations::<Test>::insert(BridgeChain::Ethereum, chain_config);
 
-        // First bridge
+        // First bridge — UserBridgeLocks accumulates net_amount (amount - fee)
+        // fee = Perbill::from_rational(50, 10_000) * 100_000 = 500
+        // net = 100_000 - 500 = 99_500
         assert_ok!(Interoperability::initiate_bridge(
             RuntimeOrigin::signed(EVE),
             1,
@@ -1833,7 +1840,7 @@ fn initiate_bridge_cumulative_locks() {
             100_000,
             0,
         ));
-        assert_eq!(UserBridgeLocks::<Test>::get(EVE), 100_000);
+        assert_eq!(UserBridgeLocks::<Test>::get(EVE), 99_500);
 
         // Second bridge — locks should be cumulative
         assert_ok!(Interoperability::initiate_bridge(
@@ -1843,7 +1850,7 @@ fn initiate_bridge_cumulative_locks() {
             100_000,
             0,
         ));
-        assert_eq!(UserBridgeLocks::<Test>::get(EVE), 200_000);
+        assert_eq!(UserBridgeLocks::<Test>::get(EVE), 199_000);
     });
 }
 
@@ -2261,6 +2268,10 @@ fn process_unlock_event_emitted() {
         BridgeValidators::<Test>::insert(BOB, validator);
 
         TotalLockedAssets::<Test>::insert(BridgeChain::Ethereum, BridgeAsset::DALLA, 500_000u128);
+
+        // CONS-027: Fund escrow account so process_unlock can transfer from it
+        let escrow: u64 = frame_support::PalletId(*b"bz/intop").into_account_truncating();
+        Balances::force_set_balance(RuntimeOrigin::root(), escrow, 500_000).unwrap();
 
         let recipient_bytes: BoundedVec<u8, ConstU32<64>> = EVE.encode().try_into().unwrap();
         let tx = BridgeTransaction {
@@ -2812,4 +2823,39 @@ fn ml_dsa_reject_zeroed_pubkey() {
         !MLDsaVerifier::verify(&zeroed_pk, &message, &sig),
         "zeroed public key must not verify"
     );
+}
+
+// ================================
+// Regression Tests — Audit Fix Verification
+// ================================
+
+/// REGRESSION (I-3): Dispute bond must be reserved from disputer's free balance.
+/// Bond = max(tx_amount / 20, MinBridgeAmount). For 100K tx → max(5_000, 10_000) = 10_000.
+#[test]
+fn dispute_reserves_correct_bond_amount() {
+    new_test_ext().execute_with(|| {
+        setup_disputable_tx();
+
+        let reserved_before = Balances::reserved_balance(ALICE);
+        let free_before = Balances::free_balance(ALICE);
+
+        assert_ok!(Interoperability::dispute_bridge_transaction(
+            RuntimeOrigin::signed(ALICE),
+            0,
+            b"suspicious activity".to_vec(),
+        ));
+
+        // For 100_000 tx: amount_based_bond = 100_000/20 = 5_000
+        // min_bond = MinBridgeAmount = 10_000
+        // dispute_bond = max(5_000, 10_000) = 10_000
+        let expected_bond = 10_000u128;
+        assert_eq!(
+            Balances::reserved_balance(ALICE),
+            reserved_before + expected_bond
+        );
+        assert_eq!(
+            Balances::free_balance(ALICE),
+            free_before - expected_bond
+        );
+    });
 }

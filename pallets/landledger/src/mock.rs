@@ -1,4 +1,5 @@
 use crate as pallet_belize_landledger;
+use crate::LandLedgerOracleProvider;
 use frame_support::{
     parameter_types,
     traits::{ConstU32, ConstU64, ConstU128, Everything},
@@ -112,8 +113,23 @@ impl pallet_belize_landledger::LandLedgerOracleProvider<u64> for MockOracle {
     }
 }
 
+/// Mock KYC provider — delegates to MockOracle's get_kyc_level
+pub struct MockKyc;
+impl pallet_belize_identity::BelizeKyc<u64, u64> for MockKyc {
+    fn is_kyc_verified(who: &u64, level: pallet_belize_identity::KycLevel, _now: u64) -> bool {
+        let required = match level {
+            pallet_belize_identity::KycLevel::L0 => 0,
+            pallet_belize_identity::KycLevel::L1 => 1,
+            pallet_belize_identity::KycLevel::L2 => 2,
+            pallet_belize_identity::KycLevel::L3 => 3,
+        };
+        MockOracle::get_kyc_level(who).map_or(false, |l| l >= required)
+    }
+}
+
 impl pallet_belize_landledger::Config for Test {
     type Currency = Balances;
+    type BelizeKyc = MockKyc;
     type GovernmentOrigin = frame_system::EnsureRoot<u64>;
     type SurveyorOrigin = frame_system::EnsureRoot<u64>;
     type EnvironmentalOrigin = frame_system::EnsureRoot<u64>;
@@ -122,6 +138,7 @@ impl pallet_belize_landledger::Config for Test {
     type TransferTaxRate = TransferTaxRate;
     type MaxDescriptionLength = MaxDescriptionLength;
     type WeightInfo = ();
+    type MaxPropertyPrice = ConstU128<{ 10_000_000_000_000_000_000_000 }>; // 10B * 10^12
 }
 
 // Test account constants

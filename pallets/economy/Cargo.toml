@@ -18,6 +18,9 @@ sp-std = { workspace = true, default-features = false }
 sp-core = { workspace = true, default-features = false }
 frame-benchmarking = { workspace = true, default-features = false, optional = true }
 
+# Cross-pallet: structuring detection (COMP-CRIT-2)
+pallet-belize-compliance = { path = "../compliance", default-features = false }
+
 [dev-dependencies]
 pallet-balances = { workspace = true, default-features = true }
 pallet-timestamp = { workspace = true, default-features = true }
@@ -34,6 +37,7 @@ std = [
     "sp-std/std",
     "sp-core/std",
     "frame-benchmarking?/std",
+    "pallet-belize-compliance/std",
 ]
 try-runtime = [
     "frame-support/try-runtime",

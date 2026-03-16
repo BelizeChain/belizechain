@@ -73,7 +73,8 @@ where
             "pallets": [
                 "economy", "identity", "governance", "staking", "consensus",
                 "oracle", "interoperability", "belizex", "bns", "landledger",
-                "payroll", "community", "quantum", "mesh", "compliance"
+                "payroll", "community", "quantum", "mesh", "compliance",
+                "justice", "whistleblower", "moderation"
             ],
             "features": [
                 "federated_ai_consensus",

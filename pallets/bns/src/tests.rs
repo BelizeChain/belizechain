@@ -623,3 +623,57 @@ fn buy_domain_emits_event() {
         );
     });
 }
+
+// ================================
+// Regression Tests — Audit Fix Verification
+// ================================
+
+/// REGRESSION (BNS-CRIT-1): ContentHistory must be capped at MaxContentVersions.
+/// Oldest entries must be pruned when the cap is reached.
+#[test]
+fn content_history_pruning_at_cap() {
+    new_test_ext().execute_with(|| {
+        // Register and activate hosting
+        assert_ok!(Bns::register_domain(RuntimeOrigin::signed(1), b"captest".to_vec(), 0));
+        assert_ok!(Bns::activate_hosting(
+            RuntimeOrigin::signed(1),
+            b"captest".to_vec(),
+            1,
+            [0u8; 32],
+            false,
+        ));
+
+        let domain: BoundedVec<u8, <Test as Config>::MaxDomainLength> =
+            b"captest".to_vec().try_into().unwrap();
+
+        // Fast-forward: set CurrentContentVersion near MaxContentVersions (50)
+        // by directly manipulating storage, then do a few real updates.
+        CurrentContentVersion::<Test>::insert(&domain, 48);
+
+        // Do 4 updates: versions 48, 49, 50, 51
+        for i in 0..4u8 {
+            let hash = [0x10 + i; 32];
+            assert_ok!(Bns::update_hosting_content(
+                RuntimeOrigin::signed(1),
+                b"captest".to_vec(),
+                hash,
+                b"update".to_vec(),
+                1024,
+            ));
+        }
+
+        // After 4 updates from version 48, current_version = 52
+        assert_eq!(CurrentContentVersion::<Test>::get(&domain), 52);
+
+        // Versions 50 and 51 should still exist (within the last 50)
+        assert!(ContentHistory::<Test>::contains_key(&domain, 50));
+        assert!(ContentHistory::<Test>::contains_key(&domain, 51));
+
+        // Versions that were pruned: version 0 and 1 would have been pruned
+        // when current_version hit 50 and 51.
+        // Version 0: pruned when current_version=50 (50-50=0)
+        assert!(!ContentHistory::<Test>::contains_key(&domain, 0));
+        // Version 1: pruned when current_version=51 (51-50=1)
+        assert!(!ContentHistory::<Test>::contains_key(&domain, 1));
+    });
+}

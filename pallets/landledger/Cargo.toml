@@ -14,6 +14,7 @@ scale-info = { workspace = true, features = ["derive"] }
 
 # BelizeChain pallets
 pallet-belize-common = { path = "../common", default-features = false }
+pallet-belize-identity = { path = "../identity", default-features = false }
 
 # Substrate
 frame-support = { workspace = true }
@@ -40,6 +41,7 @@ std = [
     "codec/std",
     "scale-info/std",
     "pallet-belize-common/std",
+    "pallet-belize-identity/std",
     "frame-support/std",
     "frame-system/std",
     "sp-core/std",

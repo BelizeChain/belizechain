@@ -17,6 +17,7 @@ scale-info = { workspace = true, default-features = false, features = ["derive"]
 # Substrate dependencies
 frame-support = { workspace = true, default-features = false }
 frame-system = { workspace = true, default-features = false }
+frame-benchmarking = { workspace = true, default-features = false, optional = true }
 sp-runtime = { workspace = true, default-features = false }
 sp-std = { workspace = true, default-features = false }
 sp-core = { workspace = true, default-features = false }
@@ -33,6 +34,7 @@ std = [
     "codec/std",
     "frame-support/std",
     "frame-system/std",
+    "frame-benchmarking?/std",
     "scale-info/std",
     "sp-runtime/std",
     "sp-std/std",
@@ -40,6 +42,7 @@ std = [
     "sp-io/std",
 ]
 runtime-benchmarks = [
+    "frame-benchmarking/runtime-benchmarks",
     "frame-support/runtime-benchmarks",
     "frame-system/runtime-benchmarks",
 ]

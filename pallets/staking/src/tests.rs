@@ -3,6 +3,16 @@ use crate::{mock::*, Error, Event, *};
 use frame_support::{assert_noop, assert_ok, traits::Currency, BoundedVec};
 use sp_runtime::Perbill;
 
+/// Helper: compute the CONS-010 commitment hash H(delta || who || block_number)
+fn make_valid_commitment(delta: &[u8], who: u64, block: u32) -> [u8; 32] {
+    use sp_runtime::traits::Hash;
+    let h = <Test as frame_system::Config>::Hashing::hash_of(&(delta, &who, block));
+    let bytes: &[u8] = h.as_ref();
+    let mut out = [0u8; 32];
+    out.copy_from_slice(&bytes[..32]);
+    out
+}
+
 // ============================================================================
 // VALIDATOR REGISTRATION TESTS
 // ============================================================================
@@ -238,12 +248,11 @@ fn claim_pouw_reward_works() {
         ));
         
         // Submit valid model delta
-        let mut commitment = [0u8; 32];
-        commitment[0] = 1; commitment[1] = 2; commitment[2] = 3;
         let mut log = [0u8; 32];
         log[0] = 1; log[1] = 2;
         let delta: Vec<u8> = (0u8..64).collect();
-        let bounded_delta = BoundedVec::try_from(delta).unwrap();
+        let bounded_delta = BoundedVec::try_from(delta.clone()).unwrap();
+        let commitment = make_valid_commitment(&delta, ALICE, System::block_number() as u32);
         
         assert_ok!(BelizeStaking::submit_model_delta(
             RuntimeOrigin::signed(ALICE),
@@ -303,12 +312,11 @@ fn report_training_contribution_works() {
         assert_eq!(task.model_hash, model_hash);
         
         // Submit model delta — valid commitment (non-zero, non-homogeneous), entropy delta
-        let mut commitment = [0u8; 32];
-        for i in 0..32 { commitment[i] = (i as u8).wrapping_add(1); } // all different
         let mut log = [0u8; 32];
         log[0] = 0xFF; log[15] = 0x42;
         let delta: Vec<u8> = (0u8..128).collect(); // 128 bytes, good entropy
-        let bounded_delta = BoundedVec::try_from(delta).unwrap();
+        let bounded_delta = BoundedVec::try_from(delta.clone()).unwrap();
+        let commitment = make_valid_commitment(&delta, ALICE, System::block_number() as u32);
         
         assert_ok!(BelizeStaking::submit_model_delta(
             RuntimeOrigin::signed(ALICE),
@@ -530,20 +538,21 @@ fn quality_score_affects_rewards() {
         ));
         
         // Both submit model deltas
-        let make_commitment = |seed: u8| -> [u8; 32] {
-            let mut c = [seed; 32]; c[1] = seed.wrapping_add(1); c
-        };
         let make_log = |seed: u8| -> [u8; 32] {
             let mut l = [0u8; 32]; l[0] = seed; l
         };
-        let alice_delta = BoundedVec::try_from((0u8..64).map(|x| x.wrapping_add(1)).collect::<Vec<_>>()).unwrap();
-        let bob_delta   = BoundedVec::try_from((0u8..64).collect::<Vec<_>>()).unwrap();
+        let alice_delta_vec: Vec<u8> = (0u8..64).map(|x| x.wrapping_add(1)).collect();
+        let bob_delta_vec: Vec<u8> = (0u8..64).collect();
+        let alice_delta = BoundedVec::try_from(alice_delta_vec.clone()).unwrap();
+        let bob_delta   = BoundedVec::try_from(bob_delta_vec.clone()).unwrap();
+        let alice_commitment = make_valid_commitment(&alice_delta_vec, ALICE, System::block_number() as u32);
+        let bob_commitment = make_valid_commitment(&bob_delta_vec, BOB, System::block_number() as u32);
         
         assert_ok!(BelizeStaking::submit_model_delta(
-            RuntimeOrigin::signed(ALICE), 10, alice_delta, make_commitment(1), make_log(1),
+            RuntimeOrigin::signed(ALICE), 10, alice_delta, alice_commitment, make_log(1),
         ));
         assert_ok!(BelizeStaking::submit_model_delta(
-            RuntimeOrigin::signed(BOB), 10, bob_delta, make_commitment(2), make_log(2),
+            RuntimeOrigin::signed(BOB), 10, bob_delta, bob_commitment, make_log(2),
         ));
         
         let alice_before = Balances::free_balance(ALICE);
@@ -772,10 +781,11 @@ fn submit_model_delta_errors_work() {
         ));
         
         // Fails when no active FL task
-        let mut commitment = [0u8; 32];
-        commitment[0] = 1; commitment[1] = 2;
-        let log = commitment;
-        let delta = BoundedVec::try_from((0u8..64).collect::<Vec<_>>()).unwrap();
+        let delta_vec: Vec<u8> = (0u8..64).collect();
+        let delta = BoundedVec::try_from(delta_vec.clone()).unwrap();
+        let commitment = make_valid_commitment(&delta_vec, ALICE, System::block_number() as u32);
+        let mut log = [0u8; 32];
+        log[0] = 1; log[1] = 2;
         
         assert_noop!(
             BelizeStaking::submit_model_delta(
@@ -848,6 +858,10 @@ fn validator_can_rejoin_after_leaving() {
         
         // Leave
         assert_ok!(BelizeStaking::leave_validators(RuntimeOrigin::signed(ALICE)));
+        
+        // Complete unbonding period before rejoining
+        run_to_block(102);
+        assert_ok!(BelizeStaking::withdraw_unbonded(RuntimeOrigin::signed(ALICE)));
         
         // Join again
         assert_ok!(BelizeStaking::join_validators(
@@ -1118,14 +1132,12 @@ fn leave_validators_fails_when_already_unbonding() {
         ));
         assert_ok!(BelizeStaking::leave_validators(RuntimeOrigin::signed(ALICE)));
 
-        // Already unbonding — rejoin, then try leaving again with pending unbond
-        assert_ok!(BelizeStaking::join_validators(
-            RuntimeOrigin::signed(ALICE), stake, 100, test_location("Belize City"),
-        ));
-        // PendingUnbonds still has entry from first leave
+        // Cannot rejoin while unbonding — PendingUnbond check in join_validators
         assert_noop!(
-            BelizeStaking::leave_validators(RuntimeOrigin::signed(ALICE)),
-            Error::<Test>::AlreadyUnbonding
+            BelizeStaking::join_validators(
+                RuntimeOrigin::signed(ALICE), stake, 100, test_location("Belize City"),
+            ),
+            Error::<Test>::PendingUnbond
         );
     });
 }
@@ -1474,11 +1486,13 @@ fn distribute_rewards_no_validators_still_advances_epoch() {
 }
 
 #[test]
-fn distribute_rewards_requires_root() {
+fn distribute_rewards_is_permissionless() {
     new_test_ext().execute_with(|| {
-        assert_noop!(
-            BelizeStaking::distribute_rewards(RuntimeOrigin::signed(ALICE)),
-            sp_runtime::DispatchError::BadOrigin
+        // CONS-020: distribute_rewards is permissionless so epoch progression
+        // is not blocked if the privileged caller is unavailable.
+        // Calling from a signed origin should succeed (returns Ok).
+        assert_ok!(
+            BelizeStaking::distribute_rewards(RuntimeOrigin::signed(ALICE))
         );
     });
 }

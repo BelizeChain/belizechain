@@ -20,9 +20,10 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
     }
 
     fn review_content() -> Weight {
-        Weight::from_parts(25_000_000, 1024)
-            .saturating_add(RocksDbWeight::get().reads(2))
-            .saturating_add(RocksDbWeight::get().writes(2))
+        // Phase-5 FIX: accounts for clear_prefix + remove(FlagCounts) + remove(NawalAssessments) + insert(ruled)
+        Weight::from_parts(35_000_000, 2048)
+            .saturating_add(RocksDbWeight::get().reads(3))
+            .saturating_add(RocksDbWeight::get().writes(4))
     }
 
     fn add_moderator() -> Weight {

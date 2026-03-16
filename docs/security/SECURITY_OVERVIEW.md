@@ -5,7 +5,7 @@ BelizeChain implements enterprise-grade security with multiple layers of protect
 ## Quick Links
 
 - [Security Best Practices](SECURITY_BEST_PRACTICES.md) - Development guidelines
-- [Audit Results](security-audit-results.md) - Trail of Bits audit (Q1 2025)
+- [Audit Framework](AUDIT_FRAMEWORK.md) - Audit planning and methodology
 - [Bug Bounty Program](BUG_BOUNTY_PROGRAM.md) - Report vulnerabilities ($500-$50K)
 - [Incident Response Plan](INCIDENT_RESPONSE_PLAN.md) - Emergency procedures
 - [KYC/AML Procedures](kyc-aml-procedures.md) - Compliance enforcement
@@ -42,27 +42,23 @@ BelizeChain implements enterprise-grade security with multiple layers of protect
 - **Incident Response**: <24h response time for critical issues
 - **Penetration Testing**: Quarterly external audits
 
-## Security Audit Results
+## Security Audit Status
 
-### Trail of Bits Audit (Q1 2025)
-**Status**: ✅ **ALL ISSUES RESOLVED**
+### Internal Comprehensive Audit (2026)
+**Status**: 🔄 **IN PROGRESS — Remediating Findings**
 
-| Severity | Found | Fixed | Status |
-|----------|-------|-------|--------|
-| 🔴 **Critical** | 0 | 0 | N/A |
-| 🟠 **High** | 0 | 0 | N/A |
-| 🟡 **Medium** | 3 | 3 | ✅ Fixed |
-| 🟢 **Low** | 7 | 7 | ✅ Fixed |
-| ℹ️ **Informational** | 12 | 12 | ✅ Addressed |
+A 14-phase internal security audit identified **697 findings**:
+- **22 P0 blockers** — must be fixed before mainnet
+- **30 P1 critical themes** — high-priority remediation
+- Remaining: P2/P3 improvements
 
-**Key Findings (Resolved)**:
-1. ✅ **Governance vote manipulation** (Medium) - Added conviction voting safeguards
-2. ✅ **Treasury multi-sig bypass** (Medium) - Implemented 4-of-7 threshold checks
-3. ✅ **Staking slashing overflow** (Medium) - Added safe math operations
-4. ✅ **Integer overflow in fee calculation** (Low) - Implemented saturating arithmetic
-5. ✅ **Reentrancy in economy pallet** (Low) - Added mutex locks
+Detailed results: see `audit_results/COMPREHENSIVE_AUDIT_2026.md`
 
-**Audit Report**: [security-audit-results.md](security-audit-results.md)
+### External Professional Audit
+**Status**: 🔲 **NOT YET ENGAGED**
+
+A professional third-party audit by a reputable firm is **required before mainnet launch**.
+No external audit has been completed to date.
 
 ## Bug Bounty Program
 
@@ -201,7 +197,7 @@ For **national emergencies only** (hurricanes, banking panics):
 ## Penetration Testing
 
 ### Schedule
-- **Quarterly**: External penetration tests (Trail of Bits, Cure53)
+- **Quarterly**: External penetration tests (firm TBD — not yet engaged)
 - **Monthly**: Internal security reviews
 - **Ad-hoc**: After major runtime upgrades
 

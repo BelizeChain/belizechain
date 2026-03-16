@@ -71,23 +71,21 @@ Project timeline: past milestones, current development, and future vision.
 **December 2024**:
 - ✅ Validator count reaches 100 nodes
 - ✅ 1,000 TPS sustained throughput achieved
-- ✅ Trail of Bits security audit initiated
 
 ### Q1 2025: Security & Compliance
 
 **January 2025**:
-- ✅ Trail of Bits audit completed (0 high, 3 medium, 7 low vulnerabilities)
-- ✅ All medium/low vulnerabilities patched
-- ✅ Public audit report published
+- ✅ Internal comprehensive security audit initiated (14-phase, 697 findings)
+- ✅ Automated dependency and clippy auditing pipeline established
 
 **February 2025**:
-- ✅ FSC (Financial Services Commission) regulatory approval
-- ✅ KYC/AML framework certified
-- ✅ Validator licensing system activated
+- 🔄 FSC (Financial Services Commission) regulatory engagement (in progress)
+- ✅ KYC/AML framework designed
+- ✅ Validator licensing system designed
 
 **March 2025**:
-- ✅ Bug bounty program launched ($500-$50,000 rewards)
-- ✅ Penetration testing completed (network, contracts, web interfaces)
+- 🔲 Bug bounty program (planned, not yet launched)
+- 🔲 Professional third-party audit (firm TBD, required before mainnet)
 - ✅ GDPR-like privacy framework implemented
 
 ### Q2 2025: Government Integration

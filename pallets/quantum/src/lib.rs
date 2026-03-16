@@ -739,37 +739,14 @@ pub mod pallet {
             nft_id: u64,
             seller: T::AccountId,
         },
-        /// Auction created (Phase 2.3.3)
-        AuctionCreated {
-            nft_id: u64,
-            seller: T::AccountId,
-            start_price: <T::Currency as Currency<T::AccountId>>::Balance,
-            end_block: BlockNumberFor<T>,
-        },
-        /// Bid placed on auction (Phase 2.3.3)
-        BidPlaced {
-            nft_id: u64,
-            bidder: T::AccountId,
-            bid_amount: <T::Currency as Currency<T::AccountId>>::Balance,
-        },
-        /// Auction finalized (Phase 2.3.3)
-        AuctionFinalized {
-            nft_id: u64,
-            winner: T::AccountId,
-            final_price: <T::Currency as Currency<T::AccountId>>::Balance,
-        },
+        // AuctionCreated, BidPlaced, AuctionFinalized, BridgeClaimed
+        // removed (E-7): orphaned events, never emitted via deposit_event.
         /// NFT bridge initiated (Phase 2.3.4)
         BridgeInitiated {
             nft_id: u64,
             owner: T::AccountId,
             destination_index: u8,  // Index into ChainDestination enum
             recipient: BoundedVec<u8, ConstU32<64>>,
-        },
-        /// NFT bridge claimed on destination chain (Phase 2.3.4)
-        BridgeClaimed {
-            nft_id: u64,
-            destination_index: u8,  // Index into ChainDestination enum
-            claim_tx_hash: [u8; 32],
         },
         /// NFT bridge cancelled by owner (Phase 2.3.4)
         BridgeCancelled {
@@ -853,6 +830,10 @@ pub mod pallet {
         BridgeAlreadyClaimed,
         /// Arithmetic overflow in financial calculation
         ArithmeticOverflow,
+        /// Caller does not have sufficient reputation
+        InsufficientReputation,
+        /// Executor or submitter cannot verify their own job
+        ExecutorCannotVerify,
     }
 
     #[pallet::call]
@@ -999,7 +980,14 @@ pub mod pallet {
 
                 // Validate status transition
                 match (&job.status, &new_status) {
-                    (JobStatus::Pending, JobStatus::Running) => {},
+                    (JobStatus::Pending, JobStatus::Running) => {
+                        // Submitter or assigned executor can start the job
+                        ensure!(
+                            caller == job.submitter ||
+                            job.executor.as_ref() == Some(&caller),
+                            Error::<T>::NotAuthorized
+                        );
+                    },
                     (JobStatus::Running, JobStatus::Completed) => {
                         job.completion_time = Some(frame_system::Pallet::<T>::block_number());
                         
@@ -1020,10 +1008,13 @@ pub mod pallet {
                         });
                     },
                     (_, JobStatus::Cancelled) => {
-                        // Allow cancellation from any status except Completed
-                        if job.status != JobStatus::Completed {
-                            let _ = T::Currency::unreserve(&job.submitter, job.dalla_cost);
-                        }
+                        // Only submitter can cancel, and only from Pending or Running
+                        ensure!(caller == job.submitter, Error::<T>::NotAuthorized);
+                        ensure!(
+                            job.status == JobStatus::Pending || job.status == JobStatus::Running,
+                            Error::<T>::InvalidStatusTransition
+                        );
+                        let _ = T::Currency::unreserve(&job.submitter, job.dalla_cost);
                     },
                     _ => return Err(Error::<T>::InvalidStatusTransition.into()),
                 }
@@ -1062,6 +1053,12 @@ pub mod pallet {
             accuracy_score: u8,
         ) -> DispatchResult {
             let executor = ensure_signed(origin)?;
+
+            // Only accounts with minimum reputation can act as executors
+            ensure!(
+                ValidatorReputation::<T>::get(&executor) >= 100,
+                Error::<T>::InsufficientReputation
+            );
 
             // Validate computation commitment is structurally sound:
             // - Must be at least 32 bytes (a valid hash commitment)
@@ -1231,6 +1228,18 @@ pub mod pallet {
             ensure!(job.submitter == owner || job.executor.as_ref() == Some(&owner), 
                 Error::<T>::NotAuthorized);
 
+            // Require job verification before minting
+            ensure!(
+                job.verification_status == VerificationStatus::Verified,
+                Error::<T>::InvalidVerificationProof
+            );
+
+            // Use actual job data instead of caller-supplied values
+            let circuit_qubits = job.num_qubits;
+            let accuracy = QuantumResults::<T>::get(&job_id)
+                .map(|r| r.accuracy_score)
+                .unwrap_or(0);
+
             // Charge minting fee (burned as deflationary mechanism)
             // TODO: Route to treasury when Treasury config type is added
             let mint_fee = T::NFTMintingFee::get();
@@ -1242,11 +1251,7 @@ pub mod pallet {
             ).map_err(|_| Error::<T>::InsufficientBalance)?;
 
             // Check if job was verified (Phase 2.3.2)
-            let verification_approved = if let Some(request) = VerificationRequests::<T>::get(&job_id) {
-                request.consensus_reached && request.consensus_result == Some(true)
-            } else {
-                false
-            };
+            let verification_approved = true; // Already enforced via ensure! above
 
             // Calculate NFT attributes using rarity algorithm (Phase 2.3.2)
             let (rarity, rarity_score, category) = Self::calculate_nft_attributes(
@@ -1256,12 +1261,12 @@ pub mod pallet {
                 verification_approved,
             );
 
-            // Generate unique NFT ID
-            let nft_id = NFTCounter::<T>::mutate(|counter| {
+            // Generate unique NFT ID with overflow protection
+            let nft_id = NFTCounter::<T>::try_mutate(|counter| {
                 let id = *counter;
-                *counter = counter.saturating_add(1);
-                id
-            });
+                *counter = counter.checked_add(1).ok_or(Error::<T>::ArithmeticOverflow)?;
+                Ok::<u64, Error<T>>(id)
+            })?;
 
             // Generate dynamic metadata URI (Phase 2.3.2)
             let metadata_uri = Self::generate_metadata_uri(
@@ -1458,6 +1463,9 @@ pub mod pallet {
             // Pay royalty to original minter if not seller
             if listing.original_minter != listing.seller {
                 T::Currency::transfer(&buyer, &listing.original_minter, royalty, ExistenceRequirement::KeepAlive)?;
+            } else {
+                // Original minter is selling — add royalty back to seller
+                T::Currency::transfer(&buyer, &listing.seller, royalty, ExistenceRequirement::KeepAlive)?;
             }
 
             // Transfer NFT
@@ -1767,6 +1775,17 @@ pub mod pallet {
             result_hash: [u8; 32],
         ) -> DispatchResult {
             let validator = ensure_signed(origin)?;
+
+            // Require minimum reputation to participate in verification
+            ensure!(
+                ValidatorReputation::<T>::get(&validator) >= 50,
+                Error::<T>::InsufficientReputation
+            );
+
+            // Prevent executor and submitter from verifying their own job
+            let job = QuantumJobs::<T>::get(&job_id).ok_or(Error::<T>::JobNotFound)?;
+            ensure!(job.executor.as_ref() != Some(&validator), Error::<T>::ExecutorCannotVerify);
+            ensure!(job.submitter != validator, Error::<T>::ExecutorCannotVerify);
             
             // Convert index to enum with validation
             let vote = match vote_index {
@@ -1818,8 +1837,8 @@ pub mod pallet {
 
             // Update vote counts only after successful push
             match vote {
-                VerificationVote::Approve => request.approvals += 1,
-                VerificationVote::Reject => request.rejections += 1,
+                VerificationVote::Approve => request.approvals = request.approvals.saturating_add(1),
+                VerificationVote::Reject => request.rejections = request.rejections.saturating_add(1),
                 VerificationVote::Abstain => {}, // Abstain doesn't count
             }
 

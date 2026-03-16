@@ -48,13 +48,12 @@ fn register_property_works() {
 #[test]
 fn register_property_requires_sufficient_balance() {
     new_test_ext().execute_with(|| {
-        // Create account with insufficient balance
-        let poor_account = 999;
-        Balances::make_free_balance_be(&poor_account, 1000); // Less than RegistrationDeposit
+        // Use KYC-verified account (EVE = L2) with insufficient balance
+        Balances::make_free_balance_be(&EVE, 1000); // Less than RegistrationDeposit
 
         assert_noop!(
             LandLedger::register_property(
-                RuntimeOrigin::signed(poor_account),
+                RuntimeOrigin::signed(EVE),
                 test_title(1),
                 test_description("Property"),
                 test_coordinates(0, 0),
@@ -206,7 +205,7 @@ fn transfer_property_works() {
             registered_at: 1,
             last_transferred: None,
             government_verified: true, // Pre-verified
-            surveyed: false,
+            surveyed: true,
             environmental_clearance: false,
             is_tourism_property: false,
             zoning: ZoningType::UrbanResidential,
@@ -261,7 +260,7 @@ fn transfer_property_requires_ownership() {
             registered_at: 1,
             last_transferred: None,
             government_verified: true,
-            surveyed: false,
+            surveyed: true,
             environmental_clearance: false,
             is_tourism_property: false,
             zoning: ZoningType::UrbanResidential,
@@ -300,7 +299,7 @@ fn transfer_property_requires_oracle_verification() {
             registered_at: 1,
             last_transferred: None,
             government_verified: true,
-            surveyed: false,
+            surveyed: true,
             environmental_clearance: false,
             is_tourism_property: false,
             zoning: ZoningType::UrbanResidential,
@@ -339,7 +338,7 @@ fn transfer_property_checks_sanctions() {
             registered_at: 1,
             last_transferred: None,
             government_verified: true, // Pre-verified
-            surveyed: false,
+            surveyed: true,
             environmental_clearance: false,
             is_tourism_property: false,
             zoning: ZoningType::UrbanResidential,
@@ -377,7 +376,7 @@ fn transfer_property_requires_buyer_kyc() {
             registered_at: 1,
             last_transferred: None,
             government_verified: true,
-            surveyed: false,
+            surveyed: true,
             environmental_clearance: false,
             is_tourism_property: false,
             zoning: ZoningType::UrbanResidential,
@@ -427,7 +426,7 @@ fn transfer_property_requires_government_verification() {
             registered_at: 1,
             last_transferred: None,
             government_verified: false, // NOT verified
-            surveyed: false,
+            surveyed: true,
             environmental_clearance: false,
             is_tourism_property: false,
             zoning: ZoningType::UrbanResidential,
@@ -860,7 +859,7 @@ fn setup_verified_property(owner: u64, property_id: u32) {
         registered_at: 1,
         last_transferred: None,
         government_verified: true,
-        surveyed: false,
+        surveyed: true,
         environmental_clearance: false,
         is_tourism_property: false,
         zoning: ZoningType::UrbanResidential,
@@ -1722,8 +1721,10 @@ fn transfer_updates_temporal_anchor_chain() {
         ));
         let genesis_hash = PropertyAnchorChain::<Test>::get(1).unwrap();
 
-        // Verify and transfer
+        // Verify and survey and transfer
         assert_ok!(LandLedger::verify_property(RuntimeOrigin::root(), 1));
+        assert_ok!(LandLedger::register_surveyor(RuntimeOrigin::root(), ALICE));
+        assert_ok!(LandLedger::survey_property(RuntimeOrigin::signed(ALICE), 1, 100, None));
         assert_ok!(LandLedger::transfer_property(
             RuntimeOrigin::signed(ALICE),
             1,
@@ -1759,6 +1760,8 @@ fn anchor_chain_structure_is_consistent() {
             100_000,
         ));
         assert_ok!(LandLedger::verify_property(RuntimeOrigin::root(), 1));
+        assert_ok!(LandLedger::register_surveyor(RuntimeOrigin::root(), ALICE));
+        assert_ok!(LandLedger::survey_property(RuntimeOrigin::signed(ALICE), 1, 100, None));
 
         // Transfer creates second anchor in chain
         assert_ok!(LandLedger::transfer_property(
@@ -1800,6 +1803,8 @@ fn anchor_chain_grows_with_multiple_transfers() {
             100_000,
         ));
         assert_ok!(LandLedger::verify_property(RuntimeOrigin::root(), 1));
+        assert_ok!(LandLedger::register_surveyor(RuntimeOrigin::root(), ALICE));
+        assert_ok!(LandLedger::survey_property(RuntimeOrigin::signed(ALICE), 1, 100, None));
 
         let hash0 = PropertyAnchorChain::<Test>::get(1).unwrap();
 
@@ -1928,6 +1933,7 @@ fn transfer_one_of_many_leaves_rest() {
         Properties::<Test>::mutate(1, |p| {
             if let Some(ref mut prop) = p {
                 prop.government_verified = true;
+                prop.surveyed = true;
             }
         });
 
@@ -2038,5 +2044,58 @@ fn multiple_registrations_reserve_deposits_cumulatively() {
         }
         assert_eq!(Balances::free_balance(ALICE), before - 3 * 10_000);
         assert_eq!(Balances::reserved_balance(ALICE), 3 * 10_000);
+    });
+}
+
+// ================================
+// Regression Tests — Audit Fix Verification
+// ================================
+
+/// REGRESSION (LL-CRIT-02): Transfer of property with an active encumbrance must be blocked.
+#[test]
+fn transfer_encumbered_property_rejected() {
+    new_test_ext().execute_with(|| {
+        // Create a verified, surveyed property owned by ALICE
+        let property = PropertyRecord {
+            property_id: 99,
+            owner: ALICE,
+            title_number: test_title(99).try_into().unwrap(),
+            description: test_description("Encumbered lot").try_into().unwrap(),
+            coordinates: test_coordinates(500, 500),
+            area_sqm: 200,
+            property_type: PropertyType::Residential,
+            assessed_value: 300_000,
+            registered_at: 1,
+            last_transferred: None,
+            government_verified: true,
+            surveyed: true,
+            environmental_clearance: false,
+            is_tourism_property: false,
+            zoning: ZoningType::UrbanResidential,
+            encumbrances: BoundedVec::default(),
+        };
+        Properties::<Test>::insert(99, property);
+
+        // Add an active mortgage encumbrance via government origin
+        assert_ok!(LandLedger::add_encumbrance(
+            RuntimeOrigin::root(),
+            99,
+            EncumbranceType::Mortgage,
+            BOB,
+            Some(150_000),
+            b"Mortgage lien".to_vec(),
+        ));
+
+        // Transfer must be rejected while encumbrance is active
+        assert_noop!(
+            LandLedger::transfer_property(
+                RuntimeOrigin::signed(ALICE),
+                99,
+                EVE,
+                300_000,
+                0, // Sale
+            ),
+            Error::<Test>::EncumbranceExists
+        );
     });
 }

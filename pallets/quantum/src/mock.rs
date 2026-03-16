@@ -126,6 +126,11 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
     ext.execute_with(|| {
         System::set_block_number(1);
         Timestamp::set_timestamp(1000);
+        // Grant reputation for test accounts acting as executors/validators
+        crate::ValidatorReputation::<Test>::insert(2u64, 100u32);
+        crate::ValidatorReputation::<Test>::insert(3u64, 50u32);
+        crate::ValidatorReputation::<Test>::insert(4u64, 50u32);
+        crate::ValidatorReputation::<Test>::insert(5u64, 50u32);
     });
     ext
 }

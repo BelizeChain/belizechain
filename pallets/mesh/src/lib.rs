@@ -259,13 +259,35 @@ pub mod pallet {
         #[pallet::constant]
         type HeartbeatTimeout: Get<u32>;
 
+        /// Maximum mesh transactions accepted per block (DoS protection)
+        #[pallet::constant]
+        type MaxMeshTxPerBlock: Get<u32>;
+
         /// Weight information
         type WeightInfo: WeightInfo;
     }
 
     // ========================
+    // Hooks
+    // ========================
+
+    #[pallet::hooks]
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
+            MeshTxThisBlock::<T>::kill();
+            // Phase-5 FIX: kill() is a DB write; account for ref_time + proof_size
+            Weight::from_parts(5_000_000, 64)
+                .saturating_add(T::DbWeight::get().writes(1))
+        }
+    }
+
+    // ========================
     // Storage Items
     // ========================
+
+    /// Per-block mesh transaction counter (reset each block via on_initialize)
+    #[pallet::storage]
+    pub type MeshTxThisBlock<T: Config> = StorageValue<_, u32, ValueQuery>;
 
     /// Registered mesh nodes: NodeId → MeshNode
     #[pallet::storage]
@@ -601,6 +623,10 @@ pub mod pallet {
         HeaderAlreadyExists,
         /// Emergency message too long for bounded vec (#80)
         MessageTooLong,
+        /// Too many mesh transactions this block (rate limit)
+        MeshTxRateLimitExceeded,
+        /// Alert ID counter overflow
+        AlertIdOverflow,
     }
 
     // ========================
@@ -694,6 +720,8 @@ pub mod pallet {
 
             // Update stats
             stats.total_nodes += 1;
+            // AUDIT FIX (C3): New nodes start active — increment active_nodes
+            stats.active_nodes = stats.active_nodes.saturating_add(1);
             if is_gateway {
                 stats.gateway_count += 1;
             }
@@ -752,6 +780,11 @@ pub mod pallet {
                     stats.emergency_beacon_count = stats.emergency_beacon_count.saturating_sub(1);
                 },
                 _ => {},
+            }
+
+            // AUDIT FIX (C3): Decrement active_nodes if the node was active
+            if node.active {
+                stats.active_nodes = stats.active_nodes.saturating_sub(1);
             }
 
             // Remove from owner's list
@@ -883,6 +916,10 @@ pub mod pallet {
             let config = MeshConfig::<T>::get();
             ensure!(hop_count <= config.max_hops, Error::<T>::ExcessiveHopCount);
 
+            // Per-block rate limit (DoS protection)
+            let tx_count = MeshTxThisBlock::<T>::get();
+            ensure!(tx_count < T::MaxMeshTxPerBlock::get(), Error::<T>::MeshTxRateLimitExceeded);
+
             // Deduplication
             ensure!(
                 !PendingMeshTransactions::<T>::contains_key(tx_hash) &&
@@ -921,6 +958,9 @@ pub mod pallet {
                     node.transactions_relayed += 1;
                 }
             });
+
+            // Increment per-block counter
+            MeshTxThisBlock::<T>::mutate(|c| *c = c.saturating_add(1));
 
             // Update network stats
             NetworkStats::<T>::mutate(|stats| {
@@ -1075,7 +1115,9 @@ pub mod pallet {
             };
 
             EmergencyAlerts::<T>::insert(alert_id, alert);
-            NextAlertId::<T>::put(alert_id + 1);
+            // AUDIT FIX (W1): Prevent NextAlertId overflow
+            let next_id = alert_id.checked_add(1).ok_or(Error::<T>::AlertIdOverflow)?;
+            NextAlertId::<T>::put(next_id);
 
             // O(1) counter maintenance (H-40)
             ActiveAlertCountPerDistrict::<T>::mutate(&district, |c| *c = c.saturating_add(1));

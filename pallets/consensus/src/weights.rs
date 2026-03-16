@@ -54,12 +54,21 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
             .saturating_add(T::DbWeight::get().writes(1))
     }
 
-    /// Storage: CurrentRound (r:1 w:1), RoundInfo (r:1 w:1),
-    ///          AIWorkSubmissions (r:N w:0), Validators (r:N w:N)
-    /// O(N) — iterates validators
+    /// Storage: CurrentRound (r:1 w:1), ConsensusRounds (r:1 w:1),
+    ///          total_issuance (r:1 w:0), GlobalAIMetrics (r:1 w:1)
+    ///          Per-validator: ConsensusValidators get+mutate (r:2 w:1),
+    ///          Currency::deposit_creating (r:1 w:1)
+    /// DOS-014 FIX: Parameterized by MaxValidators (100) for O(N) reward loop.
     fn finalize_consensus_round() -> Weight {
-        Weight::from_parts(80_000_000, 2560)
-            .saturating_add(T::DbWeight::get().reads(5))
-            .saturating_add(T::DbWeight::get().writes(4))
+        // Base cost: 4 reads + 3 writes
+        let base = Weight::from_parts(80_000_000, 2560)
+            .saturating_add(T::DbWeight::get().reads(4))
+            .saturating_add(T::DbWeight::get().writes(3));
+        // Per-validator cost: 3 reads + 2 writes + 5M ref_time + 256 proof_size
+        let per_validator = Weight::from_parts(5_000_000, 256)
+            .saturating_add(T::DbWeight::get().reads(3))
+            .saturating_add(T::DbWeight::get().writes(2));
+        // MaxValidators = 100
+        base.saturating_add(per_validator.saturating_mul(100))
     }
 }

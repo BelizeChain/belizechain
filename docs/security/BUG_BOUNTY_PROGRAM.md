@@ -674,13 +674,9 @@ We will NOT pursue legal action if you:
 
 | Rank | Researcher | Vulnerabilities | Total Bounties | Notable Finds |
 |------|------------|-----------------|----------------|---------------|
-| 🥇 | **samczsun** | 2 Critical, 3 High | $215,000 | Treasury multi-sig bypass, bridge double-spend |
-| 🥈 | **Anonymous** | 1 Critical, 5 High | $175,000 | Unlimited DALLA minting |
-| 🥉 | **Trail of Bits** | 4 High, 8 Medium | $150,000 | Comprehensive audit findings |
-| 4 | **OpenZeppelin** | 2 High, 10 Medium | $90,000 | Smart contract reentrancy issues |
-| 5 | **guido** | 1 High, 7 Medium | $65,000 | Governance vote manipulation |
+| | *(No entries yet — program not launched)* | | | |
 
-*Note: Above are example entries. Hall of Fame will be updated monthly after program launch.*
+*Hall of Fame will be populated after the bug bounty program launches.*
 
 ---
 
@@ -1044,11 +1040,11 @@ fn test_overflow_prevented() {
 
 ## Program Launch Timeline
 
-**Pre-Launch (November 2025):**
-- Finalize audit with Trail of Bits
-- Fix all P0/P1 findings
+**Pre-Launch:**
+- Complete professional third-party audit (firm TBD)
+- Fix all P0/P1 findings from internal audit
 - Set up HackerOne/Immunefi accounts
-- Allocate $500k bounty pool
+- Allocate bounty pool
 
 **Launch (December 2025):**
 - Announce program publicly (blog post, Twitter)

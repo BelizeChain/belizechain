@@ -131,6 +131,7 @@ impl pallet_belize_bns::Config for Test {
     type WeightInfo = crate::weights::SubstrateWeight<Test>;
     type Identity = MockIdentityProvider;
     type GovernanceOrigin = frame_system::EnsureRoot<u64>;
+    type MaxContentVersions = frame_support::traits::ConstU32<50>;
 }
 
 // Build genesis storage

@@ -1058,7 +1058,7 @@ fn process_tourism_payment_works() {
         ));
 
         // Tourist paid `amount` and received incentive from treasury
-        let incentive = sp_runtime::Permill::from_parts(500) * amount;
+        let incentive = sp_runtime::Permill::from_parts(50_000) * amount;
         assert_eq!(Balances::free_balance(tourist), tourist_before - amount + incentive);
         assert_eq!(Balances::free_balance(vendor),  vendor_before + amount);
         assert_eq!(Balances::free_balance(treasury), treasury_before - incentive);
@@ -1134,12 +1134,12 @@ fn process_tourism_payment_insufficient_balance_fails() {
 fn get_tourism_incentive_rate_returns_correct_rates() {
     new_test_ext().execute_with(|| {
         use crate::TourismCategory;
-        assert_eq!(Economy::get_tourism_incentive_rate(&TourismCategory::Accommodation), 500);
-        assert_eq!(Economy::get_tourism_incentive_rate(&TourismCategory::Dining),        300);
-        assert_eq!(Economy::get_tourism_incentive_rate(&TourismCategory::Tours),         700);
-        assert_eq!(Economy::get_tourism_incentive_rate(&TourismCategory::Transportation),200);
-        assert_eq!(Economy::get_tourism_incentive_rate(&TourismCategory::Shopping),      400);
-        assert_eq!(Economy::get_tourism_incentive_rate(&TourismCategory::Cultural),      800);
+        assert_eq!(Economy::get_tourism_incentive_rate(&TourismCategory::Accommodation), 50_000);
+        assert_eq!(Economy::get_tourism_incentive_rate(&TourismCategory::Dining),        30_000);
+        assert_eq!(Economy::get_tourism_incentive_rate(&TourismCategory::Tours),         70_000);
+        assert_eq!(Economy::get_tourism_incentive_rate(&TourismCategory::Transportation),20_000);
+        assert_eq!(Economy::get_tourism_incentive_rate(&TourismCategory::Shopping),      40_000);
+        assert_eq!(Economy::get_tourism_incentive_rate(&TourismCategory::Cultural),      80_000);
     });
 }
 
@@ -1289,10 +1289,6 @@ fn inflation_routes_to_public_goods_treasury() {
         assert!(pg_after > pg_before, "Public goods treasury should receive funds");
         // Wellbeing gets 5% of PG allocation
         assert!(wb_after > wb_before, "Wellbeing treasury should receive funds");
-
-        // Verify cumulative trackers
-        assert!(crate::CumulativePublicGoodsInflation::<Test>::get() > 0);
-        assert!(crate::CumulativeWellbeingInflation::<Test>::get() > 0);
     });
 }
 

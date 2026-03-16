@@ -118,6 +118,11 @@ pub mod pallet {
         #[pallet::constant]
         type MaxOracleDeviationBps: Get<u32>;
 
+        /// AUDIT FIX: Maximum number of open limit orders per account.
+        /// Prevents a single account from flooding the order book.
+        #[pallet::constant]
+        type MaxOrdersPerAccount: Get<u32>;
+
         /// Pallet ID used to derive the DEX pool escrow account
         #[pallet::constant]
         type DexPalletId: Get<PalletId>;
@@ -293,16 +298,18 @@ pub mod pallet {
     /// Next available order ID
     pub type NextOrderId<T: Config> = StorageValue<_, u32, ValueQuery>;
 
+    /// AUDIT FIX: Per-account open order counter to enforce MaxOrdersPerAccount.
     #[pallet::storage]
-    #[pallet::getter(fn daily_volume)]
-    /// Daily trading volume per pair
-    pub type DailyVolume<T: Config> = StorageMap<
+    #[pallet::getter(fn account_order_count)]
+    pub type AccountOrderCount<T: Config> = StorageMap<
         _,
         Blake2_128Concat,
-        (u8, u8),
-        u128,
+        T::AccountId,
+        u32,
         ValueQuery,
     >;
+
+    // DailyVolume removed (E-7): write-only accumulator, never read on-chain.
 
     #[pallet::storage]
     #[pallet::getter(fn tourism_traders)]
@@ -470,7 +477,10 @@ pub mod pallet {
             }
 
             DevSeedDone::<T>::put(true);
-            Weight::zero()
+            // DOS-008 FIX: Return actual consumed weight instead of zero.
+            // Operations: TradingPairs read+write, LiquidityProviders mutate, DevSeedDone write, event deposit.
+            T::DbWeight::get().reads(2).saturating_add(T::DbWeight::get().writes(3))
+                .saturating_add(Weight::from_parts(10_000_000, 1024))
         }
     }
 
@@ -591,6 +601,10 @@ pub mod pallet {
         ArithmeticOverflow,
         /// Order ID space exhausted
         OrderIdOverflow,
+        /// AUDIT FIX: Account has too many open orders
+        TooManyOrders,
+        /// AUDIT FIX: Cannot trade with yourself
+        SelfTradeNotAllowed,
     }
 
     #[pallet::call]
@@ -858,11 +872,6 @@ pub mod pallet {
 
             TradingPairs::<T>::insert(pair_key, pair);
 
-            // Update daily volume
-            DailyVolume::<T>::mutate(pair_key, |volume| {
-                *volume = volume.saturating_add(amount_in_u128);
-            });
-
             // Transfer treasury portion of fee from pool to treasury
             let treasury = T::Treasury::get();
             T::Currency::transfer(
@@ -931,6 +940,10 @@ pub mod pallet {
 
             ensure!(price > 0, Error::<T>::InvalidPrice);
 
+            // AUDIT FIX: Enforce per-account order limit
+            let current_count = AccountOrderCount::<T>::get(&who);
+            ensure!(current_count < T::MaxOrdersPerAccount::get(), Error::<T>::TooManyOrders);
+
             let order_id = Self::next_order_id();
             ensure!(order_id < u32::MAX, Error::<T>::OrderIdOverflow);
             let current_block = frame_system::Pallet::<T>::block_number();
@@ -961,6 +974,7 @@ pub mod pallet {
 
             OrderBook::<T>::insert(order_id, order);
             NextOrderId::<T>::put(order_id.saturating_add(1));
+            AccountOrderCount::<T>::mutate(&who, |c| *c = c.saturating_add(1));
 
             Self::deposit_event(Event::OrderPlaced {
                 order_id,
@@ -976,7 +990,7 @@ pub mod pallet {
 
         /// Execute a multihop market trade along a path of AssetIds (as u8)
         #[pallet::call_index(5)]
-        #[pallet::weight(T::WeightInfo::execute_trade())]
+        #[pallet::weight(T::WeightInfo::execute_trade().saturating_mul(path.len().saturating_sub(1) as u64))]
         pub fn execute_multihop_trade(
             origin: OriginFor<T>,
             path: Vec<u8>,
@@ -1015,12 +1029,10 @@ pub mod pallet {
                 let mut pair = Self::trading_pairs(pair_key).ok_or(Error::<T>::PairNotFound)?;
                 ensure!(pair.active, Error::<T>::PairNotActive);
 
-                let base_fee_rate = if is_tourism_trade {
-                    pair.fee_rate.saturating_sub(T::TourismDiscountRate::get())
-                } else {
-                    pair.fee_rate
-                };
-                let effective_fee_rate = base_fee_rate;
+                // H-3 FIX: Use get_effective_fee_rate() with .max(10) floor,
+                // matching execute_trade fee logic (volume tiers + tourism + min floor)
+                let is_verified_tourism = Self::is_verified_tourism_merchant(&who);
+                let effective_fee_rate = Self::get_effective_fee_rate(&who, is_verified_tourism && is_tourism_trade);
                 let fee = amount.saturating_mul(effective_fee_rate as u128) / 10_000;
                 let treasury_fee_rate = core::cmp::min(T::ProtocolFeeToTreasuryBps::get(), effective_fee_rate);
                 let treasury_fee = amount.saturating_mul(treasury_fee_rate as u128) / 10_000;
@@ -1031,17 +1043,32 @@ pub mod pallet {
                 // For direction: assume (a,b) means a is base_in, b is quote_out
                 let amount_out = Self::get_amount_out(amount_after_fee, pair.base_reserve, pair.quote_reserve)?;
 
-                // Oracle-based guard for WUSDC->BBZD hop
+                // H-4 FIX: Oracle guard for WUSDC->BBZD hop — use hard-reject
+                // matching execute_trade logic (reject if Oracle unavailable)
                 if a == AssetId::WUSDC.as_u8() && b == AssetId::BBZD.as_u8() {
-                    if let Some(oracle_rate) = Self::get_verified_exchange_rate(a, b) {
+                    if let Some(oracle_rate) = T::Oracle::get_crypto_exchange_rate(a, b) {
                         if amount > 0 {
                             let implied_rate = amount_out.saturating_mul(1_000_000) / amount;
                             let diff = implied_rate.abs_diff(oracle_rate);
                             if oracle_rate > 0 {
                                 let deviation_bps = diff.saturating_mul(10_000) / oracle_rate;
-                                ensure!(deviation_bps <= T::MaxOracleDeviationBps::get() as u128, Error::<T>::SlippageExceeded);
+                                let max_allowed = T::MaxOracleDeviationBps::get() as u128;
+                                if deviation_bps > max_allowed {
+                                    Self::deposit_event(Event::OracleGuardRejected {
+                                        pair: (a, b),
+                                        implied_rate,
+                                        oracle_rate,
+                                        deviation_bps,
+                                        max_allowed_bps: T::MaxOracleDeviationBps::get(),
+                                    });
+                                    return Err(Error::<T>::SlippageExceeded.into());
+                                }
                             }
                         }
+                    } else {
+                        // No Oracle rate available → hard-reject (same as execute_trade)
+                        Self::deposit_event(Event::OracleRateUnavailable { pair: (a, b) });
+                        return Err(Error::<T>::OracleRateUnavailable.into());
                     }
                 }
 
@@ -1140,7 +1167,7 @@ pub mod pallet {
         /// Burns `lp_tokens` from the caller's LP balance and returns proportional
         /// base and quote reserves from the pool.
         #[pallet::call_index(9)]
-        #[pallet::weight(T::WeightInfo::add_liquidity())] // similar weight profile
+        #[pallet::weight(T::WeightInfo::remove_liquidity())]
         pub fn remove_liquidity(
             origin: OriginFor<T>,
             base_asset: u8,
@@ -1255,6 +1282,7 @@ pub mod pallet {
 
             // Remove from orderbook
             OrderBook::<T>::remove(order_id);
+            AccountOrderCount::<T>::mutate(&who, |c| *c = c.saturating_sub(1));
 
             Self::deposit_event(Event::OrderCancelled {
                 order_id,

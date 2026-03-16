@@ -28,12 +28,13 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
             .saturating_add(T::DbWeight::get().writes(2))
     }
 
-    /// Storage: Proposals (r:1 w:1), Votes iteration (r:N w:0),
-    ///          Currency::unreserve (r:1 w:1)
-    /// O(N) — iterates voters
+    /// Storage: Proposals (r:1 w:1), Currency::unreserve (r:1 w:1),
+    ///          ProposalEnactmentBlock (w:1 if approved)
+    /// DOS-003 FIX: Corrected I/O count — tallies are pre-computed in Proposal struct,
+    /// no voter iteration occurs at finalization time.
     fn finalize_proposal() -> Weight {
         Weight::from_parts(60_000_000, 2560)
-            .saturating_add(T::DbWeight::get().reads(4))
+            .saturating_add(T::DbWeight::get().reads(3))
             .saturating_add(T::DbWeight::get().writes(3))
     }
 

@@ -29,7 +29,7 @@ This document defines BelizeChain's comprehensive compliance framework for meeti
 - ✅ FSC Registration: In progress (expected Q1 2026)
 - ✅ KYC/AML Framework: Implemented (Compliance pallet)
 - ✅ Data Sovereignty: Achieved (local IPFS/Arweave)
-- 🟡 Annual Audit: Pending (Trail of Bits scheduled Q1 2026)
+- 🟡 Annual Audit: Pending (professional audit firm TBD, not yet engaged)
 - 🟡 Penetration Testing: Pending (SR Labs scheduled Q1 2026)
 
 ---

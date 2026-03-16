@@ -97,6 +97,12 @@ pub fn local_testnet_config() -> Result<ChainSpec, String> {
         ],
         true,
     )?)
+    .with_boot_nodes(
+        crate::validator_config::BootstrapNodes::testnet()
+            .into_iter()
+            .filter_map(|addr| addr.parse().ok())
+            .collect()
+    )
     .build())
 }
 
@@ -109,6 +115,12 @@ pub fn belizechain_mainnet_config() -> Result<ChainSpec, String> {
     .with_id("belizechain")
     .with_chain_type(ChainType::Live)
     .with_genesis_config_patch(mainnet_genesis()?)
+    .with_boot_nodes(
+        crate::validator_config::BootstrapNodes::mainnet()
+            .into_iter()
+            .filter_map(|addr| addr.parse().ok())
+            .collect()
+    )
     .build())
 }
 
