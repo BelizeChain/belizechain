@@ -882,6 +882,7 @@ dependencies = [
  "sc-consensus",
  "sc-consensus-babe",
  "sc-consensus-grandpa",
+ "sc-consensus-slots",
  "sc-executor",
  "sc-keystore",
  "sc-network",
@@ -898,6 +899,7 @@ dependencies = [
  "sp-api",
  "sp-block-builder",
  "sp-blockchain",
+ "sp-consensus",
  "sp-consensus-babe",
  "sp-consensus-grandpa",
  "sp-core 39.0.0 (git+https://github.com/paritytech/polkadot-sdk?rev=ad8a23ac25e6ad4f0afe27f2960565f0e8741828)",
@@ -6361,6 +6363,7 @@ dependencies = [
 name = "pallet-belize-consensus"
 version = "0.1.0"
 dependencies = [
+ "fips204",
  "frame-benchmarking",
  "frame-support",
  "frame-system",
@@ -6385,6 +6388,7 @@ dependencies = [
  "frame-support",
  "frame-system",
  "pallet-balances",
+ "pallet-belize-compliance",
  "pallet-timestamp",
  "parity-scale-codec",
  "scale-info",
@@ -6455,6 +6459,7 @@ dependencies = [
 name = "pallet-belize-justice"
 version = "0.1.0"
 dependencies = [
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
  "pallet-balances",
@@ -6477,6 +6482,7 @@ dependencies = [
  "log",
  "pallet-balances",
  "pallet-belize-common",
+ "pallet-belize-identity",
  "pallet-insecure-randomness-collective-flip",
  "pallet-timestamp",
  "parity-scale-codec",
@@ -6512,6 +6518,7 @@ dependencies = [
 name = "pallet-belize-moderation"
 version = "0.1.0"
 dependencies = [
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
  "pallet-balances",
@@ -6583,6 +6590,7 @@ dependencies = [
  "frame-benchmarking",
  "frame-support",
  "frame-system",
+ "log",
  "pallet-balances",
  "parity-scale-codec",
  "scale-info",
@@ -6596,6 +6604,7 @@ dependencies = [
 name = "pallet-belize-whistleblower"
 version = "0.1.0"
 dependencies = [
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
  "pallet-balances",

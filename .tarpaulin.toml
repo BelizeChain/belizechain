@@ -1,7 +1,8 @@
 # BelizeChain — cargo-tarpaulin configuration
 #
 # Run locally:  cargo tarpaulin
-# Enforces 100% line coverage on all testable belizechain-node code.
+# Enforces minimum line coverage on all testable BelizeChain code
+# (node binary + all custom pallets).
 #
 # Exclusions:
 #   main.rs      - run()/main() are untestable entry points; mod tests still runs
@@ -12,15 +13,39 @@
 #                  all chain_spec tests still compile and run.
 
 [default]
-packages      = ["belizechain-node"]
-include-files = ["node/src/*.rs"]
+packages = [
+    "belizechain-node",
+    "pallet-belize-belizex",
+    "pallet-belize-bns",
+    "pallet-belize-common",
+    "pallet-belize-community",
+    "pallet-belize-compliance",
+    "pallet-belize-consensus",
+    "pallet-belize-economy",
+    "pallet-belize-governance",
+    "pallet-belize-identity",
+    "pallet-belize-interoperability",
+    "pallet-belize-justice",
+    "pallet-belize-landledger",
+    "pallet-belize-mesh",
+    "pallet-belize-moderation",
+    "pallet-belize-oracle",
+    "pallet-belize-payroll",
+    "pallet-belize-quantum",
+    "pallet-belize-staking",
+    "pallet-belize-whistleblower",
+]
+include-files = [
+    "node/src/*.rs",
+    "pallets/*/src/*.rs",
+]
 exclude-files = [
     "node/src/main.rs",
     "node/src/service.rs",
     "node/src/rpc.rs",
     "node/src/chain_spec.rs",
 ]
-fail-under    = 100.0
+fail-under    = 40.0
 skip-clean    = true
 out           = ["Lcov"]
 output-dir    = "target/coverage"

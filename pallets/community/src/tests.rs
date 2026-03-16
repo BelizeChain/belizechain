@@ -300,6 +300,7 @@ fn test_update_srs_permissionless() {
         ));
 
         // Account 2 can update account 1's SRS
+        System::set_block_number(101);
         assert_ok!(Community::update_srs(RuntimeOrigin::signed(2), 1));
     });
 }
@@ -308,6 +309,7 @@ fn test_update_srs_permissionless() {
 fn test_update_srs_requires_verification() {
     new_test_ext().execute_with(|| {
         // Account 99 is not verified (only 1-10 are verified in mock)
+        System::set_block_number(101);
         assert_noop!(
             Community::update_srs(RuntimeOrigin::signed(1), 99),
             Error::<Test>::NotVerified
@@ -1929,13 +1931,13 @@ fn test_cannot_self_refer() {
 #[test]
 fn test_cannot_refer_nonexistent_user() {
     new_test_ext().execute_with(|| {
-        // Try to refer user without SRS data - should fail
+        // Try to refer user without KYC - should fail with BeneficiaryNotVerified
         assert_noop!(
             Community::claim_referral_reward(
                 RuntimeOrigin::signed(1),
-                99 // Non-existent user
+                99 // Non-existent user (not KYC verified)
             ),
-            Error::<Test>::InvalidReferral
+            Error::<Test>::BeneficiaryNotVerified
         );
     });
 }
@@ -2239,6 +2241,7 @@ fn test_pouw_contribution_updates_srs() {
         Community::record_pouw_contribution(&1, 9_000, 9_000, 9_000).ok();
 
         // Trigger SRS update (in real world, would be called by staking pallet or scheduled task)
+        System::set_block_number(101);
         Community::update_srs(RuntimeOrigin::signed(1), 1).ok();
 
         // SRS should have increased
@@ -2271,6 +2274,7 @@ fn test_governance_participation_proposal_submission() {
         Community::record_proposal_submission(&1).ok();
 
         // Trigger SRS update (in production, would be called by governance pallet or scheduled task)
+        System::set_block_number(101);
         Community::update_srs(RuntimeOrigin::signed(1), 1).ok();
 
         // Verify participation recorded
@@ -2296,6 +2300,7 @@ fn test_governance_participation_vote_cast() {
         Community::record_vote_cast(&1).ok();
 
         // Trigger SRS update
+        System::set_block_number(101);
         Community::update_srs(RuntimeOrigin::signed(1), 1).ok();
 
         // Verify participation recorded
@@ -2317,6 +2322,7 @@ fn test_governance_participation_proposal_approval() {
         Community::record_proposal_approval(&1).ok();
 
         // Trigger SRS update
+        System::set_block_number(101);
         Community::update_srs(RuntimeOrigin::signed(1), 1).ok();
 
         // Verify participation recorded
@@ -2342,6 +2348,7 @@ fn test_governance_participation_council_activity() {
         Community::record_council_activity(&1).ok();
 
         // Trigger SRS update
+        System::set_block_number(101);
         Community::update_srs(RuntimeOrigin::signed(1), 1).ok();
 
         // Verify participation recorded
@@ -2738,6 +2745,7 @@ fn test_full_ecosystem_integration() {
         // Part: 46 * 50 = 2300
         // Honesty: (5/10)*1000 = 500
         // Total: 2500 + 2300 + 500 = 5300 (Gold tier!)
+        System::set_block_number(101);
         Community::update_srs(RuntimeOrigin::signed(1), 1).ok();
 
         // 5. Check rank increased
@@ -2790,6 +2798,7 @@ fn test_governance_participation_affects_honesty() {
         }
 
         // Trigger SRS update to calculate honesty
+        System::set_block_number(101);
         Community::update_srs(RuntimeOrigin::signed(1), 1).ok();
 
         let stats_after = UserProposals::<Test>::get(1);
@@ -2801,5 +2810,36 @@ fn test_governance_participation_affects_honesty() {
         let srs = Community::get_srs(&1).unwrap();
         let expected_honesty = (3 * 1000) / 5; // 600
         assert_eq!(srs.honesty_rating, expected_honesty);
+    });
+}
+
+// ================================
+// Regression Tests — Audit Fix Verification
+// ================================
+
+/// REGRESSION (CM-1): ProposalCount overflow must be caught via checked_add.
+/// When ProposalCount is at u32::MAX, submit_community_proposal must fail.
+#[test]
+fn proposal_count_overflow_rejected() {
+    new_test_ext().execute_with(|| {
+        System::set_block_number(1);
+
+        // Set ProposalCount to u32::MAX to trigger overflow on next proposal
+        ProposalCount::<Test>::put(u32::MAX);
+
+        let proposer = 1u64;
+        Balances::make_free_balance_be(&proposer, 1_000_000);
+
+        assert_noop!(
+            Community::submit_community_proposal(
+                RuntimeOrigin::signed(proposer),
+                CommunityProposalType::LocalProject.as_u8(),
+                2u64,     // beneficiary
+                10_000,   // amount
+                b"Overflow test".to_vec().try_into().unwrap(),
+                b"This should trigger overflow guard".to_vec().try_into().unwrap(),
+            ),
+            Error::<Test>::ProposalCounterOverflow
+        );
     });
 }

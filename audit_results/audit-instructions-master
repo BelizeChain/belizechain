@@ -1,621 +1,555 @@
-# BelizeChain — Cryptographic Audit: Master Prompt (v1)
+# BelizeChain — Application Layer Audit Bundle
+## 6 Master Prompts (v1 Enhanced)
+
+> **Advisory database current as of: March 8, 2026**
+> **All pre-verified observations sourced from direct analysis of `runtime/src/lib.rs`**
+> **Every observation requires re-confirmation with quoted pallet source code before reporting**
+
+---
+
+## What This Bundle Covers
+
+The 6 infrastructure audits (Consensus, Cryptography, Networking, DoS, Memory Safety, Dependency) address the protocol layer. This bundle addresses the **application layer** — the business logic that makes BelizeChain a sovereign national blockchain rather than a generic chain. These audits are distinct from the infrastructure audits and should be run independently.
+
+---
+
+## Audit Index
+
+| Prompt | Finding Prefix | Primary Pallet(s) | Highest Pre-Verified Risk | Recommended Priority |
+|---|---|---|---|---|
+| **A1 — Governance & Access Control** | `GOV-` | `pallets/governance/`, `pallets/collective/` | Sudo live, `SetMembersOrigin = EnsureRoot` on both collectives — no on-chain removal mechanism | 2 |
+| **A2 — Economic & Tokenomics** | `ECON-` | `pallets/economy/`, `pallets/belizex/`, `pallets/community/` | Dual independent MaxSupply declarations — single authoritative counter unverified | 3 |
+| **A3 — Bridge & Interoperability** | `BRIDGE-` | `pallets/interoperability/` | `PassthroughPQVerifier` (AR-6 acknowledged) + 10-minute challenge window | 1 |
+| **A4 — Identity, KYC & Compliance** | `KYC-` | `pallets/identity/`, `pallets/compliance/` | 6 inconsistent KYC providers — any divergence is a bypass; PII storage method unverified | 4 |
+| **A5 — Smart Contracts & GEM Platform** | `CONTRACT-` | `pallets/contracts/`, ink! contracts | `CallFilter = Everything` — contracts can dispatch any RuntimeCall | 6 |
+| **A6 — Oracle Security** | `ORACLE-` | `pallets/oracle/` | `OracleAdminOrigin = TechnicalCouncilMember` — single key controls all oracle outcomes | 5 |
+
+---
+
+## Recommended Execution Order
+
+```
+Priority 1 → A3 Bridge       (highest TVL risk — bridges get exploited first)
+Priority 2 → A1 Governance   (Sudo still live — sovereignty risk)
+Priority 3 → A2 Economics    (supply cap, peg, double-claim vectors)
+Priority 4 → A4 Identity/KYC (legal obligations — FATF compliance)
+Priority 5 → A6 Oracle       (trust root for everything above)
+Priority 6 → A5 Contracts    (lower risk if contract allowlist added first)
+```
+
+---
+
+## How These Prompts Are Structured
+
+Each of the 6 prompts follows the v2 enhanced format established for the infrastructure audits:
+
+- **8 Operating Rules** — numbered, named, with quoted code evidence from `runtime/src/lib.rs` where applicable
+- **Pre-Verified Observations** — confirmed findings from runtime analysis embedded as starting points; each must be re-verified with a quote from the pallet source
+- **Pre-Audit Checklist** — shell-executable commands to complete before writing any finding
+- **5 Audit Areas** — targeted questions with specific `grep` commands
+- **Deliverables (D1–D7)** — structured output format: Pre-Audit Checklist → Executive Summary → Findings Table → Detailed Findings → Acknowledged Issues → Unverified Observations → Audit Gaps
+- **How to Run** — copy-pasteable bash block with all commands
+- **Severity Definitions** — tuned to the specific audit domain
+- **Anti-Hallucination Self-Check** — 12 domain-specific checkboxes
+
+---
+
+## Cross-Audit Dependencies
+
+Some findings span multiple audits. These dependencies are documented within each prompt but summarized here:
+
+| Finding | Primary Audit | Affects |
+|---|---|---|
+| `OracleAdminOrigin = TechnicalCouncilMember` | A6 Oracle | A1 Governance (voter suppression), A4 KYC (attestation manipulation) |
+| `MaxAccountsPerIdentity = 5` | A4 KYC | A1 Governance (QV Sybil), A4 KYC (sanctions bypass) |
+| `CRYPTO-PRE-003` benchmark bypass | Crypto Audit (infrastructure) | A4 KYC (all checks disabled in benchmarks) |
+| `PassthroughPQVerifier` (AR-6) | Crypto Audit (infrastructure) | A3 Bridge (threshold mechanics) |
+| `RandomnessFromOneEpochAgo` | Crypto Audit (infrastructure) | A3 Bridge, A5 Contracts |
+| `CallFilter = Everything` | A5 Contracts | A1 Governance, A4 KYC (contract can call any pallet) |
+
+Cross-audit findings must be noted with cross-references but **not re-reported** in both audits. The primary audit owns the finding. Secondary audits document the dependency.
+
+---
+
+## Critical Pre-Mainnet Checklist (From All 6 Audits)
+
+The following items are confirmed from `runtime/src/lib.rs` and must be resolved before mainnet regardless of other audit findings:
+
+```
+[ ] A1-GOV  — Sudo removal: establish a specific block target and on-chain enforcement mechanism
+[ ] A1-GOV  — ConstitutionalAdminOrigin TODO: replace TechnicalCouncilSuperMajority with dual-council
+[ ] A2-ECON — Verify single authoritative supply counter across all mint-capable pallets
+[ ] A3-BRG  — Replace PassthroughPQVerifier with real Falcon/Dilithium implementation (AR-6)
+[ ] A4-KYC  — Confirm production builds exclude `runtime-benchmarks` feature (CRYPTO-PRE-003)
+[ ] A4-KYC  — Verify PII is stored as commitments, not cleartext
+[ ] A5-CON  — Document CallFilter = Everything as intentional policy or restrict to an allowlist
+[ ] A6-ORC  — Change OracleAdminOrigin from TechnicalCouncilMember to TechnicalCouncilMajority
+[ ] A6-ORC  — Implement behavior flag rate limiting per oracle operator
+```
+
+---
+
+*BelizeChain Application Layer Audit Bundle — v1 Enhanced — March 8, 2026*
+*6 audit prompts built from direct analysis of `runtime/src/lib.rs`.*
+*Audit sequence: A3 Bridge → A1 Governance → A2 Economics → A4 KYC → A6 Oracle → A5 Contracts*
+
+---
+---
+
+# BelizeChain — Governance & Access Control Audit: Master Prompt (v1)
 
 ---
 
 ## ⚠️ AI AUDITOR OPERATING RULES — READ BEFORE PROCEEDING
 
-This audit covers key generation, signing schemes, hash functions, and cryptographic
-primitives across BelizeChain's runtime and node layer. Cryptographic audits are
-particularly prone to AI hallucination because:
-
-1. Many crypto vulnerabilities are **configuration issues**, not code bugs — they look correct at a glance
-2. Substrate's crypto stack has well-known defaults that this codebase **partially overrides**
-3. Several **known issues already exist in this codebase** (documented with AR- prefixes) — the
-   auditor must distinguish between acknowledged issues and new findings
+These rules exist because BelizeChain's governance was built across **6 incremental phases**, each layering new constraints on top of older code paths. This architecture creates a specific failure mode: a constraint added in Phase 3 may not be enforced by a function written in Phase 1. There is also a live `pallet_sudo` with no on-chain removal mechanism — the single highest-privilege attack vector on the chain.
 
 **Violating any rule below invalidates the finding.**
 
 ---
 
-### RULE 1 — QUOTE THE CODE, THEN MAKE THE CLAIM
+### RULE 1 — SUDO IS A STANDING CRITICAL REGARDLESS OF OTHER FINDINGS
 
-Every finding must open with the exact code excerpt that demonstrates the issue:
+From `runtime/src/lib.rs`, confirmed:
+
+```rust
+Sudo: pallet_sudo,
+
+// Both collectives — Instance1 (TechnicalCouncil) and Instance2 (GovernanceCouncil)
+type SetMembersOrigin  = EnsureRoot<Self::AccountId>;
+type DisapproveOrigin  = EnsureRoot<Self::AccountId>;
+type KillOrigin        = EnsureRoot<Self::AccountId>;
 ```
-File: runtime/src/lib.rs
-Line: ~180
-Code: type MaxSetIdSessionEntries = ConstU64<0>;
-```
-No quote = `UNVERIFIED`. Do not report `UNVERIFIED` items in the main Findings Table.
+
+`EnsureRoot` passes only for the Sudo key holder. This means a single compromised key can:
+- Replace all 12 TechnicalCouncil members in one transaction
+- Replace all 32 GovernanceCouncil members in one transaction
+- Kill any live proposal in either collective mid-vote
+- Disapprove any motion without governance participation
+
+A comment states this is "for bootstrapping only" with a Phase 0 Step 0.4 removal plan. **There is no on-chain time-lock, scheduled call, or enforced migration.** Until the removal is proven, every governance finding must be assessed against the question: *"Does this require a governance logic exploit, or just the Sudo key?"* — because the Sudo key is the faster attack path to the same outcome.
+
+Do not treat Sudo removal as complete unless you can cite the exact block number, migration code, or scheduled call in the repository.
 
 ---
 
-### RULE 2 — CONFIDENCE MARKERS ARE MANDATORY
+### RULE 2 — PHASE INVARIANT CONTINUITY IS THE CORE AUDIT RISK
+
+BelizeChain governance has 6 phases. Each phase added new checks (KYC requirements, dual-house ratification, oracle attestation, behavior flags). The risk is that **code written in Phase 1 was not retrofitted** when Phase 3 constraints were added.
+
+Concretely: if `submit_proposal` was written in Phase 1 accepting `EnsureSigned`, and Phase 3 added a KYC gate in a *new* extrinsic `submit_governance_proposal`, the old extrinsic may still exist and bypass the KYC gate.
+
+Before reporting any governance path as secure, verify that the Phase-latest constraint is enforced on **every code path to that outcome**, not just the primary one.
+
+---
+
+### RULE 3 — ORACLE BEHAVIOR FLAGS ARE A VOTER SUPPRESSION ATTACK VECTOR
+
+From `runtime/src/lib.rs`, confirmed:
+
+```rust
+pub struct GovernanceBehaviorProvider;
+impl pallet_belize_governance::BehaviorFlagProvider<AccountId, BlockNumber>
+    for GovernanceBehaviorProvider {
+    fn has_active_flag(account: &AccountId) -> bool {
+        Oracle::has_active_behavior_flag(account)
+    }
+}
+
+// oracle config
+type OracleAdminOrigin   = TechnicalCouncilMember;   // single member
+type BehaviorCooldownBlocks = BehaviorCooldownBlocks; // 14,400 blocks = 24h
+```
+
+Attack chain: **1 council member** → adds oracle operator → operator flags opposition voters → flags block governance participation for 24h → imposed before critical vote → passes with only cooperative votes.
+
+This attack requires no special privileges beyond a single TechnicalCouncil member account. Every finding about governance integrity must account for this pre-vote suppression vector. Verify whether the oracle pallet rate-limits or logs flag submissions.
+
+---
+
+### RULE 4 — DISTINGUISH WHAT YOU READ FROM WHAT YOU INFER
+
+Use explicit confidence markers throughout your analysis:
 
 | Marker | Meaning |
 |---|---|
-| `[VERIFIED]` | Exact code read and quoted |
-| `[INFERRED]` | Logical conclusion from code read — needs confirmation |
-| `[ASSUMED]` | Based on Substrate conventions — not confirmed in this repo |
-| `[UNVERIFIED]` | File not read — do not report as finding |
+| `[VERIFIED]` | Exact code quoted — you can cite the line |
+| `[INFERRED]` | Conclusion drawn from code you read — requires confirmation |
+| `[ASSUMED]` | Substrate convention — not confirmed in this repo |
+| `[UNVERIFIED]` | File not read — do not report as a finding |
+
+Every finding in the Findings Table must be `[VERIFIED]` or `[INFERRED]`. All `[ASSUMED]` and `[UNVERIFIED]` items go in the Unverified Observations section only.
 
 ---
 
-### RULE 3 — DISTINGUISH ACKNOWLEDGED VS NEW FINDINGS
+### RULE 5 — MATHEMATICAL CLAIMS REQUIRE WORKED EXAMPLES
 
-This codebase uses `AR-` prefixed comments to acknowledge known issues. Before
-reporting any finding, search for a corresponding `AR-` comment nearby. If one
-exists, classify the finding as:
+For quadratic voting, vote weight calculations, and threshold arithmetic, you must:
+1. Show the formula as implemented in code
+2. Work through a concrete numeric example
+3. Show the attack scenario numerically
 
-- `[ACKNOWLEDGED — AR-N]` — already known, report in a separate "Acknowledged Issues" table
-- `[NEW FINDING]` — not previously acknowledged, report in main Findings Table
+For example: if you claim `MaxAccountsPerIdentity = 5` enables a QV Sybil attack, you must calculate the vote count difference between a single 10,000-unit account (100 votes) versus five 2,000-unit accounts (5 × sqrt(2,000) ≈ 5 × 44 = 220 votes) and confirm this formula matches the actual pallet implementation.
 
-The most important acknowledged issue for this audit:
-```rust
-// AR-6: Passthrough verifier — replace with a real Falcon/Dilithium
-// host-function verifier before mainnet deployment.
-type PQVerifier = pallet_belize_interoperability::PassthroughPQVerifier;
-```
-This is Critical severity but already acknowledged. It must appear in the report
-but must NOT be counted as a new finding.
+Do not assert a mathematical vulnerability without the numbers.
 
 ---
 
-### RULE 4 — DO NOT ASSUME SUBSTRATE CRYPTO DEFAULTS
+### RULE 6 — HANDLE MISSING FILES EXPLICITLY
 
-The following Substrate defaults have been **verified as present** in this codebase
-from reading `runtime/src/lib.rs` and `node/src/service.rs`. Do not re-verify these
-as findings — they are confirmed correct:
+If any expected file does not exist:
 
-- ✅ `type Hashing = BlakeTwo256` — standard, secure
-- ✅ `type Hash = H256` — standard 256-bit hash
-- ✅ BABE using sr25519 (`AuthorityId = BabeId`)
-- ✅ GRANDPA using ed25519 (`AuthorityId = GrandpaId`)
-- ✅ `justification_import: Some(Box::new(grandpa_block_import))` — present
-- ✅ GRANDPA `EquivocationReportSystem` wired
-- ✅ BABE `EquivocationReportSystem` wired
-- ✅ `SS58Prefix = 1981` — custom, non-conflicting with other chains
-- ✅ `AllowedSlots::PrimaryAndSecondaryVRFSlots` — correct for liveness
-
-Do not report any of the above as vulnerabilities. Doing so wastes audit time and
-inflates the findings count with false positives.
+1. Do **not** skip it silently
+2. Do **not** invent what it might contain
+3. Write: `FILE NOT FOUND: [path] — audit of this area is INCOMPLETE`
+4. Flag in Executive Summary as an audit gap
 
 ---
 
-### RULE 5 — THE BENCHMARK BYPASS IS THE MOST DANGEROUS PATTERN IN THIS CODEBASE
+### RULE 7 — NO SPECULATIVE SEVERITY UPGRADES
 
-The following pattern appears **at least 12 times** in `runtime/src/lib.rs`:
-
-```rust
-#[cfg(feature = "runtime-benchmarks")]
-return true;  // or Some(3), or false for is_sanctioned
-#[cfg(not(feature = "runtime-benchmarks"))]
-// real check here
-```
-
-This pattern bypasses **KYC, sanctions screening, and identity verification** when
-the `runtime-benchmarks` feature is compiled in. For every provider struct, verify:
-
-1. Is the `runtime-benchmarks` bypass present? (quote it)
-2. Is there a CI/CD guard ensuring benchmarks are never compiled into production WASM?
-3. Could a malicious validator or node operator enable this feature in production?
-4. Is the benchmark WASM binary kept strictly separate from the production WASM binary?
-
-This is not theoretical — if `runtime-benchmarks` is accidentally compiled into the
-production runtime, **every KYC and sanctions check on the chain returns the permissive
-value**. This is a Critical finding if no build-time separation is enforced.
-
----
-
-### RULE 6 — PQ CRYPTOGRAPHY CLAIMS REQUIRE SPECIAL TREATMENT
-
-The README mentions "Quantum-resistant cryptography" and the runtime has:
-- `type PQSignatureThreshold: Get<u32>` — set to 3
-- `type PQVerifier = pallet_belize_interoperability::PassthroughPQVerifier`
-- `PQSignatureThreshold = 3` — 3 of 5 validators
-
-`PassthroughPQVerifier` means **no post-quantum signature is actually verified**.
-The threshold of 3 is meaningless if verification always returns true.
-
-Do NOT report this as a generic "PQ not implemented" issue. Report it specifically:
-the bridge accepts any signature claiming to be a Falcon/Dilithium signature without
-verification. This means bridge transactions can be forged with zero cryptographic
-work by any party that can submit an extrinsic.
-
-You must read `pallets/interoperability/src/lib.rs` to confirm `PassthroughPQVerifier`
-implementation. If it does `fn verify(...) -> bool { true }` or similar, that is the
-exact code to quote.
-
----
-
-### RULE 7 — RANDOMNESS PREDICTABILITY WINDOW MUST BE CALCULATED
-
-The runtime uses `pallet_babe::RandomnessFromOneEpochAgo<Runtime>` for:
-- `pallet_belize_governance` (proposal randomness)
-- `pallet_belize_staking` (validator selection)
-- `pallet_belize_interoperability` (bridge randomness)
-- `pallet_contracts` (contract randomness)
-
-`RandomnessFromOneEpochAgo` means the randomness used **now** was determined
-**one epoch ago**. With `BabeEpochDuration = 14_400` blocks at 6 seconds each:
-
-```
-Predictability window = 14,400 blocks × 6 seconds = 86,400 seconds = 24 hours
-```
-
-An attacker who can observe the epoch-ago randomness seed has **24 hours of advance
-knowledge** of any randomness-dependent outcome. For each usage site, the auditor
-must assess: can this 24-hour window be exploited?
-
-Do not claim this is automatically a Critical finding. It depends on what the
-randomness is used for. Assess each pallet independently.
+A finding that requires 4+ preconditions (e.g., compromised council member + malicious oracle operator + specific vote timing + flagging before vote open) must have its severity reduced. List every required precondition explicitly. Reduce severity by one level for each major unconfirmed precondition. Mark `[THEORETICAL]` if any step relies on unverified behavior.
 
 ---
 
 ### RULE 8 — SCOPE BOUNDARIES
 
 **In scope:**
-- `runtime/src/lib.rs` — all crypto configuration (already read)
-- `node/src/service.rs` — key store, BABE/GRANDPA wiring (already read)
-- `pallets/identity/src/lib.rs` — BelizeID, KYC, SSN/Passport handling
-- `pallets/interoperability/src/lib.rs` — bridge signature verification, PassthroughPQVerifier
-- `pallets/compliance/src/lib.rs` — sanctions list, AML hashing
-- `pallets/staking/src/lib.rs` — validator key management
-- `Cargo.toml` — crypto crate versions
+- `pallets/governance/src/` — all files
+- `pallets/collective/src/` — both instances
+- `pallets/oracle/src/lib.rs` — behavior flag mechanism only
+- `runtime/src/lib.rs` — governance config, collective config, provider structs
+- `runtime/src/migrations.rs` — Sudo removal schedule (if it exists)
+- `pallets/identity/src/lib.rs` — KYC gate for governance participation only
 
-**Out of scope:**
-- Smart contract (ink!) cryptography — separate audit
-- Python test scripts — not runtime code
-- Mesh/LoRa cryptography — separate networking audit
+**Out of scope — do not report findings from:**
+- `pallets/economy/`, `pallets/belizex/` (Economic audit)
+- `pallets/interoperability/` (Bridge audit)
+- `pallets/compliance/` (KYC/Compliance audit)
+- `pallets/contracts/` (Contracts audit)
+- Smart contract layer, Python tests, CI/CD configs
+
+If you find a critical issue in an out-of-scope file, note it as:
+`OUT OF SCOPE — flagged for follow-up audit: [description]`
 
 ---
 
 ## Context & Background
 
-**Repository**: https://github.com/BelizeChain/belizechain
-**Branch**: `belizechain`
-**Runtime**: Substrate FRAME, WASM (release mode)
-**SDK**: Polkadot SDK stable2512
-**Consensus**: BABE (sr25519 VRF) + GRANDPA (ed25519) + custom PoUW layer
-**Signature type**: `MultiSignature` — accepts sr25519, ed25519, AND ecdsa
-**Hash function**: `BlakeTwo256` (H256 output)
-**PQ claims**: PassthroughPQVerifier — NOT actually verifying PQ signatures
-**Session keys**: `{ babe: BabeId, grandpa: GrandpaId }` — two key types only
+You are performing a **Governance & Access Control Security Audit** on **BelizeChain**, a sovereign Substrate-based blockchain (Polkadot SDK `stable2512`) built for the nation of Belize. The governance system uses a **dual-house collective model** — a 12-member TechnicalCouncil (Instance1) and a 32-member GovernanceCouncil (Instance2) — with quadratic voting, oracle-attested behavior flags, and KYC-gated participation. Governance was built across 6 phases with increasing constraints.
+
+**Repository**: https://github.com/BelizeChain/belizechain  
+**Branch**: `belizechain`  
+**Runtime**: Polkadot SDK stable2512, FRAME, WASM  
+**Block time**: 6 seconds (~14,400 blocks/day)  
+**Governance instances**: TechnicalCouncil (max 12), GovernanceCouncil (max 32)  
+**Voting period**: 7,200 blocks (~12 hours)
+
+---
+
+## Pre-Verified Observations
+
+These were confirmed from `runtime/src/lib.rs` during prompt construction. **Each must be re-verified with a direct quote from the pallet source** before being reported as a finding.
+
+### GOV-PRE-001 — Sudo Live, No Removal Enforcement `[VERIFIED from runtime]`
+```rust
+Sudo: pallet_sudo,
+type SetMembersOrigin = EnsureRoot<Self::AccountId>;  // both collectives
+```
+The Phase 0 Step 0.4 removal plan is a comment only. No on-chain mechanism enforces removal.
+
+### GOV-PRE-002 — VotingPeriod = 12 Hours for All Proposal Types `[VERIFIED from runtime]`
+```rust
+pub const VotingPeriod: BlockNumber = 7_200; // ~12 hours at 6s/block
+```
+Constitutional, economic, and standard proposals use the same 12-hour window.
+
+### GOV-PRE-003 — Oracle Behavior Flag as Voter Suppression Vector `[VERIFIED from runtime]`
+Full attack chain documented in Rule 3 above.
+
+### GOV-PRE-004 — KYC Level 1 Sufficient for Governance Participation `[VERIFIED from runtime]`
+```rust
+fn can_participate_in_governance(account: &AccountId) -> bool {
+    providers::runtime_kyc_level(account).unwrap_or(0) >= 1
+}
+```
+Basic (Level 1) KYC gates access to governance controlling land registry, payroll, and bridge.
+
+### GOV-PRE-005 — ConstitutionalAdminOrigin is a Temporary Stub `[VERIFIED from runtime]`
+```rust
+// TODO: replace with compound dual-council origin before mainnet.
+type ConstitutionalAdminOrigin = TechnicalCouncilSuperMajority;
+```
+Constitutional changes require only 8 of 12 TechnicalCouncil members. GovernanceCouncil has no role yet.
+
+### GOV-PRE-006 — Quadratic Voting Split Attack Surface `[VERIFIED config, math UNVERIFIED]`
+```rust
+type MaxAccountsPerIdentity  = ConstU32<5>;
+type MaxVotingUnits          = ConstU32<10_000>;
+type StakeUnitSize           = ConstU128<100_000_000_000>; // 100 DALLA
+```
+An identity with 5 linked accounts can split stake to gain more QV votes than a single account with equal total stake. Exact gain must be confirmed from pallet sqrt implementation.
 
 ---
 
 ## Pre-Audit Checklist
 
+Complete every item before writing a single finding. Mark `INCOMPLETE` if an item cannot be checked.
+
 ```
-[ ] Confirmed commit hash: ___________
-[ ] Confirmed PassthroughPQVerifier implementation read — fn verify returns: ___________
-[ ] Confirmed pallets/identity/src/lib.rs read — SSN/Passport stored as: ___________
-[ ] Confirmed pallets/compliance/src/lib.rs read — sanctions list hash type: ___________
-[ ] Confirmed Cargo.toml read — sp-core version: ___________
-[ ] Count of #[cfg(feature = "runtime-benchmarks")] bypass patterns in runtime: ___________
-[ ] Confirmed whether runtime-benchmarks WASM is separated from production WASM in CI: ___________
-[ ] Confirmed generate_session_keys seed entropy validation: YES / NO / NOT PRESENT
-[ ] Confirmed MaxSetIdSessionEntries = 0 impact on equivocation reporting: ___________
-[ ] Identified all pallets using RandomnessFromOneEpochAgo: ___________
+[ ] Cloned repo and checked out branch `belizechain`
+[ ] Exact commit hash noted: ___________
+[ ] Confirmed these files exist:
+    [ ] pallets/governance/src/lib.rs
+    [ ] pallets/collective/src/lib.rs
+    [ ] pallets/oracle/src/lib.rs
+    [ ] runtime/src/lib.rs
+    [ ] runtime/src/migrations.rs  (or confirmed absent)
+[ ] Ran: cargo build --release 2>&1 | tee build_output.txt  →  errors: ___________
+[ ] Ran: cargo test -p pallet-belize-governance -- --nocapture  →  pass/fail: ___________
+[ ] Read pallets/governance/src/lib.rs in full
+[ ] Read pallets/collective/src/lib.rs — Instance1 and Instance2 configs
+[ ] Read pallets/oracle/src/lib.rs — behavior flag section
+[ ] Read runtime/src/lib.rs — governance config sections
+[ ] Sudo removal block target searched in migrations.rs: ___________
+[ ] Sudo removal scheduled call searched: ___________
+[ ] QV sqrt function identified: floor / ceiling / other: ___________
+[ ] Phase count confirmed from governance pallet: ___________
+[ ] Behavior flag rate limit found: YES / NO — if YES, limit: ___________
+[ ] Behavior flag appeal mechanism found: YES / NO
+[ ] ProposalCooldown enforcement point: validate_transaction / extrinsic body / both
+[ ] ConstitutionalAdminOrigin TODO replacement status: still TechnicalCouncilSuperMajority / changed
 ```
 
 ---
 
-## Area 1 — Signing Schemes & MultiSignature Attack Surface
+## Audit Areas
 
-### What is confirmed in the code
+### Area 1 — Sudo Removal Verification
 
-From `runtime/src/lib.rs`:
-```rust
-pub type Signature = MultiSignature;
-pub type AccountId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
-```
-
-`MultiSignature` accepts **three signature schemes**: sr25519, ed25519, and ecdsa.
-This means any account can be signed with any of these three schemes.
-
-### Questions to answer
-
-1. **Scheme downgrade attack**: Can an attacker submit a transaction signed with a
-   weaker scheme (ecdsa) for an account that was created with a stronger scheme (sr25519)?
-   Does the runtime enforce that an account always uses the same signing scheme?
-
-2. **AccountId collision**: sr25519, ed25519, and ecdsa public keys all map to the
-   same 32-byte AccountId space. Is there a theoretical collision risk between
-   a valid sr25519 key and a valid ecdsa key that produces the same AccountId?
-   Read how `IdentifyAccount` resolves this for `MultiSignature`.
-
-3. **ecdsa vs sr25519 security level**: ecdsa (as used in Substrate) does not have
-   the same security properties as sr25519. Specifically, ecdsa requires a secure
-   random nonce per signature — is this guaranteed in the Substrate WASM context?
-
-4. **BABE sr25519 vs GRANDPA ed25519**: These are different schemes for good reason
-   (VRF requires sr25519, GRANDPA's BLS-adjacent voting requires ed25519). Confirm
-   both key types are **generated separately** and stored separately in the keystore.
-   A validator accidentally using the same key material for both would be a finding.
-
-### Red flags to look for
-- Any code that normalizes `MultiSignature` to a single scheme before verification
-- `AccountId` derivation that could collide across signature schemes
-- Key generation code that reuses entropy across BABE and GRANDPA keys
-
----
-
-## Area 2 — GRANDPA `MaxSetIdSessionEntries = 0` [VERIFIED ISSUE]
-
-This is a confirmed issue from reading the code. The exact line is:
-
-```rust
-// runtime/src/lib.rs
-impl pallet_grandpa::Config for Runtime {
-    type MaxSetIdSessionEntries = ConstU64<0>;
-    // ...
-}
-```
-
-### What this means
-
-`MaxSetIdSessionEntries` controls how many historical GRANDPA set IDs are stored
-on-chain. These are required for **equivocation proof verification** — when a
-validator double-signs, the proof must reference the set ID that was active at
-the time of the equivocation.
-
-With `ConstU64<0>`, **zero historical set IDs are stored**. This means:
-
-- Equivocation proofs referencing any past set ID cannot be verified
-- A validator can double-sign and the equivocation report will fail to process
-- The `EquivocationReportSystem` is wired but effectively **non-functional** for
-  historical equivocations
-
-### Questions to answer
-
-1. Read `pallet_grandpa::EquivocationReportSystem` source — does it explicitly
-   check `MaxSetIdSessionEntries` before accepting a proof? What error does it
-   return when the set ID is not found?
-
-2. For **current-session** equivocations (same set ID, not historical), does
-   `MaxSetIdSessionEntries = 0` still prevent reporting? Or only historical?
-
-3. What is the correct value for this chain? Standard Substrate nodes use
-   `BondingDuration * SessionsPerEra` or a similar formula. For BelizeChain
-   with 24-hour sessions, a value of `7` (one week of history) would be
-   the minimum recommended.
-
-4. Is there a relationship between `MaxSetIdSessionEntries` and
-   `ReportLongevity = BabeEpochDuration * 10`? If reports are valid for
-   10 epochs but only 0 set IDs are stored, the longevity setting is meaningless.
-
-### Severity assessment
-This is at minimum **High** — equivocation slashing is disabled in practice.
-If validators know equivocation cannot be reported, this directly undermines
-GRANDPA's security model. Assess whether it reaches Critical based on whether
-current-session equivocations are also affected.
-
----
-
-## Area 3 — Session Key Generation & Seed Entropy
-
-From `runtime/src/lib.rs` and `node/src/service.rs`:
-
-```rust
-// runtime/src/lib.rs
-fn generate_session_keys(seed: Option<Vec<u8>>) -> Vec<u8> {
-    opaque::SessionKeys::generate(seed)
-}
-```
-
-### The concern
-
-`seed: Option<Vec<u8>>` means callers can pass an **arbitrary byte string** as
-the entropy source for key generation. This is intentional for development
-(allows deterministic test keys), but dangerous in production if:
-
-1. Validators use weak or predictable seeds (e.g., their account name, "password", etc.)
-2. The RPC endpoint that calls `generate_session_keys` is publicly exposed without
-   authentication, allowing an attacker to enumerate seeds
-3. Two validators accidentally use the same seed, producing identical keys
-
-### Questions to answer
-
-1. Is `generate_session_keys` exposed via the public RPC? Check `node/src/rpc.rs`
-   — is the `author_rotateKeys` or `author_insertKey` RPC method unrestricted?
-
-2. Is there any minimum entropy requirement enforced on the seed? A 4-byte seed
-   is accepted the same as a 32-byte cryptographically random seed.
-
-3. When `seed = None`, what entropy source is used? Confirm it is the OS CSPRNG
-   and not a deterministic fallback.
-
-4. Is there documentation warning validators to use `None` (OS-generated) rather
-   than custom seeds in production?
-
-### Red flags to look for
-- `author_rotateKeys` available without authentication in RPC config
-- `generate_session_keys` called with hardcoded seeds in any test or script
-  that could be accidentally used in production
-- Seed validation missing from key insertion path
-
----
-
-## Area 4 — PassthroughPQVerifier [ACKNOWLEDGED — AR-6, but must be quantified]
-
-From `runtime/src/lib.rs`:
-```rust
-// AR-6: Passthrough verifier — replace with a real Falcon/Dilithium
-// host-function verifier before mainnet deployment.
-type PQVerifier = pallet_belize_interoperability::PassthroughPQVerifier;
-```
-
-This is acknowledged. However the audit must still:
-
-### Step 1 — Read and quote the PassthroughPQVerifier implementation
+**The single most important check in this audit.**
 
 ```bash
-grep -n "PassthroughPQVerifier" pallets/interoperability/src/lib.rs -A 10
+# Search for any scheduled Sudo removal
+grep -rn "remove_key\|schedule.*sudo\|sudo.*remove\|set_key\|SudoRemoval" \
+  runtime/src/ pallets/governance/src/ 2>/dev/null
+
+# Check for Sudo removal in migrations
+cat runtime/src/migrations.rs 2>/dev/null || echo "FILE NOT FOUND"
+
+# Check for scheduled calls referencing sudo
+grep -rn "pallet_sudo\|Sudo::remove_key\|sudo.*block\|at_block" \
+  runtime/src/ 2>/dev/null
+
+# Check SetMembersOrigin fallback if Sudo removed
+grep -n "SetMembersOrigin\|set_members\|add_member\|remove_member" \
+  pallets/collective/src/lib.rs pallets/governance/src/lib.rs 2>/dev/null
 ```
 
-Expected to find something like:
-```rust
-pub struct PassthroughPQVerifier;
-impl PQVerifier for PassthroughPQVerifier {
-    fn verify(_signature: &[u8], _message: &[u8], _public_key: &[u8]) -> bool {
-        true  // ← this is what needs to be quoted
-    }
-}
-```
-
-### Step 2 — Assess blast radius
-
-With `PQSignatureThreshold = 3` and a passthrough verifier:
-- Any 3 of the 5 bridge validators can submit **any bytes** as a "PQ signature"
-- The bridge will accept it as valid
-- This means the PQ signature threshold is **security theater** — it provides
-  no cryptographic guarantee
-
-The real question is: **what does the bridge do once the PQ threshold is met?**
-Does it release funds? Mint tokens? Execute cross-chain messages? The severity
-depends entirely on what actions the passing threshold authorizes.
-
-### Step 3 — Assess mainnet risk
-
-The AR-6 comment says "before mainnet deployment." Is there:
-- A CI check that blocks mainnet deployment with PassthroughPQVerifier?
-- A governance proposal required to upgrade to a real verifier?
-- A testnet-only feature flag guarding this type?
-
-If none of the above exist, this remains an unmitigated Critical for production.
+**Questions to answer:**
+1. Is there a specific block number at which Sudo is removed? If not, the removal is unscheduled.
+2. What origin takes over `SetMembersOrigin` after Sudo removal? If none, council membership becomes permanently frozen after Sudo is removed.
+3. Is there a governance proposal currently on-chain to remove Sudo?
 
 ---
 
-## Area 5 — Benchmark Bypass of Security Controls
+### Area 2 — Quadratic Voting Math Integrity
 
-From `runtime/src/lib.rs`, the following pattern appears across **all** provider structs:
-
-```rust
-pub fn runtime_kyc_level(account: &AccountId) -> Option<u8> {
-    #[cfg(feature = "runtime-benchmarks")]
-    return Some(3);
-    #[cfg(not(feature = "runtime-benchmarks"))]
-    Identity::get_verified_kyc_level(account)
-}
-
-pub fn runtime_is_sanctioned(account: &AccountId) -> bool {
-    #[cfg(feature = "runtime-benchmarks")]
-    return false;
-    #[cfg(not(feature = "runtime-benchmarks"))]
-    return Identity::is_account_sanctioned(account) || Oracle::is_sanctioned(account);
-}
-```
-
-### The threat model
-
-This bypass exists for valid reasons — benchmarks can't set up KYC state for
-every account. But it creates a risk if the `runtime-benchmarks` feature is
-ever compiled into production WASM.
-
-### Questions to answer
-
-1. Run: `grep -r "runtime-benchmarks" .github/ scripts/ Dockerfile` —
-   is there a CI step that explicitly builds production WASM **without**
-   `runtime-benchmarks` and verifies the binary hash?
-
-2. Is the benchmarking WASM stored separately from the production WASM?
-   Check `scripts/build_release.sh` — does it pass `--features runtime-benchmarks`?
-
-3. Could a validator node operator compile their own runtime with
-   `runtime-benchmarks` enabled and submit it as a runtime upgrade via governance?
-   (This depends on whether runtime upgrades require governance approval — check
-   `pallet_sudo` and the governance pallet's set_code path)
-
-4. Count exact number of `#[cfg(feature = "runtime-benchmarks")] return true/false/Some`
-   bypass patterns — this number should appear in the report.
-
-### Severity
-If production WASM build is not verifiably separated: **Critical**
-If build separation is enforced and documented: **Low** (accepted risk for benchmarking)
-
----
-
-## Area 6 — Randomness Predictability (RandomnessFromOneEpochAgo)
-
-From `runtime/src/lib.rs`, these pallets all use `pallet_babe::RandomnessFromOneEpochAgo`:
-
-```rust
-// governance
-type Randomness = pallet_babe::RandomnessFromOneEpochAgo<Runtime>;
-// staking
-type Randomness = pallet_babe::RandomnessFromOneEpochAgo<Runtime>;
-// interoperability
-type Randomness = pallet_babe::RandomnessFromOneEpochAgo<Runtime>;
-// contracts
-type Randomness = pallet_babe::RandomnessFromOneEpochAgo<Runtime>;
-```
-
-**Confirmed predictability window**: 14,400 blocks × 6 seconds = **24 hours**
-
-### For each usage site, answer:
-
-**Governance randomness:**
-- What is the randomness used for? Leader election? Proposal ordering?
-- Can a validator who knows the randomness 24 hours in advance game any governance outcome?
-
-**Staking randomness:**
-- Is randomness used in validator selection, reward distribution, or PoUW scoring?
-- A validator who knows the randomness seed 24 hours ahead can optimize their
-  PoUW submissions to hit favorable selection windows
-
-**Interoperability randomness:**
-- Bridge nonce generation? Challenge period randomness?
-- 24-hour advance knowledge of bridge randomness could enable front-running attacks
-
-**Contracts randomness:**
-- Any ink! contract using `env.random()` inherits this 24-hour predictability
-- This must be documented as a limitation for contract developers
-
-### Red flags
-- Randomness used as the **sole** source of entropy for security-critical decisions
-- No warning in documentation that `RandomnessFromOneEpochAgo` is predictable
-
----
-
-## Area 7 — Identity Pallet: Sensitive Data Handling
-
-You must read `pallets/identity/src/lib.rs` for this section. Do not answer
-these questions from assumptions.
-
-### Questions to answer
-
-1. **SSN/Passport storage**: How is sensitive PII stored? Is it:
-   - Stored in plaintext on-chain? (Critical)
-   - Stored as a hash? If so, which hash function and is it salted?
-   - Stored as a commitment with zero-knowledge proof?
-   - Stored off-chain with only a hash/commitment on-chain?
-
-2. **KYC level attestation**: Who can attest KYC levels? Is it:
-   - A single oracle operator? (Centralization risk)
-   - Multiple operators requiring `MinOracleAgreement = 3`? (Better)
-   - Are attestations signed with a known public key? Can attestations be replayed?
-
-3. **KYC expiry and renewal**: `KycValidityBlocks = 1,051,200` (~2 years).
-   What happens cryptographically when KYC expires? Is the old attestation
-   invalidated on-chain, or does it remain valid until explicitly revoked?
-
-4. **BelizeID uniqueness**: Can two accounts share the same national ID?
-   Is there a uniqueness constraint enforced cryptographically or just by storage key?
-
-5. **Revocation**: Can a compromised identity credential be revoked? What is the
-   cryptographic mechanism — is the revocation list checked on every KYC query?
-
-### Grep commands
 ```bash
-grep -n "ssn\|passport\|hash\|commit\|blake\|sha\|keccak" \
-  pallets/identity/src/lib.rs -i | head -40
+# Find the QV sqrt implementation
+grep -n "sqrt\|integer_sqrt\|quadratic\|vote_weight\|voting_units\|MaxVotingUnits" \
+  pallets/governance/src/lib.rs | head -30
 
-grep -n "struct.*Identity\|pub.*pii\|pub.*document" \
-  pallets/identity/src/lib.rs -i | head -20
+# Find how MaxVotingUnits is applied — input cap or output cap?
+grep -n -A 5 "MaxVotingUnits\|max_voting_units\|units.*min\|min.*units" \
+  pallets/governance/src/lib.rs | head -20
+
+# Find large-holder threshold logic
+grep -n "LargeHolder\|large_holder\|participation_rate\|50_000" \
+  pallets/governance/src/lib.rs | head -15
 ```
+
+**Work through these exact attack scenarios numerically using the code formula:**
+
+**Scenario A — QV Sybil via identity-linked accounts:**
+- Single account: 1,000,000 DALLA = 10,000 units → sqrt(10,000) = 100 votes
+- Five accounts (same identity), 200,000 DALLA each = 2,000 units each
+- → 5 × sqrt(2,000) ≈ 5 × 44 = 220 votes for same total stake
+- **Confirm**: Does the governance pallet check identity-level vote deduplication, or only account-level?
+
+**Scenario B — MaxVotingUnits interpretation:**
+- If `MaxVotingUnits` caps the input: max votes = sqrt(10,000) = 100
+- If `MaxVotingUnits` caps the output: max votes = 10,000
+- State which interpretation the code implements with a direct quote.
+
+**Scenario C — LargeHolderMinParticipationRate gaming:**
+- `LargeHolderStakeThreshold = 50,000 DALLA`
+- `LargeHolderMinParticipationRate = 30%`
+- Can a large holder vote on 30% of low-stakes proposals to satisfy the rate, then abstain on high-stakes proposals? How is "participation rate" calculated and over what period?
 
 ---
 
-## Area 8 — Bridge Cryptography (Interoperability Pallet)
+### Area 3 — Phase Invariant Continuity
 
-You must read `pallets/interoperability/src/lib.rs` for this section.
-
-### Questions to answer
-
-1. **Ethereum signature verification**: When verifying Ethereum-side events,
-   what signature scheme is used? secp256k1 ECDSA? Is this handled by a
-   host function or implemented in WASM Rust?
-
-2. **Bridge validator set management**: How are bridge validators' public keys
-   stored? Can a bridge validator rotate their key without a governance proposal?
-
-3. **Replay protection**: Are cross-chain messages protected against replay?
-   Is there a nonce or message ID that prevents the same bridge transaction
-   from being processed twice?
-
-4. **Challenge period cryptography**: `ChallengePeriod = 100` blocks (~10 min).
-   What cryptographic proof is required to successfully challenge a bridge
-   transaction? Who can submit a challenge?
-
-5. **PQ threshold mechanics** (beyond AR-6): Even ignoring PassthroughPQVerifier,
-   is the 3-of-5 threshold implemented correctly? Is it a simple counter or
-   a proper threshold signature scheme (e.g., Shamir, Musig2)?
-
-### Grep commands
 ```bash
-grep -n "verify\|signature\|ecdsa\|secp256k1\|replay\|nonce\|challenge" \
-  pallets/interoperability/src/lib.rs -i | head -50
+# Find all extrinsics that submit or vote on proposals
+grep -n "fn submit\|fn propose\|fn vote\|fn execute\|fn enact" \
+  pallets/governance/src/lib.rs | head -20
 
-grep -n "PassthroughPQVerifier\|PQVerifier\|fn verify" \
-  pallets/interoperability/src/lib.rs | head -20
+# For each extrinsic found, check what origin it accepts
+grep -n -B 2 "fn submit\|fn propose\|fn vote" \
+  pallets/governance/src/lib.rs | grep -A 1 "fn\|ensure\|origin" | head -30
+
+# Find Phase markers or phase-gated code
+grep -n "phase\|Phase\|phase_guard\|min_phase\|current_phase" \
+  pallets/governance/src/lib.rs | head -20
+
+# Check term limit tracking across identity re-joins
+grep -n "term_count\|consecutive_terms\|MaxConsecutiveTerms\|resign\|leave\|rejoin" \
+  pallets/governance/src/lib.rs | head -20
 ```
+
+**Questions to answer:**
+1. Are there any `fn submit_proposal`-style extrinsics that bypass the Phase 3 KYC gate? List every proposal submission path.
+2. `MaxConsecutiveTerms = 2`: Does the counter reset when a council member resigns and rejoins? Is continuity tracked per identity (via the identity pallet) or only per account?
+3. Is `ConstitutionalAdminOrigin = TechnicalCouncilSuperMajority` applied to every constitutional action, or only to constitutional actions added after Phase 5?
+4. Does Phase 6 dual-house ratification apply retroactively to extrinsics added in Phase 1?
+
+---
+
+### Area 4 — Cross-Pallet Provider Trust Chains
+
+```bash
+# GovernanceBehaviorProvider — oracle behavior flag rate limiting
+grep -n "set_behavior_flag\|flag_account\|BehaviorFlag\|has_active_behavior\|rate_limit\|MaxFlags" \
+  pallets/oracle/src/lib.rs | head -25
+
+# Find who can call set_behavior_flag
+grep -n -B 3 "fn.*flag\|fn.*behavior" \
+  pallets/oracle/src/lib.rs | head -20
+
+# Check if flag can be placed during active voting period
+grep -n "VotingPeriod\|is_voting\|active_vote\|vote_end" \
+  pallets/oracle/src/lib.rs pallets/governance/src/lib.rs | head -15
+
+# GovernanceCommunityProvider — what community events gate governance?
+grep -n "record_proposal\|record_vote\|community_score\|reputation" \
+  pallets/community/src/lib.rs | head -15
+
+# DualHouseMembershipProvider — council membership checks
+grep -n "is_technical_house\|is_governance_house\|DualHouse\|Members::" \
+  runtime/src/lib.rs | head -15
+```
+
+**Highest-risk questions:**
+1. Can a single oracle operator place behavior flags on unlimited accounts per block? If yes, a single operator can silence the entire voter population before a vote.
+2. Can a behavior flag be placed on an account that has already cast a vote in an ongoing vote, retroactively negating that vote?
+3. Is there an on-chain event emitted when a flag is placed, enabling governance to detect suppression attempts?
+4. Does the DualHouseMembershipProvider perform an O(N) scan of council storage? If so, with `MaxAuthorities = 32` councils, this is bounded but confirm it.
+
+---
+
+### Area 5 — ProposalCooldown and Submission Flood
+
+```bash
+# Find ProposalCooldown enforcement
+grep -n "ProposalCooldown\|cooldown\|last_proposal\|proposal_at\|validate_unsigned\|validate_transaction" \
+  pallets/governance/src/lib.rs | head -20
+
+# Is cooldown per-account or per-identity?
+grep -n "identity.*cooldown\|cooldown.*identity\|linked_accounts\|AccountsPerIdentity" \
+  pallets/governance/src/lib.rs | head -15
+
+# Can the proposal pool be flooded with valid-format proposals from linked accounts?
+grep -n "MaxProposals\|max_proposals\|proposal_count\|pool_limit" \
+  pallets/governance/src/lib.rs | head -10
+```
+
+**Questions to answer:**
+1. Is the 3-day cooldown enforced per account or per identity? With 5 linked accounts per identity (`MaxAccountsPerIdentity = 5`), one identity could submit every 3 days from each account = 5 proposals per cooldown window.
+2. Is the cooldown enforced in `validate_transaction` (rejects pool entry) or only in the extrinsic body (allows pool flooding with valid-looking proposals that fail at execution)?
+3. What is `MaxProposals` — the maximum number of open proposals simultaneously? If unbounded, the proposal pool itself is a DoS vector.
 
 ---
 
 ## Deliverables
 
-1. **Pre-Audit Checklist** — all fields filled in
+Produce a report with these sections. Each has a validation requirement.
 
-2. **Acknowledged Issues Table** (AR- prefixed items)
-   `AR-ID | Severity | Description | Mainnet Risk if Unresolved | Mitigation Present`
+### D1 — Pre-Audit Checklist
+The completed checklist from above with every blank filled in. Any unchecked item makes the report incomplete for that area.
 
-3. **New Findings Table** (previously unknown issues)
-   `ID | Severity | Confidence | Area | File:Line | Title`
+### D2 — Executive Summary
+Overall risk rating (Critical/High/Medium/Low). Top 3 most urgent findings referenced by GOV-### ID. No vague statements — every claim must reference a finding ID.
 
-4. **Detailed Findings** — for each new finding: code excerpt, description,
-   attack scenario, impact, recommendation with specific fix
+### D3 — Findings Table
+`ID | Severity | Confidence | Area | File:Line | Title | Status`
 
-5. **Cryptographic Primitive Assessment**
-   A one-page summary of every crypto primitive in use:
-   - Hash functions: what, where, adequate?
-   - Signing schemes: what, where, key separation enforced?
-   - Randomness: source, predictability window, usage sites
-   - PQ readiness: current state, gap to production-ready
+Include only `[VERIFIED]` and `[INFERRED]` findings. `[ASSUMED]` and `[THEORETICAL]` findings go in D6.
 
-6. **Benchmark Bypass Risk Assessment**
-   Specific section on whether `runtime-benchmarks` build separation is enforced
+### D4 — Detailed Findings
+For each finding: exact code excerpt, description, numbered proof-of-concept attack steps, all required preconditions, impact on BelizeChain specifically, and concrete recommendation. **No code excerpt = finding demoted to D6.**
 
-7. **Unverified Observations** — `[ASSUMED]`/`[THEORETICAL]` items needing follow-up
+### D5 — Acknowledged Issues (Do Not Re-Report)
+| ID | Description | Status |
+|---|---|---|
+| GOV-PRE-001 | Sudo live — `SetMembersOrigin = EnsureRoot` on both collectives | Acknowledged — pending removal |
+| GOV-PRE-005 | `ConstitutionalAdminOrigin = TechnicalCouncilSuperMajority` — TODO before mainnet | Acknowledged |
 
-8. **Audit Gaps** — files not read, questions unanswered
+### D6 — Unverified Observations
+Items that are `[ASSUMED]`, `[THEORETICAL]`, or where the required file was not read. These are not findings — they are prioritized follow-up tasks.
+
+### D7 — Audit Gaps
+Every file not read, every question unanswered, every finding requiring human confirmation. This section is mandatory and is a sign of audit quality.
 
 ---
 
 ## How to Run This Audit
 
 ```bash
-# 1. Clone and checkout
+# ── Setup ─────────────────────────────────────────────────────────────────────
 git clone https://github.com/BelizeChain/belizechain.git
 cd belizechain && git checkout belizechain
-git log --oneline -1
+git log --oneline -1   # Record this commit hash in the report
 
-# 2. Confirm PassthroughPQVerifier implementation (highest priority)
-grep -n "PassthroughPQVerifier\|fn verify" pallets/interoperability/src/lib.rs -A 5
+# ── Verify file existence ──────────────────────────────────────────────────────
+ls pallets/governance/src/
+ls pallets/collective/src/
+cat runtime/src/migrations.rs 2>/dev/null || echo "migrations.rs NOT FOUND"
 
-# 3. Count benchmark bypass patterns
-grep -rn "cfg(feature = \"runtime-benchmarks\")" runtime/src/lib.rs | wc -l
+# ── Build and test ────────────────────────────────────────────────────────────
+cargo build --release 2>&1 | tee build_output.txt
+cargo test -p pallet-belize-governance -- --nocapture 2>&1 | tee gov_test_output.txt
 
-# 4. Check if benchmarks feature appears in build scripts
-grep -rn "runtime-benchmarks" scripts/ .github/ Dockerfile 2>/dev/null
+# ── Sudo removal search ───────────────────────────────────────────────────────
+grep -rn "remove_key\|schedule.*sudo\|SudoRemoval\|sudo.*block" runtime/src/ pallets/
+grep -rn "SetMembersOrigin" runtime/src/lib.rs pallets/collective/src/
 
-# 5. Check SSN/Passport storage in identity pallet
-grep -n "ssn\|passport\|pii\|document_hash\|national_id" \
-  pallets/identity/src/lib.rs -i | head -30
+# ── QV implementation ─────────────────────────────────────────────────────────
+grep -n "sqrt\|quadratic\|vote_weight\|MaxVotingUnits\|StakeUnitSize" \
+  pallets/governance/src/lib.rs
+grep -n "MaxAccountsPerIdentity\|linked_account" \
+  pallets/identity/src/lib.rs pallets/governance/src/lib.rs
 
-# 6. Check bridge signature verification
-grep -n "verify\|ecdsa\|secp256\|nonce\|replay" \
-  pallets/interoperability/src/lib.rs -i | head -40
+# ── Behavior flags ────────────────────────────────────────────────────────────
+grep -n "set_behavior_flag\|flag_account\|BehaviorFlag\|rate_limit\|MaxFlags" \
+  pallets/oracle/src/lib.rs
+grep -n "has_active_flag\|has_active_behavior" runtime/src/lib.rs pallets/governance/src/lib.rs
 
-# 7. Check RPC exposure of key generation
-grep -n "generate_session_keys\|rotate_keys\|author_" \
-  node/src/rpc.rs 2>/dev/null | head -20
+# ── Phase invariants ──────────────────────────────────────────────────────────
+grep -n "fn submit\|fn propose\|fn vote\|phase\|Phase" \
+  pallets/governance/src/lib.rs | head -40
 
-# 8. Verify GRANDPA MaxSetIdSessionEntries impact
-grep -n "MaxSetIdSessionEntries\|set_id\|EquivocationProof" \
-  runtime/src/lib.rs pallets/*/src/lib.rs 2>/dev/null | head -20
+# ── ProposalCooldown ──────────────────────────────────────────────────────────
+grep -n "ProposalCooldown\|validate_transaction\|cooldown\|last_proposal" \
+  pallets/governance/src/lib.rs
 
-# 9. Check Cargo.toml for crypto crate versions
-grep -E "sp-core|sp-io|schnorrkel|ed25519|secp256k1|blake2" Cargo.toml
+# ── Term limits ───────────────────────────────────────────────────────────────
+grep -n "MaxConsecutiveTerms\|term_count\|resign\|rejoin" \
+  pallets/governance/src/lib.rs
+
+# ── Build warnings — review all governance-related ───────────────────────────
+grep -i "governance\|collective\|voting\|proposal" build_output.txt | head -30
 ```
 
 ---
@@ -624,29 +558,11 @@ grep -E "sp-core|sp-io|schnorrkel|ed25519|secp256k1|blake2" Cargo.toml
 
 | Severity | Definition |
 |---|---|
-| **Critical** | Cryptographic guarantee completely broken — forgeable signatures, bypassed auth |
-| **High** | Security model degraded — equivocation not slashable, predictable randomness in security decisions |
-| **Medium** | Increased attack surface, requires specific conditions to exploit |
-| **Low** | Best-practice deviation, defense-in-depth improvement |
-| **Informational** | Documentation gaps, acknowledged issues, future hardening |
-
----
-
-## Pre-Verified Findings Reference
-
-The following findings are **already confirmed** from reading the code.
-The auditor should verify and expand them, not re-discover them:
-
-| ID | Severity | Status | Location | Description |
-|---|---|---|---|---|
-| CRYPTO-PRE-001 | Critical | `[ACKNOWLEDGED — AR-6]` | `runtime/src/lib.rs` | `PassthroughPQVerifier` — PQ signatures not verified |
-| CRYPTO-PRE-002 | High | `[VERIFIED — NEW]` | `runtime/src/lib.rs:~180` | `MaxSetIdSessionEntries = 0` — GRANDPA equivocation reporting broken |
-| CRYPTO-PRE-003 | High | `[VERIFIED — NEEDS CONFIRMATION]` | `runtime/src/lib.rs` | Benchmark bypass disables all KYC/sanctions checks when `runtime-benchmarks` compiled |
-| CRYPTO-PRE-004 | Medium | `[VERIFIED — NEEDS SCOPING]` | `runtime/src/lib.rs` | `RandomnessFromOneEpochAgo` gives 24-hour advance knowledge of randomness in 4 pallets |
-| CRYPTO-PRE-005 | Medium | `[VERIFIED — NEEDS CONFIRMATION]` | `runtime/src/lib.rs` | `generate_session_keys(seed)` accepts arbitrary entropy — no minimum entropy enforcement |
-
-Each pre-verified finding must be confirmed with a quoted code excerpt and
-expanded with a full attack scenario before inclusion in the final report.
+| **Critical** | Single-key chain takeover (Sudo); complete voter suppression mechanism; governance capture with ≤2 preconditions |
+| **High** | QV Sybil via linked accounts; phase invariant bypass allowing governance circumvention; term limit reset |
+| **Medium** | Short voting window for constitutional proposals; KYC Level 1 governance bar; cooldown per-account only |
+| **Low** | Missing events for flag actions; TODO enforcement deadlines absent; parameter tuning recommendations |
+| **Informational** | Design choices that carry accepted risk — must be documented as intentional |
 
 ---
 
@@ -655,21 +571,2293 @@ expanded with a full attack scenario before inclusion in the final report.
 Before submitting the report:
 
 ```
-[ ] Every finding in the New Findings Table has a quoted code excerpt
-[ ] PassthroughPQVerifier implementation was read and quoted — not assumed
-[ ] MaxSetIdSessionEntries = 0 impact was verified against pallet-grandpa behavior
-[ ] Benchmark bypass count matches the grep output from the Pre-Audit Checklist
-[ ] No finding claims "Substrate uses X by default" without verifying this repo uses X
-[ ] RandomnessFromOneEpochAgo predictability window is calculated, not estimated
-[ ] Identity pallet SSN/Passport storage method was read — not assumed to be hashed
-[ ] Bridge replay protection was verified from pallets/interoperability/src/lib.rs
-[ ] Pre-Verified findings are in the Acknowledged Issues table, not the New Findings table
-[ ] Report does not claim BlakeTwo256 is insecure — it is standard and secure
-[ ] Report does not flag MultiSignature as inherently insecure — it is standard Substrate
+[ ] Every finding in D3 has a File:Line reference that was actually read
+[ ] Sudo removal was searched in migrations.rs — existence/absence confirmed, not assumed
+[ ] QV sqrt implementation was quoted from pallet code — math not assumed correct
+[ ] MaxAccountsPerIdentity QV Sybil attack was calculated numerically using actual code formula
+[ ] Behavior flag rate limiting was read from oracle pallet code — not assumed present or absent
+[ ] Phase 6 DualHouse coverage was verified for pre-Phase-6 extrinsics — not assumed retrofitted
+[ ] ProposalCooldown enforcement point was verified in pallet code (validate_transaction vs extrinsic body)
+[ ] ConstitutionalAdminOrigin TODO replacement status was checked in current code
+[ ] No finding uses "likely" or "probably" without an [INFERRED] marker
+[ ] Every [ASSUMED] item is in D6 only — not in D3 Findings Table
+[ ] Term limit reset (resign + rejoin) was verified in pallet code — not assumed blocked
+[ ] VotingPeriod applies to which proposal types was confirmed from code — not assumed universal
 ```
 
 ---
 
-*BelizeChain Cryptographic Audit Master Prompt — v1 — March 2026*
-*Built from direct analysis of runtime/src/lib.rs and node/src/service.rs.*
-*All AI outputs must be validated against actual source code before inclusion in a final report.*
+*BelizeChain Governance & Access Control Audit Master Prompt — v1 — March 8, 2026*
+*Pre-verified observations sourced from direct reading of `runtime/src/lib.rs`.*
+*All AI outputs must be validated against actual pallet source code before inclusion in a final security report.*
+# BelizeChain — Economic & Tokenomics Audit: Master Prompt (v1)
+
+---
+
+## ⚠️ AI AUDITOR OPERATING RULES — READ BEFORE PROCEEDING
+
+Economic bugs are the most financially damaging class of on-chain vulnerability and the most common to go undetected — they produce no panic, no crash, and no failed transaction. They silently corrupt balances, drain treasuries, or bypass supply caps while the chain continues running normally. This audit requires arithmetic verification, not just logic tracing.
+
+**Violating any rule below invalidates the finding.**
+
+---
+
+### RULE 1 — EVERY MINT PATH MUST BE TRACED TO THE SUPPLY CAP
+
+`MaxDallaSupply = 501,000,000,000,000,000` (501 billion DALLA × 10^12 decimals).
+
+From `runtime/src/lib.rs`, the following pallets can create DALLA:
+
+| Pallet | Mechanism | Amount |
+|---|---|---|
+| `pallet_belize_economy` | Block inflation | 1 DALLA/block |
+| `pallet_belize_staking` | Validator rewards | BaseReward = 1 DALLA/block |
+| `pallet_belize_community` | Education reward | 50 DALLA/module; Referral = 100 DALLA |
+| `pallet_belize_consensus` | PoUW epoch reward | 5 DALLA/epoch |
+| `pallet_belize_mesh` | Relay rewards | 0.1 DALLA/tx; 0.05/header; 0.5/alert |
+| `pallet_belize_whistleblower` | Exploit bounty | 20,000 DALLA/report |
+| `pallet_belize_quantum` | Job completion | TBD from pallet source |
+
+For every mint source: trace from the mint call to the supply cap check. If the cap check is absent, missing, or uses a different counter, this is a **Critical** finding regardless of whether the cap seems far away. Supply caps protect against implementation bugs in future pallets — a cap that is technically present but not uniformly enforced is no cap at all.
+
+---
+
+### RULE 2 — MULTIPLE SUPPLY COUNTERS ARE A CRITICAL BUG
+
+From `runtime/src/lib.rs`, confirmed:
+
+```rust
+impl pallet_belize_community::Config for Runtime {
+    type MaxSupply = MaxDallaSupply;
+}
+// ... and separately ...
+impl pallet_belize_economy::Config for Runtime {
+    // also declares MaxSupply = MaxDallaSupply
+}
+```
+
+Two pallets independently declare the same cap constant. This is only safe if they share **one authoritative total-issuance counter** — the one maintained by `pallet_balances` via `T::Currency::total_issuance()`. If either pallet maintains its own supply counter and checks against that instead of `pallet_balances`, the counters can diverge, and an attacker who understands the divergence can mint above the cap.
+
+The auditor must identify exactly one authoritative supply counter and confirm every mint path checks it before minting.
+
+---
+
+### RULE 3 — DOUBLE-CLAIM PROTECTION MUST BE VERIFIED IN STORAGE
+
+Education rewards (50 DALLA) and referral rewards (100 DALLA) are high-value single-event payouts. For each, the auditor must:
+1. Find the storage item that records completion/claim
+2. Confirm the storage key includes the account ID (not just the module/referral ID)
+3. Confirm the check-then-set is atomic (no race condition between check and write)
+4. Confirm the storage item is permanent (not prunable after N blocks)
+
+A `Vec<AccountId>` that is iterated or a mapping that can be reset is not sufficient protection.
+
+---
+
+### RULE 4 — ARITHMETIC MUST BE VERIFIED WITH WORKED EXAMPLES
+
+For every fee calculation, routing split, and tax formula, show:
+1. The formula from the code
+2. A worked example with real numbers at the scale BelizeChain will operate
+3. Integer division truncation behavior explicitly noted
+
+For example: `TransferTaxRate = 10` (0.1%) using `amount * 10 / 10_000`.
+At amount = 999 base units: `999 * 10 / 10_000 = 0` (truncated). Is this correct behavior? Show the cutover point.
+
+---
+
+### RULE 5 — DISTINGUISH WHAT YOU READ FROM WHAT YOU INFER
+
+| Marker | Meaning |
+|---|---|
+| `[VERIFIED]` | Exact code quoted — file and line cited |
+| `[INFERRED]` | Conclusion drawn from code read — needs confirmation |
+| `[ASSUMED]` | Substrate convention — not confirmed in this repo |
+| `[UNVERIFIED]` | File not read — do not report as a finding |
+
+---
+
+### RULE 6 — bBZD PEG RISK REQUIRES A SPECIFIC FINDING IF UNPROTECTED
+
+The bBZD peg is described as "USDC-style fiat-backed" with no oracle used for exchange rates. If there is no on-chain circuit breaker, automatic de-peg detection, or minting/burning mechanism that responds to peg divergence, this must be reported as a finding — not because the peg will fail, but because there is no on-chain defense layer if the off-chain backing fails. The finding severity depends on whether bBZD is used as collateral or as a trust root for other on-chain operations.
+
+---
+
+### RULE 7 — PALLET ID COLLISIONS ARE SILENT FUND LOSS
+
+All 8 PalletIds must be computed to their actual AccountIds and confirmed unique:
+
+```
+"py/trsry" | "py/comty" | "py/ident" | "py/payrl"
+"py/bzdex" | "bz/pubgd" | "py/bznss" | "bz/wlbng"
+```
+
+Do not assume uniqueness from visual inspection. Two PalletIds that look different may produce the same `into_account_truncating()` result if the hashing produces a collision. Compute them in a test or using `sp_runtime::AccountId` derivation.
+
+---
+
+### RULE 8 — SCOPE BOUNDARIES
+
+**In scope:**
+- `pallets/economy/src/` — inflation, mint, routing
+- `pallets/community/src/` — education/referral rewards, MaxSupply
+- `pallets/belizex/src/` — DEX fees, fee distribution, LP token math
+- `pallets/staking/src/` — validator reward emission
+- `pallets/whistleblower/src/` — exploit reward gate
+- `pallets/consensus/src/` — PoUW epoch reward
+- `pallets/mesh/src/` — relay rewards
+- `pallets/landledger/src/` — transfer tax
+- `runtime/src/lib.rs` — PalletId declarations, treasury account config
+
+**Out of scope — do not report findings from:**
+- `pallets/governance/` (Governance audit)
+- `pallets/interoperability/` (Bridge audit)
+- `pallets/identity/`, `pallets/compliance/` (KYC audit)
+- `pallets/contracts/` (Contracts audit)
+- `pallets/oracle/` (Oracle audit)
+
+---
+
+## Context & Background
+
+You are performing an **Economic & Tokenomics Security Audit** on **BelizeChain**, a sovereign Substrate blockchain (Polkadot SDK `stable2512`) for the nation of Belize. The chain operates a **dual currency model**: DALLA (native staking/governance token, 12 decimals) and bBZD (fiat-backed stable token pegged 1:1 to the Belize Dollar). Treasury funds are split across 8 distinct pallet accounts. Reward mechanisms exist for validators, PoUW workers, relay operators, educators, and whistleblowers.
+
+**Repository**: https://github.com/BelizeChain/belizechain  
+**Branch**: `belizechain`  
+**DOLLARS constant**: `1_000_000_000_000` (10^12 — 12 decimal places)  
+**MaxDallaSupply**: 501,000,000,000 DALLA  
+**ExistentialDeposit**: 0.001 DALLA (1,000,000,000 base units)
+
+---
+
+## Pre-Verified Observations
+
+### ECON-PRE-001 — Two Independent MaxSupply Declarations `[VERIFIED from runtime]`
+```rust
+impl pallet_belize_community::Config { type MaxSupply = MaxDallaSupply; }
+// economy pallet similarly declares MaxSupply = MaxDallaSupply
+```
+Whether they share one authoritative counter is the top-priority read.
+
+### ECON-PRE-002 — bBZD Has No Visible On-Chain Peg Mechanism `[VERIFIED from runtime]`
+```rust
+// Comment confirmed: "Oracle is NOT used for exchange rates.
+// bBZD peg is always 1:1 with BZD (USDC-style fiat-backed)."
+```
+No on-chain circuit breaker or de-peg response mechanism visible in runtime config.
+
+### ECON-PRE-003 — Whistleblower Exploit Reward is 20,000 DALLA `[VERIFIED from runtime]`
+```rust
+pub const WhistleblowerExploitReward: Balance = 20_000 * DOLLARS;
+```
+Largest single mint event on the chain. Review gate in `pallets/whistleblower/src/lib.rs` must precede disbursement.
+
+### ECON-PRE-004 — FeeMultiplierUpdate = () — Static Fees `[VERIFIED from runtime]`
+```rust
+type FeeMultiplierUpdate = ();
+```
+No congestion pricing. Spam costs are constant regardless of chain load. Every reward mechanism that can be triggered by user action has no cost floor that rises under load.
+
+### ECON-PRE-005 — TransferTaxRate = 10 (0.1%), Integer Division `[VERIFIED from runtime]`
+```rust
+pub const TransferTaxRate: u32 = 10; // 0.1% — formula: amount * 10 / 10_000
+```
+Transfers below 1,000 base units pay zero tax due to integer truncation.
+
+### ECON-PRE-006 — 8 Treasury Accounts, All Must Have Unique AccountIds `[VERIFIED from runtime]`
+All 8 PalletId strings listed in Rule 7. Uniqueness unverified.
+
+---
+
+## Pre-Audit Checklist
+
+```
+[ ] Cloned repo and checked out branch `belizechain`
+[ ] Exact commit hash noted: ___________
+[ ] Confirmed these files exist:
+    [ ] pallets/economy/src/lib.rs
+    [ ] pallets/community/src/lib.rs
+    [ ] pallets/belizex/src/lib.rs
+    [ ] pallets/staking/src/lib.rs
+    [ ] pallets/whistleblower/src/lib.rs
+    [ ] pallets/consensus/src/lib.rs
+    [ ] pallets/mesh/src/lib.rs
+    [ ] pallets/landledger/src/lib.rs
+[ ] Ran: cargo build --release 2>&1 | tee build_output.txt  →  errors: ___________
+[ ] Ran: cargo test -p pallet-belize-economy -- --nocapture  →  pass/fail: ___________
+[ ] Authoritative supply counter identified: pallet_balances / economy pallet / other: ___________
+[ ] All 8 PalletId AccountIds computed: collision found YES / NO
+[ ] Education reward double-claim storage pattern identified: StorageMap / Vec / other: ___________
+[ ] Referral reward double-claim storage pattern: ___________
+[ ] Whistleblower reward review gate confirmed: YES / NO / UNVERIFIED
+[ ] DEX fee 30% treasury transfer confirmed atomic: YES / NO / UNVERIFIED
+[ ] PublicGoods routing atomicity confirmed: YES / NO / UNVERIFIED
+[ ] bBZD on-chain circuit breaker searched: found / not found
+[ ] Annual DALLA emission at current BaseReward calculated: ___________DALLA/year
+[ ] Annual emission vs MaxDallaSupply as %: ___________%
+```
+
+---
+
+## Audit Areas
+
+### Area 1 — Global Supply Counter Architecture
+
+```bash
+# Find the authoritative supply counter
+grep -n "total_issuance\|TotalSupply\|total_supply\|current_supply\|MaxSupply\|supply_check" \
+  pallets/economy/src/lib.rs pallets/community/src/lib.rs | head -30
+
+# Find ALL balance mint calls across every pallet
+grep -rn "deposit_creating\|T::Currency::issue\|mint_into\|T::Currency::deposit" \
+  pallets/*/src/lib.rs | grep -v "//\|#\[test\]" | head -50
+
+# For each mint call found, check if it checks the supply cap before minting
+# (requires reading the surrounding context of each hit above)
+
+# Verify pallet_balances total_issuance is checked
+grep -rn "total_issuance\|Balances::total_issuance\|Currency::total_issuance" \
+  pallets/economy/src/lib.rs | head -10
+```
+
+**Expected correct pattern:**
+```rust
+let current_supply = T::Currency::total_issuance();
+ensure!(current_supply + mint_amount <= T::MaxSupply::get(), Error::SupplyCapReached);
+T::Currency::deposit_creating(&account, mint_amount);
+```
+
+If any mint call omits the `ensure!` check, or checks a local counter instead of `total_issuance()`, report it as Critical.
+
+---
+
+### Area 2 — Double-Claim Protection for Community Rewards
+
+```bash
+# Education reward claim protection
+grep -n "EducationReward\|education_reward\|module_complete\|completed_module\|claimed" \
+  pallets/community/src/lib.rs | head -25
+
+# Referral reward double-claim
+grep -n "ReferralReward\|referral_reward\|referred_by\|referral_claimed\|StorageMap" \
+  pallets/community/src/lib.rs | head -20
+
+# Relay reward double-claim (mesh pallet)
+grep -n "relay.*reward\|proof.*claimed\|proof_id\|header_submitted\|RelayProof" \
+  pallets/mesh/src/lib.rs | head -20
+
+# Verify storage keys include AccountId
+grep -n "StorageMap\|StorageDoubleMap" \
+  pallets/community/src/lib.rs | head -20
+```
+
+**For each reward type, answer:**
+- What storage structure records that a reward was claimed?
+- Does the key include the claimant's AccountId?
+- Is the record permanent (never pruned)?
+- Is the check-then-set atomic (both in the same extrinsic with no external call between)?
+
+---
+
+### Area 3 — Treasury Routing Atomicity
+
+```bash
+# Find PublicGoods routing implementation
+grep -n "PublicGoodsRoutingPercent\|public_goods\|route\|split\|WellbeingFundPercent" \
+  pallets/economy/src/lib.rs | head -20
+
+# Verify routing is in same call as mint
+grep -n -A 20 "fn.*mint\|fn.*issue\|fn.*distribute\|fn.*reward" \
+  pallets/economy/src/lib.rs | grep -B 5 "public_goods\|routing\|treasury" | head -30
+
+# Check if direct treasury deposit is possible without routing
+grep -n "TreasuryAccount\|treasury.*deposit\|deposit.*treasury" \
+  pallets/*/src/lib.rs | grep -v "//\|#\[test\]" | head -20
+```
+
+The routing split must be: (1) atomic with the mint, (2) not bypassable via a direct treasury deposit function. If any code path deposits to the main treasury without routing to `PublicGoodsPalletId`, the 10% carve-out is bypassable.
+
+---
+
+### Area 4 — DEX Fee Distribution
+
+```bash
+# Verify protocol fee is transferred (not just accounted)
+grep -n "ProtocolFeeToTreasuryBps\|protocol_fee\|treasury_fee\|30.*percent\|3000" \
+  pallets/belizex/src/lib.rs | head -20
+
+# Find the actual transfer call for the fee
+grep -n "T::Currency::transfer\|deposit.*treasury\|BelizeXPalletId\|TreasuryPalletId" \
+  pallets/belizex/src/lib.rs | head -15
+
+# Verify tourism discount is correctly applied
+grep -n "TourismDiscountRate\|tourism.*discount\|merchant.*discount\|merchant_category" \
+  pallets/belizex/src/lib.rs | head -15
+```
+
+**Questions to answer:**
+1. Is the 30% treasury fee actually transferred via `T::Currency::transfer` in the same extrinsic as the swap, or is it recorded in a claimable storage item that someone must trigger?
+2. If the treasury fee is claimable, who triggers the claim? Can it be blocked?
+3. Is the tourism discount applied before or after the fee calculation? Wrong order changes effective fee.
+
+---
+
+### Area 5 — Whistleblower Review Gate
+
+```bash
+# Find the review gate before reward disbursement
+grep -n "ExploitReward\|FraudReward\|ReviewerOrigin\|approve\|review\|Status\|Approved\|disburse" \
+  pallets/whistleblower/src/lib.rs | head -30
+
+# Verify the approval origin
+grep -n -B 3 "fn.*approve\|fn.*disburse\|fn.*reward" \
+  pallets/whistleblower/src/lib.rs | head -20
+
+# Check if reward can be triggered by the reporter themselves
+grep -n "ensure_signed\|origin\|T::ReviewOrigin\|T::RewardsOrigin" \
+  pallets/whistleblower/src/lib.rs | head -15
+```
+
+20,000 DALLA is the largest single-transaction mint on the chain. If a reporter can trigger their own reward disbursement without a privileged reviewer's approval, this is a mint-on-demand vulnerability.
+
+---
+
+### Area 6 — PalletId Collision Verification
+
+```bash
+# Compute all PalletId AccountIds in a test context
+# Run this in a Substrate test or standalone script:
+cargo test -p belizechain-runtime pallet_id_uniqueness 2>/dev/null || \
+  echo "No existing pallet_id test — must write one"
+
+# Visual quick check (not sufficient — but flags obvious typos)
+grep -n "PalletId\b" runtime/src/lib.rs | grep "b\""
+```
+
+Write a test that calls `PalletId(*b"py/trsry").into_account_truncating::<AccountId>()` for all 8 IDs and asserts they are all distinct. If no such test exists, create it and run it. A collision here routes funds from one pallet into another's account silently.
+
+---
+
+## Deliverables
+
+### D1 — Pre-Audit Checklist
+The completed checklist with every blank filled in.
+
+### D2 — Executive Summary
+Overall risk rating. Top 3 most urgent findings by ECON-### ID. Annual emission rate vs MaxDallaSupply stated numerically.
+
+### D3 — Findings Table
+`ID | Severity | Confidence | Area | File:Line | Title | Status`
+Only `[VERIFIED]` and `[INFERRED]` findings.
+
+### D4 — Detailed Findings
+For each finding: code excerpt, description, proof-of-concept exploit steps with dollar amounts at $1M TVL and $10M TVL, preconditions, and recommendation.
+
+### D5 — Supply Architecture Map
+A documented map showing: every mint source → the cap check it uses → the authoritative counter → confirmation that all mint paths share the same counter. This deliverable is mandatory even if no supply cap vulnerability is found.
+
+### D6 — Unverified Observations
+`[ASSUMED]`, `[THEORETICAL]`, or unread-file items for follow-up.
+
+### D7 — Audit Gaps
+Files not read, questions unanswered, items requiring human confirmation.
+
+---
+
+## How to Run This Audit
+
+```bash
+# ── Setup ─────────────────────────────────────────────────────────────────────
+git clone https://github.com/BelizeChain/belizechain.git
+cd belizechain && git checkout belizechain
+git log --oneline -1
+
+# ── Build ─────────────────────────────────────────────────────────────────────
+cargo build --release 2>&1 | tee build_output.txt
+
+# ── Economy pallet ────────────────────────────────────────────────────────────
+cat pallets/economy/src/lib.rs
+cargo test -p pallet-belize-economy -- --nocapture 2>&1 | tee economy_tests.txt
+
+# ── Supply cap audit ──────────────────────────────────────────────────────────
+grep -rn "deposit_creating\|Currency::issue\|mint_into\|deposit_into_existing" \
+  pallets/*/src/lib.rs | grep -v "//\|#\[test\]"
+
+grep -rn "total_issuance\|MaxSupply\|max_supply\|supply_cap\|supply_check" \
+  pallets/*/src/lib.rs | head -30
+
+# ── Double-claim patterns ─────────────────────────────────────────────────────
+grep -rn "EducationReward\|ReferralReward\|education_claimed\|referral_claimed" \
+  pallets/community/src/lib.rs
+
+grep -rn "StorageMap\|StorageDoubleMap\|StorageValue" \
+  pallets/community/src/lib.rs | head -20
+
+# ── Treasury routing ──────────────────────────────────────────────────────────
+grep -n "PublicGoodsRoutingPercent\|WellbeingFundPercent\|routing" \
+  pallets/economy/src/lib.rs
+
+# ── DEX fee distribution ──────────────────────────────────────────────────────
+grep -n "ProtocolFeeToTreasuryBps\|protocol_fee\|T::Currency::transfer" \
+  pallets/belizex/src/lib.rs
+
+# ── Whistleblower gate ────────────────────────────────────────────────────────
+grep -n "ExploitReward\|ReviewerOrigin\|approve\|disburse" \
+  pallets/whistleblower/src/lib.rs
+
+# ── PalletId collision ────────────────────────────────────────────────────────
+grep -n 'PalletId.*b"' runtime/src/lib.rs
+
+# ── Annual emission calculation ───────────────────────────────────────────────
+# BaseReward = 1 DALLA/block, 14,400 blocks/day, 365 days/year
+# = 5,256,000 DALLA/year from staking alone
+# Add consensus (5 DALLA × epochs/year) + community rewards
+# Compare to MaxDallaSupply = 501,000,000,000 DALLA
+```
+
+---
+
+## Severity Definitions
+
+| Severity | Definition |
+|---|---|
+| **Critical** | Supply cap bypass; direct treasury drain; mint-on-demand without review gate |
+| **High** | Double-claim via storage weakness; treasury routing bypass; PalletId collision |
+| **Medium** | bBZD peg without on-chain circuit breaker; tourism discount calculation order; integer division for tax |
+| **Low** | Missing events for reward disbursements; parameter tuning; documentation of emission schedule |
+| **Informational** | Intentional design choices with accepted risk — document as such |
+
+---
+
+## Anti-Hallucination Self-Check
+
+Before submitting the report:
+
+```
+[ ] Every finding references a File:Line that was actually read
+[ ] Authoritative supply counter was identified by reading the code — not assumed to be pallet_balances
+[ ] Every mint call was found with grep — not just the obvious ones
+[ ] Each mint call's supply cap check was read in context — not assumed present
+[ ] Double-claim storage pattern was read from pallet code — key type verified
+[ ] Whistleblower review gate was read from pallet code — not assumed to exist
+[ ] DEX fee transfer was confirmed as T::Currency::transfer — not just accounting
+[ ] PublicGoods routing atomicity was verified — not assumed
+[ ] PalletId AccountIds were computed or tested — not assumed unique from string inspection
+[ ] Annual emission rate was calculated numerically and included in report
+[ ] bBZD circuit breaker was searched for — absence confirmed, not assumed
+[ ] No finding uses "likely" or "probably" without an [INFERRED] marker
+[ ] All [ASSUMED] items are in D6 only
+```
+
+---
+
+*BelizeChain Economic & Tokenomics Audit Master Prompt — v1 — March 8, 2026*
+*Pre-verified observations sourced from direct reading of `runtime/src/lib.rs`.*
+*All AI outputs must be validated against actual pallet source code before inclusion in a final security report.*
+# BelizeChain — Bridge & Interoperability Audit: Master Prompt (v1)
+
+---
+
+## ⚠️ AI AUDITOR OPERATING RULES — READ BEFORE PROCEEDING
+
+Bridges are the most frequently exploited component in all of blockchain history. Every major bridge exploit since 2021 — Ronin ($625M), Wormhole ($320M), Nomad ($190M), Harmony ($100M) — exploited one of three primitives: signature verification failure, replay protection absence, or validator key management weakness. All three are in scope for this audit.
+
+**Violating any rule below invalidates the finding.**
+
+---
+
+### RULE 1 — AR-6 IS ACKNOWLEDGED — DO NOT RE-REPORT IT AS NEW
+
+From `runtime/src/lib.rs`, confirmed and previously acknowledged:
+
+```rust
+// AR-6: Passthrough verifier — replace with real Falcon/Dilithium before mainnet
+type PQVerifier = pallet_belize_interoperability::PassthroughPQVerifier;
+type PQSignatureThreshold = ConstU32<3>;
+```
+
+`PassthroughPQVerifier::fn verify() { return true }` — PQ signatures are never verified.
+
+**Do not report this as a new finding.** It is already tracked. However, you must assess whether it creates **compound vulnerabilities** when combined with other bridge weaknesses found in this audit:
+
+- With `fn verify() { true }`, does PQSignatureThreshold = 3 require 3 distinct validator accounts, or can one validator submit 3 "signatures" (one per account they control)?
+- If deduplication is absent: a single rogue validator can approve any bridge transfer alone
+- Record any compound findings under finding ID BRIDGE-### as a new finding that references AR-6
+
+---
+
+### RULE 2 — THE 10-MINUTE CHALLENGE WINDOW IS THE BRIDGE'S ENTIRE FRAUD DEFENSE
+
+From `runtime/src/lib.rs`, confirmed:
+
+```rust
+type ChallengePeriod = ConstU32<100>; // 100 blocks × 6 sec = 10 minutes
+```
+
+Every bridge transaction is final after 100 blocks. This is the only window during which a fraudulent bridge transfer can be detected and reversed. All bridge security questions must be evaluated against this 10-minute operability requirement:
+
+- A monitoring system must detect fraud and submit a challenge proof within 10 minutes
+- If the challenge proof requires complex computation (e.g., generating a fraud proof on Ethereum), 10 minutes may be operationally insufficient
+- If all 21 bridge validators are offline simultaneously (planned maintenance), the challenge window passes with no oversight
+- Can the challenge period be extended, reset, or blocked by any on-chain action?
+
+If the answer to the last question is yes, the 10-minute guarantee is false.
+
+---
+
+### RULE 3 — BRIDGE RANDOMNESS IS PREDICTABLE 24 HOURS IN ADVANCE
+
+From `runtime/src/lib.rs`, confirmed:
+
+```rust
+type Randomness = pallet_babe::RandomnessFromOneEpochAgo<Runtime>;
+```
+
+`EpochDuration = 14,400 blocks = ~24 hours`. Any randomness used by the bridge pallet — for validator selection, nonce generation, challenge assignment, or ordering — was determined 24 hours ago and is known to all chain observers. An attacker can plan exploitation of any randomness-dependent bridge operation 24 hours in advance. This is a compound finding with the Crypto audit's CRYPTO-PRE-004.
+
+---
+
+### RULE 4 — DISTINGUISH WHAT YOU READ FROM WHAT YOU INFER
+
+| Marker | Meaning |
+|---|---|
+| `[VERIFIED]` | Exact code quoted — file and line cited |
+| `[INFERRED]` | Conclusion drawn from code read — needs confirmation |
+| `[ASSUMED]` | Substrate convention — not confirmed in this repo |
+| `[UNVERIFIED]` | File not read — do not report as a finding |
+
+All findings in the Findings Table must be `[VERIFIED]` or `[INFERRED]`.
+
+---
+
+### RULE 5 — REPLAY PROTECTION MUST BE PROVEN PERMANENT
+
+A processed nonce or message ID must be stored permanently — pruning it after any time window re-opens replay. The storage cost of an ever-growing nonce set must be acceptable and accounted for in the bridge design. If nonce storage is pruned, determine the pruning window and calculate whether replaying a bridge transaction after the pruning window is feasible given Ethereum's finality (~15 minutes) versus BelizeChain's 10-minute challenge period.
+
+---
+
+### RULE 6 — ETHEREUM SIGNATURE VERIFICATION REQUIRES EXACT FORMAT CHECK
+
+Ethereum's `personal_sign` prepends `"\x19Ethereum Signed Message:\n32"` to messages before signing. If the bridge's Ethereum message format does not include this prefix, legitimate Ethereum wallet signatures cannot be constructed, and the signature verification scheme accepts only crafted (non-standard) signatures. Verify the exact message format used.
+
+---
+
+### RULE 7 — NO SPECULATIVE SEVERITY UPGRADES
+
+Multi-step attack chains must list every precondition. Reduce severity by one level for each major unconfirmed precondition. Mark `[THEORETICAL]` if any step relies on unverified behavior.
+
+---
+
+### RULE 8 — SCOPE BOUNDARIES
+
+**In scope:**
+- `pallets/interoperability/src/` — all files
+- `runtime/src/lib.rs` — interoperability config section
+- `pallets/identity/src/lib.rs` — KYC Level 3 for bridge operators only
+
+**Out of scope — do not report findings from:**
+- `pallets/oracle/` (Oracle audit — except where oracle directly affects bridge decisions)
+- `pallets/governance/` (Governance audit)
+- `pallets/economy/`, `pallets/staking/` (Economic audit)
+- `pallets/compliance/` (KYC audit)
+
+If a bridge vulnerability depends on an oracle vulnerability, note the cross-dependency but do not re-audit the oracle.
+
+---
+
+## Context & Background
+
+You are performing a **Bridge & Interoperability Security Audit** on **BelizeChain**, a sovereign Substrate blockchain for Belize with bridges to Ethereum and Polkadot. The bridge uses a 21-validator set, a 3-of-N PQ signature threshold (currently passthrough), a 10-minute challenge period, and requires KYC Level 3 for all bridge operators.
+
+**Repository**: https://github.com/BelizeChain/belizechain  
+**Branch**: `belizechain`  
+**Bridge validators**: MaxBridgeValidators = 21  
+**Minimum bridge amount**: 50 DALLA  
+**Bridge fee**: 1% (BridgeFeeRate = 100)  
+**Challenge period**: 100 blocks (~10 minutes)  
+**Throughput cap**: MaxBridgePerBlock = 5
+
+---
+
+## Pre-Verified Observations
+
+### BRIDGE-PRE-001 — PassthroughPQVerifier Renders Threshold Meaningless `[VERIFIED from runtime]`
+Documented in Rule 1. Compound attack requires deduplication check in pallet source.
+
+### BRIDGE-PRE-002 — KYC Level 3 Required for Bridge Operators `[VERIFIED from runtime]`
+```rust
+fn verify_bridge_operator(account: &AccountId) -> bool {
+    Identity::meets_kyc_requirement_level(account, 3)
+}
+```
+Level 3 = Government KYC. Cross-dependency with Identity audit: is Level 3 revocable mid-session?
+
+### BRIDGE-PRE-003 — MaxBridgePerBlock = 5 Creates Starvation Vector `[VERIFIED from runtime]`
+```rust
+type MaxBridgePerBlock = ConstU32<5>;
+```
+An attacker submitting 5 minimum-threshold dummy bridge transactions per block can prevent all legitimate bridge completions.
+
+### BRIDGE-PRE-004 — BridgeFeeRate = 1%, MinBridgeAmount = 50 DALLA `[VERIFIED from runtime]`
+```rust
+type BridgeFeeRate    = ConstU32<100>;    // 1%
+type MinBridgeAmount  = ConstU128<...>;   // 50 DALLA
+```
+Fee floor = 0.5 DALLA per bridge transaction. This also bounds the starvation attack cost: 5 blocks/sec × 0.5 DALLA = 2.5 DALLA/block to maintain a starvation attack.
+
+### BRIDGE-PRE-005 — Randomness 24h Predictable in Bridge Context `[VERIFIED from runtime]`
+```rust
+type Randomness = pallet_babe::RandomnessFromOneEpochAgo<Runtime>;
+```
+Full details in Rule 3.
+
+---
+
+## Pre-Audit Checklist
+
+```
+[ ] Cloned repo and checked out branch `belizechain`
+[ ] Exact commit hash noted: ___________
+[ ] Confirmed these files exist:
+    [ ] pallets/interoperability/src/lib.rs
+    [ ] pallets/interoperability/src/types.rs  (or noted absent)
+    [ ] runtime/src/lib.rs
+[ ] Ran: cargo build --release 2>&1 | tee build_output.txt  →  errors: ___________
+[ ] Ran: cargo test -p pallet-belize-interoperability -- --nocapture  →  pass/fail: ___________
+[ ] PassthroughPQVerifier fn verify return value quoted verbatim: ___________
+[ ] PQ threshold deduplication (same-account multi-submit) confirmed: BLOCKED / NOT BLOCKED
+[ ] Ethereum signature scheme identified: secp256k1-ECDSA / other: ___________
+[ ] Ethereum message format (personal_sign prefix): PRESENT / ABSENT / UNVERIFIED
+[ ] Replay nonce storage permanence confirmed: PERMANENT / PRUNED after N blocks: ___________
+[ ] Challenge proof requirement identified: ___________
+[ ] Challenge period reset/extend vector searched: FOUND / NOT FOUND
+[ ] Bridge validator rotation quorum identified: ___________
+[ ] Randomness used by bridge: for what purpose: ___________
+[ ] MaxBridgePerBlock starvation cost calculated: ___________DALLA/block
+```
+
+---
+
+## Audit Areas
+
+### Area 1 — PassthroughPQVerifier Compound Attack Analysis
+
+```bash
+# Quote the exact fn verify implementation
+grep -n -A 5 "fn verify\|PassthroughPQVerifier\|impl.*PQVerifier" \
+  pallets/interoperability/src/lib.rs | head -20
+
+# Find PQ threshold deduplication
+grep -n "PQSignatureThreshold\|threshold\|dedup\|unique\|accounts\|distinct" \
+  pallets/interoperability/src/lib.rs | head -15
+
+# Find who submits PQ signatures and how they are counted
+grep -n "submit.*signature\|add.*signature\|signature_count\|approvals" \
+  pallets/interoperability/src/lib.rs | head -15
+```
+
+**The critical question**: When `fn verify()` always returns `true`, does the bridge still require 3 **distinct accounts** to each submit one "signature"? Or can one account submit 3 times to meet the threshold? The answer determines whether AR-6 is exploitable by a single rogue bridge validator or only by 3 colluding validators.
+
+---
+
+### Area 2 — Ethereum Bridge Signature Verification
+
+```bash
+# Find Ethereum signature verification
+grep -n "secp256k1\|ecdsa\|eth_verify\|recover\|ecrecover\|keccak\|EthSig" \
+  pallets/interoperability/src/lib.rs | head -30
+
+# Find the Ethereum message format
+grep -n "EthereumMessage\|eth_prefix\|\\\\x19\|Ethereum Signed" \
+  pallets/interoperability/src/lib.rs | head -15
+
+# Find chain ID in Ethereum message
+grep -n "chain_id\|ChainId\|ETH_CHAIN_ID\|1 =>\|mainnet" \
+  pallets/interoperability/src/lib.rs | head -10
+
+# Find contract address in Ethereum message
+grep -n "contract_address\|bridge_contract\|EthBridgeAddress" \
+  pallets/interoperability/src/lib.rs | head -10
+```
+
+**Questions to answer:**
+1. Is the Ethereum `personal_sign` prefix present? If absent, wallets cannot sign bridge messages.
+2. Does the signed message commit to: bridge contract address, destination chain ID, nonce, amount, recipient address? Missing any of these allows cross-chain or cross-destination replay.
+3. Is the secp256k1 implementation a host function (`sp_io::crypto::secp256k1_ecdsa_recover`) or a pure WASM implementation? Pure WASM secp256k1 has had correctness bugs in Substrate projects.
+
+---
+
+### Area 3 — Replay Protection
+
+```bash
+# Find nonce or message ID storage
+grep -n "nonce\|Nonce\|message_id\|MessageId\|processed\|Processed\|used\|Used" \
+  pallets/interoperability/src/lib.rs | head -30
+
+# Verify storage is permanent (no pruning)
+grep -n "remove\|clear\|prune\|expire\|retain\|drain" \
+  pallets/interoperability/src/lib.rs | grep -i "nonce\|message\|processed\|proof" | head -15
+
+# Find whether nonces are per-chain or global
+grep -n "eth_nonce\|polkadot_nonce\|chain.*nonce\|nonce.*chain\|source_chain" \
+  pallets/interoperability/src/lib.rs | head -15
+```
+
+**Questions to answer:**
+1. Are processed message IDs stored permanently?
+2. Are nonces chain-specific? A global nonce allows replay of an Ethereum message as a Polkadot message if both chains use the same format.
+3. What is the storage growth rate of the nonce set? At MaxBridgePerBlock = 5 transactions/block and 14,400 blocks/day, the nonce set grows by up to 72,000 entries/day. Is this accounted for in storage deposit requirements?
+
+---
+
+### Area 4 — Challenge Period Mechanics
+
+```bash
+# Find challenge submission logic
+grep -n "challenge\|Challenge\|ChallengePeriod\|dispute\|contest\|fraud_proof" \
+  pallets/interoperability/src/lib.rs | head -30
+
+# Find challenge proof requirements
+grep -n "proof\|evidence\|fn.*challenge\|ChallengeProof" \
+  pallets/interoperability/src/lib.rs | head -20
+
+# Find challenge period reset / extension vectors
+grep -n "reset.*challenge\|extend.*challenge\|challenge.*extend\|new.*period\|restart" \
+  pallets/interoperability/src/lib.rs | head -15
+
+# Find automatic release after challenge period expires
+grep -n "release\|finalize\|complete\|expired\|ChallengePeriod.*block\|block.*ChallengePeriod" \
+  pallets/interoperability/src/lib.rs | head -15
+```
+
+**Questions to answer:**
+1. What is the cryptographic proof required to challenge a bridge transaction? Is it a Merkle proof, a double-spend proof, or just an assertion by a privileged account?
+2. Can any party challenge, or only registered bridge validators? If only validators, a fully colluding validator set blocks all challenges.
+3. Is the challenge period measured by block number (safe for 6-second blocks) or block timestamp (manipulable by validators within GRANDPA finality bounds)?
+4. What happens to locked funds when the challenge period expires without a challenge? Automatic release — is this enforced in `on_initialize` with bounded weight?
+
+---
+
+### Area 5 — Bridge Validator Key Rotation
+
+```bash
+# Find validator set management
+grep -n "bridge_validator\|set_validators\|add_validator\|remove_validator\|rotate_validator\|ValidatorSet" \
+  pallets/interoperability/src/lib.rs | head -20
+
+# Find quorum required for validator set changes
+grep -n "rotation.*quorum\|quorum.*rotation\|validator.*threshold\|change.*set" \
+  pallets/interoperability/src/lib.rs | head -15
+
+# Find whether departed validators' keys are invalidated
+grep -n "revoke.*key\|invalidate.*key\|key.*expire\|old_validator\|departed" \
+  pallets/interoperability/src/lib.rs | head -10
+```
+
+**Questions to answer:**
+1. What quorum is required to update the bridge validator set? If it is the same threshold as a bridge transaction (3-of-N), a colluding minority that can approve transactions can also replace validators.
+2. When a validator is removed, are their already-submitted signatures invalidated?
+3. Is there a minimum time-lock between validator set changes to prevent rapid rotation attacks (replace honest validators before they can challenge a fraudulent transaction)?
+
+---
+
+## Deliverables
+
+### D1 — Pre-Audit Checklist
+Completed with every blank filled in.
+
+### D2 — Executive Summary
+Overall risk rating. Top 3 findings by BRIDGE-### ID. Include dollar impact estimate at $1M bridge TVL.
+
+### D3 — Findings Table
+`ID | Severity | Confidence | Area | File:Line | Title | Status`  
+Only `[VERIFIED]` and `[INFERRED]` findings. AR-6 goes in D5 (Acknowledged Issues), not D3.
+
+### D4 — Detailed Findings
+For each finding: code excerpt, description, numbered attack steps, preconditions, dollar impact at realistic TVL, and recommendation. No code excerpt = demoted to D6.
+
+### D5 — Acknowledged Issues
+| ID | Description | Status |
+|---|---|---|
+| AR-6 / BRIDGE-PRE-001 | `PassthroughPQVerifier` — PQ signatures not verified | Acknowledged — replacement required before mainnet |
+
+### D6 — Unverified Observations
+`[ASSUMED]`, `[THEORETICAL]`, or unread-file items.
+
+### D7 — Audit Gaps
+Files not read, questions unanswered. Note any Ethereum-side bridge contract that was not in scope.
+
+---
+
+## How to Run This Audit
+
+```bash
+# ── Setup ─────────────────────────────────────────────────────────────────────
+git clone https://github.com/BelizeChain/belizechain.git
+cd belizechain && git checkout belizechain
+git log --oneline -1
+
+# ── Build ─────────────────────────────────────────────────────────────────────
+cargo build --release 2>&1 | tee build_output.txt
+
+# ── Bridge pallet ─────────────────────────────────────────────────────────────
+ls pallets/interoperability/src/
+cat pallets/interoperability/src/lib.rs
+cargo test -p pallet-belize-interoperability -- --nocapture 2>&1 | tee bridge_tests.txt
+
+# ── PassthroughPQVerifier — quote the exact fn verify body ───────────────────
+grep -n -A 10 "PassthroughPQVerifier\|impl.*PQVerifier\|fn verify" \
+  pallets/interoperability/src/lib.rs
+
+# ── Ethereum signatures ───────────────────────────────────────────────────────
+grep -n "secp256k1\|ecdsa\|keccak\|\\\\x19\|eth_prefix\|personal_sign\|chain_id" \
+  pallets/interoperability/src/lib.rs
+
+# ── Replay protection ─────────────────────────────────────────────────────────
+grep -n "nonce\|message_id\|processed\|Processed\|StorageMap\|StorageSet" \
+  pallets/interoperability/src/lib.rs | head -30
+
+grep -n "remove\|prune\|clear\|expire" \
+  pallets/interoperability/src/lib.rs | grep -i "nonce\|processed\|message"
+
+# ── Challenge period ──────────────────────────────────────────────────────────
+grep -n "challenge\|ChallengePeriod\|dispute\|fraud_proof\|extend\|reset" \
+  pallets/interoperability/src/lib.rs
+
+# ── Validator rotation ────────────────────────────────────────────────────────
+grep -n "add_validator\|remove_validator\|rotate\|ValidatorSet\|quorum" \
+  pallets/interoperability/src/lib.rs
+
+# ── Starvation attack cost ────────────────────────────────────────────────────
+# MaxBridgePerBlock = 5, MinBridgeAmount = 50 DALLA, BridgeFeeRate = 1%
+# Cost per block to maintain starvation = 5 × 50 × 0.01 = 2.5 DALLA/block
+# Cost per day = 2.5 × 14,400 = 36,000 DALLA/day
+echo "Bridge starvation cost: 36,000 DALLA/day at current parameters"
+
+# ── Test coverage ─────────────────────────────────────────────────────────────
+grep -rn "#\[test\]\|fn test_\|fn it_" pallets/interoperability/src/ | wc -l
+```
+
+---
+
+## Severity Definitions
+
+| Severity | Definition |
+|---|---|
+| **Critical** | Direct bridge fund theft; replay attack with no preconditions; single-validator bridge approval |
+| **High** | Challenge period reset/block vector; validator rotation capture; starvation with economic feasibility |
+| **Medium** | 10-minute challenge window too short for realistic fraud proof; randomness predictability; nonce storage growth unaccounted |
+| **Low** | Missing events on validator changes; documentation of challenge proof format |
+| **Informational** | Design trade-offs with accepted risk — bridge TVL limits should be documented |
+
+---
+
+## Anti-Hallucination Self-Check
+
+Before submitting the report:
+
+```
+[ ] AR-6 is in D5 (Acknowledged Issues) only — not reported as a new finding in D3
+[ ] PassthroughPQVerifier fn verify return value was quoted verbatim from code
+[ ] PQ threshold deduplication was verified from code — not assumed to be enforced
+[ ] Ethereum signature prefix was verified from code — not assumed present
+[ ] Replay nonce storage permanence was verified — removal/pruning searched explicitly
+[ ] Challenge period reset vector was searched — not assumed absent
+[ ] Bridge validator rotation quorum was read from code — not assumed equal to transfer threshold
+[ ] Starvation attack cost was calculated numerically with actual parameters
+[ ] Randomness usage in bridge was identified — specific use case stated, not assumed absent
+[ ] No finding uses "likely" or "probably" without [INFERRED] marker
+[ ] All [ASSUMED] items are in D6 only
+[ ] Dollar impact was estimated at realistic TVL — not theoretical maximum
+```
+
+---
+
+*BelizeChain Bridge & Interoperability Audit Master Prompt — v1 — March 8, 2026*
+*Pre-verified observations sourced from direct reading of `runtime/src/lib.rs`.*
+*All AI outputs must be validated against actual pallet source code before inclusion in a final security report.*
+# BelizeChain — Identity, KYC & Compliance Audit: Master Prompt (v1)
+
+---
+
+## ⚠️ AI AUDITOR OPERATING RULES — READ BEFORE PROCEEDING
+
+BelizeChain's identity and compliance system is the legal foundation of the chain's legitimacy. A bypass here is not a security incident — it is a FATF (Financial Action Task Force) compliance failure with regulatory consequences for the sovereign government of Belize. The system handles Government KYC data (SSN, passports), operates sanctions screening, and enforces Travel Rule compliance. All of these carry legal obligations that go beyond on-chain security.
+
+**Violating any rule below invalidates the finding.**
+
+---
+
+### RULE 1 — THERE ARE 6 KYC PROVIDERS AND THEY MUST ALL AGREE
+
+From `runtime/src/lib.rs`, six distinct provider structs check KYC:
+
+| Provider Struct | Used By | Minimum Level | Notes |
+|---|---|---|---|
+| `CommunityKycProvider` | Community pallet | Varies | Education, referral gating |
+| `BelizeXKycProvider` | DEX (BelizeX) | Level 1 | Trading access |
+| `StakingIdentityProvider` | Staking | Level 2 | Validator eligibility |
+| `InteroperabilityIdentityProvider` | Bridge | Level 3 | Bridge operator access |
+| `MeshIdentityProviderImpl` | Mesh | Level 3 + not sanctioned | Emergency authority |
+| `BnsIdentityProvider` | BNS | Level 1 (domain) / Level 3 (verified domain) | Naming service |
+
+**Any inconsistency between these providers creates a KYC bypass.** If `BelizeXKycProvider` uses a different expiry check than `StakingIdentityProvider`, an account with lapsed-but-not-yet-detected KYC may still trade on the DEX after its validator eligibility expired. 
+
+The auditor must trace each provider back to the **same underlying storage read** in `pallets/identity/src/lib.rs` and confirm they all use the same expiry logic, the same revocation check, and the same level mapping.
+
+---
+
+### RULE 2 — REVOCATION MUST BYPASS THE GRACE PERIOD
+
+From `runtime/src/lib.rs`, confirmed:
+
+```rust
+type KycValidityBlocks = ConstU32<1_051_200>;  // ~2 years
+type KycGraceBlocks    = ConstU32<14_400>;     // ~1 day
+```
+
+For 14,400 blocks after a KYC attestation expires, the account is still treated as KYC-verified. This is intentional for seamless renewal.
+
+**The critical distinction**: when KYC is *revoked* (not merely expired), the revocation must take immediate effect — the grace period must not apply. If revocation uses the same code path as expiry and inherits the grace period, a sanctioned account remains active for 24 hours after revocation. For a 6-second chain, 24 hours = 14,400 blocks of unchallenged access.
+
+Verify in `pallets/identity/src/lib.rs` that revocation and expiry are handled by separate code paths with different behavior.
+
+---
+
+### RULE 3 — PII STORAGE IS A LEGAL OBLIGATION, NOT JUST A SECURITY QUESTION
+
+If SSN, Passport numbers, or National ID numbers are stored in cleartext on-chain, they are:
+- Visible to every full node operator
+- Visible to every archive node
+- Visible to anyone who downloads the chain state
+- Permanently on-chain and not removable (blockchain immutability)
+
+This likely violates Belize's Data Protection Act obligations and makes every node operator a data controller under applicable law. The correct approach stores only a cryptographic commitment (salted hash) with actual data held off-chain by authorized oracle operators.
+
+Before making any statement about PII handling, read the identity pallet's storage struct definitions and determine whether they contain raw document fields or commitment fields.
+
+---
+
+### RULE 4 — ORACLE AGREEMENT ON KYC IS A CENTRALIZATION RISK
+
+From `runtime/src/lib.rs`, confirmed:
+
+```rust
+type MinOracleAgreement = ConstU32<3>;   // 3 of MaxOperators = 10
+```
+
+Three of ten oracle operators reaching consensus can attest any KYC level for any account — including Government Level 3, which gates bridge operations, treasury access, and emergency mesh authority. This means KYC can be fraudulently elevated by collusion of 3 oracle operators without any additional safeguard.
+
+Cross-reference: the Oracle audit establishes that `OracleAdminOrigin = TechnicalCouncilMember` (a single council member can add oracle operators). The compound attack: 1 council member → adds 3 malicious oracle operators → operators attest KYC Level 3 for an unauthorized account → account gains bridge operator and treasury access. This cross-audit dependency must be documented.
+
+---
+
+### RULE 5 — DISTINGUISH WHAT YOU READ FROM WHAT YOU INFER
+
+| Marker | Meaning |
+|---|---|
+| `[VERIFIED]` | Exact code quoted — file and line cited |
+| `[INFERRED]` | Conclusion drawn from code read — needs confirmation |
+| `[ASSUMED]` | Substrate convention — not confirmed in this repo |
+| `[UNVERIFIED]` | File not read — do not report as a finding |
+
+---
+
+### RULE 6 — STRUCTURING DETECTION IS A FATF REQUIREMENT
+
+FATF Recommendation 16 (Travel Rule) and Recommendation 23 (structuring/smurfing) require that financial institutions detect attempts to break large transactions into multiple smaller ones to avoid reporting thresholds.
+
+BelizeChain's `TravelRuleThreshold = 100 DALLA`. An attacker can split a 1,000 DALLA transfer into ten 99 DALLA transfers over 10 blocks (60 seconds). This is the classic structuring attack.
+
+The compliance pallet must implement aggregation logic that detects this pattern. If it does not, the chain is non-compliant with FATF Recommendation 23, regardless of other KYC controls. This is a regulatory finding even if there is no immediate financial exploit.
+
+---
+
+### RULE 7 — BENCHMARK BYPASS FROM CRYPTO AUDIT MUST BE NOTED
+
+From the Cryptographic Audit (CRYPTO-PRE-003, confirmed): all KYC/sanctions checks return permissive values when `runtime-benchmarks` feature is compiled in. This audit must verify that production builds do not include `runtime-benchmarks`. Do not re-report this as a new finding — reference the Crypto audit — but confirm the production build status.
+
+---
+
+### RULE 8 — SCOPE BOUNDARIES
+
+**In scope:**
+- `pallets/identity/src/` — all files
+- `pallets/compliance/src/` — all files
+- `runtime/src/lib.rs` — identity/compliance config, all 6 KYC provider structs
+- `pallets/oracle/src/lib.rs` — KYC attestation consensus mechanism only
+
+**Out of scope — do not report findings from:**
+- `pallets/governance/` (Governance audit)
+- `pallets/interoperability/` bridge KYC checks (Bridge audit — note cross-dependency)
+- `pallets/belizex/` trading KYC checks (Economic audit — note cross-dependency)
+- `pallets/contracts/` (Contracts audit)
+
+---
+
+## Context & Background
+
+You are performing an **Identity, KYC & Compliance Security Audit** on **BelizeChain**, a sovereign Substrate blockchain for Belize that implements Government-issued digital identity (BelizeID), 3-level KYC (Basic / Enhanced / Government), FATF Travel Rule compliance, and sanctions screening. The system handles Belizean citizen PII and must comply with international AML/CFT standards.
+
+**Repository**: https://github.com/BelizeChain/belizechain  
+**Branch**: `belizechain`  
+**KYC levels**: L1 (Basic), L2 (Enhanced), L3 (Government)  
+**KYC validity**: ~2 years (1,051,200 blocks)  
+**Grace period**: ~1 day (14,400 blocks)  
+**Travel Rule threshold**: 100 DALLA (~BZD 100)  
+**Oracle agreement**: 3 of 10 operators required for KYC attestation
+
+---
+
+## Pre-Verified Observations
+
+### KYC-PRE-001 — MaxAccountsPerIdentity = 5 Amplifies Bypass Surface `[VERIFIED from runtime]`
+```rust
+type MaxAccountsPerIdentity = ConstU32<5>;
+```
+One real-world person can have 5 on-chain accounts. Sanctioning one account may not sanction all 5. Verify whether the sanctions check applies to the identity or only to the specific account.
+
+### KYC-PRE-002 — Benchmark Bypass Disables All KYC Checks `[VERIFIED — see Crypto Audit]`
+All 6 KYC providers return permissive values under `runtime-benchmarks`. Do not re-report — reference CRYPTO-PRE-003. Verify production build does not include this feature.
+
+### KYC-PRE-003 — TravelRuleThreshold = 100 DALLA, No Visible Aggregation Logic `[VERIFIED from runtime]`
+```rust
+type TravelRuleThreshold = ConstU128<100_000_000_000_000>; // 100 DALLA
+```
+Structuring attack: ten 99 DALLA transfers in 60 seconds. Aggregation logic presence unverified.
+
+### KYC-PRE-004 — Oracle Majority Attack on KYC Attestation `[VERIFIED from runtime]`
+```rust
+type MinOracleAgreement = ConstU32<3>;  // 3 of 10
+```
+3 oracle operators can attest Government KYC for any account. Full attack chain in Rule 4.
+
+### KYC-PRE-005 — 6 Inconsistent KYC Providers — Any Divergence is a Bypass `[VERIFIED from runtime]`
+All 6 provider structs confirmed from runtime/src/lib.rs. Provider consistency unverified.
+
+---
+
+## Pre-Audit Checklist
+
+```
+[ ] Cloned repo and checked out branch `belizechain`
+[ ] Exact commit hash noted: ___________
+[ ] Confirmed these files exist:
+    [ ] pallets/identity/src/lib.rs
+    [ ] pallets/compliance/src/lib.rs
+    [ ] pallets/oracle/src/lib.rs
+[ ] Ran: cargo build --release 2>&1 | tee build_output.txt  →  errors: ___________
+[ ] Ran: cargo test -p pallet-belize-identity -- --nocapture  →  pass/fail: ___________
+[ ] Ran: cargo test -p pallet-belize-compliance -- --nocapture  →  pass/fail: ___________
+[ ] PII storage method confirmed: cleartext / salted hash / off-chain commitment: ___________
+[ ] Revocation vs grace period — separate code paths: YES / NO
+[ ] All 6 KYC provider expiry logic compared — all use same function: YES / NO
+[ ] Sanctions scope: per-account only / per-identity (all 5 accounts): ___________
+[ ] Structuring detection (aggregation logic) present: YES / NO
+[ ] Aggregation window (if present): ___________
+[ ] Oracle manipulation attack surface modeled: YES / NO
+[ ] Production build runtime-benchmarks feature status: DISABLED / UNKNOWN
+[ ] KYC revocation event emitted: YES / NO
+[ ] MaxAuditRecords = 1000 per account — what happens when full: ERROR / OVERWRITE / OTHER: ___________
+```
+
+---
+
+## Audit Areas
+
+### Area 1 — KYC Provider Consistency Matrix
+
+For each of the 6 providers, verify against the same set of account states:
+
+| Test State | All 6 providers return the same result? |
+|---|---|
+| KYC expired (just past KycValidityBlocks) | |
+| KYC in grace period (within KycGraceBlocks) | |
+| KYC revoked | |
+| Account sanctioned | |
+| Never submitted KYC | |
+| KYC attested by oracle minority (<3 operators) | |
+
+```bash
+# Find the underlying storage read for each provider
+grep -n "runtime_kyc_level\|get_kyc_level\|meets_kyc_requirement\|is_kyc_verified\|kyc_state" \
+  runtime/src/lib.rs pallets/identity/src/lib.rs | head -30
+
+# Find expiry check logic
+grep -n "KycValidityBlocks\|expiry\|valid_until\|expired\|grace\|GraceBlocks\|block_number" \
+  pallets/identity/src/lib.rs | head -25
+
+# Find whether all providers call the same identity function
+grep -n "Identity::\|pallet_belize_identity::" \
+  runtime/src/lib.rs | grep -v "//\|#\[test\]" | head -20
+```
+
+---
+
+### Area 2 — Revocation vs Expiry Code Path
+
+```bash
+# Find revocation implementation
+grep -n "revoke\|Revoke\|forced_expire\|invalidate\|RevocationOrigin\|revoke_kyc" \
+  pallets/identity/src/lib.rs | head -25
+
+# Confirm revocation does NOT use the expiry + grace path
+grep -n -A 10 "fn revoke\|fn forced_expire\|fn invalidate" \
+  pallets/identity/src/lib.rs | head -40
+
+# Find who can trigger revocation
+grep -n "ensure.*revoke\|revoke.*ensure\|RevocationOrigin\|T::RevokersOrigin" \
+  pallets/identity/src/lib.rs | head -10
+
+# Find the KYC status enum
+grep -n "enum.*KycStatus\|KycStatus\|Active\|Revoked\|Expired\|Pending" \
+  pallets/identity/src/lib.rs | head -15
+```
+
+---
+
+### Area 3 — PII Storage Method
+
+```bash
+# Find the identity storage struct
+grep -n -A 20 "struct.*Identity\|struct.*IdentityRecord\|struct.*Document\|pub struct.*Kyc" \
+  pallets/identity/src/lib.rs | head -40
+
+# Look for raw document fields
+grep -n "ssn\|passport\|national_id\|document_number\|String\|Vec<u8>" \
+  pallets/identity/src/lib.rs -i | head -20
+
+# Look for hashing/commitment fields
+grep -n "blake2\|sha256\|keccak\|hash\|commit\|H256\|salt\|nonce.*commit" \
+  pallets/identity/src/lib.rs | head -20
+```
+
+**Expected secure pattern**: Storage contains only `commitment: H256` (or equivalent). The preimage is never stored on-chain. If `ssn: Vec<u8>` or similar raw fields are found, this is a **High** regulatory finding.
+
+---
+
+### Area 4 — Structuring Detection (FATF Recommendation 23)
+
+```bash
+# Find Travel Rule implementation
+grep -n "TravelRule\|travel_rule\|TravelRuleThreshold\|threshold.*transfer" \
+  pallets/compliance/src/lib.rs | head -20
+
+# Find aggregation or rolling window logic
+grep -n "aggregate\|rolling\|window\|period_volume\|total.*period\|last.*period\|24h\|daily" \
+  pallets/compliance/src/lib.rs | head -20
+
+# Find SAR (Suspicious Activity Report) triggers
+grep -n "SuspiciousActivity\|sar\|flag.*suspicious\|auto.*report" \
+  pallets/compliance/src/lib.rs | head -15
+```
+
+If no aggregation logic is found, structuring is undetected. Report as:
+- **Medium** if Travel Rule compliance is aspirational (not yet required by law)
+- **High** if Travel Rule compliance is claimed in documentation or already required
+
+---
+
+### Area 5 — Sanctions Scope Across Linked Accounts
+
+```bash
+# Find sanctions check implementation
+grep -n "is_sanctioned\|sanctioned\|SanctionsList\|sanctions\|add_to_sanctions" \
+  pallets/identity/src/lib.rs pallets/compliance/src/lib.rs | head -20
+
+# Find whether sanctions applies per-account or per-identity
+grep -n "identity.*sanction\|sanction.*identity\|linked.*account\|all_accounts\|MaxAccounts" \
+  pallets/identity/src/lib.rs | head -15
+
+# Cross-check: MaxAccountsPerIdentity = 5 and sanctions scope
+grep -n "MaxAccountsPerIdentity\|linked_accounts\|account_links" \
+  pallets/identity/src/lib.rs | head -10
+```
+
+**Scenario to verify**: Account A is sanctioned. Account B is linked to the same identity as Account A via `MaxAccountsPerIdentity`. Can Account B still trade on the DEX, participate in governance, and operate as a bridge validator? If yes, the sanctions list is trivially bypassed by creating a second linked account.
+
+---
+
+### Area 6 — Oracle Manipulation Attack Surface
+
+```bash
+# Find KYC attestation via oracle
+grep -n "attest\|Attest\|MinOracleAgreement\|oracle.*kyc\|kyc.*oracle\|consensus.*kyc" \
+  pallets/identity/src/lib.rs pallets/oracle/src/lib.rs | head -25
+
+# Find what prevents a validator from being their own oracle
+grep -n "validator.*oracle\|oracle.*validator\|cross.*role\|dual.*role" \
+  pallets/identity/src/lib.rs pallets/oracle/src/lib.rs | head -10
+```
+
+**Attack chain to verify:**
+1. Malicious party controls 3 oracle operator accounts (achievable per Oracle audit findings)
+2. Submits KYC Level 3 attestation for unauthorized account using those 3 operators
+3. 3-of-10 consensus is reached — KYC Level 3 granted
+4. Account can now: operate as bridge validator, access treasury, act as emergency mesh authority
+
+Verify whether any additional human review, time-lock, or challenge mechanism prevents immediate KYC elevation.
+
+---
+
+## Deliverables
+
+### D1 — Pre-Audit Checklist
+Completed with every blank filled in.
+
+### D2 — Executive Summary
+Overall risk rating. Top 3 findings by KYC-### ID. Explicitly state whether any FATF compliance gaps were found.
+
+### D3 — Findings Table
+`ID | Severity | Confidence | Area | File:Line | Title | Status`  
+Only `[VERIFIED]` and `[INFERRED]` findings.
+
+### D4 — Detailed Findings
+For each finding: code excerpt, description, numbered attack steps, regulatory impact (cite the specific FATF Recommendation violated if applicable), and recommendation.
+
+### D5 — Acknowledged Issues
+| ID | Description | Status |
+|---|---|---|
+| CRYPTO-PRE-003 | Benchmark bypass disables all KYC checks | Acknowledged — production build must exclude feature |
+
+### D6 — Unverified Observations
+`[ASSUMED]`, `[THEORETICAL]`, or unread-file items.
+
+### D7 — Audit Gaps
+Include explicitly: whether an off-chain oracle KYC data system was reviewed. The on-chain audit cannot assess the security of off-chain oracle operator infrastructure.
+
+---
+
+## How to Run This Audit
+
+```bash
+# ── Setup ─────────────────────────────────────────────────────────────────────
+git clone https://github.com/BelizeChain/belizechain.git
+cd belizechain && git checkout belizechain
+git log --oneline -1
+
+# ── Build ─────────────────────────────────────────────────────────────────────
+cargo build --release 2>&1 | tee build_output.txt
+
+# ── Confirm runtime-benchmarks is NOT in production build ────────────────────
+grep -rn "runtime-benchmarks" Cargo.toml runtime/Cargo.toml 2>/dev/null
+grep -rn "feature.*runtime.benchmarks\|cfg.*runtime.benchmarks" \
+  pallets/identity/src/lib.rs | head -20
+
+# ── Identity pallet ───────────────────────────────────────────────────────────
+cat pallets/identity/src/lib.rs
+cargo test -p pallet-belize-identity -- --nocapture 2>&1 | tee identity_tests.txt
+
+# ── Compliance pallet ─────────────────────────────────────────────────────────
+cat pallets/compliance/src/lib.rs
+cargo test -p pallet-belize-compliance -- --nocapture 2>&1 | tee compliance_tests.txt
+
+# ── PII storage check ─────────────────────────────────────────────────────────
+grep -n "ssn\|passport\|national_id\|document\|String\|Vec<u8>" \
+  pallets/identity/src/lib.rs -i | grep -v "//\|#\[test\]"
+
+# ── KYC provider consistency ──────────────────────────────────────────────────
+grep -n "runtime_kyc_level\|meets_kyc_requirement\|get_kyc_level\|is_kyc_verified" \
+  runtime/src/lib.rs pallets/identity/src/lib.rs | head -30
+
+# ── Revocation vs expiry separation ──────────────────────────────────────────
+grep -n "fn revoke\|fn expire\|GraceBlocks\|grace\|Revoked\|Expired" \
+  pallets/identity/src/lib.rs
+
+# ── Sanctions scope ───────────────────────────────────────────────────────────
+grep -n "is_sanctioned\|sanctions\|linked_account\|MaxAccountsPerIdentity" \
+  pallets/identity/src/lib.rs pallets/compliance/src/lib.rs
+
+# ── Structuring detection ─────────────────────────────────────────────────────
+grep -n "aggregate\|rolling\|window\|period_volume\|TravelRuleThreshold" \
+  pallets/compliance/src/lib.rs
+
+# ── Oracle KYC attestation ────────────────────────────────────────────────────
+grep -n "attest\|MinOracleAgreement\|oracle.*kyc" \
+  pallets/identity/src/lib.rs pallets/oracle/src/lib.rs
+```
+
+---
+
+## Severity Definitions
+
+| Severity | Definition |
+|---|---|
+| **Critical** | KYC bypass enabling unauthorized bridge/treasury access; sanctions bypass across linked accounts |
+| **High** | PII in cleartext on-chain; oracle majority KYC elevation with no additional gate; grace period applied to revocation |
+| **Medium** | Structuring not detected (FATF R.23 gap); provider expiry inconsistency; KYC Level 1 for high-risk operations |
+| **Low** | Missing events on KYC state changes; audit record overflow behavior undocumented |
+| **Informational** | Regulatory design decisions that require legal review rather than code changes |
+
+---
+
+## Anti-Hallucination Self-Check
+
+Before submitting the report:
+
+```
+[ ] PII storage method was read from the identity pallet struct definition — not assumed hashed
+[ ] All 6 KYC provider expiry function calls were traced to the same (or different) underlying function
+[ ] Revocation vs grace period interaction was verified in code — separate paths confirmed or denied
+[ ] Sanctions scope across linked accounts was verified in code — per-account or per-identity confirmed
+[ ] Structuring aggregation logic was searched for explicitly — presence or absence confirmed
+[ ] Oracle KYC attestation consensus mechanism was read from pallet code
+[ ] CRYPTO-PRE-003 is in D5 (Acknowledged) only — not reported as a new finding
+[ ] Production build benchmark feature status was verified — not assumed disabled
+[ ] Every finding references a File:Line that was actually read
+[ ] No finding uses "likely" or "probably" without [INFERRED] marker
+[ ] All [ASSUMED] items are in D6 only
+[ ] Off-chain oracle infrastructure scope limitation is explicitly stated in D7
+```
+
+---
+
+*BelizeChain Identity, KYC & Compliance Audit Master Prompt — v1 — March 8, 2026*
+*Pre-verified observations sourced from direct reading of `runtime/src/lib.rs`.*
+*All AI outputs must be validated against actual pallet source code before inclusion in a final security report.*
+# BelizeChain — Smart Contracts & GEM Platform Audit: Master Prompt (v1)
+
+---
+
+## ⚠️ AI AUDITOR OPERATING RULES — READ BEFORE PROCEEDING
+
+BelizeChain runs `pallet-contracts` (ink! 4.0) with `CallFilter = Everything` on a sovereign national chain. This means any deployed smart contract can dispatch any `RuntimeCall` that passes origin checks — including governance proposals, land registry operations, payroll entries, and compliance reports. On a generic DeFi chain this is an acceptable design. On a chain managing Belizean national infrastructure, it requires explicit security justification. This audit must determine whether `CallFilter = Everything` is an intentional policy decision or an unreviewed default.
+
+**Violating any rule below invalidates the finding.**
+
+---
+
+### RULE 1 — CallFilter = Everything IS THE HIGHEST-PRIORITY SINGLE LINE IN THIS AUDIT
+
+From `runtime/src/lib.rs`, confirmed:
+
+```rust
+impl pallet_contracts::Config for Runtime {
+    type CallFilter = frame_support::traits::Everything;
+```
+
+`frame_support::traits::Everything` passes every `RuntimeCall` to `pallet_contracts`. A contract cannot act as `EnsureRoot` (it cannot hold a Sudo key). But a contract **can** act as `EnsureSigned` — which means a contract that holds DALLA balance and satisfies KYC Level 1 can:
+
+- Submit governance proposals (`EnsureSigned` + KYC L1)
+- Register a BNS domain name (`EnsureSigned` + KYC L1)
+- File a Suspicious Activity Report (`EnsureSigned`)
+- Interact with any pallet that accepts `EnsureSigned` origins
+
+Before assigning severity, you must trace which `RuntimeCall` variants accept `EnsureSigned` origins with no additional capability requirement, and assess whether automated contract execution of those calls is a security risk or an intended feature.
+
+---
+
+### RULE 2 — RANDOMNESS IN CONTRACTS IS PREDICTABLE 24 HOURS IN ADVANCE
+
+From `runtime/src/lib.rs`, confirmed:
+
+```rust
+impl pallet_contracts::Config for Runtime {
+    type Randomness = pallet_babe::RandomnessFromOneEpochAgo<Runtime>;
+```
+
+`EpochDuration = 14,400 blocks ≈ 24 hours`. Any ink! contract that calls `env.random()` receives randomness determined 24 hours ago. This is not a bug in `pallet-contracts` — it is a chain configuration choice. But it means:
+
+- **Lottery contracts**: predictable → exploitable (winning ticket known 24h in advance)
+- **NFT trait generation**: predictable → front-runnable (mint with foreknowledge of traits)
+- **Random access control nonces**: predictable → bypassable
+- **Commit-reveal schemes using env.random()**: broken by definition
+
+This must be prominently documented as a contract developer warning even if no deployed contracts currently misuse randomness.
+
+---
+
+### RULE 3 — OPEN DEPLOYMENT ON A NATIONAL CHAIN REQUIRES EXPLICIT JUSTIFICATION
+
+From `runtime/src/lib.rs`, confirmed:
+
+```rust
+type UploadOrigin      = frame_system::EnsureSigned<AccountId>;
+type InstantiateOrigin = frame_system::EnsureSigned<AccountId>;
+```
+
+Any KYC Level 1 account (basic identity verification) can upload and deploy an ink! contract. On a chain that also manages government payroll, land titles, and citizen identity, deploying a contract that interacts with these systems is available to any sufficiently-verified citizen.
+
+The auditor must explicitly determine: is this intentional open-platform policy, or was the default never reviewed? Neither answer is wrong — but if it is intentional, it must be documented as a deliberate policy decision with its risk implications.
+
+---
+
+### RULE 4 — REENTRANCY TRACING IS MANDATORY FOR VALUE-HOLDING PALLETS
+
+`CallStack = [Frame; 5]` allows 5 levels of nested contract calls. With `CallFilter = Everything`, a contract at call depth 4 can dispatch a RuntimeCall to a value-holding pallet. The classic reentrancy pattern:
+
+1. Contract A calls pallet_belizex::swap
+2. BelizeX calls back into Contract A before updating pool reserves (if it makes any external calls)
+3. Contract A calls swap again with stale reserve data
+4. Pool drained
+
+This exact pattern requires BelizeX (or another value-holding pallet) to make an external call mid-operation. The auditor must verify whether any value-holding pallet dispatches to external accounts before completing its own state update. The answer may be "no" — but it must be verified, not assumed.
+
+---
+
+### RULE 5 — DISTINGUISH WHAT YOU READ FROM WHAT YOU INFER
+
+| Marker | Meaning |
+|---|---|
+| `[VERIFIED]` | Exact code quoted — file and line cited |
+| `[INFERRED]` | Conclusion drawn from code read — needs confirmation |
+| `[ASSUMED]` | Substrate convention or ink! default — not confirmed in this repo |
+| `[UNVERIFIED]` | File not read — do not report as a finding |
+
+The ink! 4.0 spec behavior (`UnsafeUnstableInterface = false`, host function security) can be `[ASSUMED]` from the Polkadot SDK version, but must be noted as such.
+
+---
+
+### RULE 6 — DEPLOYED CONTRACTS MUST BE INVENTORIED BEFORE CLAIMING SCOPE IS COMPLETE
+
+The runtime audit covers `pallet-contracts` configuration. But the actual risk to BelizeChain comes from **deployed contracts** — code that is already running on-chain. Before concluding the audit, you must:
+
+1. Check the repository for any ink! contract source in `/contracts/`, `/ink/`, or any Rust crate with `ink::contract` attribute
+2. If deployed contracts exist, read their source code
+3. If source code is unavailable (deployed as binary), note this as an audit gap
+
+Not inventorying deployed contracts means the audit covers the platform but not the active risk surface.
+
+---
+
+### RULE 7 — NO SPECULATIVE SEVERITY UPGRADES
+
+Multi-step attack chains must list every precondition. Reduce severity by one level for each major unconfirmed precondition. Mark `[THEORETICAL]` if any step relies on unverified behavior. A contract dispatching a governance proposal through `CallFilter = Everything` is not inherently exploitable — the origin check on the governance pallet is the real gating mechanism.
+
+---
+
+### RULE 8 — SCOPE BOUNDARIES
+
+**In scope:**
+- `pallets/contracts/src/` or confirm pallet-contracts is from SDK (no custom modifications)
+- `runtime/src/lib.rs` — contracts config section
+- `pallets/belizex/src/lib.rs` — reentrancy surface (external calls before state update)
+- Any ink! contracts in the repository: `/contracts/`, `/ink/`
+- `pallets/*/src/lib.rs` — for `EnsureSigned` origin assessment of CallFilter blast radius
+
+**Out of scope — do not report findings from:**
+- External ink! contracts deployed but not in this repository (note as audit gap)
+- `pallets/oracle/` (Oracle audit)
+- `pallets/governance/` (Governance audit — but note cross-dependencies)
+
+---
+
+## Context & Background
+
+You are performing a **Smart Contracts & GEM Platform Security Audit** on **BelizeChain**, a sovereign Substrate blockchain for Belize running `pallet-contracts` with ink! 4.0 for the GEM (Government Enterprise Module) platform. The platform allows any KYC Level 1 citizen to deploy contracts that can interact with the chain's national infrastructure pallets.
+
+**Repository**: https://github.com/BelizeChain/belizechain  
+**Branch**: `belizechain`  
+**Contracts pallet**: pallet-contracts (Polkadot SDK stable2512)  
+**Call stack depth**: 5 frames  
+**Max code size**: 128 KB  
+**Storage deposit**: 1 DALLA/item, 0.0001 DALLA/byte  
+**Default deposit limit**: 1,000 DALLA = max 1,000 items or 10 MB
+
+---
+
+## Pre-Verified Observations
+
+### CONTRACT-PRE-001 — CallFilter = Everything `[VERIFIED from runtime]`
+```rust
+type CallFilter = frame_support::traits::Everything;
+```
+Any contract can dispatch any RuntimeCall that passes the pallet's origin check.
+
+### CONTRACT-PRE-002 — Open Upload and Instantiation `[VERIFIED from runtime]`
+```rust
+type UploadOrigin      = frame_system::EnsureSigned<AccountId>;
+type InstantiateOrigin = frame_system::EnsureSigned<AccountId>;
+```
+Any KYC Level 1 account can deploy contracts. No allowlist or privileged reviewer.
+
+### CONTRACT-PRE-003 — Randomness Predictable 24 Hours in Advance `[VERIFIED from runtime]`
+```rust
+type Randomness = pallet_babe::RandomnessFromOneEpochAgo<Runtime>;
+```
+All `env.random()` calls return 24-hour-old randomness.
+
+### CONTRACT-PRE-004 — 5-Frame Call Stack with CallFilter = Everything `[VERIFIED from runtime]`
+```rust
+type CallStack = [pallet_contracts::Frame<Self>; 5];
+```
+A chain of 5 contracts can each dispatch RuntimeCalls, creating complex cross-pallet execution paths with potential reentrancy.
+
+### CONTRACT-PRE-005 — UnsafeUnstableInterface = false `[VERIFIED from runtime]`
+```rust
+type UnsafeUnstableInterface = ConstBool<false>;
+```
+Unstable host functions are disabled. This is the safe default.
+
+### CONTRACT-PRE-006 — Xcm = () `[VERIFIED from runtime]`
+```rust
+type Xcm = ();
+```
+Contracts cannot initiate XCM (cross-chain messages). This limits their cross-chain attack surface.
+
+---
+
+## Pre-Audit Checklist
+
+```
+[ ] Cloned repo and checked out branch `belizechain`
+[ ] Exact commit hash noted: ___________
+[ ] Confirmed pallet-contracts is from Polkadot SDK (no custom fork): YES / NO
+[ ] Deployed ink! contracts in repository inventoried:
+    [ ] /contracts/ directory: EXISTS / NOT FOUND
+    [ ] /ink/ directory: EXISTS / NOT FOUND
+    [ ] Any crate with ink::contract attribute: ___________
+[ ] Ran: cargo build --release 2>&1 | tee build_output.txt  →  errors: ___________
+[ ] Ran: cargo test -p pallet-contracts -- --nocapture  →  pass/fail: ___________
+[ ] CallFilter = Everything blast radius assessed per pallet:
+    [ ] pallets/governance/ — EnsureSigned calls identified: ___________
+    [ ] pallets/landledger/ — EnsureSigned calls identified: ___________
+    [ ] pallets/payroll/ — EnsureSigned calls identified: ___________
+    [ ] pallets/compliance/ — EnsureSigned calls identified: ___________
+[ ] Reentrancy surface in pallets/belizex/ — external calls before state update: YES / NO
+[ ] Storage deposit drain scenario (items persist after deposit drained): YES / NO / UNVERIFIED
+[ ] Open upload policy — intentional confirmed by: ___________
+[ ] Randomness misuse in any deployed contract: YES / NO / NO DEPLOYED CONTRACTS
+```
+
+---
+
+## Audit Areas
+
+### Area 1 — CallFilter = Everything Blast Radius
+
+For each pallet that manages national infrastructure, find all extrinsics that accept `EnsureSigned` as their only origin requirement:
+
+```bash
+# Find EnsureSigned-gated extrinsics in high-value pallets
+for pallet in governance landledger payroll compliance identity bns; do
+  echo "=== pallet_belize_$pallet ==="
+  grep -n "fn .*origin.*T::RuntimeOrigin\|ensure_signed\|T::Origin" \
+    pallets/${pallet}/src/lib.rs 2>/dev/null | head -15
+done
+
+# Find EnsureSigned calls with NO additional KYC check
+grep -n "ensure_signed\|EnsureSigned" \
+  pallets/*/src/lib.rs | grep -v "//\|#\[test\]\|kyc\|identity\|compliance" | head -30
+
+# Find which calls require more than just EnsureSigned
+grep -n "ensure_signed.*\|\(ensure_signed.*&&\|ensure_signed.*?\)" \
+  pallets/*/src/lib.rs | head -20
+```
+
+For each `EnsureSigned`-only extrinsic found, state:
+- What does this extrinsic do?
+- What is the impact if a contract calls it autonomously?
+- Is this an intended use case for the GEM platform?
+
+---
+
+### Area 2 — Reentrancy in Value-Holding Pallets
+
+```bash
+# Find any external calls in BelizeX before reserve update
+grep -n -A 30 "fn swap\|fn add_liquidity\|fn remove_liquidity" \
+  pallets/belizex/src/lib.rs | grep -B 10 "call\|dispatch\|invoke\|callback\|T::.*hook" | head -30
+
+# Find any hooks that call external code mid-operation
+grep -n "T::.*Callback\|T::.*Hook\|on_swap\|after_transfer\|T::Currency::transfer" \
+  pallets/belizex/src/lib.rs | head -20
+
+# Find state update ordering (reserves should update BEFORE any external call)
+grep -n "reserve\|pool_state\|update_reserves\|set_reserves" \
+  pallets/belizex/src/lib.rs | head -15
+```
+
+**The key pattern to find or rule out:**
+```rust
+// UNSAFE: external call before state update
+T::SomeHook::on_transfer(&from, &to, amount);  // external call
+Reserves::<T>::insert(pool_id, new_reserves);   // state update after
+```
+
+If no external calls are made mid-operation (all state updates happen before any external dispatch), reentrancy is not feasible and can be noted as such.
+
+---
+
+### Area 3 — Storage Deposit Drain
+
+```bash
+# Find storage deposit enforcement
+grep -n "DepositPerItem\|DefaultDepositLimit\|charge_storage\|refund_storage\|storage_deposit" \
+  pallets/contracts/src/lib.rs 2>/dev/null | head -20
+
+# Find what happens when deposit account falls below ED
+grep -n "ExistentialDeposit\|existential_deposit\|reap_account\|below.*ed\|ed.*below" \
+  pallets/contracts/src/lib.rs 2>/dev/null | head -15
+
+# Cross-check runtime config values
+grep -n "DepositPerItem\|DefaultDepositLimit\|DepositPerByte" \
+  runtime/src/lib.rs | head -10
+```
+
+**Scenario to verify (not assume):**
+1. Contract creates 999 storage items, paying 999 DALLA deposit
+2. Contract transfers its entire DALLA balance away (999 DALLA)
+3. Contract account now has 0 DALLA (or below ExistentialDeposit)
+
+Does the runtime:
+- (a) Prevent this — contract cannot transfer deposit funds?
+- (b) Allow this — items remain as orphaned storage (unbounded storage leak)?
+- (c) Delete items — on-account-reap, all contract storage is cleared?
+
+Behavior (b) is a storage exhaustion vulnerability. Behavior (c) may cause unexpected contract state loss.
+
+---
+
+### Area 4 — Deployed Contract Inventory and Risk Assessment
+
+```bash
+# Search for ink! contracts in the repository
+find . -name "lib.rs" -exec grep -l "ink::contract\|#\[ink(contract)\]" {} \; 2>/dev/null
+
+# Search for WASM binaries (deployed contract bytecode)
+find . -name "*.wasm" 2>/dev/null | head -10
+
+# Search for contract deployment in genesis
+grep -n "pallet_contracts\|GenesisConfig.*contracts\|code_hash" \
+  runtime/src/lib.rs node/src/chain_spec.rs 2>/dev/null | head -15
+```
+
+For each deployed or test contract found:
+1. What does it do?
+2. Does it use `env.random()`? (24h predictable — see Rule 2)
+3. Does it dispatch RuntimeCalls via `CallFilter = Everything`?
+4. Does it accept payments that it later transfers? (reentrancy surface)
+5. Does it use `env.caller()` for access control? (caller can be a contract — evaluate the trust chain)
+
+---
+
+### Area 5 — Open Upload Policy Justification
+
+This is not a vulnerability search — it is a policy verification:
+
+```bash
+# Confirm UploadOrigin and InstantiateOrigin from code
+grep -n "UploadOrigin\|InstantiateOrigin" runtime/src/lib.rs
+
+# Search for any contract upload restrictions or KYC gates in pallet-contracts config
+grep -n "allow_upload\|kyc.*upload\|upload.*kyc\|contract.*allowlist\|allowlist" \
+  pallets/contracts/src/lib.rs runtime/src/lib.rs 2>/dev/null | head -10
+
+# Check if there is documentation of the open-upload policy decision
+grep -rn "GEM\|gem platform\|contract.*policy\|open.*deploy\|upload.*policy" \
+  README.md docs/ ARCHITECTURE.md 2>/dev/null | head -10
+```
+
+If no documentation of the intentional open-upload decision exists, flag it as `[INFORMATIONAL]` — not a vulnerability, but a design decision that must be documented before mainnet to demonstrate it was deliberate. For a sovereign national chain, undocumented permissive defaults are governance liabilities.
+
+---
+
+## Deliverables
+
+### D1 — Pre-Audit Checklist
+Completed with every blank filled in. Deployed contract inventory must be listed explicitly.
+
+### D2 — Executive Summary
+Overall risk rating. Top 3 findings by CONTRACT-### ID. Note whether CallFilter = Everything is assessed as intentional policy or unreviewed default.
+
+### D3 — Findings Table
+`ID | Severity | Confidence | Area | File:Line | Title | Status`  
+Only `[VERIFIED]` and `[INFERRED]` findings.
+
+### D4 — Detailed Findings
+For each finding: code excerpt, description, numbered attack steps, preconditions, impact, and recommendation.
+
+### D5 — CallFilter Blast Radius Assessment
+A required deliverable even if no vulnerability is found. Document:
+- Every `EnsureSigned`-only extrinsic reachable from a contract call
+- For each: is the autonomous contract call a risk or an intended feature?
+- Recommended: which calls should be added to a `CallFilter` deny list?
+
+### D6 — Unverified Observations
+`[ASSUMED]`, `[THEORETICAL]`, or unread items.
+
+### D7 — Audit Gaps
+Explicitly list: any deployed contracts that exist only as WASM binaries without source; any off-chain GEM platform components not covered by this audit.
+
+---
+
+## How to Run This Audit
+
+```bash
+# ── Setup ─────────────────────────────────────────────────────────────────────
+git clone https://github.com/BelizeChain/belizechain.git
+cd belizechain && git checkout belizechain
+git log --oneline -1
+
+# ── Build ─────────────────────────────────────────────────────────────────────
+cargo build --release 2>&1 | tee build_output.txt
+
+# ── Deployed contract inventory ───────────────────────────────────────────────
+find . -name "lib.rs" -exec grep -l "ink::contract\|#\[ink(contract)\]" {} \; 2>/dev/null
+find . -name "*.wasm" 2>/dev/null
+
+# ── Contracts config from runtime ─────────────────────────────────────────────
+grep -n "CallFilter\|UploadOrigin\|InstantiateOrigin\|CallStack\|Randomness\|MaxCodeLen\|DepositPer" \
+  runtime/src/lib.rs | grep -A 1 "contracts"
+
+# ── CallFilter blast radius ───────────────────────────────────────────────────
+grep -rn "ensure_signed\|EnsureSigned" \
+  pallets/governance/src/lib.rs \
+  pallets/landledger/src/lib.rs \
+  pallets/payroll/src/lib.rs \
+  pallets/compliance/src/lib.rs \
+  pallets/bns/src/lib.rs | grep -v "//\|#\[test\]" | head -40
+
+# ── Reentrancy in BelizeX ─────────────────────────────────────────────────────
+grep -n "fn swap\|fn add_liquidity\|fn remove_liquidity\|T::.*Hook\|callback" \
+  pallets/belizex/src/lib.rs | head -20
+
+# ── Storage deposit mechanics ─────────────────────────────────────────────────
+grep -n "DepositPerItem\|DefaultDepositLimit\|ExistentialDeposit\|reap" \
+  pallets/contracts/src/lib.rs runtime/src/lib.rs 2>/dev/null | head -15
+
+# ── Randomness usage in any contracts ────────────────────────────────────────
+grep -rn "env\.random\|random_seed\|get_random" \
+  $(find . -name "*.rs" -exec grep -l "ink::contract" {} \;) 2>/dev/null
+
+# ── pallet-contracts SDK version (confirm no custom fork) ────────────────────
+grep -n "pallet-contracts" Cargo.toml
+```
+
+---
+
+## Severity Definitions
+
+| Severity | Definition |
+|---|---|
+| **Critical** | Contract-triggered drain of any value-holding pallet via reentrancy; storage exhaustion with no cost floor |
+| **High** | CallFilter = Everything enabling automated governance spam or unauthorized national infrastructure calls |
+| **Medium** | Predictable randomness in deployed contracts; storage deposit drain (items persist); open upload on national chain without documentation |
+| **Low** | Missing documentation of CallFilter policy; randomness developer warning absent |
+| **Informational** | Open upload is intentional and documented — note as accepted policy with risk acknowledgment |
+
+---
+
+## Anti-Hallucination Self-Check
+
+Before submitting the report:
+
+```
+[ ] Deployed contract inventory was performed — not assumed empty
+[ ] CallFilter blast radius was assessed by reading EnsureSigned extrinsics in each pallet
+[ ] Reentrancy path was traced through belizex swap — external calls before state update: verified YES/NO
+[ ] Storage deposit drain behavior was verified in code — not assumed to be scenario (a), (b), or (c)
+[ ] Randomness predictability is noted as a developer warning — not just a finding
+[ ] Open upload policy status (intentional vs unreviewed) was determined — not assumed
+[ ] UnsafeUnstableInterface = false was quoted from runtime — not assumed
+[ ] Xcm = () was quoted from runtime — not assumed
+[ ] No finding uses "likely" or "probably" without [INFERRED] marker
+[ ] All [ASSUMED] items are in D6 only
+[ ] CallFilter blast radius assessment (D5) is produced regardless of whether vulnerabilities were found
+```
+
+---
+
+*BelizeChain Smart Contracts & GEM Platform Audit Master Prompt — v1 — March 8, 2026*
+*Pre-verified observations sourced from direct reading of `runtime/src/lib.rs`.*
+*All AI outputs must be validated against actual pallet source code before inclusion in a final security report.*
+# BelizeChain — Oracle Security Audit: Master Prompt (v1)
+
+---
+
+## ⚠️ AI AUDITOR OPERATING RULES — READ BEFORE PROCEEDING
+
+BelizeChain's oracle system is the trust root for KYC attestations, sanctions screening, merchant verification, DEX exchange rates, and governance voter eligibility. Compromising the oracle layer compromises all of these simultaneously — without touching the consensus, cryptography, or networking layers that traditional blockchain security audits focus on. The oracle is the most centralized component on BelizeChain and the most consequential to compromise.
+
+**Violating any rule below invalidates the finding.**
+
+---
+
+### RULE 1 — A SINGLE TECHNICAL COUNCIL MEMBER CONTROLS THE ORACLE TRUST ROOT
+
+From `runtime/src/lib.rs`, confirmed:
+
+```rust
+impl pallet_belize_oracle::Config for Runtime {
+    type OracleAdminOrigin = TechnicalCouncilMember;
+```
+
+`TechnicalCouncilMember = EnsureMember<AccountId, TechnicalCouncilInstance>` — **any single member** of the 12-member TechnicalCouncil satisfies this origin check. This means:
+
+- 1 compromised council member can add 3 new oracle operators (to reach MinConsensusOperators = 3)
+- Those 3 operators can: attest any KYC level, approve any merchant, submit any exchange rate, and place behavior flags on any voter
+- Total attack complexity: compromise 1 council key → control all oracle outcomes
+
+This is the highest-centralization risk in the BelizeChain codebase. It is a **Critical finding** with or without any other oracle weaknesses. The auditor must:
+1. Confirm this from the oracle pallet source code (not just the runtime config)
+2. Verify there is no additional confirmation requirement on operator addition
+3. Assess whether a Timelock or multi-sig is applied to OracleAdminOrigin calls
+
+---
+
+### RULE 2 — BEHAVIOR FLAGS ARE BOTH A SECURITY FEATURE AND A VOTER SUPPRESSION MECHANISM
+
+From `runtime/src/lib.rs`, confirmed:
+
+```rust
+type BehaviorCooldownBlocks = BehaviorCooldownBlocks; // 14,400 blocks = 24h
+```
+
+A behavior flag placed on an account blocks it from governance participation for 24 hours via `GovernanceBehaviorProvider.has_active_flag()`. An oracle operator can place this flag unilaterally.
+
+**Legitimate use**: flag misbehaving nodes.  
+**Attack use**: flag all opposition voters 24 hours before a critical governance vote.
+
+The auditor must verify:
+1. Is there a rate limit on behavior flag submissions per operator per block?
+2. Is there an on-chain event emitted when a flag is placed?
+3. Can a flag be placed on an account that has already cast a vote in an active vote (retroactively blocking future participation in multi-round processes)?
+4. Is there any appeal mechanism or challenge process for flags?
+
+If the answer to (1) is "no limit," a single operator can silence the entire voter population in a single block. Report this as Critical even if no other oracle weakness exists.
+
+---
+
+### RULE 3 — 3-OF-10 CONSENSUS CONTROLS KYC, SANCTIONS, MERCHANT STATUS, AND DEX PRICING
+
+From `runtime/src/lib.rs`, confirmed:
+
+```rust
+type MinConsensusOperators = ConstU32<3>;
+type MaxOperators          = ConstU32<10>;
+```
+
+Three oracle operators reaching consensus is sufficient for all oracle outputs. Those outputs include:
+- KYC Level 3 attestation (gates bridge operations and treasury access)
+- Sanctions clearance (gates all financial activity)
+- Merchant category approval (gates tourism discounts on DEX)
+- USD/BZD exchange rate (affects all bBZD trades)
+- Behavior flag placement (gates governance participation)
+
+This means 3 colluding operators control national infrastructure access gates simultaneously. The auditor must verify:
+1. Can the same account operate as both a bridge validator and an oracle operator? If yes, a colluding minority in both roles has compounded attack capability.
+2. Is there any delay or time-lock between oracle consensus and on-chain effect?
+3. Is the 3-of-10 threshold median-resistant? (If aggregation is mean-based, 3 outliers manipulate the result.)
+
+---
+
+### RULE 4 — AR-7 IS FIXED BUT REWARD MATH IS UNVERIFIED
+
+From `runtime/src/lib.rs`, confirmed:
+
+```rust
+// AR-7: wire token transfer — oracle rewards now disburseable
+type Currency      = Balances;
+type TreasuryAccount = TreasuryAccount;
+```
+
+The AR-7 fix wired `pallet_balances` into the oracle pallet. Oracle operators can now receive rewards. But the reward calculation logic and disbursement math have not been independently verified. The auditor must:
+1. Find the reward amount per oracle submission
+2. Verify it is bounded (not unbounded as a function of submission count)
+3. Check whether operators can game their own reward by submitting strategically to influence aggregation
+
+---
+
+### RULE 5 — EXCHANGE RATE MANIPULATION HAS A CALCULABLE PROFIT WINDOW
+
+From `runtime/src/lib.rs`, confirmed:
+
+```rust
+type MaxOracleDeviationBps = ConstU32<500>; // 5% max deviation
+```
+
+Oracle operators can submit a USD/BZD rate up to 5% away from market truth. All bBZD trades on BelizeX use this rate. Manipulation profit = `trade_volume × deviation_used`.
+
+At `MaxOracleDeviationBps = 500`:
+- $1M bBZD daily volume: max manipulation profit = $50,000/day
+- $10M bBZD daily volume: max manipulation profit = $500,000/day
+
+The auditor must verify:
+1. Is the 5% bound checked against a consensus value or against an external reference? If against consensus, 3 colluding operators can move the consensus arbitrarily and the 5% bound provides no protection against their collusion.
+2. Is the MaxDataStaleness = 100 blocks (~10 minutes) enforced to prevent operators from withholding submissions to maintain stale rates?
+3. Can an operator front-run their own oracle submission (submit the manipulated rate, then immediately trade against it)?
+
+---
+
+### RULE 6 — DISTINGUISH WHAT YOU READ FROM WHAT YOU INFER
+
+| Marker | Meaning |
+|---|---|
+| `[VERIFIED]` | Exact code quoted — file and line cited |
+| `[INFERRED]` | Conclusion drawn from code read — needs confirmation |
+| `[ASSUMED]` | Substrate convention — not confirmed in this repo |
+| `[UNVERIFIED]` | File not read — do not report as a finding |
+
+---
+
+### RULE 7 — OCW HTTP SECURITY REQUIRES EXPLICIT URL VALIDATION CHECK
+
+From `node/src/service.rs`, confirmed:
+```rust
+enable_http_requests: true
+```
+
+Oracle off-chain workers make HTTP requests. The auditor must find:
+1. Where the URL for oracle data sources is configured
+2. Whether URL validation (HTTPS-only, allowlist) is enforced
+3. Whether response size and timeout are bounded
+4. Whether the URL is configurable by a governance action (governance-controlled SSRF)
+
+---
+
+### RULE 8 — SCOPE BOUNDARIES
+
+**In scope:**
+- `pallets/oracle/src/` — all files
+- `runtime/src/lib.rs` — oracle config, all provider structs using oracle
+- `node/src/service.rs` — OCW HTTP configuration
+- `pallets/governance/src/lib.rs` — behavior flag integration only
+
+**Out of scope — do not report findings from:**
+- `pallets/identity/` (KYC audit — note cross-dependencies)
+- `pallets/belizex/` (Economic audit — note cross-dependencies)
+- `pallets/governance/` voting logic (Governance audit — behavior flag only)
+- `pallets/interoperability/` (Bridge audit)
+
+---
+
+## Context & Background
+
+You are performing an **Oracle Security Audit** on **BelizeChain**, a sovereign Substrate blockchain for Belize whose oracle system serves as the trust root for KYC, sanctions, DEX pricing, and governance eligibility. The oracle uses a 3-of-10 operator consensus model with off-chain workers for data sourcing.
+
+**Repository**: https://github.com/BelizeChain/belizechain  
+**Branch**: `belizechain`  
+**Oracle operators**: max 10, min 3 for consensus  
+**Data staleness**: MaxDataStaleness = 100 blocks (~10 minutes)  
+**Behavior cooldown**: 14,400 blocks (~24 hours)  
+**Admin origin**: TechnicalCouncilMember (any single member)  
+**Exchange rate deviation**: MaxOracleDeviationBps = 500 (5%)
+
+---
+
+## Pre-Verified Observations
+
+### ORACLE-PRE-001 — Single TechnicalCouncilMember Controls Oracle Admin `[VERIFIED from runtime]`
+```rust
+type OracleAdminOrigin = TechnicalCouncilMember;
+```
+Full attack chain documented in Rule 1.
+
+### ORACLE-PRE-002 — 3 of 10 Operators Control All Oracle Outcomes `[VERIFIED from runtime]`
+```rust
+type MinConsensusOperators = ConstU32<3>;
+type MaxOperators          = ConstU32<10>;
+```
+Affects KYC, sanctions, merchant status, DEX rates, and voter eligibility simultaneously.
+
+### ORACLE-PRE-003 — AR-7 Reward Wiring Fixed `[VERIFIED from runtime]`
+```rust
+type Currency      = Balances;
+type TreasuryAccount = TreasuryAccount;
+```
+Reward disbursement is now wired. Reward math unverified.
+
+### ORACLE-PRE-004 — MaxDataStaleness = 100 Blocks (~10 Minutes) `[VERIFIED from runtime]`
+```rust
+type MaxDataStaleness = ConstU32<100>;
+```
+For 10 minutes after an oracle submission, the data is considered fresh. Rapid market movements can be exploited within this window.
+
+### ORACLE-PRE-005 — BehaviorCooldown = 24 Hours Blocks Governance Participation `[VERIFIED from runtime]`
+Voter suppression attack chain documented in Rule 2.
+
+---
+
+## Pre-Audit Checklist
+
+```
+[ ] Cloned repo and checked out branch `belizechain`
+[ ] Exact commit hash noted: ___________
+[ ] Confirmed these files exist:
+    [ ] pallets/oracle/src/lib.rs
+    [ ] pallets/oracle/src/types.rs  (or confirmed absent)
+    [ ] node/src/service.rs
+[ ] Ran: cargo build --release 2>&1 | tee build_output.txt  →  errors: ___________
+[ ] Ran: cargo test -p pallet-belize-oracle -- --nocapture  →  pass/fail: ___________
+[ ] OracleAdminOrigin single-member authority confirmed from pallet source: ___________
+[ ] add_operator authority check in pallet: requires single member / requires majority: ___________
+[ ] Behavior flag rate limit found: YES / NO — if YES, limit: ___________/block
+[ ] Behavior flag appeal mechanism: YES / NO
+[ ] Behavior flag event emitted: YES / NO
+[ ] Consensus aggregation method: median / mean / weighted / other: ___________
+[ ] Same-operator duplicate submission blocked: YES / NO
+[ ] MaxOracleDeviationBps reference point: consensus / external / other: ___________
+[ ] Oracle reward per submission: ___________DALLA
+[ ] Oracle reward bounded: YES / NO
+[ ] OCW HTTP URL validation: YES / NO — allowlist present: YES / NO
+[ ] OCW HTTP timeout set: YES / NO — value: ___________
+[ ] OCW HTTP max response size: YES / NO — value: ___________
+[ ] Validator/oracle dual-role: BLOCKED / ALLOWED: ___________
+[ ] Timelock on OracleAdminOrigin calls: YES / NO
+```
+
+---
+
+## Audit Areas
+
+### Area 1 — Oracle Admin Centralization
+
+```bash
+# Confirm OracleAdminOrigin check in pallet source
+grep -n "OracleAdminOrigin\|T::OracleAdminOrigin\|ensure.*admin\|admin.*ensure" \
+  pallets/oracle/src/lib.rs | head -20
+
+# Find add_operator and remove_operator authority check
+grep -n -B 3 "fn add_operator\|fn remove_operator\|fn set_config\|fn admin" \
+  pallets/oracle/src/lib.rs | head -30
+
+# Check if there's a Timelock on oracle admin operations
+grep -n "Timelock\|timelock\|delay\|schedule.*oracle\|oracle.*schedule" \
+  pallets/oracle/src/lib.rs runtime/src/lib.rs | head -10
+```
+
+**Recommended remediation to assess feasibility of:**
+Change `OracleAdminOrigin` from `TechnicalCouncilMember` to `TechnicalCouncilMajority` (7 of 12 required). This raises the attack complexity from compromising 1 key to compromising 7. Assess whether this change is feasible without a runtime upgrade.
+
+---
+
+### Area 2 — Behavior Flag Rate Limiting and Attack Surface
+
+```bash
+# Find behavior flag submission
+grep -n "set_behavior_flag\|flag_account\|BehaviorFlag\|submit_flag\|place_flag" \
+  pallets/oracle/src/lib.rs | head -20
+
+# Find rate limiting on flag submission
+grep -n "rate_limit\|MaxFlagsPerBlock\|max_flags\|flag_count\|FlagsInBlock" \
+  pallets/oracle/src/lib.rs | head -15
+
+# Find who can call set_behavior_flag (origin check)
+grep -n -B 5 "fn.*flag\|fn.*behavior" \
+  pallets/oracle/src/lib.rs | grep "ensure\|origin\|fn " | head -20
+
+# Find flag event emission
+grep -n "Event::.*Flag\|emit.*flag\|FlagPlaced\|deposit_event.*Flag" \
+  pallets/oracle/src/lib.rs | head -10
+
+# Find appeal or challenge mechanism
+grep -n "appeal\|challenge.*flag\|dispute.*flag\|remove_flag\|clear_flag" \
+  pallets/oracle/src/lib.rs | head -10
+
+# Find whether flags can be placed during active votes
+grep -n "VotingPeriod\|active_vote\|is_voting" \
+  pallets/oracle/src/lib.rs | head -5
+```
+
+**Attack scenario to model (numerically):**
+- MaxOperators = 10, any single operator can place flags
+- VotingPeriod = 7,200 blocks
+- An operator can flag all 32 + 12 = 44 council members + all active voters before vote opens
+- Cost: 44 flag transactions × (estimated fee) = ?
+- Result: all known voters silenced for 24 hours
+
+---
+
+### Area 3 — Consensus Aggregation Integrity
+
+```bash
+# Find consensus aggregation logic
+grep -n "consensus\|aggregate\|median\|mean\|weighted\|quorum\|MinConsensusOperators" \
+  pallets/oracle/src/lib.rs | head -30
+
+# Find how conflicting submissions are handled
+grep -n "deviation\|outlier\|MaxOracleDeviationBps\|filter\|reject\|discard" \
+  pallets/oracle/src/lib.rs | head -20
+
+# Find duplicate submission protection
+grep -n "already_submitted\|duplicate\|once_per\|per_epoch\|per_round\|submitted_by" \
+  pallets/oracle/src/lib.rs | head -15
+
+# Find the aggregation window (when does consensus commit?)
+grep -n "commit\|finalize\|aggregate_at\|consensus_at\|round\|epoch.*oracle" \
+  pallets/oracle/src/lib.rs | head -15
+```
+
+**Questions to answer:**
+1. Is the aggregation median-based (resistant to outliers) or mean-based (manipulable by submitting extreme values)?
+2. Can one operator submit multiple times to influence the aggregate? If yes, the effective operator count is less than reported.
+3. With `MaxOracleDeviationBps = 500`: is the 5% bound checked against an external reference (e.g., a hardcoded BZD reference), or against the current consensus value? If against consensus: 3 colluding operators can move consensus to any value, then submit within 5% of that new (manipulated) value, and the bound provides no protection.
+4. Is there a minimum number of distinct operator submissions required before consensus commits? (Distinct from MinConsensusOperators — could a fast operator submit first and have their value adopted before others contribute?)
+
+---
+
+### Area 4 — Oracle Reward Manipulation
+
+```bash
+# Find reward calculation and disbursement
+grep -n "reward\|Reward\|T::Currency::deposit\|disburse\|TreasuryAccount\|operator_reward" \
+  pallets/oracle/src/lib.rs | head -30
+
+# Find reward amount and bounds
+grep -n "reward_amount\|OracleReward\|per_submission\|per_epoch\|reward_per" \
+  pallets/oracle/src/lib.rs | head -15
+
+# Find quality/accuracy score system
+grep -n "quality_score\|accuracy\|deviation.*reward\|contribution_weight" \
+  pallets/oracle/src/lib.rs | head -15
+
+# Find whether operators can game reward by submission timing
+grep -n "block_number.*reward\|reward.*timing\|first.*submit\|last.*submit" \
+  pallets/oracle/src/lib.rs | head -10
+```
+
+**Questions to answer:**
+1. Is the oracle reward amount per submission bounded by a constant, or does it scale with submission count or value?
+2. If an operator submits a value that moves the consensus result closer to a value they've traded against (front-running their own submission), do they earn a reward even if their submission was manipulative?
+3. Does the reward system incentivize accuracy (rewarding proximity to median) or just participation (rewarding any submission)?
+
+---
+
+### Area 5 — OCW HTTP Security
+
+```bash
+# Find oracle OCW implementation
+grep -n "offchain::http\|http::Request\|fetch_from\|url\|endpoint\|data_source" \
+  pallets/oracle/src/lib.rs | head -30
+
+# Find URL validation or allowlist
+grep -n "validate.*url\|url.*validate\|allowlist\|whitelist\|https.*only\|scheme" \
+  pallets/oracle/src/lib.rs | head -15
+
+# Find timeout and size limits
+grep -n "timeout\|deadline\|Duration\|max_response\|max_body\|limit.*size" \
+  pallets/oracle/src/lib.rs | head -15
+
+# Find whether URL is governance-configurable (governance-controlled SSRF)
+grep -n "set_data_source\|set_url\|data_source.*storage\|StorageValue.*url\|StorageMap.*url" \
+  pallets/oracle/src/lib.rs | head -15
+```
+
+**SSRF risk scenario:**
+If the oracle data source URL is configurable via governance (or via oracle admin), an attacker who controls the oracle admin (a single council member) can set the URL to an internal network target — causing oracle workers to fetch internal infrastructure endpoints. On a cloud-hosted validator, this could expose cloud metadata endpoints (169.254.169.254) or internal services.
+
+---
+
+## Deliverables
+
+### D1 — Pre-Audit Checklist
+Completed with every blank filled in.
+
+### D2 — Executive Summary
+Overall risk rating. Top 3 findings by ORACLE-### ID. State the current centralization score: "Oracle trust root requires compromise of N accounts for full control" — calculate N from the code.
+
+### D3 — Findings Table
+`ID | Severity | Confidence | Area | File:Line | Title | Status`  
+Only `[VERIFIED]` and `[INFERRED]` findings.
+
+### D4 — Detailed Findings
+For each finding: code excerpt, description, numbered attack steps, dollar impact (use bBZD TVL estimates), preconditions, and recommendation.
+
+### D5 — Oracle Centralization Scorecard
+A required deliverable regardless of findings. Document:
+- Minimum accounts to compromise for full oracle control: N = ?
+- Minimum accounts to suppress a governance vote: N = ?
+- Minimum accounts to elevate arbitrary KYC Level 3: N = ?
+- Recommended changes to raise each N
+
+### D6 — Unverified Observations
+`[ASSUMED]`, `[THEORETICAL]`, or unread items.
+
+### D7 — Audit Gaps
+Note explicitly: off-chain oracle operator infrastructure (servers, key management, data sources) is not covered by this audit. The on-chain oracle logic can be perfect while the off-chain operators are compromised.
+
+---
+
+## How to Run This Audit
+
+```bash
+# ── Setup ─────────────────────────────────────────────────────────────────────
+git clone https://github.com/BelizeChain/belizechain.git
+cd belizechain && git checkout belizechain
+git log --oneline -1
+
+# ── Build ─────────────────────────────────────────────────────────────────────
+cargo build --release 2>&1 | tee build_output.txt
+
+# ── Oracle pallet ─────────────────────────────────────────────────────────────
+ls pallets/oracle/src/
+cat pallets/oracle/src/lib.rs
+cargo test -p pallet-belize-oracle -- --nocapture 2>&1 | tee oracle_tests.txt
+
+# ── Admin centralization ──────────────────────────────────────────────────────
+grep -n "OracleAdminOrigin\|fn add_operator\|fn remove_operator" \
+  pallets/oracle/src/lib.rs
+grep -n "TechnicalCouncilMember\|EnsureMember" runtime/src/lib.rs | head -5
+
+# ── Behavior flags ────────────────────────────────────────────────────────────
+grep -n "set_behavior_flag\|flag_account\|BehaviorFlag\|rate_limit\|MaxFlags" \
+  pallets/oracle/src/lib.rs
+grep -n "Event::.*Flag\|deposit_event.*Flag" pallets/oracle/src/lib.rs
+
+# ── Consensus aggregation ─────────────────────────────────────────────────────
+grep -n "aggregate\|median\|mean\|MinConsensusOperators\|quorum\|consensus" \
+  pallets/oracle/src/lib.rs | head -30
+grep -n "MaxOracleDeviationBps\|deviation\|reference" pallets/oracle/src/lib.rs
+
+# ── Oracle rewards ────────────────────────────────────────────────────────────
+grep -n "reward\|T::Currency::deposit\|operator_reward\|OracleReward" \
+  pallets/oracle/src/lib.rs
+
+# ── OCW HTTP ──────────────────────────────────────────────────────────────────
+grep -n "offchain::http\|fetch\|url\|endpoint\|timeout\|deadline" \
+  pallets/oracle/src/lib.rs
+
+# ── Exchange rate manipulation cost calculation ───────────────────────────────
+# MaxOracleDeviationBps = 500 (5%)
+# At $1M daily bBZD volume: max manipulation profit = $50,000/day
+# At $10M daily bBZD volume: max manipulation profit = $500,000/day
+# Cost to control 3 of 10 operators: estimate from governance analysis
+
+# ── Voter suppression cost calculation ───────────────────────────────────────
+# Single oracle operator can flag N accounts, silencing them for 14,400 blocks
+# Calculate: fee × (GovernanceCouncil 32 + TechnicalCouncil 12) = suppression cost
+grep -n "base_fee\|ExtrinsicBaseWeight\|WeightToFee" runtime/src/lib.rs | head -5
+```
+
+---
+
+## Severity Definitions
+
+| Severity | Definition |
+|---|---|
+| **Critical** | Single council key → full oracle control → KYC/sanctions bypass + voter suppression + DEX manipulation |
+| **High** | Behavior flag with no rate limit → full voter suppression; mean-based aggregation → 3-operator DEX manipulation |
+| **Medium** | 5% exchange rate deviation window; 10-minute data staleness; unbounded oracle reward; OCW SSRF via governance-configurable URL |
+| **Low** | Missing flag events; no appeal mechanism for behavior flags; reward incentive misalignment |
+| **Informational** | Centralization is a design choice with accepted risk — document with explicit risk acknowledgment |
+
+---
+
+## Anti-Hallucination Self-Check
+
+Before submitting the report:
+
+```
+[ ] OracleAdminOrigin single-member authority was confirmed from oracle pallet source — not just runtime config
+[ ] add_operator authority check was quoted from pallet code — not assumed
+[ ] Behavior flag rate limiting was read from oracle pallet code — not assumed present or absent
+[ ] Behavior flag event emission was verified in code — not assumed
+[ ] Consensus aggregation method (median/mean) was read from pallet code — not assumed
+[ ] Same-operator duplicate submission protection was verified — not assumed blocked
+[ ] MaxOracleDeviationBps reference point (consensus vs external) was verified in code
+[ ] Oracle reward amount and bound were read from pallet code — not assumed bounded
+[ ] OCW HTTP URL validation was searched explicitly — presence or absence confirmed
+[ ] OCW HTTP timeout was searched explicitly — value found or absence noted
+[ ] Voter suppression cost was calculated numerically using actual fee parameters
+[ ] DEX manipulation profit was calculated at realistic TVL estimates
+[ ] Centralization Scorecard (D5) was produced with specific account counts
+[ ] No finding uses "likely" or "probably" without [INFERRED] marker
+[ ] All [ASSUMED] items are in D6 only
+```
+
+---
+
+*BelizeChain Oracle Security Audit Master Prompt — v1 — March 8, 2026*
+*Pre-verified observations sourced from direct reading of `runtime/src/lib.rs`.*
+*All AI outputs must be validated against actual pallet source code before inclusion in a final security report.*

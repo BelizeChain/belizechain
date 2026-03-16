@@ -18,11 +18,12 @@ use frame_support::{
         Get, Time, Randomness,
     },
     BoundedVec,
+    PalletId,
 };
 use frame_system::pallet_prelude::*;
 use sp_runtime::{
     traits::{
-        Saturating, SaturatedConversion,
+        Saturating, SaturatedConversion, AccountIdConversion,
     },
     Perbill,
 };
@@ -222,9 +223,19 @@ pub mod pallet {
         /// attestation; using the passthrough in production renders bridge
         /// signatures unverified. (AR-6)
         type PQVerifier: PQSignatureVerifier;
+
+        /// Pallet ID used to derive the escrow account for bridged assets.
+        /// CONS-027: Escrow model replaces balance locks for cross-user unlocks.
+        #[pallet::constant]
+        type PalletId: Get<PalletId>;
     }
 
-    /// Supported bridge chains
+    /// Supported bridge chains.
+    ///
+    /// CONS-011: This enum contains 51 variants — each chain expands the cross-chain
+    /// attack surface and requires a functioning oracle/relayer. New chains should only
+    /// be added via governance proposal after security review. Chains without active
+    /// validators or oracle coverage should be disabled via `ChainConfigurations`.
     #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     pub enum BridgeChain {
         // L1s and Major Networks
@@ -396,7 +407,7 @@ pub mod pallet {
         /// Collected signatures
         pub collected_signatures: u32,
         /// Post-quantum signature data (ML-DSA-87)
-    pub pq_signatures: BoundedVec<(AccountId, BoundedVec<u8, ConstU32<4627>>), ConstU32<5>>, // (validator, ML-DSA-87 signature)
+    pub pq_signatures: BoundedVec<(AccountId, BoundedVec<u8, ConstU32<4627>>), ConstU32<32>>, // CONS-024: raised from 5 to 32 to support full validator set (validator, ML-DSA-87 signature)
         /// Transaction fee
         pub fee: u128,
         /// Initiation block
@@ -510,6 +521,10 @@ pub mod pallet {
     #[pallet::getter(fn pending_finalizations)]
     /// Bridge transactions awaiting finalization after challenge period (§4.4b).
     /// Key: tx_id → block number when challenge period expires.
+    ///
+    /// CONS-026: Iteration is bounded to MAX_FINALIZE_PER_IDLE (20) in `on_idle`,
+    /// preventing unbounded runtime. Governance can manually finalize or cancel
+    /// stale entries via `resolve_dispute` / `cancel_bridge_transaction`.
     pub type PendingFinalizations<T: Config> = StorageMap<
         _,
         Blake2_128Concat,
@@ -638,6 +653,12 @@ pub mod pallet {
         /// Bridge transaction finalized after challenge period elapsed (§4.4b)
         BridgeTransactionFinalized {
             tx_id: u32,
+        },
+        /// CONS-003: Warning emitted when an incoming unlock is submitted without
+        /// an on-chain burn proof. The burn is attested only by validator signatures.
+        UnverifiedBurnProofWarning {
+            tx_id: u32,
+            submitted_by: T::AccountId,
         },
     }
 
@@ -810,19 +831,20 @@ pub mod pallet {
             let fee_amount = Perbill::from_rational(chain_config.fee_rate, 10_000u32) * amount;
             let net_amount = amount.saturating_sub(fee_amount);
 
-            // Lock assets — use cumulative tracking to prevent set_lock overwrite (B-2 fix)
-            let amount_u128: u128 = amount.saturated_into();
+            // CONS-027: Transfer net_amount to escrow account instead of locking.
+            // This enables cross-user unlocks without balance lock interference.
+            let escrow = Self::escrow_account();
+            T::Currency::transfer(
+                &who,
+                &escrow,
+                net_amount,
+                frame_support::traits::ExistenceRequirement::KeepAlive,
+            )?;
+            // Track cumulative bridged amounts for accounting/events.
+            let amount_u128: u128 = net_amount.saturated_into();
             UserBridgeLocks::<T>::mutate(&who, |locked| {
                 *locked = locked.saturating_add(amount_u128);
             });
-            let cumulative_lock: <T::Currency as Currency<T::AccountId>>::Balance =
-                UserBridgeLocks::<T>::get(&who).saturated_into();
-            T::Currency::set_lock(
-                BRIDGE_LOCK_ID,
-                &who,
-                cumulative_lock,
-                frame_support::traits::WithdrawReasons::all(),
-            );
 
             // Transfer fee to treasury
             let treasury = T::Treasury::get();
@@ -921,16 +943,27 @@ pub mod pallet {
             );
 
             // Validate post-quantum signature via the configured verifier (AR-6).
-            // The signed message is the SCALE-encoded tx_id (deterministic, no timestamps).
-            // The public key is retrieved from the on-chain BridgeValidator record.
+            // CONS-001 FIX: canonical message binds tx_id + all value-critical fields,
+            // preventing cross-transaction replay (same tx_id, different amount/recipient/chain).
             {
                 let validator_record = BridgeValidators::<T>::get(&who)
                     .ok_or(Error::<T>::ValidatorNotRegistered)?;
-                let message = tx_id.encode();
+                // Build canonical binding committing to every value-critical field.
+                let canonical_message = match &bridge_tx.operation {
+                    BridgeOperation::LockAndMint {
+                        target_chain, target_address, amount, asset
+                    } => (tx_id, amount, target_chain, target_address.as_slice(), asset).encode(),
+                    BridgeOperation::BurnAndUnlock {
+                        source_chain, source_tx_hash, amount, asset, recipient
+                    } => (tx_id, amount, source_chain, source_tx_hash.as_slice(), asset, recipient.as_slice()).encode(),
+                    BridgeOperation::MessagePassing {
+                        target_chain, message_hash, ..
+                    } => (tx_id, target_chain, message_hash).encode(),
+                };
                 ensure!(
                     T::PQVerifier::verify(
                         validator_record.pq_public_key.as_slice(),
-                        &message,
+                        &canonical_message,
                         &pq_signature,
                     ),
                     Error::<T>::InvalidPQSignature
@@ -1067,29 +1100,20 @@ pub mod pallet {
             let recipient = T::AccountId::decode(&mut recipient_bytes.as_slice())
                 .map_err(|_| Error::<T>::InvalidConfiguration)?;
 
-            // B-2 fix: reduce the user's cumulative bridge lock
+            // CONS-027: Transfer from escrow to recipient. This supports cross-user
+            // unlocks — the recipient need not be the original locker.
             let _amount_balance: <T::Currency as Currency<T::AccountId>>::Balance = amount.saturated_into();
+            let escrow = Self::escrow_account();
+            T::Currency::transfer(
+                &escrow,
+                &recipient,
+                _amount_balance,
+                frame_support::traits::ExistenceRequirement::AllowDeath,
+            )?;
+            // Update accounting tracker.
             UserBridgeLocks::<T>::mutate(&recipient, |locked| {
                 *locked = locked.saturating_sub(amount);
             });
-            let remaining_lock = UserBridgeLocks::<T>::get(&recipient);
-            if remaining_lock == 0 {
-                T::Currency::remove_lock(BRIDGE_LOCK_ID, &recipient);
-            } else {
-                let remaining_balance: <T::Currency as Currency<T::AccountId>>::Balance =
-                    remaining_lock.saturated_into();
-                T::Currency::set_lock(
-                    BRIDGE_LOCK_ID,
-                    &recipient,
-                    remaining_balance,
-                    frame_support::traits::WithdrawReasons::all(),
-                );
-            }
-
-            // DO NOT use deposit_creating (B-1 fix: removes inflation vulnerability).
-            // The recipient's previously-locked tokens are now spendable via the lock reduction above.
-            // Note: For cross-user unlocks (recipient != original locker), a bridge escrow model
-            // is needed. TODO: Migrate to escrow-based bridge in next version.
 
             // Update total locked assets
             TotalLockedAssets::<T>::mutate(&source_chain, &asset, |total| {
@@ -1189,10 +1213,16 @@ pub mod pallet {
 
             Self::deposit_event(Event::BridgeTransactionInitiated {
                 tx_id,
-                initiator: who,
+                initiator: who.clone(),
                 target_chain: Self::encode_chain(&source_chain),
                 amount,
                 asset: Self::encode_asset(&asset),
+            });
+
+            // CONS-003: Emit warning — no on-chain burn proof; relying on validator attestation only.
+            Self::deposit_event(Event::UnverifiedBurnProofWarning {
+                tx_id,
+                submitted_by: who,
             });
 
             Ok(())
@@ -1271,6 +1301,15 @@ pub mod pallet {
 
             let chain = Self::decode_chain(chain_index).ok_or(Error::<T>::UnsupportedChain)?;
 
+            // CRIT-1 FIX: Cap fee_rate to 10_000 (100%)
+            ensure!(fee_rate <= 10_000, Error::<T>::InvalidConfiguration);
+
+            // CRIT-2 FIX: Ensure config exists before updating (no silent no-op)
+            ensure!(
+                ChainConfigurations::<T>::contains_key(&chain),
+                Error::<T>::UnsupportedChain
+            );
+
             ChainConfigurations::<T>::mutate(&chain, |maybe_config| {
                 if let Some(config) = maybe_config {
                     config.enabled = enabled;
@@ -1328,6 +1367,18 @@ pub mod pallet {
                 Error::<T>::NotDisputable
             );
 
+            // CRIT-3 FIX: Dispute bond based on tx amount with minimum floor.
+            // Original used fee/20 which was 0 for incoming unlocks (zero-cost griefing).
+            let min_bond = T::MinBridgeAmount::get();
+            let tx_amount: <T::Currency as Currency<T::AccountId>>::Balance = match &bridge_tx.operation {
+                BridgeOperation::LockAndMint { amount, .. } |
+                BridgeOperation::BurnAndUnlock { amount, .. } => (*amount).saturated_into(),
+                BridgeOperation::MessagePassing { .. } => min_bond,
+            };
+            let amount_based_bond = tx_amount / 20u128.saturated_into(); // 5% of tx value
+            let dispute_bond = core::cmp::max(amount_based_bond, min_bond);
+            T::Currency::reserve(&who, dispute_bond)?;
+
             // Mark transaction as disputed
             bridge_tx.status = BridgeStatus::Disputed;
             let reason_bounded: BoundedVec<u8, ConstU32<256>> = reason
@@ -1375,8 +1426,9 @@ pub mod pallet {
                 Error::<T>::AlreadyExecuted // reuse: already registered
             );
 
-            // Lock a minimum stake
-            let stake: <T::Currency as Currency<T::AccountId>>::Balance = T::MinBridgeAmount::get();
+            // CONS-013: Validator stake is 10× MinBridgeAmount to ensure meaningful skin-in-the-game.
+            let stake: <T::Currency as Currency<T::AccountId>>::Balance =
+                T::MinBridgeAmount::get().saturating_mul(10u128.saturated_into());
             T::Currency::set_lock(BRIDGE_LOCK_ID, &who, stake, frame_support::traits::WithdrawReasons::all());
 
             // Decode supported chains
@@ -1485,6 +1537,11 @@ pub mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
+        /// CONS-027: Derives the escrow account ID from the pallet's PalletId.
+        fn escrow_account() -> T::AccountId {
+            T::PalletId::get().into_account_truncating()
+        }
+
         // AR-15: Check and record rate limit for initiate_bridge.
         //
         // Clears the per-account counter when the block number changes, then
@@ -1493,8 +1550,9 @@ pub mod pallet {
             let current_block = frame_system::Pallet::<T>::block_number();
             let last_block = LastBridgeRateLimitBlock::<T>::get();
             if current_block != last_block {
-                // New block — clear count for this account (lazy reset).
-                BridgeCallsThisBlock::<T>::remove(who);
+                // CONS-025: Clear ALL per-account counters on new block, not just the caller's.
+                // Prevents stale entries from accumulating across blocks.
+                let _ = BridgeCallsThisBlock::<T>::clear(u32::MAX, None);
                 // Only update the global block tracker on first use within a new block.
                 LastBridgeRateLimitBlock::<T>::put(current_block);
             }

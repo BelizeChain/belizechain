@@ -14,6 +14,7 @@ use sc_service::PartialComponents;
 mod chain_spec;
 mod chain_spec_configs;
 mod validator_config;
+mod block_announce_validator;
 #[macro_use]
 mod service;
 mod rpc;

@@ -160,5 +160,22 @@ mod benchmarks {
         {}
     }
 
+    #[benchmark]
+    fn transfer_bbzd() {
+        let caller: T::AccountId = whitelisted_caller();
+        let balance = T::Currency::minimum_balance() * 1_000_000u32.into();
+        let _ = T::Currency::make_free_balance_be(&caller, balance);
+
+        let recipient: T::AccountId = account("recipient", 0, 0);
+        // Give caller bBZD balance to transfer
+        TotalBbzdSupply::<T>::put(1_000_000u128);
+        BBZDBalances::<T>::insert(&caller, 1_000_000u128);
+
+        let amount: u128 = 100;
+
+        #[extrinsic_call]
+        _(RawOrigin::Signed(caller), recipient, amount);
+    }
+
     impl_benchmark_test_suite!(Pallet, crate::mock::new_test_ext(), crate::mock::Test);
 }

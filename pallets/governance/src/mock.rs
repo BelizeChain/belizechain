@@ -1,7 +1,7 @@
 use crate::{self as pallet_belize_governance, *};
 use frame_support::{
     construct_runtime, parameter_types,
-    traits::{ConstU32, ConstU8, Everything, Randomness},
+    traits::{ConstU32, ConstU64, ConstU128, ConstU8, Everything, Hooks, Randomness},
     PalletId,
 };
 use frame_system::EnsureRoot;
@@ -25,6 +25,10 @@ impl ComplianceCheck<u64> for MockCompliance {
     fn can_participate_in_governance(account: &u64) -> bool {
         // Account 999 is restricted for testing
         *account != 999
+    }
+
+    fn eligible_voter_count() -> u32 {
+        100 // Test assumes 100 eligible voters
     }
 }
 
@@ -182,6 +186,12 @@ impl pallet_belize_governance::Config for Test {
     type BehaviorFlags = MockBehaviorFlags;
     type DualHouseProvider = MockDualHouse;
     type ConstitutionalAdminOrigin = EnsureRoot<u64>;
+    type EmergencyVetoWindow = ConstU64<100>;
+    type RuntimeUpgradeMinTimelock = ConstU64<200>;
+    type ParameterChangeMinTimelock = ConstU64<200>;
+    type MaxTreasurySpendPerPeriod = ConstU128<500_000_000_000_000_000>;
+    type TreasurySpendPeriod = ConstU64<14_400>;
+    type MinQuorumPercentage = ConstU8<10>;
 }
 
 // Build genesis storage according to the mock runtime
@@ -229,11 +239,31 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
 pub fn run_to_block(n: u64) {
     while System::block_number() < n {
         if System::block_number() > 1 {
+            BelizeGovernance::on_finalize(System::block_number());
             System::on_finalize(System::block_number());
         }
         System::set_block_number(System::block_number() + 1);
         System::on_initialize(System::block_number());
+        BelizeGovernance::on_initialize(System::block_number());
     }
+}
+
+/// Declare an emergency and advance past the CONS-029 veto window so it becomes active.
+pub fn declare_and_activate_emergency(
+    emergency_type: u8,
+    description: &[u8],
+    duration_hours: u32,
+) {
+    BelizeGovernance::declare_emergency(
+        RuntimeOrigin::root(),
+        emergency_type,
+        description.to_vec(),
+        duration_hours,
+    )
+    .expect("declare_emergency should succeed");
+    // EmergencyVetoWindow = 100; advance past it to activate
+    let current = System::block_number();
+    run_to_block(current + 101);
 }
 
 pub fn last_event() -> RuntimeEvent {

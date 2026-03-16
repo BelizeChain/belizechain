@@ -42,9 +42,14 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 
     /// O(N) — iterates over N employees
     /// Storage: Employees (r:N w:0), Currency::transfer (r:2*N w:2*N), PaymentRecords (r:0 w:N)
+    /// DOS-013 FIX: Added per-item proof_size (1536 bytes) — each payment
+    /// deserializes employer profile, employee record, and balance state.
     fn batch_payment(n: u32) -> Weight {
         Weight::from_parts(10_000_000, 512)
-            .saturating_add(Weight::from_parts(50_000_000u64.saturating_mul(n as u64), 0))
+            .saturating_add(Weight::from_parts(
+                50_000_000u64.saturating_mul(n as u64),
+                1536u64.saturating_mul(n as u64),
+            ))
             .saturating_add(T::DbWeight::get().reads(3u64.saturating_mul(n as u64)))
             .saturating_add(T::DbWeight::get().writes(3u64.saturating_mul(n as u64)))
     }

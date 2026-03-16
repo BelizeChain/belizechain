@@ -97,6 +97,8 @@ parameter_types! {
     pub const VerificationValidityPeriod: u64 = 31_536_000; // 1 year in seconds
     pub const MaxAuditRecords: u32 = 100;
     pub const MaxSuspiciousActivityReports: u32 = 50;
+    pub const StructuringWindowBlocks: u64 = 14_400; // ~1 day at 6s blocks
+    pub const MaxTransactionWindowEntries: u32 = 50;
 }
 
 impl pallet_belize_compliance::Config for Test {
@@ -111,7 +113,10 @@ impl pallet_belize_compliance::Config for Test {
     type VerificationValidityPeriod = VerificationValidityPeriod;
     type MaxAuditRecords = MaxAuditRecords;
     type MaxSuspiciousActivityReports = MaxSuspiciousActivityReports;
+    type StructuringWindowBlocks = StructuringWindowBlocks;
+    type MaxTransactionWindowEntries = MaxTransactionWindowEntries;
     type WeightInfo = ();
+    type AccountSanctionsChecker = (); // No-op in tests
 }
 
 // Build genesis storage according to the mock runtime.

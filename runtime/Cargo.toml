@@ -213,5 +213,8 @@ try-runtime = [
 # Development-only example migration hooks (disabled by default)
 example-migration = []
 
+# CONS-028: Development-only features (debug info, event collection, sudo)
+dev = []
+
 # Enable benchmarking
 fast-runtime = []

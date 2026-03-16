@@ -460,6 +460,9 @@ fn council_override_works_for_emergency_proposal() {
             None,
         ));
 
+        // P0-18: JaguarMode must be active for council_override
+        declare_and_activate_emergency(0u8, b"Critical threat", 24u32);
+
         assert_ok!(BelizeGovernance::council_override(
             RuntimeOrigin::root(),
             0,
@@ -475,14 +478,14 @@ fn council_override_works_for_emergency_proposal() {
 fn council_override_fails_for_non_emergency_proposal_outside_jaguar_mode() {
     new_test_ext().execute_with(|| {
         let id = submit_standard_proposal(1);
-        // Standard proposal, no emergency mode active
+        // Standard proposal, no emergency mode active — P0-18 requires JaguarMode
         assert_noop!(
             BelizeGovernance::council_override(
                 RuntimeOrigin::root(),
                 id,
                 b"reason".to_vec(),
             ),
-            Error::<Test>::EmergencyTypeRestrictions
+            Error::<Test>::NotInEmergencyMode
         );
     });
 }
@@ -553,6 +556,13 @@ fn declare_emergency_works() {
             b"Critical network threat".to_vec(),
             24,                             // 24 hours
         ));
+        // CONS-029: emergency starts pending during veto window
+        let mode = BelizeGovernance::emergency_status();
+        assert!(mode.is_some());
+        assert!(!mode.as_ref().unwrap().active);
+        assert!(mode.unwrap().is_pending);
+        // Advance past veto window to activate
+        run_to_block(System::block_number() + 101);
         let mode = BelizeGovernance::emergency_status();
         assert!(mode.is_some());
         assert!(mode.unwrap().active);
@@ -562,12 +572,8 @@ fn declare_emergency_works() {
 #[test]
 fn declare_emergency_twice_fails() {
     new_test_ext().execute_with(|| {
-        assert_ok!(BelizeGovernance::declare_emergency(
-            RuntimeOrigin::root(),
-            3,
-            b"First emergency".to_vec(),
-            24,
-        ));
+        // Declare and activate emergency
+        declare_and_activate_emergency(3, b"First emergency", 24);
         assert_noop!(
             BelizeGovernance::declare_emergency(
                 RuntimeOrigin::root(),
@@ -1427,12 +1433,7 @@ fn execute_emergency_proposal_works() {
     new_test_ext().execute_with(|| {
         use crate::{Proposal, ProposalStatus, ProposalType, VoteTally, VotingThreshold};
         // Activate JaguarMode (CouncilOrigin = EnsureRoot in mock)
-        assert_ok!(BelizeGovernance::declare_emergency(
-            RuntimeOrigin::root(),
-            0u8, // Hurricane
-            b"Test hurricane".to_vec(),
-            24u32,
-        ));
+        declare_and_activate_emergency(0u8, b"Test hurricane", 24u32);
         // Inject emergency proposal with ayes=70, nays=30 → 70% approval (>= 66%)
         let proposal = Proposal {
             id: 5u32,
@@ -1475,12 +1476,7 @@ fn execute_emergency_proposal_works() {
 fn fast_track_referendum_works() {
     new_test_ext().execute_with(|| {
         // Activate JaguarMode
-        assert_ok!(BelizeGovernance::declare_emergency(
-            RuntimeOrigin::root(),
-            0u8,
-            b"Emergency".to_vec(),
-            24u32,
-        ));
+        declare_and_activate_emergency(0u8, b"Emergency", 24u32);
         // Create referendum (no deposit required, just compliance)
         assert_ok!(BelizeGovernance::create_referendum(
             RuntimeOrigin::signed(1),
@@ -1511,12 +1507,7 @@ fn emergency_override_proposal_works() {
     new_test_ext().execute_with(|| {
         use crate::{Proposal, ProposalStatus, ProposalType, VoteTally, VotingThreshold};
         // Activate JaguarMode
-        assert_ok!(BelizeGovernance::declare_emergency(
-            RuntimeOrigin::root(),
-            0u8,
-            b"Emergency".to_vec(),
-            24u32,
-        ));
+        declare_and_activate_emergency(0u8, b"Emergency", 24u32);
         // Inject a pending proposal to override
         let proposal = Proposal {
             id: 7u32,

@@ -54,6 +54,9 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
 pub use pallet::*;
 
 /// 32-byte Blake2b content hash uniquely identifying a piece of on-chain content.
@@ -118,9 +121,6 @@ pub mod pallet {
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
-        /// The overarching event type.
-        type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
-
         /// Origin that may add/remove moderators (e.g. governance council).
         type ModeratorAdminOrigin: EnsureOrigin<Self::RuntimeOrigin>;
 
@@ -138,6 +138,10 @@ pub mod pallet {
         /// Maximum number of moderators in the set.
         #[pallet::constant]
         type MaxModerators: Get<u32>;
+
+        /// Maximum number of unique flags per content item (bounds clear_prefix).
+        #[pallet::constant]
+        type MaxFlagsPerContent: Get<u32>;
 
         /// Weight information for pallet extrinsics.
         type WeightInfo: WeightInfo;
@@ -279,6 +283,10 @@ pub mod pallet {
         ModeratorSetFull,
         /// Content has already received a final ruling; re-flagging not permitted.
         AlreadyRuled,
+        /// Nawal risk score must be in the range 0–100.
+        ScoreOutOfRange,
+        /// Maximum flags per content item reached.
+        FlagLimitReached,
     }
 
     // =========================================================================
@@ -325,6 +333,8 @@ pub mod pallet {
             // Record the flag
             ContentFlags::<T>::insert(content_hash, &who, reason);
             let new_count = FlagCounts::<T>::get(content_hash).saturating_add(1);
+            // MOD-01 FIX: Enforce MaxFlagsPerContent to bound storage and clear_prefix
+            ensure!(new_count <= T::MaxFlagsPerContent::get(), Error::<T>::FlagLimitReached);
             FlagCounts::<T>::insert(content_hash, new_count);
 
             Self::deposit_event(Event::ContentFlagged {
@@ -381,6 +391,11 @@ pub mod pallet {
             // Dequeue and record ruling
             ModerationQueue::<T>::remove(content_hash);
             RuledContent::<T>::insert(content_hash, ruling);
+
+            // MOD-01 FIX: Bounded clear_prefix using MaxFlagsPerContent instead of u32::MAX
+            let _ = ContentFlags::<T>::clear_prefix(content_hash, T::MaxFlagsPerContent::get(), None);
+            FlagCounts::<T>::remove(content_hash);
+            NawalAssessments::<T>::remove(content_hash);
 
             Self::deposit_event(Event::ContentRuled {
                 content_hash,
@@ -454,6 +469,9 @@ pub mod pallet {
             score: u8,
         ) -> DispatchResult {
             T::NawalOracleOrigin::ensure_origin(origin)?;
+
+            // M-4 FIX: Validate score range (0–100)
+            ensure!(score <= 100, Error::<T>::ScoreOutOfRange);
 
             NawalAssessments::<T>::insert(content_hash, score);
 

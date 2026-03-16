@@ -649,14 +649,15 @@ fn review_already_ruled_content_fails() {
 }
 
 #[test]
-fn nawal_score_255_accepted() {
+fn nawal_score_255_rejected() {
     new_test_ext().execute_with(|| {
-        // Score 255 > threshold 50, should auto-queue
-        assert_ok!(Moderation::submit_nawal_assessment(
-            RuntimeOrigin::root(), content_a(), 255,
-        ));
-        assert_eq!(Moderation::nawal_risk_score(&content_a()), Some(255));
-        assert!(Moderation::is_queued_for_review(&content_a()));
+        // Score 255 > 100 cap, should be rejected (MOD-03 fix)
+        assert_noop!(
+            Moderation::submit_nawal_assessment(
+                RuntimeOrigin::root(), content_a(), 255,
+            ),
+            Error::<Test>::ScoreOutOfRange
+        );
     });
 }
 
@@ -846,7 +847,7 @@ fn content_ruled_event_for_cleared_and_escalated() {
 }
 
 #[test]
-fn flag_counts_persist_after_ruling() {
+fn flag_counts_cleared_after_ruling() {
     new_test_ext().execute_with(|| {
         let hash = content_a();
         setup_queued_content(hash); // 3 flags
@@ -855,13 +856,13 @@ fn flag_counts_persist_after_ruling() {
         assert_ok!(Moderation::review_content(
             RuntimeOrigin::signed(MODERATOR_1), hash, 0,
         ));
-        // Counts persist (not cleaned up by ruling)
-        assert_eq!(FlagCounts::<Test>::get(hash), 3);
+        // MOD-01: FlagCounts cleaned up after ruling
+        assert_eq!(FlagCounts::<Test>::get(hash), 0);
     });
 }
 
 #[test]
-fn nawal_assessment_persists_after_ruling() {
+fn nawal_assessment_cleared_after_ruling() {
     new_test_ext().execute_with(|| {
         let hash = content_a();
         assert_ok!(Moderation::submit_nawal_assessment(RuntimeOrigin::root(), hash, 80));
@@ -869,7 +870,7 @@ fn nawal_assessment_persists_after_ruling() {
         assert_ok!(Moderation::review_content(
             RuntimeOrigin::signed(MODERATOR_1), hash, 1,
         ));
-        // Assessment persists
-        assert_eq!(Moderation::nawal_risk_score(&hash), Some(80));
+        // MOD-01: NawalAssessments cleaned up after ruling
+        assert_eq!(Moderation::nawal_risk_score(&hash), None);
     });
 }

@@ -15,7 +15,7 @@ fn register_ai_model_works() {
             0, // Economic
             test_parameters_hash(1),
             1000, // Training data size
-            test_pq_signature(64),
+            test_pq_signature(4627),
         ));
 
         // Verify model was created
@@ -60,7 +60,7 @@ fn register_ai_model_all_types_works() {
                 *type_index,
                 test_parameters_hash(i as u8),
                 1000,
-                test_pq_signature(64),
+                test_pq_signature(4627),
             ));
 
             let model = Consensus::ai_models(i as u32).unwrap();
@@ -80,7 +80,7 @@ fn register_ai_model_rejects_invalid_type() {
                 99, // Invalid type
                 test_parameters_hash(1),
                 1000,
-                test_pq_signature(64),
+                test_pq_signature(4627),
             ),
             Error::<Test>::InvalidModelType
         );
@@ -90,16 +90,16 @@ fn register_ai_model_rejects_invalid_type() {
 #[test]
 fn register_ai_model_rejects_invalid_signature() {
     new_test_ext().execute_with(|| {
-        // Signature too long (> 256 bytes)
+        // Signature wrong length (ML-DSA-87 requires exactly 4627 bytes)
         assert_noop!(
             Consensus::register_ai_model(
                 RuntimeOrigin::signed(ALICE),
                 0,
                 test_parameters_hash(1),
                 1000,
-                test_pq_signature(300), // Too long
+                test_pq_signature(6000),
             ),
-            Error::<Test>::InvalidPQSignature
+            Error::<Test>::PqVerificationFailed
         );
     });
 }
@@ -181,11 +181,12 @@ fn join_consensus_validator_prevents_duplicate() {
 #[test]
 fn join_consensus_validator_rejects_invalid_signature() {
     new_test_ext().execute_with(|| {
+        // Public key too long (> 3000 bytes, ML-DSA-87 BoundedVec limit)
         assert_noop!(
             Consensus::join_consensus_validator(
                 RuntimeOrigin::signed(ALICE),
                 5_000_000,
-                test_pq_signature(300), // Too long
+                test_pq_signature(4000), // Exceeds 3000-byte limit
             ),
             Error::<Test>::InvalidPQSignature
         );
@@ -205,7 +206,7 @@ fn validate_ai_model_works() {
             0,
             test_parameters_hash(1),
             1000,
-            test_pq_signature(64),
+            test_pq_signature(4627),
         ));
 
         // Validate model (AI Authority only)
@@ -237,7 +238,7 @@ fn validate_ai_model_requires_authority() {
             0,
             test_parameters_hash(1),
             1000,
-            test_pq_signature(64),
+            test_pq_signature(4627),
         ));
 
         // Regular user cannot validate
@@ -340,7 +341,7 @@ fn submit_ai_work_works() {
             0,
             test_parameters_hash(1),
             1000,
-            test_pq_signature(64),
+            test_pq_signature(4627),
         ));
         assert_ok!(Consensus::validate_ai_model(
             RuntimeOrigin::root(),
@@ -391,7 +392,7 @@ fn submit_ai_work_requires_active_round() {
             0,
             test_parameters_hash(1),
             1000,
-            test_pq_signature(64),
+            test_pq_signature(4627),
         ));
         assert_ok!(Consensus::validate_ai_model(
             RuntimeOrigin::root(),
@@ -434,7 +435,7 @@ fn submit_ai_work_requires_active_model() {
             0,
             test_parameters_hash(1),
             1000,
-            test_pq_signature(64),
+            test_pq_signature(4627),
         ));
 
         // Try to submit with inactive model
@@ -461,7 +462,7 @@ fn submit_ai_work_requires_validator() {
             0,
             test_parameters_hash(1),
             1000,
-            test_pq_signature(64),
+            test_pq_signature(4627),
         ));
         assert_ok!(Consensus::validate_ai_model(
             RuntimeOrigin::root(),
@@ -509,7 +510,7 @@ fn submit_ai_work_rejects_invalid_work_type() {
             0,
             test_parameters_hash(1),
             1000,
-            test_pq_signature(64),
+            test_pq_signature(4627),
         ));
         assert_ok!(Consensus::validate_ai_model(
             RuntimeOrigin::root(),
@@ -598,7 +599,7 @@ fn get_validator_contribution_score_works() {
             0,
             test_parameters_hash(1),
             1000,
-            test_pq_signature(64),
+            test_pq_signature(4627),
         ));
 
         // Score stays same (calculated from Staking provider, not Consensus pallet state)
@@ -628,7 +629,7 @@ fn setup_consensus_for_rate_limit() {
         0,
         test_parameters_hash(1),
         1000,
-        test_pq_signature(64),
+        test_pq_signature(4627),
     ));
     assert_ok!(Consensus::validate_ai_model(RuntimeOrigin::root(), 0, 8500));
     assert_ok!(Consensus::start_consensus_round(RuntimeOrigin::root(), 10));
@@ -715,7 +716,7 @@ fn finalize_consensus_round_works() {
             0, // Economic model type
             test_parameters_hash(1),
             1000,
-            test_pq_signature(64),
+            test_pq_signature(4627),
         ));
         assert_ok!(Consensus::validate_ai_model(
             RuntimeOrigin::root(),
@@ -817,7 +818,7 @@ fn register_model_id_overflow_fails() {
         assert_noop!(
             Consensus::register_ai_model(
                 RuntimeOrigin::signed(ALICE), 0, test_parameters_hash(1), 1000,
-                test_pq_signature(64),
+                test_pq_signature(4627),
             ),
             Error::<Test>::IdOverflow
         );
@@ -861,7 +862,7 @@ fn start_round_while_active_round_fails() {
         // Try starting another round while one is in progress
         assert_noop!(
             Consensus::start_consensus_round(RuntimeOrigin::root(), 5),
-            Error::<Test>::RoundNotInProgress
+            Error::<Test>::RoundAlreadyInProgress
         );
     });
 }
@@ -870,10 +871,11 @@ fn start_round_while_active_round_fails() {
 fn submit_work_invalid_pq_signature_fails() {
     new_test_ext().execute_with(|| {
         setup_consensus_for_rate_limit();
+        // Signature too long (> 5000 bytes, ML-DSA-87 BoundedVec limit)
         assert_noop!(
             Consensus::submit_ai_work(
                 RuntimeOrigin::signed(ALICE), 0, 0, [1u8; 32], 500,
-                test_pq_signature(300), // too long
+                test_pq_signature(6000), // Exceeds 5000-byte limit
             ),
             Error::<Test>::InvalidPQSignature
         );
@@ -888,7 +890,7 @@ fn submit_work_nonexistent_model_fails() {
         ));
         assert_ok!(Consensus::register_ai_model(
             RuntimeOrigin::signed(ALICE), 0, test_parameters_hash(1), 1000,
-            test_pq_signature(64),
+            test_pq_signature(4627),
         ));
         assert_ok!(Consensus::validate_ai_model(RuntimeOrigin::root(), 0, 8500));
         assert_ok!(Consensus::start_consensus_round(RuntimeOrigin::root(), 10));
@@ -911,7 +913,7 @@ fn validate_model_below_threshold_stays_inactive() {
     new_test_ext().execute_with(|| {
         assert_ok!(Consensus::register_ai_model(
             RuntimeOrigin::signed(ALICE), 0, test_parameters_hash(1), 1000,
-            test_pq_signature(64),
+            test_pq_signature(4627),
         ));
         // MinModelQualityScore = 50 in mock — 49 is below threshold
         assert_ok!(Consensus::validate_ai_model(RuntimeOrigin::root(), 0, 49));
@@ -926,7 +928,7 @@ fn validate_model_at_threshold_activates() {
     new_test_ext().execute_with(|| {
         assert_ok!(Consensus::register_ai_model(
             RuntimeOrigin::signed(ALICE), 0, test_parameters_hash(1), 1000,
-            test_pq_signature(64),
+            test_pq_signature(4627),
         ));
         // Exactly at MinModelQualityScore boundary
         assert_ok!(Consensus::validate_ai_model(RuntimeOrigin::root(), 0, 50));
@@ -998,15 +1000,15 @@ fn no_bonus_above_computation_threshold() {
 fn sustainability_contribution_zero_computation_time() {
     new_test_ext().execute_with(|| {
         setup_consensus_for_rate_limit();
-        // computation_time == 0 → sustainability = 100
-        assert_ok!(Consensus::submit_ai_work(
-            RuntimeOrigin::signed(ALICE), 0, 0, [1u8; 32],
-            0,
-            test_pq_signature(128),
-        ));
-        let round_id = Consensus::current_consensus_round().unwrap();
-        let round = Consensus::consensus_rounds(round_id).unwrap();
-        assert_eq!(round.ai_work_submissions[0].sustainability_contribution, 100);
+        // CONS-015: computation_time == 0 is now rejected
+        assert_noop!(
+            Consensus::submit_ai_work(
+                RuntimeOrigin::signed(ALICE), 0, 0, [1u8; 32],
+                0,
+                test_pq_signature(128),
+            ),
+            Error::<Test>::InvalidComputationTime
+        );
     });
 }
 
@@ -1050,25 +1052,35 @@ fn multi_validator_round_proportional_rewards() {
             RuntimeOrigin::signed(CHARLIE), 5_000_000, test_pq_signature(128),
         ));
 
-        // Register + validate model
+        // Each validator registers + validates their own model (ModelNotOwned check)
         assert_ok!(Consensus::register_ai_model(
             RuntimeOrigin::signed(ALICE), 0, test_parameters_hash(1), 1000,
-            test_pq_signature(64),
+            test_pq_signature(4627),
         ));
         assert_ok!(Consensus::validate_ai_model(RuntimeOrigin::root(), 0, 8500));
+        assert_ok!(Consensus::register_ai_model(
+            RuntimeOrigin::signed(BOB), 1, test_parameters_hash(2), 1000,
+            test_pq_signature(4627),
+        ));
+        assert_ok!(Consensus::validate_ai_model(RuntimeOrigin::root(), 1, 8500));
+        assert_ok!(Consensus::register_ai_model(
+            RuntimeOrigin::signed(CHARLIE), 2, test_parameters_hash(3), 1000,
+            test_pq_signature(4627),
+        ));
+        assert_ok!(Consensus::validate_ai_model(RuntimeOrigin::root(), 2, 8500));
 
         // Start round
         assert_ok!(Consensus::start_consensus_round(RuntimeOrigin::root(), 5));
 
-        // All 3 submit work with different computation times
+        // All 3 submit work on their own models with different computation times
         assert_ok!(Consensus::submit_ai_work(
             RuntimeOrigin::signed(ALICE), 0, 0, [1u8; 32], 500, test_pq_signature(128),
         ));
         assert_ok!(Consensus::submit_ai_work(
-            RuntimeOrigin::signed(BOB), 0, 1, [2u8; 32], 1500, test_pq_signature(128),
+            RuntimeOrigin::signed(BOB), 1, 1, [2u8; 32], 1500, test_pq_signature(128),
         ));
         assert_ok!(Consensus::submit_ai_work(
-            RuntimeOrigin::signed(CHARLIE), 0, 2, [3u8; 32], 2000, test_pq_signature(128),
+            RuntimeOrigin::signed(CHARLIE), 2, 2, [3u8; 32], 2000, test_pq_signature(128),
         ));
 
         let bal_a = Balances::free_balance(ALICE);
@@ -1145,9 +1157,15 @@ fn rate_limit_per_account_isolation() {
         ));
         assert_ok!(Consensus::register_ai_model(
             RuntimeOrigin::signed(ALICE), 0, test_parameters_hash(1), 1000,
-            test_pq_signature(64),
+            test_pq_signature(4627),
         ));
         assert_ok!(Consensus::validate_ai_model(RuntimeOrigin::root(), 0, 8500));
+        // BOB needs his own model (ModelNotOwned check)
+        assert_ok!(Consensus::register_ai_model(
+            RuntimeOrigin::signed(BOB), 1, test_parameters_hash(2), 1000,
+            test_pq_signature(4627),
+        ));
+        assert_ok!(Consensus::validate_ai_model(RuntimeOrigin::root(), 1, 8500));
         assert_ok!(Consensus::start_consensus_round(RuntimeOrigin::root(), 10));
 
         // ALICE exhausts her rate limit (5 calls)
@@ -1165,9 +1183,9 @@ fn rate_limit_per_account_isolation() {
             ),
             Error::<Test>::RateLimitExceeded
         );
-        // BOB can still submit (separate counter)
+        // BOB can still submit on his own model (separate counter)
         assert_ok!(Consensus::submit_ai_work(
-            RuntimeOrigin::signed(BOB), 0, 0, [10u8; 32], 500,
+            RuntimeOrigin::signed(BOB), 1, 0, [10u8; 32], 500,
             test_pq_signature(128),
         ));
     });
@@ -1183,7 +1201,7 @@ fn multiple_models_per_account_tracked() {
         for i in 0..5u8 {
             assert_ok!(Consensus::register_ai_model(
                 RuntimeOrigin::signed(ALICE), (i % 8), test_parameters_hash(i),
-                1000, test_pq_signature(64),
+                1000, test_pq_signature(4627),
             ));
         }
         let models = Consensus::model_by_account(ALICE);
@@ -1202,11 +1220,11 @@ fn register_model_different_accounts() {
     new_test_ext().execute_with(|| {
         assert_ok!(Consensus::register_ai_model(
             RuntimeOrigin::signed(ALICE), 0, test_parameters_hash(1), 1000,
-            test_pq_signature(64),
+            test_pq_signature(4627),
         ));
         assert_ok!(Consensus::register_ai_model(
             RuntimeOrigin::signed(BOB), 1, test_parameters_hash(2), 2000,
-            test_pq_signature(64),
+            test_pq_signature(4627),
         ));
         assert_eq!(Consensus::model_by_account(ALICE).len(), 1);
         assert_eq!(Consensus::model_by_account(BOB).len(), 1);
@@ -1278,7 +1296,7 @@ fn register_model_emits_event() {
         System::set_block_number(1);
         assert_ok!(Consensus::register_ai_model(
             RuntimeOrigin::signed(ALICE), 0, test_parameters_hash(1), 1000,
-            test_pq_signature(64),
+            test_pq_signature(4627),
         ));
         System::assert_has_event(
             Event::AIModelRegistered {
@@ -1354,7 +1372,7 @@ fn validate_model_emits_event() {
         System::set_block_number(1);
         assert_ok!(Consensus::register_ai_model(
             RuntimeOrigin::signed(ALICE), 0, test_parameters_hash(1), 1000,
-            test_pq_signature(64),
+            test_pq_signature(4627),
         ));
         assert_ok!(Consensus::validate_ai_model(RuntimeOrigin::root(), 0, 8500));
         System::assert_has_event(
@@ -1374,14 +1392,16 @@ fn validate_model_emits_event() {
 fn sustainability_ema_multiple_submissions() {
     new_test_ext().execute_with(|| {
         setup_consensus_for_rate_limit();
-        // Submit with high sustainability (fast computation, time=0 → sust=100)
+        // Submit with high sustainability (fast computation, time=1 → sust=100)
         assert_ok!(Consensus::submit_ai_work(
-            RuntimeOrigin::signed(ALICE), 0, 0, [1u8; 32], 0,
+            RuntimeOrigin::signed(ALICE), 0, 0, [1u8; 32], 1,
             test_pq_signature(128),
         ));
         let vid = Consensus::validator_by_account(ALICE).unwrap();
         let val = Consensus::consensus_validators(vid).unwrap();
         // Initial sustainability starts at 50 by default
+        // sust = min(100, 500 * quality / 1). quality = 8500 + 100 (fast bonus) = 8600
+        // = min(100, 4300000) = 100
         // EMA: (50*70 + 100*30) / 100 = (3500 + 3000) / 100 = 65
         assert_eq!(val.sustainability_score, 65);
 
@@ -1414,7 +1434,7 @@ fn eligible_rounds_and_uptime_tracked() {
         ));
         assert_ok!(Consensus::register_ai_model(
             RuntimeOrigin::signed(ALICE), 0, test_parameters_hash(1), 1000,
-            test_pq_signature(64),
+            test_pq_signature(4627),
         ));
         assert_ok!(Consensus::validate_ai_model(RuntimeOrigin::root(), 0, 8500));
 
@@ -1490,11 +1510,11 @@ fn global_metrics_updated_across_operations() {
         // Register 2 models
         assert_ok!(Consensus::register_ai_model(
             RuntimeOrigin::signed(ALICE), 0, test_parameters_hash(1), 1000,
-            test_pq_signature(64),
+            test_pq_signature(4627),
         ));
         assert_ok!(Consensus::register_ai_model(
             RuntimeOrigin::signed(BOB), 1, test_parameters_hash(2), 2000,
-            test_pq_signature(64),
+            test_pq_signature(4627),
         ));
         let m1 = Consensus::global_ai_metrics();
         assert_eq!(m1.total_models, 2);
@@ -1540,7 +1560,7 @@ fn consecutive_rounds_work() {
         ));
         assert_ok!(Consensus::register_ai_model(
             RuntimeOrigin::signed(ALICE), 0, test_parameters_hash(1), 1000,
-            test_pq_signature(64),
+            test_pq_signature(4627),
         ));
         assert_ok!(Consensus::validate_ai_model(RuntimeOrigin::root(), 0, 8500));
 

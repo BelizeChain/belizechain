@@ -81,6 +81,9 @@ const SUSTAINABILITY_NEW_PCT: u32 = 30;
 /// Standard 100-based percentage divisor.
 const PERCENT_DIVISOR: u32 = 100;
 
+/// CONS-014: Maximum consensus round duration in blocks (~24 hours at 12s blocks).
+const MAX_ROUND_DURATION: u32 = 7_200;
+
 /// Trait for Staking integration - ties AI model quality to validator reputation
 pub trait ConsensusStakingProvider<AccountId, Balance> {
     /// Get validator reputation score (0-100, based on AI contribution history)
@@ -94,6 +97,74 @@ pub trait ConsensusStakingProvider<AccountId, Balance> {
     
     /// Update validator reputation based on AI work quality
     fn update_reputation(account: &AccountId, quality_score: u8) -> bool;
+}
+
+/// Post-quantum signature verification trait (P0-12).
+/// Implementors MUST perform cryptographic verification (ML-DSA-87 / FIPS 204).
+/// The default `SizeOnlyPqVerifier` only validates byte-length and MUST be
+/// replaced with a real verifier before mainnet launch.
+pub trait PqSignatureVerifier {
+    /// Verify that `public_key` is a well-formed ML-DSA-87 public key.
+    fn verify_public_key(public_key: &[u8]) -> bool;
+    /// Verify an ML-DSA-87 signature over `message` using `public_key`.
+    fn verify_signature(public_key: &[u8], signature: &[u8], message: &[u8]) -> bool;
+}
+
+/// Production ML-DSA-87 (NIST FIPS 204) post-quantum signature verifier.
+///
+/// Uses `fips204::ml_dsa_87` — pure Rust, no_std/WASM-safe, zero C FFI.
+/// Domain-separation context: `b"belizechain-consensus-v1"`.
+pub struct RealPqVerifier;
+impl PqSignatureVerifier for RealPqVerifier {
+    fn verify_public_key(public_key: &[u8]) -> bool {
+        use fips204::ml_dsa_87;
+        use fips204::traits::SerDes;
+        if public_key.len() != ml_dsa_87::PK_LEN {
+            return false;
+        }
+        let pk_arr: &[u8; ml_dsa_87::PK_LEN] = match public_key.try_into() {
+            Ok(a) => a,
+            Err(_) => return false,
+        };
+        ml_dsa_87::PublicKey::try_from_bytes(*pk_arr).is_ok()
+    }
+    fn verify_signature(public_key: &[u8], signature: &[u8], message: &[u8]) -> bool {
+        use fips204::ml_dsa_87;
+        use fips204::traits::{SerDes, Verifier};
+        if public_key.len() != ml_dsa_87::PK_LEN {
+            return false;
+        }
+        if signature.len() != ml_dsa_87::SIG_LEN {
+            return false;
+        }
+        let pk_arr: &[u8; ml_dsa_87::PK_LEN] = match public_key.try_into() {
+            Ok(a) => a,
+            Err(_) => return false,
+        };
+        let sig_arr: &[u8; ml_dsa_87::SIG_LEN] = match signature.try_into() {
+            Ok(a) => a,
+            Err(_) => return false,
+        };
+        let pk = match ml_dsa_87::PublicKey::try_from_bytes(*pk_arr) {
+            Ok(k) => k,
+            Err(_) => return false,
+        };
+        pk.verify(message, sig_arr, b"belizechain-consensus-v1")
+    }
+}
+
+/// Stopgap verifier — validates sizes only (ML-DSA-87: pk=2592, sig=4627).
+/// NOT CRYPTOGRAPHICALLY SECURE. For benchmarks/tests only.
+#[cfg(any(test, feature = "runtime-benchmarks"))]
+pub struct SizeOnlyPqVerifier;
+#[cfg(any(test, feature = "runtime-benchmarks"))]
+impl PqSignatureVerifier for SizeOnlyPqVerifier {
+    fn verify_public_key(public_key: &[u8]) -> bool {
+        public_key.len() == 2592
+    }
+    fn verify_signature(public_key: &[u8], signature: &[u8], _message: &[u8]) -> bool {
+        public_key.len() == 2592 && signature.len() == 4627
+    }
 }
 
 #[frame_support::pallet]
@@ -145,6 +216,13 @@ pub mod pallet {
         /// Prevents spam on the consensus scoring mechanism.
         #[pallet::constant]
         type MaxSubmitPerBlock: Get<u32>;
+
+        /// Post-quantum signature verifier (P0-12 / CONS-007).
+        type PqVerifier: PqSignatureVerifier;
+
+        /// Unbonding period in blocks before a leaving validator can withdraw stake.
+        #[pallet::constant]
+        type ValidatorUnbondingPeriod: Get<BlockNumberFor<Self>>;
     }
 
     /// Federated AI model information
@@ -170,8 +248,8 @@ pub mod pallet {
         pub useful_work_score: u64,
         /// Model active status
         pub active: bool,
-        /// Post-quantum signature for work validation
-        pub pq_signature: BoundedVec<u8, ConstU32<256>>,
+        /// Post-quantum signature for work validation (ML-DSA-87: up to 4,627 bytes)
+        pub pq_signature: BoundedVec<u8, ConstU32<5000>>,
     }
 
     /// Types of AI models in the federated system
@@ -218,8 +296,8 @@ pub mod pallet {
         pub total_rewards: Balance,
         /// Validator active status
         pub active: bool,
-        /// Post-quantum public key for consensus
-        pub pq_public_key: BoundedVec<u8, ConstU32<256>>,
+        /// Post-quantum public key for consensus (ML-DSA-87: up to 2,592 bytes)
+        pub pq_public_key: BoundedVec<u8, ConstU32<3000>>,
         /// Reputation score (0-100, imported from and synced to staking pallet)
         pub reputation: u32,
         // ── AR-5: Extended multi-factor scoring ──────────────────────────────
@@ -278,8 +356,8 @@ pub mod pallet {
         pub computation_time: u32,
         /// Work quality score
         pub quality_score: u32,
-        /// Post-quantum signature
-        pub pq_signature: BoundedVec<u8, ConstU32<256>>,
+        /// Post-quantum signature (ML-DSA-87: up to 4,627 bytes)
+        pub pq_signature: BoundedVec<u8, ConstU32<5000>>,
         /// Sustainability contribution for this submission (0-100).
         ///
         /// Computed from `min(100, BASE_EFFICIENT_COMPUTE_MS * quality / max(1, computation_time))`.
@@ -413,6 +491,16 @@ pub mod pallet {
     #[pallet::storage]
     pub type LastSubmitRateLimitBlock<T: Config> = StorageValue<_, BlockNumberFor<T>, ValueQuery>;
 
+    /// Pending validator unbonds: account => (stake_amount, unlock_at_block)
+    #[pallet::storage]
+    #[pallet::getter(fn pending_validator_unbonds)]
+    pub type PendingValidatorUnbonds<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        (<T::Currency as Currency<T::AccountId>>::Balance, BlockNumberFor<T>),
+    >;
+
     /// Global AI system metrics
     #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, Default, MaxEncodedLen)]
     pub struct AISystemMetrics {
@@ -506,6 +594,8 @@ pub mod pallet {
         MaxValidatorsReached,
         /// Round not in progress
         RoundNotInProgress,
+        /// A consensus round is already in progress
+        RoundAlreadyInProgress,
         /// Invalid AI work submission
         InvalidAIWork,
         /// Unauthorized operation
@@ -520,6 +610,8 @@ pub mod pallet {
         InvalidWorkType,
         /// Invalid post-quantum signature
         InvalidPQSignature,
+        /// PQ signature verification failed (P0-12)
+        PqVerificationFailed,
         /// Too many validators for bounded collection
         TooManyValidators,
         /// Too many submissions for bounded collection
@@ -532,6 +624,18 @@ pub mod pallet {
         IdOverflow,
         /// AR-15: Account has exceeded the maximum AI work submissions per block.
         RateLimitExceeded,
+        /// Validator is already in the unbonding period.
+        AlreadyUnbonding,
+        /// No pending unbond found for this account.
+        NoPendingUnbond,
+        /// Unbonding period has not elapsed yet.
+        UnbondingNotReady,
+        /// Model is not owned by the submitter.
+        ModelNotOwned,
+        /// CONS-014: Proposed round duration exceeds the maximum allowed.
+        RoundDurationTooLong,
+        /// CONS-015: Computation time must be greater than zero.
+        InvalidComputationTime,
     }
 
     #[pallet::hooks]
@@ -565,7 +669,14 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             
-            // Convert index to ModelType
+            // P0-12 (CONS-007): Validate PQ signature format (ML-DSA-87 size check).
+            // Full cryptographic verification happens at submit_ai_work time against
+            // the validator's registered public key. Here we only validate well-formedness.
+            ensure!(
+                pq_signature.len() == 4627, // ML-DSA-87 signature length
+                Error::<T>::PqVerificationFailed
+            );
+
             let model_type = match model_type_index {
                 0 => ModelType::Economic,
                 1 => ModelType::Tourism, 
@@ -639,6 +750,12 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
+            // P0-12 (CONS-007): Validate PQ public key format (ML-DSA-87)
+            ensure!(
+                T::PqVerifier::verify_public_key(&pq_public_key),
+                Error::<T>::PqVerificationFailed
+            );
+
             // Ensure sufficient stake
             ensure!(stake_amount >= T::MinConsensusStake::get(), Error::<T>::InsufficientStake);
 
@@ -707,15 +824,21 @@ pub mod pallet {
         ) -> DispatchResult {
             T::AIAuthorityOrigin::ensure_origin(origin)?;
 
+            // SECURITY TODO(CONS-006): Require governance multisig M-of-N for AI
+            // authority key rotation. Currently a single key controls model validation.
+
+            // WARN-002: Cap accuracy_score to 10000 basis points (100.00%)
+            let capped_score = accuracy_score.min(10_000);
+
             AIModels::<T>::mutate(model_id, |maybe_model| {
                 if let Some(model) = maybe_model {
-                    model.accuracy_score = accuracy_score;
+                    model.accuracy_score = capped_score;
                     // SAFETY(saturated_into): BlockNumber → u64 is lossless for any
                     // realistic chain lifetime (u32 block numbers fit in u64).
                     model.validated_at = Some(frame_system::Pallet::<T>::block_number().saturated_into::<u64>());
                     
                     // Activate model if quality is sufficient
-                    if accuracy_score >= T::MinModelQualityScore::get() {
+                    if capped_score >= T::MinModelQualityScore::get() {
                         model.active = true;
                     }
                     
@@ -730,7 +853,7 @@ pub mod pallet {
 
             Self::deposit_event(Event::ModelQualityUpdated {
                 model_id,
-                new_quality_score: accuracy_score,
+                new_quality_score: capped_score,
             });
 
             Ok(())
@@ -746,7 +869,10 @@ pub mod pallet {
             T::AIAuthorityOrigin::ensure_origin(origin)?;
 
             // Ensure no active round
-            ensure!(Self::current_consensus_round().is_none(), Error::<T>::RoundNotInProgress);
+            ensure!(Self::current_consensus_round().is_none(), Error::<T>::RoundAlreadyInProgress);
+
+            // CONS-014: Prevent excessively long rounds that delay finality
+            ensure!(duration_blocks <= MAX_ROUND_DURATION.into(), Error::<T>::RoundDurationTooLong);
 
             let round_id = Self::next_round_id();
             let current_block = frame_system::Pallet::<T>::block_number();
@@ -806,6 +932,14 @@ pub mod pallet {
             let validator_id = Self::validator_by_account(&who)
                 .ok_or(Error::<T>::ValidatorNotFound)?;
 
+            // P0-12 (CONS-007): Verify PQ signature against validator's registered public key
+            let validator = Self::consensus_validators(validator_id)
+                .ok_or(Error::<T>::ValidatorNotFound)?;
+            ensure!(
+                T::PqVerifier::verify_signature(&validator.pq_public_key, &pq_signature, &result_hash),
+                Error::<T>::PqVerificationFailed
+            );
+
             // Ensure there's an active consensus round
             let current_round_id = Self::current_consensus_round()
                 .ok_or(Error::<T>::RoundNotInProgress)?;
@@ -818,10 +952,11 @@ pub mod pallet {
                 Error::<T>::ValidatorNotFound
             );
 
-            // Verify model exists and is active
+            // Verify model exists, is active, and belongs to the submitter
             let model = Self::ai_models(model_id)
                 .ok_or(Error::<T>::ModelNotFound)?;
             ensure!(model.active, Error::<T>::QualityBelowThreshold);
+            ensure!(model.trainer == who, Error::<T>::ModelNotOwned);
 
             // Calculate quality score based on model quality and computation time
             let base_quality = model.accuracy_score;
@@ -840,12 +975,11 @@ pub mod pallet {
             //   min(100, 500 * 90 / 5000) = min(100, 9) = 9 (low)
             //
             // This incentivises efficient AI inference and training pipelines.
-            let sustainability_contribution = if computation_time == 0 {
-                100u32 // Instantaneous work = max sustainability
-            } else {
-                let numerator = BASE_EFFICIENT_COMPUTE_MS.saturating_mul(quality_score);
-                (numerator / computation_time).min(100)
-            };
+            // CONS-015: Reject zero computation time — it is physically impossible
+            // and would allow gaming the sustainability score.
+            ensure!(computation_time > 0, Error::<T>::InvalidComputationTime);
+            let numerator = BASE_EFFICIENT_COMPUTE_MS.saturating_mul(quality_score);
+            let sustainability_contribution = (numerator / computation_time).min(100);
 
             let work_submission = AIWorkSubmission {
                 validator_id,
@@ -957,20 +1091,31 @@ pub mod pallet {
                     Error::<T>::SupplyCapExceeded
                 );
 
+                // CRIT-003 FIX: Aggregate quality scores per-validator to prevent
+                // a single validator with multiple submissions from receiving
+                // disproportionate rewards.
                 if !round.ai_work_submissions.is_empty() && total_useful_work > 0 {
+                    // Collect per-validator aggregate quality
+                    let mut validator_quality: Vec<(u32, u64)> = Vec::new();
                     for submission in round.ai_work_submissions.iter() {
-                        if let Some(validator) = ConsensusValidators::<T>::get(submission.validator_id) {
-                            // Proportional reward based on quality score contribution
+                        if let Some(existing) = validator_quality.iter_mut().find(|(vid, _)| *vid == submission.validator_id) {
+                            existing.1 = existing.1.saturating_add(submission.quality_score as u64);
+                        } else {
+                            validator_quality.push((submission.validator_id, submission.quality_score as u64));
+                        }
+                    }
+
+                    for (vid, quality_total) in validator_quality.iter() {
+                        if let Some(validator) = ConsensusValidators::<T>::get(vid) {
                             let share = total_reward
-                                .saturating_mul(submission.quality_score.into())
+                                .saturating_mul((*quality_total).saturated_into())
                                 / total_useful_work.max(1).saturated_into();
 
                             if !share.is_zero() {
                                 let _imbalance = T::Currency::deposit_creating(&validator.validator, share);
                                 total_distributed = total_distributed.saturating_add(share);
 
-                                // Update validator total rewards
-                                ConsensusValidators::<T>::mutate(submission.validator_id, |v| {
+                                ConsensusValidators::<T>::mutate(vid, |v| {
                                     if let Some(val) = v {
                                         val.total_rewards = val.total_rewards.saturating_add(share);
                                     }
@@ -1002,6 +1147,85 @@ pub mod pallet {
 
                 Ok(())
             })
+        }
+
+        /// Leave the consensus validator set and start the unbonding period.
+        ///
+        /// The validator is removed from the active set immediately. Stake remains
+        /// locked for `ValidatorUnbondingPeriod` blocks. Call `withdraw_validator_unbonded`
+        /// after the period elapses to reclaim funds.
+        #[pallet::call_index(6)]
+        #[pallet::weight(T::WeightInfo::leave_validator())]
+        pub fn leave_validator(origin: OriginFor<T>) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // Must be an active validator
+            let validator_id = ValidatorByAccount::<T>::get(&who)
+                .ok_or(Error::<T>::ValidatorNotFound)?;
+            let validator = ConsensusValidators::<T>::get(validator_id)
+                .ok_or(Error::<T>::ValidatorNotFound)?;
+
+            // Cannot leave while already unbonding
+            ensure!(!PendingValidatorUnbonds::<T>::contains_key(&who), Error::<T>::AlreadyUnbonding);
+
+            // Cannot leave while participating in an active round
+            if let Some(round_id) = CurrentConsensusRound::<T>::get() {
+                if let Some(round) = ConsensusRounds::<T>::get(round_id) {
+                    if round.status == RoundStatus::InProgress {
+                        ensure!(
+                            !round.validators.iter().any(|(vid, _)| *vid == validator_id),
+                            Error::<T>::ValidatorInActiveRound
+                        );
+                    }
+                }
+            }
+
+            // Remove from active validator set
+            ConsensusValidators::<T>::remove(validator_id);
+            ValidatorByAccount::<T>::remove(&who);
+
+            // Start unbonding period — keep the lock in place
+            let current_block = frame_system::Pallet::<T>::block_number();
+            let unlock_at = current_block.saturating_add(T::ValidatorUnbondingPeriod::get());
+            PendingValidatorUnbonds::<T>::insert(&who, (validator.stake, unlock_at));
+
+            // Decrement active validator count
+            GlobalAIMetrics::<T>::mutate(|metrics| {
+                metrics.active_validators = metrics.active_validators.saturating_sub(1);
+            });
+
+            Self::deposit_event(Event::ValidatorLeft {
+                validator_id,
+                validator: who,
+                stake_unlocked: validator.stake,
+            });
+
+            Ok(())
+        }
+
+        /// Withdraw stake after the validator unbonding period has elapsed.
+        #[pallet::call_index(7)]
+        #[pallet::weight(T::WeightInfo::leave_validator())]
+        pub fn withdraw_validator_unbonded(origin: OriginFor<T>) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            let (stake, unlock_at) = PendingValidatorUnbonds::<T>::get(&who)
+                .ok_or(Error::<T>::NoPendingUnbond)?;
+
+            let current_block = frame_system::Pallet::<T>::block_number();
+            ensure!(current_block >= unlock_at, Error::<T>::UnbondingNotReady);
+
+            // Remove pending unbond and release the lock
+            PendingValidatorUnbonds::<T>::remove(&who);
+            T::Currency::remove_lock(AI_WORK_LOCK_ID, &who);
+
+            Self::deposit_event(Event::ValidatorLeft {
+                validator_id: 0, // ID was already cleaned up
+                validator: who,
+                stake_unlocked: stake,
+            });
+
+            Ok(())
         }
     }
 
@@ -1036,7 +1260,9 @@ pub mod pallet {
             let current_block = frame_system::Pallet::<T>::block_number();
             let last_block = LastSubmitRateLimitBlock::<T>::get();
             if current_block != last_block {
-                SubmitCallsThisBlock::<T>::remove(who);
+                // CONS-017: Clear ALL accounts' counters on new block, not just the caller's.
+                // Using remove(who) left stale entries for other accounts.
+                let _ = SubmitCallsThisBlock::<T>::clear(T::MaxSubmitPerBlock::get(), None);
                 LastSubmitRateLimitBlock::<T>::put(current_block);
             }
             let count = SubmitCallsThisBlock::<T>::get(who).saturating_add(1);
@@ -1053,7 +1279,7 @@ pub mod pallet {
             let max_validators = T::MaxValidators::get() as usize;
             
             // SECURITY: Bounded iteration prevents DoS via storage bloat (§1.7)
-            for (validator_id, mut validator) in ConsensusValidators::<T>::iter().take(max_validators) {
+            for (validator_id, validator) in ConsensusValidators::<T>::iter().take(max_validators) {
                 // Check basic eligibility
                 if !validator.active || validator.quality_score < T::MinModelQualityScore::get() {
                     continue;
@@ -1089,16 +1315,53 @@ pub mod pallet {
                     .saturating_add(uptime.saturating_mul(UPTIME_WEIGHT_PCT))
                     / PERCENT_DIVISOR;
                 
-                // AR-5: Increment eligible_rounds to track uptime denominator
-                validator.eligible_rounds = validator.eligible_rounds.saturating_add(1);
-                ConsensusValidators::<T>::insert(validator_id, validator);
-
                 selected_validators.push((validator_id, consensus_score));
             }
 
             // Sort by consensus score (highest first) - Proof of Useful Work
             selected_validators.sort_by(|a, b| b.1.cmp(&a.1));
-            
+
+            // CONS-005: Break deterministic tie-ordering via on-chain randomness.
+            // Validators with identical scores get shuffled so that an attacker
+            // cannot predict which validators will be selected at the boundary.
+            let (seed, _) = T::Randomness::random(b"consensus_shuffle");
+            let seed_bytes: &[u8] = seed.as_ref();
+            let seed_u32 = u32::from_le_bytes(
+                seed_bytes.get(0..4)
+                    .and_then(|s| s.try_into().ok())
+                    .unwrap_or([0u8; 4]),
+            );
+            // Fisher-Yates-style shuffle within equal-score groups
+            let len = selected_validators.len();
+            if len > 1 {
+                let mut i = 0;
+                while i < len {
+                    let score = selected_validators[i].1;
+                    let mut j = i + 1;
+                    while j < len && selected_validators[j].1 == score {
+                        j += 1;
+                    }
+                    // [i..j) is a group with equal scores — shuffle it
+                    if j - i > 1 {
+                        for k in (i + 1..j).rev() {
+                            let swap_idx = i + ((seed_u32 as usize).wrapping_add(k)) % (k - i + 1);
+                            selected_validators.swap(k, swap_idx);
+                        }
+                    }
+                    i = j;
+                }
+            }
+
+            // CONS-016: Only increment eligible_rounds for validators that were
+            // actually selected, not every iterated candidate.
+            for &(validator_id, _) in &selected_validators {
+                ConsensusValidators::<T>::mutate(validator_id, |maybe_v| {
+                    if let Some(v) = maybe_v {
+                        v.eligible_rounds = v.eligible_rounds.saturating_add(1);
+                    }
+                });
+            }
+
             selected_validators
         }
 

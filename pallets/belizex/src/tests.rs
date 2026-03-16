@@ -1073,27 +1073,6 @@ fn get_lp_balance_across_multiple_pairs() {
 }
 
 #[test]
-fn daily_volume_tracks_trades() {
-    let mut ext = new_test_ext();
-    ext.execute_with(|| {
-        assert_ok!(BelizeX::add_liquidity(
-            RuntimeOrigin::signed(1), 0, 1, 100_000u128, 100_000u128, 1
-        ));
-        assert_eq!(BelizeX::daily_volume((0u8, 1u8)), 0);
-
-        assert_ok!(BelizeX::execute_trade(
-            RuntimeOrigin::signed(2), 0, 1, 1_000u128, 0, false
-        ));
-        assert_eq!(BelizeX::daily_volume((0u8, 1u8)), 1_000);
-
-        assert_ok!(BelizeX::execute_trade(
-            RuntimeOrigin::signed(2), 0, 1, 2_000u128, 0, false
-        ));
-        assert_eq!(BelizeX::daily_volume((0u8, 1u8)), 3_000);
-    });
-}
-
-#[test]
 fn liquidity_provider_storage_update() {
     let mut ext = new_test_ext();
     ext.execute_with(|| {

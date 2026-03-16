@@ -1,7 +1,7 @@
 use crate as pallet_belize_consensus;
 use frame_support::{
     parameter_types,
-    traits::ConstU32,
+    traits::{ConstU32, ConstU64},
     PalletId,
 };
 use sp_core::H256;
@@ -151,6 +151,15 @@ impl pallet_belize_consensus::Config for Test {
     type WeightInfo = ();
     type Staking = MockStakingProvider;
     type MaxSubmitPerBlock = ConstU32<5>;
+    type PqVerifier = MockPqVerifier;
+    type ValidatorUnbondingPeriod = ConstU64<100>;
+}
+
+/// Test PQ verifier — accepts all inputs.
+pub struct MockPqVerifier;
+impl crate::PqSignatureVerifier for MockPqVerifier {
+    fn verify_public_key(_public_key: &[u8]) -> bool { true }
+    fn verify_signature(_public_key: &[u8], _signature: &[u8], _message: &[u8]) -> bool { true }
 }
 
 // Test account constants

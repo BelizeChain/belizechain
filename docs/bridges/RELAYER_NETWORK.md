@@ -328,7 +328,7 @@ ws.onmessage = (event) => {
 
 **Completed**:
 - [ ] Internal security review (Q1 2025)
-- [ ] External audit by Trail of Bits (Q2 2025)
+- [ ] External audit by professional firm (TBD, not yet engaged)
 - [ ] Formal verification of signature scheme (Q2 2025)
 
 **Pending**:

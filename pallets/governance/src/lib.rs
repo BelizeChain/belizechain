@@ -197,7 +197,6 @@ use frame_support::{
         EnsureOrigin, ExistenceRequirement,
     },
     sp_runtime::traits::AccountIdConversion,
-    PalletId,
 };
 use sp_runtime::{
     traits::Saturating,
@@ -772,14 +771,16 @@ pub enum ElectionStatus {
 pub trait ComplianceCheck<AccountId> {
     /// Check if account can participate in governance
     fn can_participate_in_governance(account: &AccountId) -> bool;
+
+    /// CRIT-2 FIX: Return the number of accounts eligible to vote.
+    /// Used to set dynamic quorum instead of a hardcoded placeholder.
+    /// Default implementation returns 1 to avoid division-by-zero in callers.
+    fn eligible_voter_count() -> u32 {
+        1
+    }
 }
 
-/// Pallet account ID for future governance treasury operations.
-/// Reserved for Phase 4 when the governance pallet manages its own escrow.
-#[allow(dead_code)]
-const GOVERNANCE_ID: PalletId = PalletId(*b"bz/govnc");
-
-/// Minimum and maximum council members
+// GOVERNANCE_ID removed (E-7): dead constant, never used.\n\n/// Minimum and maximum council members
 pub const MIN_COUNCIL_MEMBERS: u32 = 7;
 pub const MAX_COUNCIL_MEMBERS: u32 = 12;
 pub const ABSOLUTE_MAX_COUNCIL: u32 = 32; // Constitutional cap
@@ -929,6 +930,46 @@ pub mod pallet {
         /// Wired to `TechnicalCouncilSuperMajority` during bootstrap.
         /// TODO(MAINNET): Replace with dual-council compound origin.
         type ConstitutionalAdminOrigin: EnsureOrigin<Self::RuntimeOrigin>;
+
+        // ── CONS-029: Emergency veto window ────────────────────────────────────
+
+        /// Number of blocks emergency declarations remain in pending state
+        /// before activation, allowing council veto.
+        /// Default: 14,400 blocks (~24 hours at 6s/block).
+        #[pallet::constant]
+        type EmergencyVetoWindow: Get<BlockNumberFor<Self>>;
+
+        // ── CONS-030: Action-type timelocks ────────────────────────────────────
+
+        /// Minimum enactment delay for runtime upgrade proposals.
+        /// Default: 100,800 blocks (~7 days at 6s/block).
+        #[pallet::constant]
+        type RuntimeUpgradeMinTimelock: Get<BlockNumberFor<Self>>;
+
+        /// Minimum enactment delay for parameter change proposals.
+        /// Default: 28,800 blocks (~48 hours at 6s/block).
+        #[pallet::constant]
+        type ParameterChangeMinTimelock: Get<BlockNumberFor<Self>>;
+
+        // ── S5-4: Treasury per-period spend cap ─────────────────────────────
+
+        /// Maximum cumulative treasury spend per rolling period.
+        /// Prevents treasury drain attacks even if governance is compromised.
+        #[pallet::constant]
+        type MaxTreasurySpendPerPeriod: Get<BalanceOf<Self>>;
+
+        /// Length of each treasury spending period in blocks.
+        /// Cumulative spend resets at the start of each period.
+        /// Default: 14,400 blocks (~24 hours at 6s/block).
+        #[pallet::constant]
+        type TreasurySpendPeriod: Get<BlockNumberFor<Self>>;
+
+        /// Minimum quorum percentage for referendums (P0-17 FIX).
+        /// Prevents referendum creators from setting a trivially low quorum
+        /// (e.g. 1%) that bypasses meaningful community participation.
+        /// Value is in range 1-100.  Recommended: 10.
+        #[pallet::constant]
+        type MinQuorumPercentage: Get<u8>;
     }
 
     /// Type alias for balance amounts
@@ -1720,6 +1761,10 @@ pub mod pallet {
         pub expires_at: Option<BlockNumber>,
         /// Account that declared the emergency
         pub declared_by: Option<[u8; 32]>, // AccountId as bytes
+        /// Whether this emergency is pending veto window (CONS-029)
+        pub is_pending: bool,
+        /// Block at which the veto window expires (CONS-029)
+        pub veto_window_ends_at: Option<BlockNumber>,
     }
 
     #[allow(clippy::type_complexity)]
@@ -1819,6 +1864,15 @@ pub mod pallet {
     /// Jaguar Mode: Emergency governance status for national crises
     /// Named after Belize's swift and powerful national animal
     pub type JaguarMode<T: Config> = StorageValue<_, EmergencyStatus<BlockNumberFor<T>>, OptionQuery>;
+
+    #[pallet::storage]
+    /// Council members who have vetoed the current pending emergency (CONS-029)
+    pub type EmergencyVetoes<T: Config> = CountedStorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        BlockNumberFor<T>,  // block at which the veto was cast
+    >;
 
     #[pallet::storage]
     #[pallet::getter(fn department_managers)]
@@ -2183,6 +2237,13 @@ pub mod pallet {
     pub type NationalTreasuryReserve<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery>;
 
     #[pallet::storage]
+    /// S5-4: Rolling treasury spend tracker.
+    /// Stores (period_index, cumulative_spent) to enforce MaxTreasurySpendPerPeriod.
+    pub type TreasurySpendTracker<T: Config> = StorageValue<
+        _, (u32, BalanceOf<T>), ValueQuery
+    >;
+
+    #[pallet::storage]
     /// AR-8: Per-department on-chain policy store.
     ///
     /// Key: `(Department, policy_key_bytes)`.
@@ -2319,6 +2380,25 @@ pub mod pallet {
         /// Participation audit: runs once per quarter (~1,296,000 blocks at 6s/block).
         fn on_initialize(n: BlockNumberFor<T>) -> Weight {
             let mut weight = T::DbWeight::get().reads(2);
+
+            // ── CONS-029: Finalize pending emergencies whose veto window elapsed ──
+            if let Some(mut emergency) = JaguarMode::<T>::get() {
+                weight = weight.saturating_add(T::DbWeight::get().reads(1));
+                if emergency.is_pending {
+                    if let Some(veto_end) = emergency.veto_window_ends_at {
+                        if n >= veto_end {
+                            // Veto window expired — activate the emergency
+                            emergency.active = true;
+                            emergency.is_pending = false;
+                            JaguarMode::<T>::put(emergency);
+                            // Clear veto records
+                            let _ = EmergencyVetoes::<T>::clear(u32::MAX, None);
+                            weight = weight.saturating_add(T::DbWeight::get().writes(2));
+                            Self::deposit_event(Event::EmergencyFinalizedAfterVetoWindow);
+                        }
+                    }
+                }
+            }
 
             // ── Phase 2B: Quarterly participation check ───────────────────────
             // Runs once per quarter.  Bounded to MAX_CHECKS_PER_QUARTER accounts so
@@ -2464,22 +2544,8 @@ pub mod pallet {
             nays: u32,
             abstentions: u32,
         },
-        /// Council member elected
-        CouncilMemberElected {
-            member: T::AccountId,
-            term: u32,
-            voting_weight: u32,
-        },
-        /// Council member removed
-        CouncilMemberRemoved {
-            member: T::AccountId,
-            reason: Vec<u8>,
-        },
-        /// Emergency mode activated
-        EmergencyTypeActivated {
-            activator: T::AccountId,
-            reason: Vec<u8>,
-        },
+        // CouncilMemberElected, CouncilMemberRemoved, EmergencyTypeActivated
+        // removed (E-7): orphaned events, never emitted via deposit_event.
         /// Community rank updated
         CommunityRankUpdated {
             account: T::AccountId,
@@ -2527,16 +2593,7 @@ pub mod pallet {
             role_index: u8,
             reason: BoundedVec<u8, ConstU32<128>>,
         },
-        /// Term expired for board member
-        TermExpired {
-            member: T::AccountId,
-            role_index: u8,
-        },
-        /// Delegate election started
-        DelegateElectionStarted {
-            election_id: BlockNumberFor<T>,
-            seats: u32,
-        },
+        // TermExpired, DelegateElectionStarted removed (E-7): orphaned, never emitted.
         /// Citizen nominated for delegate position
         DelegateNominated {
             nominee: T::AccountId,
@@ -2548,11 +2605,7 @@ pub mod pallet {
             nominee: T::AccountId,
             weight: u32,
         },
-        /// Delegate election completed
-        DelegateElectionCompleted {
-            election_id: BlockNumberFor<T>,
-            seats_filled: u32,
-        },
+        // DelegateElectionCompleted removed (E-7): orphaned, never emitted.
 
         // ===== PHASE 5: EXECUTION LAYER EVENTS =====
 
@@ -2663,10 +2716,7 @@ pub mod pallet {
             proposal_id: u32,
             proposer: T::AccountId,
         },
-        /// Proposal amendment applied
-        ProposalAmendmentApplied {
-            proposal_id: u32,
-        },
+        // ProposalAmendmentApplied removed (E-7): orphaned, never emitted.
         /// Governance participation reward claimed
         RewardClaimed {
             account: T::AccountId,
@@ -2681,15 +2731,22 @@ pub mod pallet {
 
         // ===== JAGUAR MODE: EMERGENCY GOVERNANCE EVENTS =====
 
-        /// 🐆 Jaguar Mode activated - National emergency declared  
-        /// emergency_type_index: 0=Hurricane, 1=HealthCrisis, 2=EconomicCrisis, 3=SecurityThreat, 4=InfrastructureFailure, 5=Other
-        JaguarModeActivated {
-            emergency_type_index: u8,
-            description: BoundedVec<u8, ConstU32<256>>,
-            expires_at: BlockNumberFor<T>,
-        },
+        // JaguarModeActivated removed (E-7): orphaned, never emitted.
         /// 🐆 Jaguar Mode deactivated - Emergency ended
         JaguarModeDeactivated,
+        /// 🐆 Emergency declaration pending — veto window open (CONS-029)
+        EmergencyPendingActivation {
+            emergency_type_index: u8,
+            description: BoundedVec<u8, ConstU32<256>>,
+            veto_window_ends_at: BlockNumberFor<T>,
+        },
+        /// 🐆 Council member vetoed a pending emergency (CONS-029)
+        EmergencyVetoed {
+            who: T::AccountId,
+            vetoes_so_far: u32,
+        },
+        /// 🐆 Pending emergency finalized after veto window elapsed (CONS-029)
+        EmergencyFinalizedAfterVetoWindow,
 
         // ===== REFERENDUM SYSTEM EVENTS =====
 
@@ -2723,11 +2780,7 @@ pub mod pallet {
             participation_percentage: u8,
             required_quorum: u8,
         },
-        /// Referendum cancelled by governance
-        ReferendumCancelled {
-            referendum_id: u32,
-            reason: BoundedVec<u8, ConstU32<256>>,
-        },
+        // ReferendumCancelled removed (E-7): orphaned, never emitted.
 
         // ===== TREASURY MANAGEMENT EVENTS =====
 
@@ -2820,11 +2873,7 @@ pub mod pallet {
             proposal_id: u32,
             execute_at: BlockNumberFor<T>,
         },
-        /// An account's proposal submission was blocked by the cooldown period.
-        ProposalCooldownBlocked {
-            who: T::AccountId,
-            available_at: BlockNumberFor<T>,
-        },
+        // ProposalCooldownBlocked removed (E-7): orphaned, never emitted.
         /// A large holder failed the quarterly participation check and had their
         /// effective voting multiplier reduced.
         LargeHolderParticipationPenalty {
@@ -2955,6 +3004,8 @@ pub mod pallet {
         NoActionDefined,
         /// Insufficient treasury balance
         InsufficientTreasuryBalance,
+        /// Treasury spend cap exceeded for this period (S5-4)
+        TreasurySpendCapExceeded,
         /// Runtime upgrade code too large
         RuntimeCodeTooLarge,
         /// Invalid governance parameter value
@@ -3104,6 +3155,14 @@ pub mod pallet {
         EmergencyProposalExpired,
         /// Super-majority (66%+) not achieved for emergency action
         InsufficientSuperMajority,
+        /// Veto window has not yet expired (CONS-029)
+        VetoWindowNotExpired,
+        /// Emergency is still in pending veto phase (CONS-029)
+        EmergencyStillPending,
+        /// Council member already vetoed this pending emergency (CONS-029)
+        AlreadyVetoed,
+        /// No pending emergency to veto (CONS-029)
+        NoPendingEmergency,
 
         // Chain Parameter Errors
         /// Parameter key too long (max 32 bytes)
@@ -3517,6 +3576,11 @@ pub mod pallet {
                 .saturating_add(pouw_contribution)
                 .saturating_add(stake_weight);
 
+            // P1-14 FIX: Include delegated voting power. calculate_voting_power()
+            // returns 1 (base) + number of active delegations to this voter.
+            let delegation_bonus = Self::calculate_voting_power(&who).saturating_sub(1);
+            let base_weight = base_weight.saturating_add(delegation_bonus);
+
             // Apply conviction multiplier (minimum 1x to preserve vote weight)
             let conviction_multiplier = (conviction as u32).max(1);
             let conviction_weight = base_weight.saturating_mul(conviction_multiplier);
@@ -3586,7 +3650,9 @@ pub mod pallet {
 
         /// Finalize voting on a proposal
         #[pallet::call_index(2)]
-        #[pallet::weight(T::WeightInfo::finalize_proposal())]
+        // DOS-009 FIX: Operational dispatch — governance finalization must not be
+        // blocked during congestion.
+        #[pallet::weight((T::WeightInfo::finalize_proposal(), DispatchClass::Operational))]
         pub fn finalize_proposal(
             origin: OriginFor<T>,
             proposal_id: u32,
@@ -3625,6 +3691,13 @@ pub mod pallet {
                     ProposalType::Economic => T::EnactmentPeriodEconomic::get(),
                     _ => T::EnactmentPeriodStandard::get(),
                 };
+                // CONS-030: Enforce minimum timelocks per action type
+                let action_timelock = match &proposal.action {
+                    Some(ProposalAction::RuntimeUpgrade { .. }) => T::RuntimeUpgradeMinTimelock::get(),
+                    Some(ProposalAction::ParameterChange { .. }) => T::ParameterChangeMinTimelock::get(),
+                    _ => Zero::zero(),
+                };
+                let enact_delay = enact_delay.max(action_timelock);
                 let current_u64_enact: u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0);
                 let delay_u64: u64 = TryInto::<u64>::try_into(enact_delay).unwrap_or(0);
                 // SAFETY: derived from u32 block number arithmetic in u64; fits BlockNumberFor<T>
@@ -3715,9 +3788,15 @@ pub mod pallet {
             Ok(())
         }
 
-        /// Council override for emergency situations
+        /// Council override for emergency situations.
+        ///
+        /// P0-18 FIX: Override now requires JaguarMode to be **active** (not just
+        /// `proposal.is_emergency`, which is caller-controlled).  This prevents
+        /// any proposer from self-flagging a proposal as emergency and then having
+        /// council approve it without votes or timelocks.
         #[pallet::call_index(5)]
-        #[pallet::weight(T::WeightInfo::council_override())]
+        // DOS-009 FIX: Operational dispatch — council emergency override.
+        #[pallet::weight((T::WeightInfo::council_override(), DispatchClass::Operational))]
         pub fn council_override(
             origin: OriginFor<T>,
             proposal_id: u32,
@@ -3727,17 +3806,32 @@ pub mod pallet {
 
             let mut proposal = Self::proposals(proposal_id).ok_or(Error::<T>::ProposalNotFound)?;
 
-            // Override only works for specific conditions
+            // P0-18 FIX: Require JaguarMode to be active — the self-declared
+            // `proposal.is_emergency` flag alone is no longer sufficient.
             let is_emergency_active = JaguarMode::<T>::get()
                 .map(|e| e.active)
                 .unwrap_or(false);
             ensure!(
-                proposal.is_emergency || is_emergency_active,
-                Error::<T>::EmergencyTypeRestrictions
+                is_emergency_active,
+                Error::<T>::NotInEmergencyMode
             );
 
             proposal.status = ProposalStatus::Approved;
-            Proposals::<T>::insert(proposal_id, proposal);
+            Proposals::<T>::insert(proposal_id, proposal.clone());
+
+            // HIGH-4 FIX: Even emergency overrides must respect enactment timelock.
+            // Use the proposal-type-specific enactment period so the override
+            // cannot bypass the mandatory delay before execution.
+            let enact_delay = match proposal.proposal_type {
+                ProposalType::Constitutional => T::EnactmentPeriodConstitutional::get(),
+                ProposalType::Economic => T::EnactmentPeriodEconomic::get(),
+                _ => T::EnactmentPeriodStandard::get(),
+            };
+            let current_block = frame_system::Pallet::<T>::block_number();
+            let current_u64: u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0);
+            let delay_u64: u64 = TryInto::<u64>::try_into(enact_delay).unwrap_or(0);
+            let execute_at: BlockNumberFor<T> = current_u64.saturating_add(delay_u64).saturated_into();
+            ProposalEnactmentBlock::<T>::insert(proposal_id, execute_at);
 
             Self::deposit_event(Event::CouncilOverrideExecuted {
                 proposal_id,
@@ -4164,11 +4258,13 @@ pub mod pallet {
                 .map(|_| ())
                 .or_else(ensure_root)?;
 
-            // Check if emergency already active
-            ensure!(
-                JaguarMode::<T>::get().is_none() || !JaguarMode::<T>::get().unwrap().active,
-                Error::<T>::EmergencyAlreadyActive
-            );
+            // Check if emergency already active or pending
+            if let Some(existing) = JaguarMode::<T>::get() {
+                ensure!(
+                    !existing.active && !existing.is_pending,
+                    Error::<T>::EmergencyAlreadyActive
+                );
+            }
 
             // Convert index to EmergencyType
             let emergency_type = match emergency_type_index {
@@ -4191,24 +4287,29 @@ pub mod pallet {
             let duration_blocks = blocks_per_hour.saturating_mul(duration_hours);
             let expires_at = current_block + duration_blocks.into();
 
-            // Create emergency status
+            // Create emergency status (CONS-029: pending with veto window)
+            let veto_window_ends = current_block + T::EmergencyVetoWindow::get();
             let emergency = EmergencyStatus {
-                active: true,
+                active: false,
                 emergency_type,
                 description: bounded_description.clone(),
                 declared_at: current_block,
                 expires_at: Some(expires_at),
                 declared_by: declarer_bytes,
+                is_pending: true,
+                veto_window_ends_at: Some(veto_window_ends),
             };
 
             // Store emergency status
             JaguarMode::<T>::put(emergency);
+            // Clear any prior veto records
+            let _ = EmergencyVetoes::<T>::clear(u32::MAX, None);
 
-            // Emit event with bounded description
-            Self::deposit_event(Event::JaguarModeActivated {
+            // Emit pending event (CONS-029)
+            Self::deposit_event(Event::EmergencyPendingActivation {
                 emergency_type_index,
                 description: bounded_description,
-                expires_at,
+                veto_window_ends_at: veto_window_ends,
             });
 
             Ok(())
@@ -4236,16 +4337,75 @@ pub mod pallet {
                 .map(|_| ())
                 .or_else(ensure_root)?;
 
-            // Check if emergency is active
+            // Check if emergency is active or pending
             let emergency = JaguarMode::<T>::get()
                 .ok_or(Error::<T>::NoActiveEmergency)?;
             
-            ensure!(emergency.active, Error::<T>::NoActiveEmergency);
+            ensure!(emergency.active || emergency.is_pending, Error::<T>::NoActiveEmergency);
 
-            // Clear emergency status
+            // Clear emergency status and any veto records
             JaguarMode::<T>::kill();
+            let _ = EmergencyVetoes::<T>::clear(u32::MAX, None);
 
             Self::deposit_event(Event::JaguarModeDeactivated);
+
+            Ok(())
+        }
+
+        /// 🐆 Veto a pending emergency declaration (CONS-029)
+        ///
+        /// Council members may veto during the veto window period.
+        /// If more than 1/3 of council members veto, the pending
+        /// emergency is cancelled.
+        #[pallet::call_index(44)]
+        // DOS-009 FIX: Operational dispatch — emergency veto is safety-critical.
+        // DOS-010 FIX: Weight accounts for bounded council scan (up to 200 reads)
+        // and worst-case EmergencyVetoes clear (up to 200 writes).
+        #[pallet::weight((Weight::from_parts(25_000_000, 4096)
+            .saturating_add(T::DbWeight::get().reads(204))
+            .saturating_add(T::DbWeight::get().writes(202)), DispatchClass::Operational))]
+        pub fn veto_emergency(
+            origin: OriginFor<T>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // Must be a council member
+            ensure!(
+                CouncilMembers::<T>::contains_key(&who),
+                Error::<T>::NotCouncilMember
+            );
+
+            // Must have a pending emergency
+            let emergency = JaguarMode::<T>::get()
+                .ok_or(Error::<T>::NoPendingEmergency)?;
+            ensure!(emergency.is_pending, Error::<T>::NoPendingEmergency);
+
+            // Must not have already vetoed
+            ensure!(
+                !EmergencyVetoes::<T>::contains_key(&who),
+                Error::<T>::AlreadyVetoed
+            );
+
+            // Record veto
+            let current_block = frame_system::Pallet::<T>::block_number();
+            EmergencyVetoes::<T>::insert(&who, current_block);
+            let veto_count = EmergencyVetoes::<T>::count();
+
+            Self::deposit_event(Event::EmergencyVetoed {
+                who,
+                vetoes_so_far: veto_count,
+            });
+
+            // If vetoes exceed 1/3 of council, cancel the pending emergency
+            // DOS-010 FIX: Bounded iteration — consistent with council_size() helper.
+            let max_council = T::MaxCandidatesPerElection::get() as usize;
+            let council_count = CouncilMembers::<T>::iter().take(max_council).count() as u32;
+            let veto_threshold = council_count / 3 + 1; // strict > 1/3
+            if veto_count >= veto_threshold {
+                JaguarMode::<T>::kill();
+                let _ = EmergencyVetoes::<T>::clear(u32::MAX, None);
+                Self::deposit_event(Event::JaguarModeDeactivated);
+            }
 
             Ok(())
         }
@@ -4375,8 +4535,11 @@ pub mod pallet {
             ensure!(!options.is_empty(), Error::<T>::NoOptionsProvided);
             ensure!(options.len() <= 10, Error::<T>::TooManyOptions);
 
-            // Validate quorum
-            ensure!(quorum_percentage > 0 && quorum_percentage <= 100, Error::<T>::InvalidQuorum);
+            // Validate quorum — P0-17 FIX: enforce minimum floor
+            ensure!(
+                quorum_percentage >= T::MinQuorumPercentage::get() && quorum_percentage <= 100,
+                Error::<T>::InvalidQuorum
+            );
 
             // Convert title and description to bounded vecs
             let bounded_title: BoundedVec<u8, ConstU32<256>> = title.try_into()
@@ -4452,9 +4615,10 @@ pub mod pallet {
             // Store referendum
             Referendums::<T>::insert(referendum_id, referendum);
 
-            // Cache eligible voters count (simplified - count all compliant accounts)
-            // In production, this would query Identity pallet for eligible voters
-            ReferendumEligibleVoters::<T>::insert(referendum_id, 1000u32); // Placeholder
+            // CRIT-2 FIX: Dynamically count eligible voters from the compliance
+            // provider instead of storing a hardcoded placeholder.
+            let eligible_count = T::ComplianceProvider::eligible_voter_count();
+            ReferendumEligibleVoters::<T>::insert(referendum_id, eligible_count);
 
             Self::deposit_event(Event::ReferendumCreated {
                 referendum_id,
@@ -5027,9 +5191,11 @@ pub mod pallet {
 
         /// Finalize a district election and assign council seats
         #[pallet::call_index(17)]
-        #[pallet::weight(Weight::from_parts(50_000_000, 5120)
-            .saturating_add(T::DbWeight::get().reads(10))
-            .saturating_add(T::DbWeight::get().writes(10)))]
+        // DOS-015 FIX: Weight parameterized by MaxCandidatesPerElection (200)
+        // for candidate iteration, sorting, and winner seating.
+        #[pallet::weight(Weight::from_parts(80_000_000, 10240)
+            .saturating_add(T::DbWeight::get().reads(210))
+            .saturating_add(T::DbWeight::get().writes(210)))]
         pub fn finalize_district_election(
             origin: OriginFor<T>,
             district_index: u8,
@@ -5382,8 +5548,9 @@ pub mod pallet {
 
         /// Claim participation rewards
         #[pallet::call_index(21)]
-        #[pallet::weight(Weight::from_parts(35_000_000, 1536)
-            .saturating_add(T::DbWeight::get().reads(3))
+        // DOS-004 FIX: Weight accounts for worst-case 50-item bounded scan.
+        #[pallet::weight(Weight::from_parts(85_000_000, 4096)
+            .saturating_add(T::DbWeight::get().reads(53))
             .saturating_add(T::DbWeight::get().writes(2)))]
         pub fn claim_participation_reward(
             origin: OriginFor<T>,
@@ -5399,7 +5566,7 @@ pub mod pallet {
                 0 => {
                     // Vote reward - check if voted on any proposal (bounded scan)
                     let next_id = NextProposalId::<T>::get();
-                    let max_check = next_id.min(1_000);
+                    let max_check = next_id.min(50);
                     let has_voted = (0..max_check)
                         .any(|pid| Votes::<T>::contains_key(pid, &claimer));
                     ensure!(has_voted, Error::<T>::NoRewardAvailable);
@@ -5408,10 +5575,10 @@ pub mod pallet {
                 }
                 1 => {
                     // Proposal reward - check if authored
-                    // SECURITY: Bounded iteration prevents DoS via storage bloat (§1.7)
-                    // 1000 is a generous upper bound for total proposals.
+                    // SECURITY: Bounded iteration prevents DoS via storage bloat (§1.7 / DOS-004)
+                    // 50 is a practical bound — recent proposals only.
                     let has_proposed = Proposals::<T>::iter()
-                        .take(1_000)
+                        .take(50)
                         .any(|(_, prop)| prop.proposer == claimer);
                     ensure!(has_proposed, Error::<T>::NoRewardAvailable);
                     // SAFETY(saturated_into): constant 100_000_000_000_000 fits in BalanceOf<T> (u128 on standard runtimes)
@@ -5969,7 +6136,15 @@ pub mod pallet {
             // Mark as executed
             proposal.executed_at = Some(current_block);
             proposal.status = ProposalStatus::Executed;
+
+            // P0-16 FIX: Actually execute the proposal action (was previously
+            // a no-op that only set the status without performing the action).
+            if let Some(ref action) = proposal.action {
+                Self::execute_action(action, proposal_id)?;
+            }
+
             Proposals::<T>::insert(proposal_id, proposal.clone());
+            ExecutedProposals::<T>::insert(proposal_id, current_block);
 
             // Emit event
             Self::deposit_event(Event::EmergencyProposalExecuted {
@@ -6263,15 +6438,53 @@ pub mod pallet {
                 .ok_or(Error::<T>::ProposalNotFound)?;
             let current_block = frame_system::Pallet::<T>::block_number();
 
-            // Allow reveal during *or* after the voting period (common pattern)
+            // G-1 FIX: Bound reveal window — reveals accepted only while voting is
+            // open OR within one VotingPeriod after voting_end (reveal window).
+            // This prevents tally mutation after finalization.
             ensure!(current_block >= proposal.voting_start, Error::<T>::VotingPeriodNotStarted);
+            let reveal_deadline = proposal.voting_end
+                .saturating_add(T::VotingPeriod::get());
+            ensure!(current_block <= reveal_deadline, Error::<T>::VotingPeriodEnded);
+            // Reject reveals on already-finalized proposals (accept Pending
+            // or Voting — a reveal IS a vote and may be the first one cast)
+            ensure!(
+                proposal.status == ProposalStatus::Pending
+                    || proposal.status == ProposalStatus::Voting,
+                Error::<T>::ProposalNotFound
+            );
 
-            // Calculate voting weight (mirrors cast_vote logic)
+            // G-2 FIX: Use full weight calculation matching cast_vote
+            // (QV, stake, MaxVotingUnits, EffectiveVotingMultiplier)
             let community_rank = Self::community_ranks(&who);
             let pouw_contribution = Self::pouw_contributions(&who);
-            let voting_weight = community_rank.saturating_add(pouw_contribution);
+
+            let balance_u128: u128 = T::Currency::free_balance(&who).saturated_into::<u128>();
+            let stake_unit_size_u128: u128 = T::StakeUnitSize::get().saturated_into::<u128>();
+            let stake_units: u128 = if stake_unit_size_u128 > 0 {
+                balance_u128 / stake_unit_size_u128
+            } else {
+                0
+            };
+            let raw_stake_weight = if T::QuadraticVotingEnabled::get() {
+                Self::isqrt(stake_units)
+            } else {
+                stake_units
+            };
+            let stake_weight: u32 = raw_stake_weight
+                .min(T::MaxVotingUnits::get() as u128) as u32;
+
+            let base_weight = community_rank
+                .saturating_add(pouw_contribution)
+                .saturating_add(stake_weight);
+
             let conviction_multiplier = (conviction as u32).max(1);
-            let final_weight = voting_weight.saturating_mul(conviction_multiplier);
+            let conviction_weight = base_weight.saturating_mul(conviction_multiplier);
+
+            let multiplier = EffectiveVotingMultiplier::<T>::get(&who);
+            let effective_mult = if multiplier == 0 { 100u32 } else { multiplier as u32 };
+            let final_weight = conviction_weight
+                .saturating_mul(effective_mult)
+                / 100;
 
             // Record vote in Votes storage
             let vote = Vote {
@@ -6296,6 +6509,7 @@ pub mod pallet {
             }
             proposal.vote_tally.total_weight =
                 proposal.vote_tally.total_weight.saturating_add(final_weight);
+            proposal.status = ProposalStatus::Voting;
             Proposals::<T>::insert(proposal_id, proposal);
 
             // Remove commitment (prevent replay)
@@ -6567,6 +6781,10 @@ pub mod pallet {
 
     impl<T: Config> Pallet<T> {
         /// Calculate total council voting weight
+        ///
+        /// DOS-018: This helper iterates up to MaxCandidatesPerElection (200) council
+        /// members.  Callers must include the iteration cost in their extrinsic weight:
+        /// reads(MaxCandidatesPerElection) + O(MaxCandidatesPerElection) ref_time.
         pub fn total_council_weight() -> u32 {
             // SECURITY: Bounded iteration prevents DoS via storage bloat (§1.7)
             // Council size is naturally bounded by MaxCandidatesPerElection;
@@ -6627,6 +6845,10 @@ pub mod pallet {
         }
 
         /// Get council size
+        ///
+        /// DOS-018: This helper iterates up to MaxCandidatesPerElection (200) council
+        /// members.  Callers must include the iteration cost in their extrinsic weight:
+        /// reads(MaxCandidatesPerElection) + O(MaxCandidatesPerElection) ref_time.
         pub fn council_size() -> u32 {
             // SECURITY: Bounded iteration prevents DoS via storage bloat (§1.7)
             let max_council = T::MaxCandidatesPerElection::get() as usize;
@@ -6688,6 +6910,28 @@ pub mod pallet {
             amount: BalanceOf<T>,
             proposal_id: u32,
         ) -> DispatchResult {
+            // S5-4: Enforce per-period treasury spend cap
+            let current_block = <frame_system::Pallet<T>>::block_number();
+            let period_len: u32 = T::TreasurySpendPeriod::get().saturated_into();
+            let current_period: u32 = if period_len > 0 {
+                current_block.saturated_into::<u32>() / period_len
+            } else {
+                0u32
+            };
+            let (tracked_period, already_spent) = TreasurySpendTracker::<T>::get();
+            let effective_spent = if tracked_period == current_period {
+                already_spent
+            } else {
+                Zero::zero()
+            };
+            ensure!(
+                effective_spent.saturating_add(amount) <= T::MaxTreasurySpendPerPeriod::get(),
+                Error::<T>::TreasurySpendCapExceeded
+            );
+            TreasurySpendTracker::<T>::put(
+                (current_period, effective_spent.saturating_add(amount))
+            );
+
             // Get treasury account (we'll use pallet's account for now)
             let treasury_account = Self::account_id();
 
@@ -6839,19 +7083,22 @@ pub mod pallet {
             // Check if emergency actions are allowed
             match action_type {
                 EmergencyActionType::ActivateEmergency => {
-                    // Note: Use declare_emergency extrinsic for full Jaguar Mode activation
-                    // This is a simplified fallback for proposal-based emergencies
+                    // CONS-029: proposal-based emergencies also enter veto window
                     let current_block = frame_system::Pallet::<T>::block_number();
+                    let veto_window_ends = current_block + T::EmergencyVetoWindow::get();
                     let emergency = EmergencyStatus {
-                        active: true,
+                        active: false,
                         emergency_type: EmergencyType::Other,
                         description: BoundedVec::try_from(b"Emergency activated via proposal".to_vec())
                             .unwrap_or_default(),
                         declared_at: current_block,
                         expires_at: None,
                         declared_by: None,
+                        is_pending: true,
+                        veto_window_ends_at: Some(veto_window_ends),
                     };
                     JaguarMode::<T>::put(emergency);
+                    let _ = EmergencyVetoes::<T>::clear(u32::MAX, None);
                 }
                 EmergencyActionType::DeactivateEmergency => {
                     JaguarMode::<T>::kill();

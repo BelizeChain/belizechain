@@ -72,7 +72,7 @@ use frame_support::{
 };
 use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
-use sp_runtime::RuntimeDebug;
+use sp_runtime::{RuntimeDebug, Saturating, SaturatedConversion};
 use sp_std::prelude::*;
 
 #[cfg(test)]
@@ -263,6 +263,24 @@ pub trait WeightInfo {
     fn update_verification_level() -> Weight;
 }
 
+/// Trait for cross-pallet structuring detection reporting.
+/// Economy pallet (or others) call `report_transaction` after each value transfer;
+/// the implementation checks a sliding window and auto-files a SAR if cumulative
+/// amounts indicate structuring (many sub-threshold transactions that together
+/// exceed the travel-rule threshold).
+pub trait ComplianceReporter<AccountId, BlockNumber> {
+    /// Record a transaction amount and return `true` if structuring was detected.
+    fn report_transaction(account: &AccountId, amount: u128) -> bool;
+}
+
+/// COMP-SANC-ISO: Account-level sanctions checker trait.
+/// Allows the compliance pallet to query account-level sanctions from an
+/// external source (e.g., identity pallet oracle) in addition to its own
+/// hash-based `SanctionsList`, unifying both into a single checking point.
+pub trait AccountSanctionsChecker<AccountId> {
+    fn is_sanctioned(account: &AccountId) -> bool;
+}
+
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
@@ -313,8 +331,26 @@ pub mod pallet {
         #[pallet::constant]
         type MaxSuspiciousActivityReports: Get<u32>;
 
+        // ── COMP-CRIT-2: Structuring detection ─────────────────────────────
+
+        /// Sliding-window size (in blocks) for structuring detection.
+        /// Transactions within this window are aggregated; if cumulative total
+        /// exceeds the travel-rule threshold while each individual tx is below
+        /// it, a structuring SAR is auto-filed.
+        #[pallet::constant]
+        type StructuringWindowBlocks: Get<BlockNumberFor<Self>>;
+
+        /// Maximum entries tracked per account in the transaction window.
+        /// Oldest entries are pruned once the cap is reached.
+        #[pallet::constant]
+        type MaxTransactionWindowEntries: Get<u32>;
+
         /// Weight information
         type WeightInfo: WeightInfo;
+
+        /// COMP-SANC-ISO: External account-level sanctions source.
+        /// Typically wired to the identity pallet's oracle-based sanctions check.
+        type AccountSanctionsChecker: AccountSanctionsChecker<Self::AccountId>;
     }
 
     pub type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
@@ -387,6 +423,19 @@ pub mod pallet {
         ValueQuery,
     >;
 
+    // ── COMP-CRIT-2: Per-account sliding-window transaction log ───────────
+
+    /// Sliding window of recent transaction amounts for structuring detection.
+    /// Each entry is (amount_u128, block_number).
+    #[pallet::storage]
+    pub type TransactionWindow<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        BoundedVec<(u128, BlockNumberFor<T>), T::MaxTransactionWindowEntries>,
+        ValueQuery,
+    >;
+
     /// Global compliance statistics
     #[pallet::storage]
     #[pallet::getter(fn compliance_stats)]
@@ -395,6 +444,78 @@ pub mod pallet {
         (u32, u32, u32, u32), // (total_verified, total_restricted, total_suspicious_reports, total_sanctions_checks)
         ValueQuery,
     >;
+
+    // ===== HOOKS (DOS-017 FIX) =====
+
+    #[pallet::hooks]
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        /// DOS-017 FIX: Prune stale suspicious activity reports in idle time.
+        ///
+        /// Removes reports older than ~180 days (2,628,000 blocks at 6s).
+        /// Processes at most 5 accounts per block to bound weight.
+        fn on_idle(_n: BlockNumberFor<T>, remaining_weight: Weight) -> Weight {
+            // ~180 days at 6-second blocks
+            const SUSPICIOUS_ACTIVITY_TTL_BLOCKS: u64 = 2_628_000;
+            const MAX_ACCOUNTS_PER_BLOCK: usize = 5;
+
+            let per_account_weight = Weight::from_parts(15_000_000, 2048)
+                .saturating_add(T::DbWeight::get().reads(1))
+                .saturating_add(T::DbWeight::get().writes(1));
+            let base_weight = Weight::from_parts(5_000_000, 256);
+
+            if remaining_weight.ref_time()
+                < base_weight.saturating_add(per_account_weight).ref_time()
+            {
+                return Weight::zero();
+            }
+
+            let mut total_weight = base_weight;
+            let current_block: u64 = TryInto::<u64>::try_into(
+                frame_system::Pallet::<T>::block_number(),
+            )
+            .unwrap_or(0);
+
+            // Collect account keys first to avoid iterator invalidation on mutate.
+            let accounts: Vec<T::AccountId> = SuspiciousActivities::<T>::iter_keys()
+                .take(MAX_ACCOUNTS_PER_BLOCK)
+                .collect();
+
+            for account in accounts {
+                if total_weight.saturating_add(per_account_weight).ref_time()
+                    > remaining_weight.ref_time()
+                {
+                    break;
+                }
+
+                let reports = SuspiciousActivities::<T>::get(&account);
+                let original_len = reports.len();
+
+                let filtered: Vec<_> = reports
+                    .into_inner()
+                    .into_iter()
+                    .filter(|report| {
+                        let report_block: u64 =
+                            TryInto::<u64>::try_into(report.1).unwrap_or(0);
+                        current_block.saturating_sub(report_block)
+                            < SUSPICIOUS_ACTIVITY_TTL_BLOCKS
+                    })
+                    .collect();
+
+                if filtered.len() < original_len {
+                    if filtered.is_empty() {
+                        SuspiciousActivities::<T>::remove(&account);
+                    } else {
+                        let pruned = BoundedVec::truncate_from(filtered);
+                        SuspiciousActivities::<T>::insert(&account, pruned);
+                    }
+                }
+
+                total_weight = total_weight.saturating_add(per_account_weight);
+            }
+
+            total_weight
+        }
+    }
 
     // ===== EVENTS =====
 
@@ -446,6 +567,12 @@ pub mod pallet {
         AuditRecordCreated {
             account: T::AccountId,
             action_type: u8,
+        },
+        /// COMP-CRIT-2: Structuring detected — cumulative sub-threshold txs exceed travel rule
+        StructuringDetected {
+            account: T::AccountId,
+            window_total: u128,
+            tx_count: u32,
         },
     }
 
@@ -637,6 +764,10 @@ pub mod pallet {
                 Ok(())
             })?;
 
+            // C-3 FIX: Only increment counter if this is a NEW restriction,
+            // preventing double-count when restrict_account is called twice on the same account.
+            let is_new_restriction = !RestrictedAccounts::<T>::contains_key(&account);
+
             RestrictedAccounts::<T>::insert(&account, (true, bounded_reason.clone()));
 
             Self::create_audit_record(
@@ -646,10 +777,12 @@ pub mod pallet {
                 bounded_reason.to_vec(),
             )?;
 
-            // Update stats
-            let (verified, mut restricted, suspicious, sanctions) = ComplianceStats::<T>::get();
-            restricted = restricted.saturating_add(1);
-            ComplianceStats::<T>::put((verified, restricted, suspicious, sanctions));
+            // Update stats only for new restrictions
+            if is_new_restriction {
+                let (verified, mut restricted, suspicious, sanctions) = ComplianceStats::<T>::get();
+                restricted = restricted.saturating_add(1);
+                ComplianceStats::<T>::put((verified, restricted, suspicious, sanctions));
+            }
 
             Self::deposit_event(Event::AccountRestricted { account, reason: bounded_reason });
             
@@ -668,6 +801,12 @@ pub mod pallet {
             account: T::AccountId,
         ) -> DispatchResult {
             T::ComplianceOrigin::ensure_origin(origin)?;
+
+            // CRIT-2 FIX: Only decrement counter if account was actually restricted
+            ensure!(
+                RestrictedAccounts::<T>::contains_key(&account),
+                Error::<T>::AccountNotFound
+            );
 
             ComplianceStatusOf::<T>::try_mutate(&account, |status| -> DispatchResult {
                 status.restricted = false;
@@ -720,8 +859,14 @@ pub mod pallet {
             let current_block = frame_system::Pallet::<T>::block_number();
 
             SuspiciousActivities::<T>::try_mutate(&account, |reports| -> DispatchResult {
-                reports.try_push((activity, current_block, bounded_details.clone()))
-                    .map_err(|_| Error::<T>::SuspiciousActivityReportsOverflow)?;
+                // FIFO eviction: if at capacity, remove oldest report to make room
+                if reports.try_push((activity, current_block, bounded_details.clone())).is_err() {
+                    if !reports.is_empty() {
+                        reports.remove(0);
+                    }
+                    reports.try_push((activity, current_block, bounded_details.clone()))
+                        .map_err(|_| Error::<T>::SuspiciousActivityReportsOverflow)?;
+                }
                 Ok(())
             })?;
 
@@ -858,15 +1003,13 @@ pub mod pallet {
                     level: VerificationLevel::None as u8,
                 });
             } else {
-                // Still valid — refresh timestamp and log
-                status.last_verification = now;
-                ComplianceStatusOf::<T>::insert(&who, &status);
-
+                // Still valid — log sync but do NOT refresh timestamp.
+                // Only ComplianceOrigin::verify_account can set last_verification.
                 Self::create_audit_record(
                     &who,
                     ActionType::ComplianceCheckPerformed,
                     true,
-                    b"Verification synced and refreshed".to_vec(),
+                    b"Verification synced (timestamp unchanged)".to_vec(),
                 )?;
             }
 
@@ -972,11 +1115,20 @@ pub mod pallet {
             amount >= T::TravelRuleThreshold::get()
         }
 
-        /// Check if entity is on sanctions list
+        /// Check if entity is on sanctions list (hash-based)
         pub fn is_sanctioned(entity_hash: &[u8; 32]) -> bool {
             SanctionsList::<T>::get(entity_hash)
                 .map(|entry| entry.active)
                 .unwrap_or(false)
+        }
+
+        /// COMP-SANC-ISO: Unified account-level sanctions check.
+        /// Returns `true` if the account is sanctioned in EITHER the
+        /// compliance pallet's hash-based list OR the external oracle
+        /// (identity pallet). Callers should prefer this over `is_sanctioned`
+        /// when checking by AccountId rather than entity hash.
+        pub fn is_account_sanctioned(account: &T::AccountId) -> bool {
+            T::AccountSanctionsChecker::is_sanctioned(account)
         }
 
         /// Get compliance statistics
@@ -1032,6 +1184,115 @@ pub mod pallet {
                 _ => SuspiciousActivityType::UnusualVolumePattern,
             }
         }
+
+        /// COMP-CRIT-2: Record a transaction and check for structuring.
+        ///
+        /// Appends `(amount, current_block)` to the per-account sliding window,
+        /// prunes entries older than `StructuringWindowBlocks`, then checks:
+        ///   • Every individual tx in the window is BELOW the travel-rule threshold
+        ///   • The cumulative total EXCEEDS the threshold
+        ///
+        /// If both conditions hold, a `Structuring` SAR is auto-filed and
+        /// `StructuringDetected` is emitted.  Returns `true` when detected.
+        pub fn record_transaction_and_check_structuring(
+            account: &T::AccountId,
+            amount: u128,
+        ) -> bool {
+            let current_block = frame_system::Pallet::<T>::block_number();
+            let window_size = T::StructuringWindowBlocks::get();
+            let threshold: u128 = T::TravelRuleThreshold::get().saturated_into();
+
+            // Skip if the single tx already meets or exceeds the threshold
+            // (that is covered by the travel rule, not structuring).
+            if amount >= threshold {
+                return false;
+            }
+
+            TransactionWindow::<T>::mutate(account, |entries| {
+                // Prune entries outside the window
+                let cutoff = current_block.saturating_sub(window_size);
+                let pruned: Vec<_> = entries
+                    .iter()
+                    .filter(|(_, blk)| *blk >= cutoff)
+                    .cloned()
+                    .collect();
+
+                // Append the new entry; if full, drop the oldest
+                let mut updated = pruned;
+                updated.push((amount, current_block));
+                *entries = BoundedVec::truncate_from(updated);
+
+                // Check structuring condition
+                let all_below = entries.iter().all(|(a, _)| *a < threshold);
+                let cumulative: u128 = entries.iter().map(|(a, _)| a).fold(0u128, |acc, a| acc.saturating_add(*a));
+                let tx_count = entries.len() as u32;
+
+                if all_below && cumulative >= threshold && tx_count >= 2 {
+                    // Auto-file structuring SAR (best-effort; ignore if storage full)
+                    let description = b"Auto-detected: cumulative sub-threshold transactions exceed travel rule within window".to_vec();
+                    let bounded_desc = BoundedVec::truncate_from(description);
+
+                    SuspiciousActivities::<T>::mutate(account, |reports| {
+                        // FIFO eviction if full
+                        if reports.len() as u32 >= T::MaxSuspiciousActivityReports::get() {
+                            let remove_count = reports.len().saturating_sub(
+                                T::MaxSuspiciousActivityReports::get().saturating_sub(1) as usize,
+                            );
+                            for _ in 0..remove_count {
+                                if !reports.is_empty() {
+                                    reports.remove(0);
+                                }
+                            }
+                        }
+                        let _ = reports.try_push((
+                            SuspiciousActivityType::Structuring,
+                            current_block,
+                            bounded_desc,
+                        ));
+                    });
+
+                    Self::deposit_event(Event::StructuringDetected {
+                        account: account.clone(),
+                        window_total: cumulative,
+                        tx_count,
+                    });
+
+                    return true;
+                }
+
+                false
+            })
+        }
+    }
+}
+
+// COMP-CRIT-2: Implement ComplianceReporter for the pallet so other pallets
+// can report transactions and trigger structuring detection.
+impl<T: Config> ComplianceReporter<T::AccountId, BlockNumberFor<T>> for Pallet<T> {
+    fn report_transaction(account: &T::AccountId, amount: u128) -> bool {
+        Self::record_transaction_and_check_structuring(account, amount)
+    }
+}
+
+// No-op implementation for unit type (used in tests / mock runtimes that
+// don't wire up a real compliance pallet).
+impl ComplianceReporter<sp_runtime::AccountId32, u64> for () {
+    fn report_transaction(_account: &sp_runtime::AccountId32, _amount: u128) -> bool {
+        false
+    }
+}
+
+// No-op implementation for mocks that use u64 account IDs.
+impl ComplianceReporter<u64, u64> for () {
+    fn report_transaction(_account: &u64, _amount: u128) -> bool {
+        false
+    }
+}
+
+// COMP-SANC-ISO: No-op AccountSanctionsChecker implementations for tests/mocks
+impl<AccountId> AccountSanctionsChecker<AccountId> for () {
+    fn is_sanctioned(_account: &AccountId) -> bool {
+        false
     }
 }
 

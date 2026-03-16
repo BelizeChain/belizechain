@@ -25,6 +25,7 @@ parameter_types! {
     pub const OpenDisputeBond: u128 = 500;
     pub const CoolingOffPeriod: u64 = 100;
     pub const MaxMediators: u32 = 10;
+    pub const AppealTimeoutBlocks: u64 = 200;
 }
 
 impl frame_system::Config for Test {
@@ -78,13 +79,13 @@ impl pallet_balances::Config for Test {
 }
 
 impl pallet_belize_justice::Config for Test {
-    type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type GovernanceOrigin = frame_system::EnsureRoot<u64>;
     type MediatorOrigin = frame_system::EnsureSigned<u64>;
     type OpenDisputeBond = OpenDisputeBond;
     type CoolingOffPeriod = CoolingOffPeriod;
     type MaxMediators = MaxMediators;
+    type AppealTimeout = AppealTimeoutBlocks;
     type WeightInfo = ();
 }
 

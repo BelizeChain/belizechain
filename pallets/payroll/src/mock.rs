@@ -29,6 +29,7 @@ parameter_types! {
     pub const MaxDepartments: u32 = 50;
     pub const MinimumPayment: u64 = 1_000_000; // 1 DALLA (10^6 with 6 decimals)
     pub const MaxSchedulesPerBlock: u32 = 50;
+    pub const MaxPaymentAmount: u64 = 1_000_000_000_000; // 1M DALLA cap
 }
 
 impl frame_system::Config for Test {
@@ -112,6 +113,7 @@ impl pallet_payroll::Config for Test {
     type Oracle = MockPayrollOracleProvider;
     type MaxSchedulesPerBlock = MaxSchedulesPerBlock;
     type WeightInfo = ();
+    type MaxPaymentAmount = MaxPaymentAmount;
 }
 
 // Build genesis storage according to the mock runtime.

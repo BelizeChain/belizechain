@@ -150,6 +150,7 @@ impl pallet_belize_staking::Config for Test {
     type MaxSupply = TestMaxSupply;
     type WeightInfo = ();
     type JusticeProvider = MockJustice;
+    type MaxDomainContributionsPerEpoch = ConstU32<100>;
 }
 
 // Test accounts

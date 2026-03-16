@@ -62,12 +62,12 @@ impl frame_system::Config for Test {
 }
 
 impl pallet_belize_moderation::Config for Test {
-    type RuntimeEvent = RuntimeEvent;
     type ModeratorAdminOrigin = frame_system::EnsureRoot<u64>;
     type NawalOracleOrigin = frame_system::EnsureRoot<u64>;
     type FlagThreshold = FlagThreshold;
     type NawalAutoQueueScore = NawalAutoQueueScore;
     type MaxModerators = MaxModerators;
+    type MaxFlagsPerContent = frame_support::traits::ConstU32<100>;
     type WeightInfo = ();
 }
 

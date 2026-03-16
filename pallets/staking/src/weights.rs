@@ -50,12 +50,23 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
     }
 
     /// Storage: Validators iteration (r:N w:0), Currency::deposit (r:N w:N),
-    ///          RewardRecords (r:0 w:N)
-    /// O(N) — iterates validators
+    ///          RewardRecords (r:0 w:N), MaxSupply (r:1), TotalIssuance (r:N)
+    /// DOS-002 FIX: O(N) — parameterized by MaxValidators to account for
+    /// per-validator reads (Validators iter + ModelSubmissions get + total_issuance)
+    /// and writes (deposit_creating + ModelSubmissions clear + QuantumStats clear).
     fn distribute_rewards() -> Weight {
-        Weight::from_parts(80_000_000, 2560)
-            .saturating_add(T::DbWeight::get().reads(5))
-            .saturating_add(T::DbWeight::get().writes(5))
+        // Base cost: EpochRewards write, CurrentEpoch read+write, MaxSupply read,
+        //            ModelSubmissions::clear, QuantumStats::clear, EpochQuantumJobs::kill
+        let base = Weight::from_parts(80_000_000, 2560)
+            .saturating_add(T::DbWeight::get().reads(3))
+            .saturating_add(T::DbWeight::get().writes(5));
+        // Per-validator cost: Validators read, ModelSubmissions read, total_issuance read,
+        //                     deposit_creating write
+        let per_validator = T::DbWeight::get().reads(3)
+            .saturating_add(T::DbWeight::get().writes(1))
+            .saturating_add(Weight::from_parts(5_000_000, 256));
+        // MaxValidators = 100 (runtime constant)
+        base.saturating_add(per_validator.saturating_mul(100))
     }
 
     /// Storage: Validators (r:1 w:0), QuantumContributions (r:1 w:1),

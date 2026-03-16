@@ -193,7 +193,9 @@ pub mod pallet {
         pub standard_version: u32,
         /// Salted hash of normalized attribute value (blake2_256(salt ++ plaintext))
         pub hash: H256,
-        /// On-chain salt (≥32 bytes) used to construct `hash`. `None` for biometric attestations.
+        /// DEPRECATED: Salt removed (P0-01 fix). Hash must be computed off-chain with
+        /// a strong KDF (Argon2id) and secret salt that never touches the chain.
+        /// Kept as Option for storage compatibility; always None for new attestations.
         pub salt: Option<BoundedVec<u8, ConstU32<64>>>,
         /// Issuer asserts that format complies with standard
         pub format_ok: bool,
@@ -742,14 +744,15 @@ pub mod pallet {
             Ok(())
         }
 
-        /// Issuer: issue SSN attestation using salted hash and anchor
+        /// Issuer: issue SSN attestation.
+        /// The `hash` must be computed OFF-CHAIN using Argon2id(secret_salt || ssn).
+        /// The salt must NEVER be submitted on-chain (P0-01: SSN brute-force prevention).
     #[pallet::call_index(10)]
         #[pallet::weight(T::WeightInfo::issue_attestation())]
         pub fn issue_ssn(
             origin: OriginFor<T>,
             target: T::AccountId,
             hash: H256,
-            salt: BoundedVec<u8, ConstU32<64>>,
             anchor: BoundedVec<u8, T::MaxAnchorLen>,
             format_ok: bool,
         ) -> DispatchResult {
@@ -757,7 +760,6 @@ pub mod pallet {
             ensure!(Self::is_authorized_issuer(AttributeType::Ssn, &issuer), Error::<T>::NotAuthorizedIssuer);
             ensure!(!FlaggedIssuers::<T>::get(AttributeType::Ssn, issuer.clone()), Error::<T>::IssuerFlagged);
             Self::ensure_not_paused()?;
-            ensure!(salt.len() >= 32, Error::<T>::SaltTooShort);
             Self::check_and_bump_rate(AttributeType::Ssn, &issuer)?;
             let id = IdentityOf::<T>::get(&target).ok_or(Error::<T>::IdentityNotFound)?;
             ensure!(SsnHashIndex::<T>::get(hash).map(|x| x == id).unwrap_or(true), Error::<T>::HashAlreadyTaken);
@@ -769,7 +771,7 @@ pub mod pallet {
                 issuer: issuer.clone(),
                 standard_version: SsnStandardVersion::<T>::get(),
                 hash,
-                salt: Some(salt),
+                salt: None,
                 format_ok,
                 issued_at: now,
                 valid_until: Self::add_blocks(now, valid),
@@ -777,7 +779,6 @@ pub mod pallet {
                 anchor,
                 status: AttestationStatus::Active,
             };
-            if PassportAttestations::<T>::contains_key(id) { /* no-op */ }
             // Remove stale hash index entry if SSN was previously issued
             if let Some(old_att) = SsnAttestations::<T>::get(id) {
                 if old_att.hash != hash {
@@ -798,7 +799,6 @@ pub mod pallet {
             origin: OriginFor<T>,
             target: T::AccountId,
             hash: H256,
-            salt: BoundedVec<u8, ConstU32<64>>,
             anchor: BoundedVec<u8, T::MaxAnchorLen>,
             format_ok: bool,
         ) -> DispatchResult {
@@ -806,7 +806,6 @@ pub mod pallet {
             ensure!(Self::is_authorized_issuer(AttributeType::Passport, &issuer), Error::<T>::NotAuthorizedIssuer);
             ensure!(!FlaggedIssuers::<T>::get(AttributeType::Passport, issuer.clone()), Error::<T>::IssuerFlagged);
             Self::ensure_not_paused()?;
-            ensure!(salt.len() >= 32, Error::<T>::SaltTooShort);
             Self::check_and_bump_rate(AttributeType::Passport, &issuer)?;
             let id = IdentityOf::<T>::get(&target).ok_or(Error::<T>::IdentityNotFound)?;
             ensure!(PassportHashIndex::<T>::get(hash).map(|x| x == id).unwrap_or(true), Error::<T>::HashAlreadyTaken);
@@ -818,7 +817,7 @@ pub mod pallet {
                 issuer: issuer.clone(),
                 standard_version: PassportStandardVersion::<T>::get(),
                 hash,
-                salt: Some(salt),
+                salt: None,
                 format_ok,
                 issued_at: now,
                 valid_until: Self::add_blocks(now, valid),
@@ -826,6 +825,12 @@ pub mod pallet {
                 anchor,
                 status: AttestationStatus::Active,
             };
+            // Remove stale hash index entry if passport was previously issued
+            if let Some(old_att) = PassportAttestations::<T>::get(id) {
+                if old_att.hash != hash {
+                    PassportHashIndex::<T>::remove(old_att.hash);
+                }
+            }
             PassportAttestations::<T>::insert(id, att);
             PassportHashIndex::<T>::insert(hash, id);
             Self::append_history(id, AttributeType::Passport, HistoryAction::Issued);
@@ -879,6 +884,8 @@ pub mod pallet {
                     SsnAttestations::<T>::try_mutate(id, |a| -> Result<(), DispatchError> {
                         let att = a.as_mut().ok_or(Error::<T>::NoAttestation)?;
                         att.status = AttestationStatus::Revoked;
+                        // Release the hash index so the credential can be re-issued
+                        SsnHashIndex::<T>::remove(att.hash);
                         Ok(())
                     })?;
                 }
@@ -886,6 +893,7 @@ pub mod pallet {
                     PassportAttestations::<T>::try_mutate(id, |a| -> Result<(), DispatchError> {
                         let att = a.as_mut().ok_or(Error::<T>::NoAttestation)?;
                         att.status = AttestationStatus::Revoked;
+                        PassportHashIndex::<T>::remove(att.hash);
                         Ok(())
                     })?;
                 }
@@ -909,8 +917,8 @@ pub mod pallet {
             T::RevokeOrigin::ensure_origin(origin)?;
             let id = IdentityOf::<T>::get(&account).ok_or(Error::<T>::IdentityNotFound)?;
             match AttributeType::from(attr) {
-                AttributeType::Ssn => SsnAttestations::<T>::try_mutate(id, |a| -> Result<(), DispatchError> { let att = a.as_mut().ok_or(Error::<T>::NoAttestation)?; att.status = AttestationStatus::Suspended; Ok(()) })?,
-                AttributeType::Passport => PassportAttestations::<T>::try_mutate(id, |a| -> Result<(), DispatchError> { let att = a.as_mut().ok_or(Error::<T>::NoAttestation)?; att.status = AttestationStatus::Suspended; Ok(()) })?,
+                AttributeType::Ssn => SsnAttestations::<T>::try_mutate(id, |a| -> Result<(), DispatchError> { let att = a.as_mut().ok_or(Error::<T>::NoAttestation)?; att.status = AttestationStatus::Suspended; SsnHashIndex::<T>::remove(att.hash); Ok(()) })?,
+                AttributeType::Passport => PassportAttestations::<T>::try_mutate(id, |a| -> Result<(), DispatchError> { let att = a.as_mut().ok_or(Error::<T>::NoAttestation)?; att.status = AttestationStatus::Suspended; PassportHashIndex::<T>::remove(att.hash); Ok(()) })?,
                 AttributeType::Biometrics => BiometricAttestations::<T>::try_mutate(id, |a| -> Result<(), DispatchError> { let att = a.as_mut().ok_or(Error::<T>::NoAttestation)?; att.status = AttestationStatus::Suspended; Ok(()) })?,
             }
             Self::append_history(id, AttributeType::from(attr), HistoryAction::Suspended);
@@ -1088,9 +1096,19 @@ pub mod pallet {
             false
         }
         
-        /// Check if account is sanctioned (via Oracle)
+        /// Check if account is sanctioned (via Oracle).
+        /// Resolves identity and checks ALL linked accounts — a sanctioned
+        /// linked account taints the entire identity (MaxAccountsPerIdentity=5).
         pub fn is_account_sanctioned(who: &T::AccountId) -> bool {
-            T::Oracle::is_sanctioned(who)
+            if T::Oracle::is_sanctioned(who) {
+                return true;
+            }
+            if let Some(id) = IdentityOf::<T>::get(who) {
+                if let Some(rec) = Identities::<T>::get(id) {
+                    return rec.accounts.iter().any(|a| T::Oracle::is_sanctioned(a));
+                }
+            }
+            false
         }
 
         /// Return KYC state including grace handling (Valid, Grace, Invalid)

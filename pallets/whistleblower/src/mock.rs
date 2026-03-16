@@ -29,6 +29,7 @@ parameter_types! {
     pub const FraudReward: u128 = 10_000;
     pub const AbuseReward: u128 = 5_000;
     pub const ExploitReward: u128 = 50_000;
+    pub const TestMaxDallaSupply: u128 = 1_000_000_000;
 }
 
 impl frame_system::Config for Test {
@@ -82,7 +83,6 @@ impl pallet_balances::Config for Test {
 }
 
 impl pallet_belize_whistleblower::Config for Test {
-    type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     type ReviewerOrigin = frame_system::EnsureRoot<u64>;
     type GovernanceOrigin = frame_system::EnsureRoot<u64>;
@@ -91,6 +91,8 @@ impl pallet_belize_whistleblower::Config for Test {
     type AbuseReward = AbuseReward;
     type ExploitReward = ExploitReward;
     type WeightInfo = ();
+    type MaxDallaSupply = TestMaxDallaSupply;
+    type MaxReportsPerBlock = ConstU32<50>;
 }
 
 // Test accounts

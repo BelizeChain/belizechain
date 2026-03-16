@@ -100,6 +100,10 @@ pub mod pallet {
 
         /// Governance origin for emergency controls
         type GovernanceOrigin: EnsureOrigin<Self::RuntimeOrigin>;
+
+        /// Maximum content versions to retain per domain (CRIT-1 fix)
+        #[pallet::constant]
+        type MaxContentVersions: Get<u32>;
     }
 
     // ==================== STORAGE ====================
@@ -385,6 +389,12 @@ pub mod pallet {
         ArithmeticOverflow,
         /// Invalid metadata
         InvalidMetadata,
+        /// Zero price not allowed
+        ZeroPriceNotAllowed,
+        /// Seller no longer owns the domain
+        SellerOwnerMismatch,
+        /// Maximum content versions reached
+        MaxContentVersionsReached,
     }
 
     // ==================== EXTRINSICS ====================
@@ -539,6 +549,16 @@ pub mod pallet {
                 .ok_or(Error::<T>::DomainNotFound)?;
             ensure!(domain_record.owner == who, Error::<T>::NotDomainOwner);
 
+            // H-04 FIX: KYC/sanctions check on transfer recipient
+            ensure!(
+                T::Identity::can_register_domain(&new_owner),
+                Error::<T>::KycRequired
+            );
+            ensure!(
+                !T::Identity::is_sanctioned(&new_owner),
+                Error::<T>::AccountSanctioned
+            );
+
             // Check if domain is locked
             let current_block = frame_system::Pallet::<T>::block_number();
             if let Some(locked_until) = domain_record.locked_until {
@@ -596,6 +616,9 @@ pub mod pallet {
                 Error::<T>::DomainAlreadyExists
             );
 
+            // H-02 FIX: Prevent zero-price listings
+            ensure!(price > 0, Error::<T>::ZeroPriceNotAllowed);
+
             // Create listing
             let current_block = frame_system::Pallet::<T>::block_number();
             let listing = DomainListing {
@@ -631,6 +654,16 @@ pub mod pallet {
             // Get listing
             let listing = DomainListings::<T>::get(&domain)
                 .ok_or(Error::<T>::NotListedForSale)?;
+
+            // H-01 FIX: KYC/sanctions check on buyer
+            ensure!(
+                T::Identity::can_register_domain(&buyer),
+                Error::<T>::KycRequired
+            );
+            ensure!(
+                !T::Identity::is_sanctioned(&buyer),
+                Error::<T>::AccountSanctioned
+            );
 
             // Verify not buying own domain
             ensure!(listing.seller != buyer, Error::<T>::CannotBuyOwnDomain);
@@ -682,7 +715,13 @@ pub mod pallet {
             // Update domain ownership
             let mut domain_record = DomainRegistry::<T>::get(&domain)
                 .ok_or(Error::<T>::DomainNotFound)?;
-            
+
+            // CRIT-2 FIX: Verify seller still owns the domain
+            ensure!(
+                listing.seller == domain_record.owner,
+                Error::<T>::SellerOwnerMismatch
+            );
+
             let old_owner = domain_record.owner.clone();
             domain_record.owner = buyer.clone();
             domain_record.transfer_count = domain_record.transfer_count.saturating_add(1);
@@ -911,6 +950,15 @@ pub mod pallet {
 
             // Save current version to history
             let current_version = CurrentContentVersion::<T>::get(&domain);
+
+            // CRIT-1 FIX: Enforce MaxContentVersions cap, prune oldest if at capacity
+            let max_versions = T::MaxContentVersions::get();
+            if current_version >= max_versions {
+                // Remove the oldest version to make room
+                let oldest = current_version.saturating_sub(max_versions);
+                ContentHistory::<T>::remove(&domain, oldest);
+            }
+
             let old_version = ContentVersion {
                 content_hash: hosting_info.content_hash,
                 uploaded_at: current_block,
@@ -1187,6 +1235,14 @@ pub mod pallet {
                     .map_err(|_| Error::<T>::DomainTooLong)?,
                 size_bytes: target_content.size_bytes,
             };
+
+            // CRIT-1 FIX: Enforce MaxContentVersions cap on rollback too
+            let max_versions = T::MaxContentVersions::get();
+            if current_version >= max_versions {
+                let oldest = current_version.saturating_sub(max_versions);
+                ContentHistory::<T>::remove(&domain, oldest);
+            }
+
             ContentHistory::<T>::insert(&domain, current_version, rollback_version);
 
             // Increment version (rollback creates new version)

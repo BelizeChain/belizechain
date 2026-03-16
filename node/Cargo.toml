@@ -23,6 +23,7 @@ frame-try-runtime = { workspace = true, optional = true }
 sp-api = { workspace = true, features = ["std"] }
 sp-block-builder = { workspace = true, features = ["std"] }
 sp-consensus-babe = { workspace = true, features = ["std"] }
+sp-consensus = { workspace = true }
 sp-consensus-grandpa = { workspace = true, features = ["std"] }
 sp-core = { workspace = true, features = ["std"] }
 sp-genesis-builder = { workspace = true, features = ["std"] }
@@ -47,6 +48,7 @@ sc-client-api = { workspace = true }
 sc-consensus = { workspace = true }
 sc-consensus-babe = { workspace = true }
 sc-consensus-grandpa = { workspace = true }
+sc-consensus-slots = { workspace = true }
 sc-executor = { workspace = true }
 sc-keystore = { workspace = true }
 sc-network = { workspace = true }

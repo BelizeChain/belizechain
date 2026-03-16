@@ -16,7 +16,7 @@
 [![Substrate](https://img.shields.io/badge/substrate-3.0-purple.svg)](https://substrate.io/)
 [![Polkadot SDK](https://img.shields.io/badge/polkadot_sdk-stable2512-E6007A.svg)](https://github.com/paritytech/polkadot-sdk)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/)
-[![Coverage](https://img.shields.io/badge/coverage-100%25-success.svg)](tests/)
+[![Coverage](https://img.shields.io/badge/coverage-gated-informational.svg)](.tarpaulin.toml)
 [![Testnet](https://img.shields.io/badge/testnet-ready-blue.svg)](https://testnet.belizechain.org)
 
 **Enterprise-grade blockchain runtime** powering Belize's sovereign digital infrastructure with 16 custom pallets, dual-currency system (DALLA + bBZD), built-in compliance, and WebAssembly smart contracts.
@@ -29,7 +29,7 @@
 
 ## 🎯 Overview
 
-BelizeChain is a **production-ready Substrate blockchain** built specifically for Belize's national digital transformation:
+BelizeChain is a **Substrate blockchain in active development** for Belize's national digital transformation:
 
 <table>
 <tr>
@@ -41,7 +41,7 @@ BelizeChain is a **production-ready Substrate blockchain** built specifically fo
 - ⚖️ **Regulatory Compliance**: Built-in KYC/AML, FSC oversight, sanctions enforcement
 - 🗳️ **Democratic Governance**: District councils, on-chain voting, emergency powers
 - 📜 **Smart Contracts**: WebAssembly (ink! 4.0) with PSP22/PSP34 standards
-- 🔐 **Enterprise Security**: Comprehensive audits, 100% test coverage
+- 🔐 **Enterprise Security**: Continuous audits, coverage-gated CI
 
 </td>
 <td width="50%">
@@ -180,7 +180,7 @@ cd belizechain
 
 ### Running Tests
 
-BelizeChain has **100% test coverage** across all components:
+BelizeChain enforces **coverage-gated CI** via cargo-tarpaulin across all pallets:
 
 ```bash
 # Complete test suite (Rust + Python) - automated
@@ -205,7 +205,7 @@ cargo check -p pallet-economy              # Check single pallet
 cargo clippy --fix --allow-dirty --workspace  # Auto-fix warnings
 ```
 
-**Test Results**: All integration tests pass with 100% coverage ✅
+**Test Results**: All pallet unit tests pass; coverage enforced by tarpaulin gate.
 
 ## 📚 Documentation
 

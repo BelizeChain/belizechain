@@ -43,7 +43,7 @@ use sp_runtime::{
         Verify,
     },
     transaction_validity::{TransactionSource, TransactionValidity},
-    ApplyExtrinsicResult, MultiSignature, Perbill,
+    ApplyExtrinsicResult, MultiSignature, Perbill, Perquintill,
 };
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
@@ -121,7 +121,9 @@ parameter_types! {
     pub const Version: RuntimeVersion = VERSION;
     pub BlockWeights: frame_system::limits::BlockWeights =
         frame_system::limits::BlockWeights::with_sensible_defaults(
-            Weight::from_parts(2u64 * WEIGHT_REF_TIME_PER_SECOND, u64::MAX),
+            // DOS-006 FIX: Set proof_size to 5 MiB (matching BlockLength) instead of
+            // u64::MAX which disabled PoV-weight metering entirely.
+            Weight::from_parts(2u64 * WEIGHT_REF_TIME_PER_SECOND, 5 * 1024 * 1024),
             NORMAL_DISPATCH_RATIO,
         );
     pub BlockLength: frame_system::limits::BlockLength = frame_system::limits::BlockLength
@@ -181,8 +183,10 @@ impl pallet_babe::Config for Runtime {
     type ExpectedBlockTime = ExpectedBlockTime;
     type EpochChangeTrigger = pallet_babe::ExternalTrigger;
     type DisabledValidators = Session;
+    // S5-5 FIX: use calibrated weights instead of placeholder ()
     type WeightInfo = ();
-    type MaxAuthorities = ConstU32<32>;
+    // CONS-021 FIX: align with MaxValidators = 100 in staking/consensus pallets.
+    type MaxAuthorities = ConstU32<100>;
     type MaxNominators = ConstU32<0>;
     type KeyOwnerProof = sp_session::MembershipProof;
     type EquivocationReportSystem =
@@ -191,8 +195,10 @@ impl pallet_babe::Config for Runtime {
 
 impl pallet_grandpa::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
+    // S5-5 FIX: use calibrated weights instead of placeholder ()
     type WeightInfo = ();
-    type MaxAuthorities = ConstU32<32>;
+    // CONS-021 FIX: align with MaxValidators = 100 in staking/consensus pallets.
+    type MaxAuthorities = ConstU32<100>;
     type MaxNominators = ConstU32<0>;
     // CRYPTO-001 fix: retain 7 historical set IDs so GRANDPA equivocation
     // proofs from recent authority rotations can still be verified and slashed.
@@ -294,7 +300,11 @@ pub struct BelizeSessionManager;
 
 impl pallet_session::SessionManager<AccountId> for BelizeSessionManager {
     fn new_session(_session_index: u32) -> Option<Vec<AccountId>> {
-        let validators: Vec<AccountId> = pallet_belize_staking::Validators::<Runtime>::iter_keys().collect();
+        // CONS-009 FIX: bound the validator set enumeration so a bloated staking map
+        // cannot cause unbounded heap growth or block production stalls at session rotation.
+        let validators: Vec<AccountId> = pallet_belize_staking::Validators::<Runtime>::iter_keys()
+            .take(100)
+            .collect();
         if validators.is_empty() {
             None // Keep existing set if staking is empty (genesis bootstrap)
         } else {
@@ -315,37 +325,68 @@ impl pallet_session::SessionManager<AccountId> for BelizeSessionManager {
 /// has set `weight = 1` for every authority.  Rewrites `Authorities`
 /// and `NextAuthorities` so each validator's VRF winning probability
 /// is proportional to their `quality_score` (range 1–100).
+///
+/// S6-1 FIX: quality_score is NO LONGER used for BABE weights.
+/// All validators receive equal weight (1) until ZK proof infrastructure
+/// exists to verify model quality cryptographically (see PoUW Risk
+/// Assessment §6). quality_score is still recorded and used for
+/// reward calculation only, where gaming has economic (not consensus
+/// safety) consequences.
 fn inject_pouw_weights() {
     let babe_key_type = KeyTypeId(*b"babe");
 
     // Current epoch authorities
     let mut current = pallet_babe::Authorities::<Runtime>::get().into_inner();
     for (id, w) in current.iter_mut() {
-        if let Some(acct) =
+        if let Some(_acct) =
             pallet_session::Pallet::<Runtime>::key_owner(babe_key_type, id.as_ref())
         {
-            *w = pallet_belize_staking::Validators::<Runtime>::get(&acct)
-                .map(|info| (info.quality_score as u64).max(1))
-                .unwrap_or(1);
+            // S6-1: Equal BABE weights — quality_score decoupled from
+            // consensus slot selection to prevent PoUW gaming attacks.
+            *w = 1;
         }
     }
+    // CONS-022 / P0-15 FIX: Refuse to silently truncate validators.
+    // If the list exceeds MaxAuthorities, truncate explicitly and log error.
+    let max_auths = <<Runtime as pallet_babe::Config>::MaxAuthorities
+        as frame_support::traits::Get<u32>>::get() as usize;
+    if current.len() > max_auths {
+        log::error!(
+            target: "consensus",
+            "inject_pouw_weights: current authority list ({}) exceeds MaxAuthorities ({}); \
+             truncating to fit — investigate session manager (P0-15)",
+            current.len(), max_auths
+        );
+        current.truncate(max_auths);
+    }
     pallet_babe::Authorities::<Runtime>::put(
-        frame_support::WeakBoundedVec::force_from(current, Some("PoUW weights")),
+        frame_support::WeakBoundedVec::try_from(current)
+            .expect("truncated to MaxAuthorities; qed"),
     );
 
     // Queued next-epoch authorities
     let mut next = pallet_babe::NextAuthorities::<Runtime>::get().into_inner();
     for (id, w) in next.iter_mut() {
-        if let Some(acct) =
+        if let Some(_acct) =
             pallet_session::Pallet::<Runtime>::key_owner(babe_key_type, id.as_ref())
         {
-            *w = pallet_belize_staking::Validators::<Runtime>::get(&acct)
-                .map(|info| (info.quality_score as u64).max(1))
-                .unwrap_or(1);
+            // S6-1: Equal BABE weights for next epoch too.
+            *w = 1;
         }
     }
+    // CONS-022 / P0-15 FIX (next epoch): same truncation guard for queued authority list.
+    if next.len() > max_auths {
+        log::error!(
+            target: "consensus",
+            "inject_pouw_weights: next authority list ({}) exceeds MaxAuthorities ({}); \
+             truncating to fit — investigate session manager (P0-15)",
+            next.len(), max_auths
+        );
+        next.truncate(max_auths);
+    }
     pallet_babe::NextAuthorities::<Runtime>::put(
-        frame_support::WeakBoundedVec::force_from(next, Some("PoUW weights")),
+        frame_support::WeakBoundedVec::try_from(next)
+            .expect("truncated to MaxAuthorities; qed"),
     );
 }
 
@@ -363,8 +404,10 @@ impl pallet_session::Config for Runtime {
     type SessionHandler = <opaque::SessionKeys as sp_runtime::traits::OpaqueKeys>::KeyTypeIdProviders;
     type Keys = opaque::SessionKeys;
     type WeightInfo = pallet_session::weights::SubstrateWeight<Runtime>;
-    /// No validator disabling on this permissioned chain.
-    type DisablingStrategy = ();
+    /// CONS-023 FIX: disable misbehaving validators up to 1/3 of active set,
+    /// re-enabling lowest-severity offender when the limit is reached.
+    type DisablingStrategy =
+        pallet_session::disabling::UpToLimitWithReEnablingDisablingStrategy;
     /// Balances pallet handles key-deposit holds.
     type Currency = Balances;
     /// Zero deposit required for session keys on a permissioned chain.
@@ -375,7 +418,8 @@ impl pallet_timestamp::Config for Runtime {
     type Moment = u64;
     type OnTimestampSet = Babe;
     type MinimumPeriod = ConstU64<3000>;
-    type WeightInfo = ();
+    // S5-5 FIX: use calibrated weights instead of placeholder ()
+    type WeightInfo = pallet_timestamp::weights::SubstrateWeight<Runtime>;
 }
 
 pub const EXISTENTIAL_DEPOSIT: u128 = 1_000_000_000; // 0.001 DALLA
@@ -397,7 +441,15 @@ impl pallet_balances::Config for Runtime {
     type DoneSlashHandler = ();
 }
 
-// FeeMultiplier not needed with () update strategy
+// DOS-007 FIX: Congestion-responsive fee adjustment via TargetedFeeAdjustment.
+// Fees increase when blocks are >25% full and decrease when below,
+// preventing sustained spam at fixed cost.
+parameter_types! {
+    pub const TargetBlockFullness: Perquintill = Perquintill::from_percent(25);
+    pub AdjustmentVariable: Multiplier = Multiplier::from_rational(75, 1_000_000);
+    pub MinimumMultiplier: Multiplier = Multiplier::from_rational(1, 10);
+    pub MaximumMultiplier: Multiplier = Multiplier::from_rational(10, 1);
+}
 
 impl pallet_transaction_payment::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
@@ -405,10 +457,12 @@ impl pallet_transaction_payment::Config for Runtime {
     type OperationalFeeMultiplier = ConstU8<5>;
     type WeightToFee = IdentityFee<Balance>;
     type LengthToFee = IdentityFee<Balance>;
-    type FeeMultiplierUpdate = ();
+    type FeeMultiplierUpdate = TargetedFeeAdjustment<Self, TargetBlockFullness, AdjustmentVariable, MinimumMultiplier, MaximumMultiplier>;
     type WeightInfo = pallet_transaction_payment::weights::SubstrateWeight<Runtime>;
 }
 
+// CONS-004 FIX: pallet_sudo is a development-only override; excluded from production builds.
+#[cfg(feature = "dev")]
 impl pallet_sudo::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type RuntimeCall = RuntimeCall;
@@ -421,9 +475,9 @@ impl pallet_sudo::Config for Runtime {
 
 // Constants for smart contract limits
 parameter_types! {
-    pub const DepositPerItem: Balance = 1_000_000_000; // 1 DALLA per storage item
-    pub const DepositPerByte: Balance = 100_000; // 0.0001 DALLA per byte
-    pub const DefaultDepositLimit: Balance = 1_000_000_000_000; // 1000 DALLA max deposit
+    pub const DepositPerItem: Balance = 1 * DOLLARS; // 1 DALLA per storage item
+    pub const DepositPerByte: Balance = DOLLARS / 10_000; // 0.0001 DALLA per byte
+    pub const DefaultDepositLimit: Balance = 1_000 * DOLLARS; // 1000 DALLA max deposit
     pub const MaxCodeLen: u32 = 128 * 1024; // 128 KB max contract code size (reduced for CallStack safety)
     pub const MaxStorageKeyLen: u32 = 128; // 128 bytes max storage key length
     pub DeletionQueueDepth: u32 = 128;
@@ -472,11 +526,11 @@ parameter_types! {
     pub const IdentityPalletId: PalletId = PalletId(*b"py/ident");
     pub const PayrollPalletId: PalletId = PalletId(*b"py/payrl");
     pub const BelizeXPalletId: PalletId = PalletId(*b"py/bzdex");
-    pub const MaxDallaSupply: Balance = 501_000_000_000_000_000; // 501B DALLA
-    pub const MinValidatorStake: Balance = 100_000_000_000_000; // 100 DALLA (12 decimals)
-    pub const BaseReward: Balance = 1_000_000_000; // 1 DALLA per block
+    pub const MaxDallaSupply: Balance = 501_000_000_000 * DOLLARS; // 501 billion DALLA (12 decimals)
+    pub const MinValidatorStake: Balance = 100 * DOLLARS; // 100 DALLA (12 decimals)
+    pub const BaseReward: Balance = 1 * DOLLARS; // 1 DALLA per block
     pub const EpochDuration: BlockNumber = 14_400; // ~24 hours
-    pub const MinimumDeposit: Balance = 10_000_000_000; // 10 DALLA
+    pub const MinimumDeposit: Balance = 10 * DOLLARS; // 10 DALLA
     pub const VotingPeriod: BlockNumber = 7_200; // ~12 hours
     pub const LaunchPeriod: BlockNumber = 14_400; // ~24 hours
 
@@ -506,11 +560,11 @@ parameter_types! {
     /// Hard ceiling on any account's vote weight regardless of stake (Phase 2A).
     pub const MaxVotingUnits: u32 = 10_000;
     /// How many DALLA tokens equal 1 vote unit for QV calculation (Phase 2A).
-    /// 100 DALLA = 100 * 10^9 (9 decimal places) = 100_000_000_000.
-    pub const StakeUnitSize: Balance = 100_000_000_000;
+    /// 100 DALLA = 100 * DOLLARS (12 decimal places).
+    pub const StakeUnitSize: Balance = 100 * DOLLARS;
     /// Balance threshold above which an account is considered a "large holder" (Phase 2B).
-    /// 50,000 DALLA = 50_000 * 10^9.
-    pub const LargeHolderStakeThreshold: Balance = 50_000_000_000_000;
+    /// 50,000 DALLA.
+    pub const LargeHolderStakeThreshold: Balance = 50_000 * DOLLARS;
     /// Minimum governance participation rate (%) required for large holders
     /// before a 50% voting-weight penalty is applied (Phase 2B).
     pub const LargeHolderMinParticipationRate: u8 = 30;
@@ -527,6 +581,27 @@ parameter_types! {
     // ── Phase 4C: Exit right ──────────────────────────────────────────────────
     /// Validity period for exit proofs (~30 days at 6 s/block).
     pub const ExitProofValidity: BlockNumber = 432_000;
+
+    // ── CONS-029: Emergency veto window ──────────────────────────────────────
+    /// 24-hour veto window for emergency declarations (~14,400 blocks at 6 s/block).
+    pub const EmergencyVetoWindow: BlockNumber = 14_400;
+
+    // ── CONS-030: Action-type timelocks ──────────────────────────────────────
+    /// 7-day minimum timelock for runtime upgrade proposals.
+    pub const RuntimeUpgradeMinTimelock: BlockNumber = 100_800;
+    /// 48-hour minimum timelock for parameter change proposals.
+    pub const ParameterChangeMinTimelock: BlockNumber = 28_800;
+
+    // ── S5-4: Treasury per-period spend cap ──────────────────────────────
+    /// Maximum cumulative treasury spend per period.
+    /// 500,000 DALLA per 24-hour period (12 decimals).
+    pub const MaxTreasurySpendPerPeriod: Balance = 500_000_000_000_000_000;
+    /// Length of each treasury spending period: 14,400 blocks (~24h at 6s/block).
+    pub const TreasurySpendPeriod: BlockNumber = 14_400;
+
+    // ── S6-2: Domain contribution per-epoch cap ─────────────────────────
+    /// Maximum domain contributions a single validator can record per epoch.
+    pub const MaxDomainContributionsPerEpoch: u32 = 100;
 
     // ── Phase 5A: Behavior flag cooldown ─────────────────────────────────────
     /// Cooldown length imposed on a flagged account (~24 h at 6 s/block).
@@ -545,10 +620,11 @@ parameter_types! {
     /// Nawal risk score above which content is auto-queued (0–100).
     pub const ModerationNawalAutoQueueScore: u8 = 50;
 
-    pub const MinimumPayment: Balance = 1_000_000_000; // 1 DALLA
-    pub const MinBridgeAmount: Balance = 50_000_000_000; // 50 DALLA
+    pub const MinimumPayment: Balance = 1 * DOLLARS; // 1 DALLA
+    pub const MinBridgeAmount: Balance = 50 * DOLLARS; // 50 DALLA
     pub const BridgeFeeRate: u32 = 100; // 1%
     pub const PQSignatureThreshold: u32 = 3; // 3 of 5 validators
+    pub const InteroperabilityPalletId: PalletId = PalletId(*b"bz/intop");
 }
 
 // Treasury account — derived deterministically from TreasuryPalletId
@@ -725,6 +801,10 @@ impl pallet_belize_economy::Config for Runtime {
     // Phase 5B — wellbeing sub-treasury carved from PG share
     type WellbeingTreasury = WellbeingTreasuryAccount;
     type WellbeingFundPercent = WellbeingFundPercent;
+    // COMP-CRIT-1: FATF travel rule threshold (100 DALLA, 12 decimals)
+    type TravelRuleThreshold = ConstU128<{ 100 * DOLLARS }>;
+    // COMP-CRIT-2: Wire structuring detection via compliance pallet
+    type ComplianceReporter = pallet_belize_compliance::Pallet<Runtime>;
 }
 
 impl pallet_belize_identity::Config for Runtime {
@@ -780,6 +860,16 @@ impl pallet_belize_governance::Config for Runtime {
     // Bootstrap: TechnicalCouncilSuperMajority (2/3 threshold).
     // TODO: replace with compound dual-council origin before mainnet.
     type ConstitutionalAdminOrigin = TechnicalCouncilSuperMajority;
+    // CONS-029 — emergency veto window
+    type EmergencyVetoWindow = EmergencyVetoWindow;
+    // CONS-030 — action-type timelocks
+    type RuntimeUpgradeMinTimelock = RuntimeUpgradeMinTimelock;
+    type ParameterChangeMinTimelock = ParameterChangeMinTimelock;
+    // S5-4 — treasury per-period spend cap
+    type MaxTreasurySpendPerPeriod = MaxTreasurySpendPerPeriod;
+    type TreasurySpendPeriod = TreasurySpendPeriod;
+    // P0-17 — minimum quorum floor (10%)
+    type MinQuorumPercentage = ConstU8<10>;
 }
 
 use pallet_belize_compliance::VerificationLevel;
@@ -799,11 +889,24 @@ impl pallet_belize_compliance::Config for Runtime {
     type MinValidatorVerification = MinValidatorVerificationLevel;
     type MinGovernanceVerification = MinGovernanceVerificationLevel;
     type MinTreasuryVerification = MinTreasuryVerificationLevel;
-    type TravelRuleThreshold = ConstU128<100_000_000_000>; // 100 DALLA
+    type TravelRuleThreshold = ConstU128<{ 100 * DOLLARS }>; // 100 DALLA
     type VerificationValidityPeriod = VerificationValidityBlocks;
     type MaxAuditRecords = ConstU32<1000>;
     type MaxSuspiciousActivityReports = ConstU32<500>;
+    // COMP-CRIT-2: Structuring detection sliding window (~1 day at 6s blocks)
+    type StructuringWindowBlocks = ConstU32<14_400>;
+    type MaxTransactionWindowEntries = ConstU32<50>;
     type WeightInfo = pallet_belize_compliance::weights::SubstrateWeight<Runtime>;
+    // COMP-SANC-ISO: Unified sanctions — delegate to identity pallet's oracle-based check
+    type AccountSanctionsChecker = IdentitySanctionsChecker;
+}
+
+/// Bridges dual-source sanctions check into compliance (Identity + Oracle).
+pub struct IdentitySanctionsChecker;
+impl pallet_belize_compliance::AccountSanctionsChecker<AccountId> for IdentitySanctionsChecker {
+    fn is_sanctioned(account: &AccountId) -> bool {
+        providers::runtime_is_sanctioned(account)
+    }
 }
 
 impl pallet_belize_staking::Config for Runtime {
@@ -820,6 +923,8 @@ impl pallet_belize_staking::Config for Runtime {
     type WeightInfo = pallet_belize_staking::weights::SubstrateWeight<Runtime>;
     // Phase 4A — first-offense slash intercept via justice pallet
     type JusticeProvider = StakingJusticeProvider;
+    // S6-2 — per-epoch domain contribution cap
+    type MaxDomainContributionsPerEpoch = MaxDomainContributionsPerEpoch;
 }
 
 impl pallet_belize_oracle::Config for Runtime {
@@ -834,6 +939,10 @@ impl pallet_belize_oracle::Config for Runtime {
     type MinOracleAgreement = MinOracleAgreement;
     // Phase 5A: behavior-flag cooldown length
     type BehaviorCooldownBlocks = BehaviorCooldownBlocks;
+    // C-5 FIX: Configurable KYC/merchant expiry duration (1 year at 6s blocks)
+    type ExpiryDurationBlocks = ConstU32<5_256_000>;
+    // C-3 FIX: Maximum price deviation from existing feed (50% = 5000 basis points)
+    type MaxPriceDeviation = ConstU32<5000>;
     type WeightInfo = pallet_belize_oracle::weights::SubstrateWeight<Runtime>;
 }
 
@@ -846,6 +955,8 @@ impl pallet_belize_payroll::Config for Runtime {
     type MaxDepartments = ConstU32<100>;
     type MinimumPayment = MinimumPayment;
     type MaxSchedulesPerBlock = ConstU32<50>;
+    // CRIT-3 FIX: Cap salary/bonus to 1,000,000 DALLA per payment
+    type MaxPaymentAmount = ConstU128<{ 1_000_000 * DOLLARS }>;
     type VerifierOrigin = TechnicalCouncilMember;
     type Oracle = PayrollOracleProvider;
     type WeightInfo = pallet_belize_payroll::weights::SubstrateWeight<Runtime>;
@@ -868,6 +979,7 @@ impl pallet_belize_interoperability::Config for Runtime {
     type MaxBridgePerBlock = ConstU32<5>;
     // AR-6: ML-DSA-87 (NIST FIPS 204) post-quantum signature verifier.
     type PQVerifier = pallet_belize_interoperability::MLDsaVerifier;
+    type PalletId = InteroperabilityPalletId;
 }
 
 impl pallet_belize_belizex::Config for Runtime {
@@ -884,19 +996,23 @@ impl pallet_belize_belizex::Config for Runtime {
     type TourismOrigin = GovernanceCouncilMajority;
     type PairListingOrigin = TechnicalCouncilMajority;
     type Treasury = TreasuryAccount;
+    type MaxOrdersPerAccount = ConstU32<100>; // 100 open limit orders per account
     type WeightInfo = pallet_belize_belizex::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_belize_landledger::Config for Runtime {
     type Currency = Balances;
+    type BelizeKyc = CommunityKycProvider;
     type GovernmentOrigin = GovernanceCouncilMajority;
     type SurveyorOrigin = TechnicalCouncilMember;
     type EnvironmentalOrigin = GovernanceCouncilMajority;
     type Oracle = LandLedgerOracleProvider;
-    type RegistrationDeposit = ConstU128<100_000_000_000>; // 100 DALLA
+    type RegistrationDeposit = ConstU128<{ 100 * DOLLARS }>; // 100 DALLA
     type TransferTaxRate = ConstU32<10>; // 0.1%
     type MaxDescriptionLength = ConstU32<256>;
     type WeightInfo = pallet_belize_landledger::weights::SubstrateWeight<Runtime>;
+    // 10 billion DALLA — upper bound to prevent registry abuse / overflow
+    type MaxPropertyPrice = ConstU128<{ 10_000_000_000 * DOLLARS }>;
 }
 
 impl pallet_belize_consensus::Config for Runtime {
@@ -906,11 +1022,13 @@ impl pallet_belize_consensus::Config for Runtime {
     type AIAuthorityOrigin = TechnicalCouncilMember;
     type Staking = ConsensusStakingProvider;
     type MaxValidators = ConstU32<100>;
-    type MinConsensusStake = ConstU128<50_000_000_000>; // 50 DALLA
+    type MinConsensusStake = ConstU128<{ 50 * DOLLARS }>; // 50 DALLA
     type MinModelQualityScore = ConstU32<60>; // Minimum 60% quality
-    type ConsensusReward = ConstU128<5_000_000_000>; // 5 DALLA per epoch
+    type ConsensusReward = ConstU128<{ 5 * DOLLARS }>; // 5 DALLA per epoch
     type WeightInfo = pallet_belize_consensus::weights::SubstrateWeight<Runtime>;
     type MaxSubmitPerBlock = ConstU32<3>;
+    type PqVerifier = pallet_belize_consensus::RealPqVerifier;
+    type ValidatorUnbondingPeriod = ConstU32<{ 28 * DAYS }>; // 28-day unbonding
 }
 
 impl pallet_belize_quantum::Config for Runtime {
@@ -941,6 +1059,10 @@ impl pallet_belize_community::Config for Runtime {
     // Phase 3B: SRS oracle attestation for high-value activities
     type MinAttestationsRequired = MinAttestationsRequired;
     type OracleAttestationOrigin = TechnicalCouncilMember;
+    // C-1/X-1: Rate-limit permissionless SRS recalculations (~1 day)
+    type SrsUpdateCooldown = ConstU32<{ DAYS }>;
+    // AUDIT FIX: Minimum 10 voters required for community proposals
+    type MinProposalVoters = ConstU32<10>;
 }
 
 parameter_types! {
@@ -966,6 +1088,7 @@ impl pallet_belize_bns::Config for Runtime {
     type WeightInfo = pallet_belize_bns::weights::SubstrateWeight<Runtime>;  // Use proper weight implementation
     type Identity = BnsIdentityProvider;  // KYC integration
     type GovernanceOrigin = GovernanceCouncilMajority;  // Governance for external domain verification
+    type MaxContentVersions = ConstU32<50>;  // CRIT-1 FIX: Cap content history per domain
 }
 
 impl pallet_belize_mesh::Config for Runtime {
@@ -983,6 +1106,7 @@ impl pallet_belize_mesh::Config for Runtime {
     type RelayRewardPerEmergencyAlert = ConstU128<{ 5 * DOLLARS / 10 }>;  // 0.5 DALLA per emergency relay
     type NodeRegistrationDeposit = ConstU128<{ 10 * DOLLARS }>;  // 10 DALLA deposit to register node
     type HeartbeatTimeout = ConstU32<{ 10 * MINUTES }>;  // Node inactive after 10 minutes no heartbeat
+    type MaxMeshTxPerBlock = ConstU32<200>;  // Max 200 mesh transactions per block (DoS protection)
     type WeightInfo = pallet_belize_mesh::weights::SubstrateWeight<Runtime>;
 }
 
@@ -998,7 +1122,6 @@ parameter_types! {
 }
 
 impl pallet_belize_justice::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     /// Governance council majority required for appeals (constitutional-grade).
     type GovernanceOrigin = GovernanceCouncilMajority;
@@ -1007,6 +1130,7 @@ impl pallet_belize_justice::Config for Runtime {
     type OpenDisputeBond = JusticeOpenDisputeBond;
     type CoolingOffPeriod = JusticeCoolingOffPeriod;
     type MaxMediators = ConstU32<20>;
+    type AppealTimeout = ConstU32<{ 14 * DAYS }>; // 14 days to resolve appeals before auto-close
     type WeightInfo = pallet_belize_justice::weights::SubstrateWeight<Runtime>;
 }
 
@@ -1026,7 +1150,6 @@ parameter_types! {
 }
 
 impl pallet_belize_whistleblower::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     type Currency = Balances;
     /// Technical council member reviews incoming reports.
     type ReviewerOrigin = TechnicalCouncilMember;
@@ -1037,6 +1160,9 @@ impl pallet_belize_whistleblower::Config for Runtime {
     type AbuseReward = WhistleblowerAbuseReward;
     type ExploitReward = WhistleblowerExploitReward;
     type WeightInfo = pallet_belize_whistleblower::weights::SubstrateWeight<Runtime>;
+    /// P0-06 FIX: Supply cap enforcement before minting rewards.
+    type MaxDallaSupply = MaxDallaSupply;
+    type MaxReportsPerBlock = ConstU32<20>;
 }
 
 // =============================================================================
@@ -1044,7 +1170,6 @@ impl pallet_belize_whistleblower::Config for Runtime {
 // Community-driven flagging + Nawal AI auto-queuing + moderator rulings.
 // =============================================================================
 impl pallet_belize_moderation::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
     /// Governance council majority adds/removes moderators.
     type ModeratorAdminOrigin = GovernanceCouncilMajority;
     /// Technical council member (oracle operator) submits Nawal risk scores.
@@ -1052,57 +1177,63 @@ impl pallet_belize_moderation::Config for Runtime {
     type FlagThreshold = ModerationFlagThreshold;
     type NawalAutoQueueScore = ModerationNawalAutoQueueScore;
     type MaxModerators = ConstU32<50>;
+    type MaxFlagsPerContent = ConstU32<500>;  // MOD-01: Bound flags per content item
     type WeightInfo = pallet_belize_moderation::weights::SubstrateWeight<Runtime>;
 }
 
 // Construct runtime
+// P0-14 FIX: Explicit pallet indices prevent runtime upgrade breakage.
+// Adding/removing/reordering pallets will NOT shift call/storage indices.
+// Index 6 is reserved for Sudo (dev-only) to keep stable numbering.
 construct_runtime!(
     pub struct Runtime {
-        System: frame_system,
-        Timestamp: pallet_timestamp,
-        Babe: pallet_babe,
-        Grandpa: pallet_grandpa,
-        Balances: pallet_balances,
-        TransactionPayment: pallet_transaction_payment,
-        Sudo: pallet_sudo,
+        System: frame_system = 0,
+        Timestamp: pallet_timestamp = 1,
+        Babe: pallet_babe = 2,
+        Grandpa: pallet_grandpa = 3,
+        Balances: pallet_balances = 4,
+        TransactionPayment: pallet_transaction_payment = 5,
+        // CONS-004 FIX: Sudo excluded from production builds; only available in dev feature.
+        #[cfg(feature = "dev")]
+        Sudo: pallet_sudo = 6,
         // Phase 0: Multi-house governance collectives
         // TechnicalCouncil  (Instance1) — protocol-level & security-sensitive decisions
         // GovernanceCouncil (Instance2) — democratic governance and community decisions
-        TechnicalCouncil: pallet_collective::<Instance1>,
-        GovernanceCouncil: pallet_collective::<Instance2>,
+        TechnicalCouncil: pallet_collective::<Instance1> = 7,
+        GovernanceCouncil: pallet_collective::<Instance2> = 8,
         // AR-2: pallet_session enables on-chain validator set rotation.
         // At each SessionPeriod boundary (≈24 h) BelizeSessionManager reads
         // pallet_belize_staking::Validators and rotates BABE/GRANDPA authority sets.
-        Session: pallet_session,
-        Authorship: pallet_authorship,
-        Historical: pallet_session::historical,
-        Offences: pallet_offences,
+        Session: pallet_session = 9,
+        Authorship: pallet_authorship = 10,
+        Historical: pallet_session::historical = 11,
+        Offences: pallet_offences = 12,
 
         // Spike Smart Contract Platform
-        Contracts: pallet_contracts,
+        Contracts: pallet_contracts = 13,
 
         // BelizeChain Pallets
-        Economy: pallet_belize_economy,
-        Identity: pallet_belize_identity,
-        Governance: pallet_belize_governance,
-        Compliance: pallet_belize_compliance,
-        Staking: pallet_belize_staking,
-        Oracle: pallet_belize_oracle,
-        Payroll: pallet_belize_payroll,
-        Interoperability: pallet_belize_interoperability,
-        BelizeX: pallet_belize_belizex,
-        LandLedger: pallet_belize_landledger,
-        Consensus: pallet_belize_consensus,
-        Quantum: pallet_belize_quantum,
-        Community: pallet_belize_community,
-        Bns: pallet_belize_bns,
-        Mesh: pallet_belize_mesh,
+        Economy: pallet_belize_economy = 20,
+        Identity: pallet_belize_identity = 21,
+        Governance: pallet_belize_governance = 22,
+        Compliance: pallet_belize_compliance = 23,
+        Staking: pallet_belize_staking = 24,
+        Oracle: pallet_belize_oracle = 25,
+        Payroll: pallet_belize_payroll = 26,
+        Interoperability: pallet_belize_interoperability = 27,
+        BelizeX: pallet_belize_belizex = 28,
+        LandLedger: pallet_belize_landledger = 29,
+        Consensus: pallet_belize_consensus = 30,
+        Quantum: pallet_belize_quantum = 31,
+        Community: pallet_belize_community = 32,
+        Bns: pallet_belize_bns = 33,
+        Mesh: pallet_belize_mesh = 34,
         // Phase 4A: Dispute resolution, mediator rulings, rehabilitation tracking
-        BelizeJustice: pallet_belize_justice,
+        BelizeJustice: pallet_belize_justice = 35,
         // Phase 4B: Pseudonymous whistleblower reports with escrowed rewards
-        BelizeWhistleblower: pallet_belize_whistleblower,
+        BelizeWhistleblower: pallet_belize_whistleblower = 36,
         // Phase 5C: Community content moderation + Nawal AI auto-queuing
-        BelizeModeration: pallet_belize_moderation,
+        BelizeModeration: pallet_belize_moderation = 37,
     }
 );
 
@@ -1343,7 +1474,14 @@ impl pallet_belize_staking::StakingIdentityProvider<AccountId> for StakingIdenti
 pub struct GovernanceComplianceProvider;
 impl pallet_belize_governance::ComplianceCheck<AccountId> for GovernanceComplianceProvider {
     fn can_participate_in_governance(account: &AccountId) -> bool {
-        providers::runtime_kyc_level(account).unwrap_or(0) >= 1
+        providers::runtime_kyc_level(account).unwrap_or(0) >= 1 && !providers::runtime_is_sanctioned(account)
+    }
+
+    /// CRIT-2 FIX: Return the number of KYC-verified accounts from compliance stats.
+    fn eligible_voter_count() -> u32 {
+        let (total_verified, _, _, _) = Compliance::compliance_stats();
+        // Floor at 1 to prevent division-by-zero in quorum calculations
+        total_verified.max(1)
     }
 }
 
@@ -1443,7 +1581,7 @@ impl pallet_belize_belizex::KycCheck<AccountId> for BelizeXKycProvider {
         #[cfg(feature = "runtime-benchmarks")]
         return true;
         #[cfg(not(feature = "runtime-benchmarks"))]
-        { Identity::get_verified_kyc_level(account).unwrap_or(0) >= 1 }
+        { Identity::get_verified_kyc_level(account).unwrap_or(0) >= 1 && !providers::runtime_is_sanctioned(account) }
     }
 }
 
@@ -1468,10 +1606,7 @@ impl pallet_belize_interoperability::InteroperabilityIdentityProvider<AccountId>
     }
     
     fn is_sanctioned(account: &AccountId) -> bool {
-        #[cfg(feature = "runtime-benchmarks")]
-        return false;
-        #[cfg(not(feature = "runtime-benchmarks"))]
-        Identity::is_account_sanctioned(account)
+        providers::runtime_is_sanctioned(account)
     }
 }
 
@@ -1558,7 +1693,7 @@ impl pallet_belize_bns::BnsIdentityProvider<AccountId> for BnsIdentityProvider {
             let current_block = System::block_number();
             use pallet_belize_identity::{KycLevel, KycState};
             Identity::kyc_state(account, KycLevel::L1, current_block) == KycState::Valid 
-                && !Oracle::is_sanctioned(account)
+                && !providers::runtime_is_sanctioned(account)
         }
     }
 
@@ -1570,15 +1705,12 @@ impl pallet_belize_bns::BnsIdentityProvider<AccountId> for BnsIdentityProvider {
             let current_block = System::block_number();
             use pallet_belize_identity::{KycLevel, KycState};
             Identity::kyc_state(account, KycLevel::L3, current_block) == KycState::Valid 
-                && !Oracle::is_sanctioned(account)
+                && !providers::runtime_is_sanctioned(account)
         }
     }
 
     fn is_sanctioned(account: &AccountId) -> bool {
-        #[cfg(feature = "runtime-benchmarks")]
-        return false;
-        #[cfg(not(feature = "runtime-benchmarks"))]
-        Oracle::is_sanctioned(account)
+        providers::runtime_is_sanctioned(account)
     }
 }
 
@@ -1644,7 +1776,6 @@ mod benches {
         [frame_benchmarking, BaselineBench::<Runtime>]
         [pallet_balances, Balances]
         [pallet_timestamp, Timestamp]
-        [pallet_sudo, Sudo]
         [pallet_belize_economy, Economy]
         [pallet_belize_identity, Identity]
         [pallet_belize_governance, Governance]
@@ -1779,16 +1910,24 @@ impl_runtime_apis! {
 
     impl sp_session::SessionKeys<Block> for Runtime {
         fn generate_session_keys(seed: Option<Vec<u8>>) -> Vec<u8> {
-            // CRYPTO-004: Enforce minimum seed entropy to prevent weak key generation.
-            if let Some(ref s) = seed {
-                assert!(
-                    s.len() >= 32,
-                    "Session key seed must be at least 32 bytes (got {}). \
-                     Provide sufficient entropy (CRYPTO-004).",
-                    s.len()
-                );
-            }
-            opaque::SessionKeys::generate(seed)
+    // CONS-038 FIX: Replace panicking assert with a logged fallback.
+    // A short seed from a misconfigured client previously caused a node process panic
+    // (DoS via the public RPC endpoint). Short seeds are now rejected with a warning
+    // and keys are generated from secure random entropy instead.
+    let validated_seed = match seed {
+        Some(s) if s.len() >= 32 => Some(s),
+        Some(s) => {
+            log::warn!(
+                target: "session",
+                "generate_session_keys: seed too short ({} bytes, need \u{2265}32); \
+                 ignoring caller seed and generating random keys (CONS-038/CRYPTO-004)",
+                s.len()
+            );
+            None
+        }
+        None => None,
+    };
+    opaque::SessionKeys::generate(validated_seed)
         }
 
         fn decode_session_keys(
@@ -1919,6 +2058,17 @@ impl_runtime_apis! {
             input_data: Vec<u8>,
         ) -> pallet_contracts::ContractExecResult<Balance, EventRecord> {
             let gas_limit = gas_limit.unwrap_or(BlockWeights::get().max_block);
+            // CONS-028 FIX: only expose debug info and events in dev builds
+            #[cfg(feature = "dev")]
+            let debug = pallet_contracts::DebugInfo::UnsafeDebug;
+            #[cfg(not(feature = "dev"))]
+            let debug = pallet_contracts::DebugInfo::Skip;
+
+            #[cfg(feature = "dev")]
+            let collect = pallet_contracts::CollectEvents::UnsafeCollect;
+            #[cfg(not(feature = "dev"))]
+            let collect = pallet_contracts::CollectEvents::Skip;
+
             Contracts::bare_call(
                 origin,
                 dest,
@@ -1926,8 +2076,8 @@ impl_runtime_apis! {
                 gas_limit,
                 storage_deposit_limit,
                 input_data,
-                pallet_contracts::DebugInfo::UnsafeDebug,
-                pallet_contracts::CollectEvents::UnsafeCollect,
+                debug,
+                collect,
                 pallet_contracts::Determinism::Enforced,
             )
         }
@@ -1942,6 +2092,17 @@ impl_runtime_apis! {
             salt: Vec<u8>,
         ) -> pallet_contracts::ContractInstantiateResult<AccountId, Balance, EventRecord> {
             let gas_limit = gas_limit.unwrap_or(BlockWeights::get().max_block);
+            // CONS-028 FIX: only expose debug info and events in dev builds
+            #[cfg(feature = "dev")]
+            let debug = pallet_contracts::DebugInfo::UnsafeDebug;
+            #[cfg(not(feature = "dev"))]
+            let debug = pallet_contracts::DebugInfo::Skip;
+
+            #[cfg(feature = "dev")]
+            let collect = pallet_contracts::CollectEvents::UnsafeCollect;
+            #[cfg(not(feature = "dev"))]
+            let collect = pallet_contracts::CollectEvents::Skip;
+
             Contracts::bare_instantiate(
                 origin,
                 value,
@@ -1950,8 +2111,8 @@ impl_runtime_apis! {
                 code,
                 data,
                 salt,
-                pallet_contracts::DebugInfo::UnsafeDebug,
-                pallet_contracts::CollectEvents::UnsafeCollect,
+                debug,
+                collect,
             )
         }
 

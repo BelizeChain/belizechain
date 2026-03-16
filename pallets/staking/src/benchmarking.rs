@@ -111,12 +111,15 @@ mod benchmarks {
         let encrypted_delta: BoundedVec<u8, ConstU32<1024>> = vec![0u8; 64]
             .try_into()
             .expect("delta fits");
-        // Must NOT be all-same-byte (trivial commitment rejected)
-        let mut commitment_bytes = [0u8; 32];
-        for i in 0..32u8 {
-            commitment_bytes[i as usize] = i;
-        }
-        let computation_commitment = commitment_bytes;
+        // C-3 FIX: Compute correct commitment = H(delta || who || block_number)
+        // so the benchmark exercises the real validation path.
+        let current_block: u32 = frame_system::Pallet::<T>::block_number().saturated_into();
+        use sp_runtime::traits::Hash;
+        let expected = T::Hashing::hash_of(
+            &(encrypted_delta.as_slice(), &who, current_block),
+        );
+        let mut computation_commitment = [0u8; 32];
+        computation_commitment.copy_from_slice(expected.as_ref());
         let computation_log = [3u8; 32];
 
         #[extrinsic_call]
