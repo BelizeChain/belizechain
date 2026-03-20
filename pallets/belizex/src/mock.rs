@@ -16,6 +16,7 @@ type Block = frame_system::mocking::MockBlock<Test>;
 pub struct MockKyc;
 impl KycCheck<AccountId> for MockKyc {
     fn is_kyc_ok(_who: &AccountId) -> bool { true }
+    fn is_sanctioned(_who: &AccountId) -> bool { false }
 }
 
 // A dummy KYC that rejects to test gating
@@ -23,6 +24,7 @@ impl KycCheck<AccountId> for MockKyc {
 pub struct DenyKyc;
 impl KycCheck<AccountId> for DenyKyc {
     fn is_kyc_ok(_who: &AccountId) -> bool { false }
+    fn is_sanctioned(_who: &AccountId) -> bool { true }
 }
 
 parameter_types! {
