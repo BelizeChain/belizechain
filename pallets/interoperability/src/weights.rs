@@ -56,4 +56,12 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
             .saturating_add(T::DbWeight::get().reads(0))
             .saturating_add(T::DbWeight::get().writes(1))
     }
+
+    /// P0-1: Storage: BridgeTransactions (r:1 w:0), BurnConfirmations (r:1 w:1),
+    ///               BurnConfirmationCount (r:1 w:1)
+    fn confirm_burn_proof() -> Weight {
+        Weight::from_parts(25_000_000, 1536)
+            .saturating_add(T::DbWeight::get().reads(3))
+            .saturating_add(T::DbWeight::get().writes(2))
+    }
 }

@@ -52,6 +52,15 @@ pub trait InteroperabilityIdentityProvider<AccountId> {
     fn is_sanctioned(account: &AccountId) -> bool;
 }
 
+/// P0-1: Trait for checking oracle operator authorization.
+///
+/// Used by `confirm_burn_proof` to verify the caller is a registered
+/// oracle operator before accepting their burn attestation.
+pub trait OracleOperatorCheck<AccountId> {
+    /// Return `true` if `who` is a registered oracle operator.
+    fn is_oracle_operator(who: &AccountId) -> bool;
+}
+
 /// AR-6: Pluggable post-quantum signature verifier.
 ///
 /// Implement this with a Falcon-1024 or Dilithium5 host-function extension for a
@@ -228,6 +237,16 @@ pub mod pallet {
         /// CONS-027: Escrow model replaces balance locks for cross-user unlocks.
         #[pallet::constant]
         type PalletId: Get<PalletId>;
+
+        // ── P0-1: Oracle-attested burn verification ───────────────────────────
+        /// Oracle operator authorization check.
+        /// Wired to the Oracle pallet's `OracleOperators` storage in production.
+        type OracleCheck: OracleOperatorCheck<Self::AccountId>;
+
+        /// Minimum number of independent oracle confirmations required before
+        /// validators may sign a `BurnAndUnlock` bridge transaction.
+        #[pallet::constant]
+        type MinOracleConfirmations: Get<u32>;
     }
 
     /// Supported bridge chains.
@@ -546,17 +565,43 @@ pub mod pallet {
 
     // AR-15: Per-account bridge initiation rate counter.
     #[pallet::storage]
-    /// Rate limit: number of initiate_bridge calls by account in the current block.
+    /// Rate limit: (block_number, count) of initiate_bridge calls by account.
+    /// P0-5: Stores block number per entry — no clear(u32::MAX) needed.
     pub type BridgeCallsThisBlock<T: Config> = StorageMap<
         _,
         Blake2_128Concat,
         T::AccountId,
-        u32,
+        (BlockNumberFor<T>, u32),
         ValueQuery,
     >;
 
     #[pallet::storage]
     pub type LastBridgeRateLimitBlock<T: Config> = StorageValue<_, BlockNumberFor<T>, ValueQuery>;
+
+    // ── P0-1: Oracle burn-proof confirmation tracking ─────────────────────
+    #[pallet::storage]
+    /// Per-transaction burn confirmations: (tx_id, oracle_account) → confirmed.
+    /// Prevents duplicate attestations from the same oracle operator.
+    pub type BurnConfirmations<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        u32,                // tx_id
+        Blake2_128Concat,
+        T::AccountId,       // oracle operator
+        bool,
+        ValueQuery,
+    >;
+
+    #[pallet::storage]
+    #[pallet::getter(fn burn_confirmation_count)]
+    /// Number of distinct oracle confirmations received per BurnAndUnlock transaction.
+    pub type BurnConfirmationCount<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u32, // tx_id
+        u32,
+        ValueQuery,
+    >;
 
     /// Chain-specific configuration
     #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
@@ -660,6 +705,12 @@ pub mod pallet {
             tx_id: u32,
             submitted_by: T::AccountId,
         },
+        /// P0-1: Oracle operator confirmed burn proof for a BurnAndUnlock transaction
+        BurnProofConfirmed {
+            tx_id: u32,
+            oracle: T::AccountId,
+            confirmations: u32,
+        },
     }
 
     #[pallet::error]
@@ -710,6 +761,14 @@ pub mod pallet {
         IdOverflow,
         /// AR-15: Account has exceeded the maximum bridge initiations per block.
         RateLimitExceeded,
+        /// P0-1: Caller is not a registered oracle operator
+        NotOracleOperator,
+        /// P0-1: Oracle operator has already confirmed this burn
+        AlreadyConfirmedBurn,
+        /// P0-1: Transaction is not a BurnAndUnlock operation
+        NotBurnTransaction,
+        /// P0-1: Insufficient oracle confirmations for burn proof
+        BurnNotVerifiedByOracle,
     }
 
     // ===== HOOKS (§4.4b Challenge Period Finalization) =====
@@ -720,7 +779,17 @@ pub mod pallet {
         // Challenge-period finalization is safety-preserving (always runs eventually)
         // but not consensus-mandatory at block start, so it should yield to user transactions.
         fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
-            Weight::zero()
+            // P0-6: Ensure escrow account stays alive for KeepAlive transfers.
+            // If escrow balance is below existential deposit, endow it to prevent
+            // KeepAlive rejections on the last unlock.
+            let escrow = Self::escrow_account();
+            let ed = T::Currency::minimum_balance();
+            let balance = T::Currency::free_balance(&escrow);
+            if balance < ed {
+                let deficit = ed.saturating_sub(balance);
+                let _ = T::Currency::deposit_creating(&escrow, deficit);
+            }
+            Weight::from_parts(5_000_000, 512)
         }
 
         /// Finalize expired bridge challenge windows using leftover block weight.
@@ -942,6 +1011,17 @@ pub mod pallet {
                 Error::<T>::AlreadyExecuted
             );
 
+            // P0-1: For BurnAndUnlock operations, require minimum oracle confirmations
+            // before accepting validator signatures. This closes the CONS-003 gap where
+            // colluding validators could fabricate burns without independent verification.
+            if matches!(bridge_tx.operation, BridgeOperation::BurnAndUnlock { .. }) {
+                let confirmations = BurnConfirmationCount::<T>::get(tx_id);
+                ensure!(
+                    confirmations >= T::MinOracleConfirmations::get(),
+                    Error::<T>::BurnNotVerifiedByOracle
+                );
+            }
+
             // Validate post-quantum signature via the configured verifier (AR-6).
             // CONS-001 FIX: canonical message binds tx_id + all value-critical fields,
             // preventing cross-transaction replay (same tx_id, different amount/recipient/chain).
@@ -1102,13 +1182,14 @@ pub mod pallet {
 
             // CONS-027: Transfer from escrow to recipient. This supports cross-user
             // unlocks — the recipient need not be the original locker.
+            // P0-6: KeepAlive prevents escrow account reaping (losing other pending bridge funds).
             let _amount_balance: <T::Currency as Currency<T::AccountId>>::Balance = amount.saturated_into();
             let escrow = Self::escrow_account();
             T::Currency::transfer(
                 &escrow,
                 &recipient,
                 _amount_balance,
-                frame_support::traits::ExistenceRequirement::AllowDeath,
+                frame_support::traits::ExistenceRequirement::KeepAlive,
             )?;
             // Update accounting tracker.
             UserBridgeLocks::<T>::mutate(&recipient, |locked| {
@@ -1534,6 +1615,63 @@ pub mod pallet {
 
             Ok(())
         }
+
+        /// P0-1: Oracle operator attests that a burn event was verified on the source chain.
+        ///
+        /// Each registered oracle operator independently confirms they observed the burn
+        /// transaction on the external chain. Validators may only sign a `BurnAndUnlock`
+        /// transaction via `provide_pq_signature` once `MinOracleConfirmations` have been
+        /// collected, closing the CONS-003 gap (validator-only attestation without proof).
+        #[pallet::call_index(11)]
+        #[pallet::weight(T::WeightInfo::confirm_burn_proof())]
+        pub fn confirm_burn_proof(
+            origin: OriginFor<T>,
+            tx_id: u32,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // Only registered oracle operators may confirm burns
+            ensure!(T::OracleCheck::is_oracle_operator(&who), Error::<T>::NotOracleOperator);
+
+            // Sanctions check
+            ensure!(!T::Identity::is_sanctioned(&who), Error::<T>::AccountSanctioned);
+
+            let bridge_tx = Self::bridge_transactions(tx_id)
+                .ok_or(Error::<T>::TransactionNotFound)?;
+
+            // Only BurnAndUnlock transactions require burn proof
+            ensure!(
+                matches!(bridge_tx.operation, BridgeOperation::BurnAndUnlock { .. }),
+                Error::<T>::NotBurnTransaction
+            );
+
+            // Transaction must be in a signable state
+            ensure!(
+                matches!(bridge_tx.status, BridgeStatus::Initiated | BridgeStatus::AwaitingSignatures),
+                Error::<T>::AlreadyExecuted
+            );
+
+            // Prevent duplicate confirmation from same oracle
+            ensure!(
+                !BurnConfirmations::<T>::get(tx_id, &who),
+                Error::<T>::AlreadyConfirmedBurn
+            );
+
+            // Record confirmation
+            BurnConfirmations::<T>::insert(tx_id, &who, true);
+            let new_count = BurnConfirmationCount::<T>::mutate(tx_id, |c| {
+                *c = c.saturating_add(1);
+                *c
+            });
+
+            Self::deposit_event(Event::BurnProofConfirmed {
+                tx_id,
+                oracle: who,
+                confirmations: new_count,
+            });
+
+            Ok(())
+        }
     }
 
     impl<T: Config> Pallet<T> {
@@ -1542,23 +1680,18 @@ pub mod pallet {
             T::PalletId::get().into_account_truncating()
         }
 
-        // AR-15: Check and record rate limit for initiate_bridge.
-        //
-        // Clears the per-account counter when the block number changes, then
-        // increments and validates against MaxBridgePerBlock.
+        // P0-5: Block-number-tagged rate limit — no unbounded clear() needed.
+        // Stale entries from old blocks are naturally treated as count=0.
         fn check_bridge_rate_limit(who: &T::AccountId) -> frame_support::dispatch::DispatchResult {
             let current_block = frame_system::Pallet::<T>::block_number();
-            let last_block = LastBridgeRateLimitBlock::<T>::get();
-            if current_block != last_block {
-                // CONS-025: Clear ALL per-account counters on new block, not just the caller's.
-                // Prevents stale entries from accumulating across blocks.
-                let _ = BridgeCallsThisBlock::<T>::clear(u32::MAX, None);
-                // Only update the global block tracker on first use within a new block.
-                LastBridgeRateLimitBlock::<T>::put(current_block);
-            }
-            let count = BridgeCallsThisBlock::<T>::get(who).saturating_add(1);
+            let (stored_block, stored_count) = BridgeCallsThisBlock::<T>::get(who);
+            let count = if stored_block == current_block {
+                stored_count.saturating_add(1)
+            } else {
+                1u32
+            };
             ensure!(count <= T::MaxBridgePerBlock::get(), Error::<T>::RateLimitExceeded);
-            BridgeCallsThisBlock::<T>::insert(who, count);
+            BridgeCallsThisBlock::<T>::insert(who, (current_block, count));
             Ok(())
         }
 
@@ -1716,6 +1849,7 @@ pub trait WeightInfo {
     fn process_unlock() -> Weight;
     fn send_message() -> Weight;
     fn update_config() -> Weight;
+    fn confirm_burn_proof() -> Weight;
 }
 
 impl WeightInfo for () {
@@ -1742,6 +1876,10 @@ impl WeightInfo for () {
     fn update_config() -> Weight {
         Weight::from_parts(8_000_000, 512)
             .saturating_add(Weight::from_parts(0, 1000))
+    }
+    fn confirm_burn_proof() -> Weight {
+        Weight::from_parts(15_000_000, 512)
+            .saturating_add(Weight::from_parts(0, 2000))
     }
 }
 

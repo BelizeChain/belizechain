@@ -834,6 +834,8 @@ pub mod pallet {
         InsufficientReputation,
         /// Executor or submitter cannot verify their own job
         ExecutorCannotVerify,
+        /// AUDIT FIX (C-Q1): Job has no executor assigned — cannot pay
+        ExecutorNotAssigned,
     }
 
     #[pallet::call]
@@ -1168,7 +1170,11 @@ pub mod pallet {
                 // If verification failed, refund the submitter
                 if !verification_passed {
                     let _ = T::Currency::unreserve(&job.submitter, job.dalla_cost);
-                } else if let Some(executor) = &job.executor {
+                } else {
+                    // AUDIT FIX (C-Q1): Reject if no executor assigned — prevents
+                    // funds from being locked indefinitely with no payee.
+                    let executor = job.executor.as_ref()
+                        .ok_or(Error::<T>::ExecutorNotAssigned)?;
                     // If verified, transfer payment to executor
                     let _ = T::Currency::repatriate_reserved(
                         &job.submitter,
@@ -1859,7 +1865,8 @@ pub mod pallet {
 
                         // Handle payment based on verification result
                         if request.approvals > request.rejections {
-                            // Approved: Pay executor
+                            // AUDIT FIX (C-Q1): Guard against None executor —
+                            // refund submitter if no executor assigned.
                             if let Some(executor) = &job.executor {
                                 let _ = T::Currency::repatriate_reserved(
                                     &job.submitter,
@@ -1867,6 +1874,9 @@ pub mod pallet {
                                     job.dalla_cost,
                                     frame_support::traits::BalanceStatus::Free,
                                 );
+                            } else {
+                                // No executor: refund submitter instead of swallowing funds
+                                let _ = T::Currency::unreserve(&job.submitter, job.dalla_cost);
                             }
                         } else {
                             // Rejected: Refund submitter

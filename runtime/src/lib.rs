@@ -980,6 +980,9 @@ impl pallet_belize_interoperability::Config for Runtime {
     // AR-6: ML-DSA-87 (NIST FIPS 204) post-quantum signature verifier.
     type PQVerifier = pallet_belize_interoperability::MLDsaVerifier;
     type PalletId = InteroperabilityPalletId;
+    // P0-1: Oracle-attested burn proof verification
+    type OracleCheck = InteropOracleCheck;
+    type MinOracleConfirmations = ConstU32<2>;
 }
 
 impl pallet_belize_belizex::Config for Runtime {
@@ -1387,6 +1390,16 @@ impl pallet_belize_identity::BelizeKyc<AccountId, BlockNumber> for CommunityKycP
         #[cfg(not(feature = "runtime-benchmarks"))]
         return <Identity as pallet_belize_identity::BelizeKyc<AccountId, BlockNumber>>::is_kyc_verified(who, level, now);
     }
+    fn is_kyc_verified_or_grace(
+        who: &AccountId,
+        level: pallet_belize_identity::KycLevel,
+        now: BlockNumber,
+    ) -> bool {
+        #[cfg(feature = "runtime-benchmarks")]
+        return true;
+        #[cfg(not(feature = "runtime-benchmarks"))]
+        return <Identity as pallet_belize_identity::BelizeKyc<AccountId, BlockNumber>>::is_kyc_verified_or_grace(who, level, now);
+    }
 }
 
 /// Oracle provider for Economy pallet - Merchant verification ONLY
@@ -1583,6 +1596,13 @@ impl pallet_belize_belizex::KycCheck<AccountId> for BelizeXKycProvider {
         #[cfg(not(feature = "runtime-benchmarks"))]
         { Identity::get_verified_kyc_level(account).unwrap_or(0) >= 1 && !providers::runtime_is_sanctioned(account) }
     }
+
+    fn is_sanctioned(account: &AccountId) -> bool {
+        #[cfg(feature = "runtime-benchmarks")]
+        return false;
+        #[cfg(not(feature = "runtime-benchmarks"))]
+        providers::runtime_is_sanctioned(account)
+    }
 }
 
 /// Identity provider for Interoperability bridges (Phase 3)
@@ -1607,6 +1627,19 @@ impl pallet_belize_interoperability::InteroperabilityIdentityProvider<AccountId>
     
     fn is_sanctioned(account: &AccountId) -> bool {
         providers::runtime_is_sanctioned(account)
+    }
+}
+
+/// P0-1: Oracle operator check for bridge burn proof verification.
+/// Delegates to the Oracle pallet's `OracleOperators` storage.
+pub struct InteropOracleCheck;
+
+impl pallet_belize_interoperability::OracleOperatorCheck<AccountId> for InteropOracleCheck {
+    fn is_oracle_operator(who: &AccountId) -> bool {
+        #[cfg(feature = "runtime-benchmarks")]
+        return true;
+        #[cfg(not(feature = "runtime-benchmarks"))]
+        pallet_belize_oracle::OracleOperators::<Runtime>::get(who)
     }
 }
 

@@ -263,6 +263,8 @@ pub mod pallet {
         MediatorRemoved { mediator: T::AccountId },
         /// Appeal timed out — original ruling upheld.
         AppealTimedOut { dispute_id: u32 },
+        /// AUDIT FIX (C-JUST-2): Disputant bond slashed for frivolous dispute.
+        DisputantBondSlashed { disputant: T::AccountId, amount: BalanceOf<T> },
     }
 
     // ── Errors ────────────────────────────────────────────────────────────────
@@ -436,11 +438,12 @@ pub mod pallet {
                         RehabilitationStatus::<T>::insert(&record.target, RehabStatus::InRehabilitation);
                     }
                     DisputeResolution::Upheld => {
-                        // Slash the full escrowed amount by unreserving and burning/transferring
-                        T::Currency::unreserve(&record.target, escrowed);
-                        let _ = T::Currency::slash(&record.target, escrowed);
+                        // AUDIT FIX (C-JUST-4): Use slash_reserved to atomically slash
+                        // escrowed funds instead of unreserve-then-slash race window.
+                        let (_, remainder) = T::Currency::slash_reserved(&record.target, escrowed);
+                        let actually_slashed = escrowed.saturating_sub(remainder);
                         Self::deposit_event(Event::SlashExecuted {
-                            account: record.target.clone(), amount: escrowed,
+                            account: record.target.clone(), amount: actually_slashed,
                         });
                         RehabilitationStatus::<T>::insert(&record.target, RehabStatus::InCoolingOff);
                     }
@@ -448,14 +451,17 @@ pub mod pallet {
                         let slash_amount = escrowed.saturating_mul((*slash_bps as u32).into())
                             / 10_000u32.into();
                         let refund = escrowed.saturating_sub(slash_amount);
-                        T::Currency::unreserve(&record.target, escrowed);
+                        // AUDIT FIX (C-JUST-4): Slash reserved funds atomically
                         if slash_amount > BalanceOf::<T>::default() {
-                            let _ = T::Currency::slash(&record.target, slash_amount);
+                            let (_, remainder) = T::Currency::slash_reserved(&record.target, slash_amount);
+                            let actually_slashed = slash_amount.saturating_sub(remainder);
                             Self::deposit_event(Event::SlashExecuted {
-                                account: record.target.clone(), amount: slash_amount,
+                                account: record.target.clone(), amount: actually_slashed,
                             });
                         }
+                        // Unreserve only the refund portion
                         if refund > BalanceOf::<T>::default() {
+                            T::Currency::unreserve(&record.target, refund);
                             Self::deposit_event(Event::SlashRefunded {
                                 account: record.target.clone(), amount: refund,
                             });
@@ -465,10 +471,20 @@ pub mod pallet {
                 }
             }
 
-            // J-04 FIX: Unreserve disputant bond on Upheld (dispute was correct)
-            // and Mediated (partial resolution) — not just Dismissed
-            if matches!(resolution, DisputeResolution::Dismissed | DisputeResolution::Upheld | DisputeResolution::Mediated { .. }) {
-                T::Currency::unreserve(&record.disputant, record.bond);
+            // AUDIT FIX (C-JUST-2): Slash disputant bond on Dismissed (frivolous dispute).
+            // Refund bond only when dispute was legitimate (Upheld/Mediated).
+            match &resolution {
+                DisputeResolution::Dismissed => {
+                    // Frivolous dispute — slash the disputant's bond to deter abuse
+                    let (_, _remainder) = T::Currency::slash_reserved(&record.disputant, record.bond);
+                    Self::deposit_event(Event::DisputantBondSlashed {
+                        disputant: record.disputant.clone(), amount: record.bond,
+                    });
+                }
+                DisputeResolution::Upheld | DisputeResolution::Mediated { .. } => {
+                    // Legitimate dispute — refund the bond
+                    T::Currency::unreserve(&record.disputant, record.bond);
+                }
             }
 
             record.resolution = Some(resolution.clone());

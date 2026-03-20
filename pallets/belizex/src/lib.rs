@@ -44,6 +44,9 @@ mod benchmarking;
 /// Minimal trait to check KYC status of an account.
 pub trait KycCheck<AccountId> {
     fn is_kyc_ok(who: &AccountId) -> bool;
+    /// AUDIT FIX (CW-1): Standalone sanctions check for operations that don't
+    /// require full KYC (e.g. governance-registered tourism traders).
+    fn is_sanctioned(who: &AccountId) -> bool;
 }
 
 /// Trait for Oracle integration - provides real-time market data and merchant verification
@@ -605,6 +608,8 @@ pub mod pallet {
         TooManyOrders,
         /// AUDIT FIX: Cannot trade with yourself
         SelfTradeNotAllowed,
+        /// AUDIT FIX (CW-1): Account is sanctioned
+        AccountSanctioned,
     }
 
     #[pallet::call]
@@ -902,6 +907,9 @@ pub mod pallet {
             trader: T::AccountId,
         ) -> DispatchResult {
             T::TourismOrigin::ensure_origin(origin)?;
+
+            // AUDIT FIX (CW-1): Cannot register a sanctioned account as tourism trader
+            ensure!(!T::Kyc::is_sanctioned(&trader), Error::<T>::AccountSanctioned);
 
             TourismTraders::<T>::insert(&trader, true);
 
@@ -1270,6 +1278,9 @@ pub mod pallet {
             order_id: u32,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
+
+            // AUDIT FIX (CW-1): Sanctions + KYC check for order cancellation
+            ensure!(T::Kyc::is_kyc_ok(&who), Error::<T>::KycRequired);
 
             // Check global pause
             ensure!(!GlobalPaused::<T>::get(), Error::<T>::Paused);

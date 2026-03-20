@@ -315,6 +315,11 @@ pub mod pallet {
     pub type TotalBbzdSupply<T: Config> = StorageValue<_, u128, ValueQuery>;
 
     #[pallet::storage]
+    #[pallet::getter(fn minting_halted)]
+    /// Set by `on_initialize` when bBZD supply exceeds reserves (defense-in-depth halt flag)
+    pub type MintingHalted<T: Config> = StorageValue<_, bool, ValueQuery>;
+
+    #[pallet::storage]
     #[pallet::getter(fn authorized_minters)]
     /// Authorized Central Bank accounts that can mint bBZD
     pub type AuthorizedMinters<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, bool, ValueQuery>;
@@ -378,12 +383,16 @@ pub mod pallet {
             let bbzd_supply = TotalBbzdSupply::<T>::get();
             let reserves = CentralBankReserves::<T>::get();
             if bbzd_supply > reserves {
+                MintingHalted::<T>::put(true);
                 Self::deposit_event(Event::BbzdInvariantViolation {
                     total_supply: bbzd_supply,
                     reserves,
                 });
                 // Defensive: log but don't halt the chain
                 frame_support::defensive!("bBZD invariant violated: supply > reserves");
+            } else if MintingHalted::<T>::get() {
+                // Reserves restored — clear the halt flag
+                MintingHalted::<T>::put(false);
             }
             weight = weight.saturating_add(Weight::from_parts(2_000_000, 64));
             
@@ -528,6 +537,8 @@ pub mod pallet {
         KycVerificationRequired,
         /// Account is sanctioned and cannot perform this operation
         SanctionedEntity,
+        /// Minting halted: bBZD supply exceeds reserves (under-collateralization detected)
+        MintingHaltedUndercollateralized,
         /// Amount must be greater than zero
         AmountMustBeNonZero,
         /// Redemption request not found
@@ -645,6 +656,9 @@ pub mod pallet {
         ) -> DispatchResult {
             let minter = ensure_signed(origin)?;
             Self::check_mint_rate_limit(&minter)?;
+
+            // C-ECON-1: Block minting while under-collateralized
+            ensure!(!MintingHalted::<T>::get(), Error::<T>::MintingHaltedUndercollateralized);
             
             // Ensure non-zero amount
             ensure!(amount > 0, Error::<T>::AmountMustBeNonZero);

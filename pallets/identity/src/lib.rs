@@ -1016,6 +1016,13 @@ pub mod pallet {
     // Helper trait for KYC checks to be used by other pallets (e.g., Compliance, DEX)
     pub trait BelizeKyc<AccountId, BlockNumber> {
         fn is_kyc_verified(who: &AccountId, level: KycLevel, now: BlockNumber) -> bool;
+        /// Grace-aware KYC check: returns true for both Valid and Grace states.
+        /// Consumer pallets that tolerate a grace period should call this instead
+        /// of `is_kyc_verified` to avoid hard-rejecting users during attestation renewal.
+        fn is_kyc_verified_or_grace(who: &AccountId, level: KycLevel, now: BlockNumber) -> bool {
+            // Default: fall back to strict check (backward compatible)
+            Self::is_kyc_verified(who, level, now)
+        }
     }
 
     impl<T: Config> BelizeKyc<T::AccountId, BlockNumberFor<T>> for Pallet<T> {
@@ -1045,6 +1052,10 @@ pub mod pallet {
                     l2 && bio_ok
                 }
             }
+        }
+
+        fn is_kyc_verified_or_grace(who: &T::AccountId, level: KycLevel, now: BlockNumberFor<T>) -> bool {
+            matches!(Self::kyc_state(who, level, now), KycState::Valid | KycState::Grace)
         }
     }
 

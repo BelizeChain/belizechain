@@ -123,6 +123,14 @@ impl pallet_belize_interoperability::InteroperabilityIdentityProvider<u64> for M
     }
 }
 
+/// P0-1: Mock oracle operator check — accounts 1-3 and 10-50 are oracle operators.
+pub struct MockOracleCheck;
+impl pallet_belize_interoperability::OracleOperatorCheck<u64> for MockOracleCheck {
+    fn is_oracle_operator(who: &u64) -> bool {
+        matches!(who, 1..=3 | 10..=50)
+    }
+}
+
 impl pallet_belize_interoperability::Config for Test {
     type Currency = Balances;
     type Randomness = RandomnessCollectiveFlip;
@@ -139,6 +147,8 @@ impl pallet_belize_interoperability::Config for Test {
     type MaxBridgePerBlock = ConstU32<5>;
     type PQVerifier = pallet_belize_interoperability::PassthroughPQVerifier;
     type PalletId = InteropPalletId;
+    type OracleCheck = MockOracleCheck;
+    type MinOracleConfirmations = ConstU32<2>;
 }
 
 // Test account constants

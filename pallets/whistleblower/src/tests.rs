@@ -9,10 +9,14 @@ use sp_io::hashing::blake2_256;
 // HELPER FUNCTIONS
 // ============================================================================
 
-/// Compute the alias hash for a given account and nonce.
-fn compute_alias(account: u64, nonce: [u8; 32]) -> [u8; 32] {
-    let mut preimage = codec::Encode::encode(&account);
-    preimage.extend_from_slice(&nonce);
+/// Domain tag matching the pallet constant.
+const COMMITMENT_DOMAIN: &[u8] = b"BelizeChainWhistleblowerV1";
+
+/// Compute the commitment for a given account and secret.
+fn compute_commitment(account: u64, secret: [u8; 32]) -> [u8; 32] {
+    let mut preimage = Vec::from(COMMITMENT_DOMAIN);
+    preimage.extend_from_slice(&codec::Encode::encode(&account));
+    preimage.extend_from_slice(&secret);
     blake2_256(&preimage)
 }
 
@@ -32,7 +36,7 @@ fn sample_reasoning_hash() -> [u8; 32] {
 fn submit_report_works() {
     new_test_ext().execute_with(|| {
         let nonce = [1u8; 32];
-        let alias = compute_alias(ALICE, nonce);
+        let alias = compute_commitment(ALICE, nonce);
 
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(ALICE),
@@ -47,7 +51,7 @@ fn submit_report_works() {
 
         // Verify report stored correctly
         let report = Whistleblower::reports(1).expect("report must exist");
-        assert_eq!(report.alias_hash, alias);
+        assert_eq!(report.commitment, alias);
         assert_eq!(report.target, TARGET);
         assert_eq!(report.evidence_hash, sample_evidence_hash());
         assert_eq!(report.category, ReportCategory::Fraud);
@@ -69,7 +73,7 @@ fn submit_report_all_categories_work() {
         // Fraud (0)
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(ALICE),
-            compute_alias(ALICE, nonce),
+            compute_commitment(ALICE, nonce),
             TARGET,
             sample_evidence_hash(),
             0,
@@ -79,7 +83,7 @@ fn submit_report_all_categories_work() {
         // SystematicAbuse (1)
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(BOB),
-            compute_alias(BOB, nonce),
+            compute_commitment(BOB, nonce),
             TARGET,
             sample_evidence_hash(),
             1,
@@ -89,7 +93,7 @@ fn submit_report_all_categories_work() {
         // ChainExploit (2)
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(CHARLIE),
-            compute_alias(CHARLIE, nonce),
+            compute_commitment(CHARLIE, nonce),
             TARGET,
             sample_evidence_hash(),
             2,
@@ -150,7 +154,7 @@ fn submit_multiple_reports_increments_counter() {
             let nonce = [i as u8; 32];
             assert_ok!(Whistleblower::submit_report(
                 RuntimeOrigin::signed(ALICE),
-                compute_alias(ALICE, nonce),
+                compute_commitment(ALICE, nonce),
                 TARGET,
                 sample_evidence_hash(),
                 0,
@@ -166,7 +170,7 @@ fn submit_multiple_reports_increments_counter() {
 
 fn setup_funded_report(category: u8) -> u32 {
     let nonce = [1u8; 32];
-    let alias = compute_alias(ALICE, nonce);
+    let alias = compute_commitment(ALICE, nonce);
 
     // Fund pool first (signed origin required after audit fix)
     assert_ok!(Whistleblower::fund_whistleblower_pool(
@@ -297,7 +301,7 @@ fn review_report_insufficient_pool_fails() {
     new_test_ext().execute_with(|| {
         // Submit report WITHOUT funding pool
         let nonce = [1u8; 32];
-        let alias = compute_alias(ALICE, nonce);
+        let alias = compute_commitment(ALICE, nonce);
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(ALICE),
             alias,
@@ -334,7 +338,7 @@ fn review_report_verified_each_category_reward() {
         let nonce = [1u8; 32];
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(ALICE),
-            compute_alias(ALICE, nonce),
+            compute_commitment(ALICE, nonce),
             TARGET,
             sample_evidence_hash(),
             0, // Fraud
@@ -347,7 +351,7 @@ fn review_report_verified_each_category_reward() {
         // SystematicAbuse report
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(BOB),
-            compute_alias(BOB, nonce),
+            compute_commitment(BOB, nonce),
             TARGET,
             sample_evidence_hash(),
             1, // Abuse
@@ -360,7 +364,7 @@ fn review_report_verified_each_category_reward() {
         // ChainExploit report
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(CHARLIE),
-            compute_alias(CHARLIE, nonce),
+            compute_commitment(CHARLIE, nonce),
             TARGET,
             sample_evidence_hash(),
             2, // Exploit
@@ -378,7 +382,7 @@ fn review_report_verified_each_category_reward() {
 
 fn setup_verified_report() -> (u32, [u8; 32]) {
     let nonce = [42u8; 32];
-    let alias = compute_alias(ALICE, nonce);
+    let alias = compute_commitment(ALICE, nonce);
 
     assert_ok!(Whistleblower::fund_whistleblower_pool(
         RuntimeOrigin::signed(ALICE),
@@ -437,7 +441,7 @@ fn claim_reward_wrong_nonce_fails() {
                 report_id,
                 [99u8; 32], // wrong nonce
             ),
-            Error::<Test>::AliasHashMismatch
+            Error::<Test>::CommitmentMismatch
         );
     });
 }
@@ -454,7 +458,7 @@ fn claim_reward_wrong_account_fails() {
                 report_id,
                 nonce,
             ),
-            Error::<Test>::AliasHashMismatch
+            Error::<Test>::CommitmentMismatch
         );
     });
 }
@@ -464,7 +468,7 @@ fn claim_reward_not_verified_fails() {
     new_test_ext().execute_with(|| {
         // Submit but don't verify
         let nonce = [1u8; 32];
-        let alias = compute_alias(ALICE, nonce);
+        let alias = compute_commitment(ALICE, nonce);
 
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(ALICE),
@@ -510,14 +514,14 @@ fn claim_reward_double_claim_fails() {
             nonce,
         ));
 
-        // Second claim — escrow already taken
+        // Second claim — status is now Claimed (terminal state from P0-3)
         assert_noop!(
             Whistleblower::claim_reward(
                 RuntimeOrigin::signed(ALICE),
                 report_id,
                 nonce,
             ),
-            Error::<Test>::NoEscrowedReward
+            Error::<Test>::InvalidReportStatus
         );
     });
 }
@@ -567,7 +571,7 @@ fn report_category_from_u8_covers_all() {
 fn submit_report_emits_event() {
     new_test_ext().execute_with(|| {
         let nonce = [1u8; 32];
-        let alias = compute_alias(ALICE, nonce);
+        let alias = compute_commitment(ALICE, nonce);
 
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(ALICE),
@@ -727,7 +731,7 @@ fn review_report_already_dismissed_fails() {
 fn claim_reward_on_dismissed_report_fails() {
     new_test_ext().execute_with(|| {
         let nonce = [42u8; 32];
-        let alias = compute_alias(ALICE, nonce);
+        let alias = compute_commitment(ALICE, nonce);
 
         assert_ok!(Whistleblower::fund_whistleblower_pool(
             RuntimeOrigin::signed(ALICE), 100_000,
@@ -765,7 +769,7 @@ fn claim_reward_on_dismissed_report_fails() {
 fn claim_reward_systematic_abuse_correct_amount() {
     new_test_ext().execute_with(|| {
         let nonce = [10u8; 32];
-        let alias = compute_alias(ALICE, nonce);
+        let alias = compute_commitment(ALICE, nonce);
 
         assert_ok!(Whistleblower::fund_whistleblower_pool(
             RuntimeOrigin::signed(ALICE), 100_000,
@@ -794,7 +798,7 @@ fn claim_reward_systematic_abuse_correct_amount() {
 fn claim_reward_chain_exploit_correct_amount() {
     new_test_ext().execute_with(|| {
         let nonce = [20u8; 32];
-        let alias = compute_alias(ALICE, nonce);
+        let alias = compute_commitment(ALICE, nonce);
 
         assert_ok!(Whistleblower::fund_whistleblower_pool(
             RuntimeOrigin::signed(ALICE), 100_000,
@@ -833,7 +837,7 @@ fn pool_depletes_across_multiple_verified_reports() {
         let nonce1 = [1u8; 32];
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(ALICE),
-            compute_alias(ALICE, nonce1), TARGET, sample_evidence_hash(), 0,
+            compute_commitment(ALICE, nonce1), TARGET, sample_evidence_hash(), 0,
         ));
         assert_ok!(Whistleblower::review_report(
             RuntimeOrigin::root(), 1, 0, sample_reasoning_hash(),
@@ -844,7 +848,7 @@ fn pool_depletes_across_multiple_verified_reports() {
         let nonce2 = [2u8; 32];
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(BOB),
-            compute_alias(BOB, nonce2), TARGET, sample_evidence_hash(), 0,
+            compute_commitment(BOB, nonce2), TARGET, sample_evidence_hash(), 0,
         ));
         assert_ok!(Whistleblower::review_report(
             RuntimeOrigin::root(), 2, 0, sample_reasoning_hash(),
@@ -855,7 +859,7 @@ fn pool_depletes_across_multiple_verified_reports() {
         let nonce3 = [3u8; 32];
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(CHARLIE),
-            compute_alias(CHARLIE, nonce3), TARGET, sample_evidence_hash(), 0,
+            compute_commitment(CHARLIE, nonce3), TARGET, sample_evidence_hash(), 0,
         ));
         assert_noop!(
             Whistleblower::review_report(
@@ -877,7 +881,7 @@ fn pool_exactly_matches_reward_drains_to_zero() {
         let nonce = [1u8; 32];
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(ALICE),
-            compute_alias(ALICE, nonce), TARGET, sample_evidence_hash(), 0,
+            compute_commitment(ALICE, nonce), TARGET, sample_evidence_hash(), 0,
         ));
 
         assert_ok!(Whistleblower::review_report(
@@ -899,7 +903,7 @@ fn multiple_reports_reserve_cumulative_bonds() {
             let nonce = [i; 32];
             assert_ok!(Whistleblower::submit_report(
                 RuntimeOrigin::signed(ALICE),
-                compute_alias(ALICE, nonce),
+                compute_commitment(ALICE, nonce),
                 TARGET,
                 sample_evidence_hash(),
                 0,
@@ -931,7 +935,7 @@ fn bond_exhaustion_prevents_further_reports() {
 
             let result = Whistleblower::submit_report(
                 RuntimeOrigin::signed(ALICE),
-                compute_alias(ALICE, nonce_32),
+                compute_commitment(ALICE, nonce_32),
                 TARGET,
                 sample_evidence_hash(),
                 0,
@@ -969,7 +973,7 @@ fn report_submitted_at_block_correct() {
         let nonce = [1u8; 32];
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(ALICE),
-            compute_alias(ALICE, nonce),
+            compute_commitment(ALICE, nonce),
             TARGET,
             sample_evidence_hash(),
             0,
@@ -988,7 +992,7 @@ fn report_stores_correct_evidence_hash() {
 
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(ALICE),
-            compute_alias(ALICE, nonce),
+            compute_commitment(ALICE, nonce),
             TARGET,
             custom_evidence,
             1,
@@ -1009,7 +1013,7 @@ fn report_against_self_allowed() {
         let nonce = [1u8; 32];
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(ALICE),
-            compute_alias(ALICE, nonce),
+            compute_commitment(ALICE, nonce),
             ALICE, // self-report
             sample_evidence_hash(),
             0,
@@ -1029,7 +1033,7 @@ fn multiple_reports_same_target_allowed() {
             let nonce = [i; 32];
             assert_ok!(Whistleblower::submit_report(
                 RuntimeOrigin::signed(ALICE),
-                compute_alias(ALICE, nonce),
+                compute_commitment(ALICE, nonce),
                 TARGET,
                 sample_evidence_hash(),
                 i % 3, // rotate categories
@@ -1051,8 +1055,8 @@ fn different_nonces_produce_different_aliases() {
     new_test_ext().execute_with(|| {
         let nonce1 = [1u8; 32];
         let nonce2 = [2u8; 32];
-        let alias1 = compute_alias(ALICE, nonce1);
-        let alias2 = compute_alias(ALICE, nonce2);
+        let alias1 = compute_commitment(ALICE, nonce1);
+        let alias2 = compute_commitment(ALICE, nonce2);
 
         assert_ne!(alias1, alias2);
 
@@ -1067,15 +1071,15 @@ fn different_nonces_produce_different_aliases() {
 
         let r1 = Whistleblower::reports(1).unwrap();
         let r2 = Whistleblower::reports(2).unwrap();
-        assert_ne!(r1.alias_hash, r2.alias_hash);
+        assert_ne!(r1.commitment, r2.commitment);
     });
 }
 
 #[test]
 fn same_nonce_different_accounts_produce_different_aliases() {
     let nonce = [1u8; 32];
-    let alias_alice = compute_alias(ALICE, nonce);
-    let alias_bob = compute_alias(BOB, nonce);
+    let alias_alice = compute_commitment(ALICE, nonce);
+    let alias_bob = compute_commitment(BOB, nonce);
     assert_ne!(alias_alice, alias_bob);
 }
 
@@ -1113,7 +1117,7 @@ fn full_lifecycle_submit_verify_claim() {
 
         // 2. Submit report
         let nonce = [77u8; 32];
-        let alias = compute_alias(BOB, nonce);
+        let alias = compute_commitment(BOB, nonce);
         let balance_before = Balances::free_balance(BOB);
 
         assert_ok!(Whistleblower::submit_report(
@@ -1151,7 +1155,7 @@ fn full_lifecycle_submit_dismiss() {
         let pool_after_fund = Whistleblower::whistleblower_pool();
 
         let nonce = [55u8; 32];
-        let alias = compute_alias(CHARLIE, nonce);
+        let alias = compute_commitment(CHARLIE, nonce);
 
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(CHARLIE),
@@ -1218,7 +1222,7 @@ fn submit_report_event_category_values() {
 
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(ALICE),
-            compute_alias(ALICE, nonce), TARGET, sample_evidence_hash(), 1,
+            compute_commitment(ALICE, nonce), TARGET, sample_evidence_hash(), 1,
         ));
         System::assert_has_event(
             Event::<Test>::ReportSubmitted { report_id: 1, target: TARGET, category: 1 }.into()
@@ -1227,7 +1231,7 @@ fn submit_report_event_category_values() {
         let nonce2 = [2u8; 32];
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(BOB),
-            compute_alias(BOB, nonce2), TARGET, sample_evidence_hash(), 2,
+            compute_commitment(BOB, nonce2), TARGET, sample_evidence_hash(), 2,
         ));
         System::assert_has_event(
             Event::<Test>::ReportSubmitted { report_id: 2, target: TARGET, category: 2 }.into()
@@ -1242,14 +1246,14 @@ fn submit_report_event_category_values() {
 #[test]
 fn relay_submission_sponsor_pattern() {
     // BOB submits a report on behalf of ALICE (the real reporter).
-    // BOB is the sponsor/bond-depositor; ALICE holds the alias_hash secret.
+    // BOB is the sponsor/bond-depositor; ALICE holds the commitment secret.
     new_test_ext().execute_with(|| {
         assert_ok!(Whistleblower::fund_whistleblower_pool(
             RuntimeOrigin::signed(ALICE), 100_000,
         ));
 
         let nonce = [99u8; 32];
-        let alias = compute_alias(ALICE, nonce); // ALICE is the real reporter
+        let alias = compute_commitment(ALICE, nonce); // ALICE is the real reporter
 
         // BOB relays the report — pays the bond
         assert_ok!(Whistleblower::submit_report(
@@ -1299,7 +1303,7 @@ fn relay_submission_dismissed_slashes_sponsor() {
         ));
 
         let nonce = [88u8; 32];
-        let alias = compute_alias(ALICE, nonce);
+        let alias = compute_commitment(ALICE, nonce);
         let bob_balance_before = Balances::free_balance(BOB);
 
         // BOB relays

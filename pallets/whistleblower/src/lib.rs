@@ -9,12 +9,15 @@
 //! Reporters never store their real identity on-chain.  Instead they compute:
 //!
 //! ```text
-//! alias_hash = blake2_256(account_id_bytes ++ nonce_bytes)
+//! commitment = blake2_256(DOMAIN_TAG ++ account_id_bytes ++ secret_bytes)
 //! ```
 //!
-//! Only `alias_hash` is stored with the report.  When a report is Verified and
+//! where `DOMAIN_TAG = b"BelizeChainWhistleblowerV1"` provides domain separation
+//! to prevent cross-protocol pre-image attacks.
+//!
+//! Only `commitment` is stored with the report.  When a report is Verified and
 //! the reporter wishes to claim their reward, they call `claim_reward(report_id,
-//! account, nonce)`.  The chain recomputes the hash; identity is revealed only
+//! secret)`.  The chain recomputes the hash; identity is revealed only
 //! at that moment and is never persisted in the report record.
 //!
 //! ## Relayer / Sponsor Pattern
@@ -55,10 +58,15 @@ pub mod pallet {
     };
     use frame_system::pallet_prelude::*;
     use sp_runtime::traits::Saturating;
+    use sp_std::vec::Vec;
     use crate::weights::WeightInfo;
 
     pub type BalanceOf<T> =
         <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+
+    /// Domain separation tag for commitment hashes.
+    /// Prevents cross-protocol pre-image attacks.
+    const COMMITMENT_DOMAIN: &[u8] = b"BelizeChainWhistleblowerV1";
 
     // ── Report category ───────────────────────────────────────────────────────
     #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
@@ -93,14 +101,16 @@ pub mod pallet {
         Verified,
         /// Dismissed; bond slashed from depositor.
         Dismissed,
+        /// Reward claimed; terminal state.
+        Claimed,
     }
 
     // ── Report record ─────────────────────────────────────────────────────────
     #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
     pub struct Report<T: Config> {
-        /// Pseudonymous reporter identifier = blake2_256(account ++ nonce).
-        pub alias_hash: [u8; 32],
+        /// Reporter commitment = blake2_256(DOMAIN_TAG ++ account ++ secret).
+        pub commitment: [u8; 32],
         /// Account accused of misconduct.
         pub target: T::AccountId,
         /// Blake2-256 hash of off-chain evidence document.
@@ -238,8 +248,8 @@ pub mod pallet {
         InvalidReportStatus,
         /// Invalid category code.
         InvalidCategory,
-        /// Hash verification failed — (account, nonce) does not match alias_hash.
-        AliasHashMismatch,
+        /// Commitment verification failed — (account, secret) does not match commitment.
+        CommitmentMismatch,
         /// No reward has been escrowed for this report.
         NoEscrowedReward,
         /// The whistleblower pool does not have sufficient funds.
@@ -260,9 +270,9 @@ pub mod pallet {
     impl<T: Config> Pallet<T> {
         /// Submit a pseudonymous misconduct report.
         ///
-        /// `alias_hash` = blake2_256(reporter_account_bytes ++ nonce_bytes).
+        /// `commitment` = blake2_256(DOMAIN_TAG ++ reporter_account_bytes ++ secret_bytes).
         /// The bond is reserved from the **signer** (the "sponsor"), who may
-        /// differ from the reporter (the alias_hash holder).  This enables a
+        /// differ from the reporter (the commitment holder).  This enables a
         /// relayer pattern: a trusted third party pays the bond on behalf of
         /// the reporter, preserving the reporter's on-chain anonymity.
         ///
@@ -271,7 +281,7 @@ pub mod pallet {
         #[pallet::weight(T::WeightInfo::submit_report())]
         pub fn submit_report(
             origin: OriginFor<T>,
-            alias_hash: [u8; 32],
+            commitment: [u8; 32],
             target: T::AccountId,
             evidence_hash: [u8; 32],
             category: u8,
@@ -296,7 +306,7 @@ pub mod pallet {
             let current_block = frame_system::Pallet::<T>::block_number();
 
             let report = Report::<T> {
-                alias_hash,
+                commitment,
                 target: target.clone(),
                 evidence_hash,
                 category: category.clone(),
@@ -389,13 +399,13 @@ pub mod pallet {
         /// Claim a verified report reward by revealing identity.
         ///
         /// The caller proves they are the original reporter by supplying their
-        /// `account` and `nonce` such that `blake2_256(account ++ nonce) == alias_hash`.
+        /// `secret` such that `blake2_256(DOMAIN_TAG ++ account ++ secret) == commitment`.
         #[pallet::call_index(2)]
         #[pallet::weight(T::WeightInfo::claim_reward())]
         pub fn claim_reward(
             origin: OriginFor<T>,
             report_id: u32,
-            nonce: [u8; 32],
+            secret: [u8; 32],
         ) -> DispatchResult {
             let claimant = ensure_signed(origin)?;
 
@@ -407,11 +417,12 @@ pub mod pallet {
                 Error::<T>::InvalidReportStatus
             );
 
-            // Verify identity: blake2_256(account_bytes ++ nonce) must match alias_hash
-            let mut preimage = claimant.encode();
-            preimage.extend_from_slice(&nonce);
+            // Domain-separated commitment verification
+            let mut preimage = Vec::from(COMMITMENT_DOMAIN);
+            preimage.extend_from_slice(&claimant.encode());
+            preimage.extend_from_slice(&secret);
             let computed = sp_io::hashing::blake2_256(&preimage);
-            ensure!(computed == report.alias_hash, Error::<T>::AliasHashMismatch);
+            ensure!(computed == report.commitment, Error::<T>::CommitmentMismatch);
 
             // Pay out escrowed reward
             let reward = EscrowedReward::<T>::take(report_id)
@@ -427,6 +438,13 @@ pub mod pallet {
             );
 
             let _ = T::Currency::deposit_creating(&claimant, reward);
+
+            // P0-3: Transition to terminal state — prevents any future re-claim
+            Reports::<T>::mutate(report_id, |maybe_report| {
+                if let Some(r) = maybe_report {
+                    r.status = ReportStatus::Claimed;
+                }
+            });
 
             Self::deposit_event(Event::RewardClaimed {
                 report_id,

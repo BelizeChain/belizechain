@@ -473,12 +473,13 @@ pub mod pallet {
             };
 
             // Store domain
-            DomainRegistry::<T>::insert(&domain, domain_record);
-            
-            // Update account's domain list
+            // AUDIT FIX (C-BNS-1): Validate AccountDomains capacity BEFORE
+            // writing DomainRegistry to avoid partial-write on BoundedVec overflow.
             owned_domains.try_push(domain.clone())
                 .map_err(|_| Error::<T>::MaxDomainsReached)?;
             AccountDomains::<T>::insert(&who, owned_domains);
+
+            DomainRegistry::<T>::insert(&domain, domain_record);
 
             // Update counter
             TotalDomains::<T>::mutate(|n| *n = n.saturating_add(1));
@@ -568,6 +569,11 @@ pub mod pallet {
             // M64 FIX: Remove any existing marketplace listing to prevent stale listings
             DomainListings::<T>::remove(&domain);
 
+            // AUDIT FIX (C-BNS-1): Pre-validate new_owner capacity before any mutation
+            let mut new_domains = AccountDomains::<T>::get(&new_owner);
+            new_domains.try_push(domain.clone())
+                .map_err(|_| Error::<T>::MaxDomainsReached)?;
+
             // Update domain record
             domain_record.owner = new_owner.clone();
             domain_record.transfer_count = domain_record.transfer_count.saturating_add(1);
@@ -577,10 +583,6 @@ pub mod pallet {
             let mut old_domains = AccountDomains::<T>::get(&who);
             old_domains.retain(|d| d != &domain);
             AccountDomains::<T>::insert(&who, old_domains);
-
-            let mut new_domains = AccountDomains::<T>::get(&new_owner);
-            new_domains.try_push(domain.clone())
-                .map_err(|_| Error::<T>::MaxDomainsReached)?;
             AccountDomains::<T>::insert(&new_owner, new_domains);
 
             Self::deposit_event(Event::DomainTransferred {
