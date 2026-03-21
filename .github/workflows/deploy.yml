@@ -158,7 +158,7 @@ jobs:
     # update the secrets at: Settings → Secrets and variables → Actions → Secrets.
     # P0-08 FIX: Removed continue-on-error: true — failed builds must NOT trigger deployment.
     outputs:
-      image_tag: ${{ steps.meta.outputs.tags }}
+      image_tag: ${{ steps.meta.outputs.version }}
 
     steps:
       - uses: actions/checkout@v4
@@ -248,7 +248,7 @@ jobs:
                   - name: belizechain-node
                     # P0-10 FIX: Use immutable SHA-pinned image tag
                     # docker/metadata-action outputs full image reference
-                    image: ${{ needs.build.outputs.image_tag }}
+                    image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image_tag }}
                     ports:
                       - containerPort: 30333
                         name: p2p
@@ -268,7 +268,7 @@ jobs:
                       - "/etc/belizechain/secrets/node-key"
                       - "--validator"
                       # P0-07 FIX: Removed --alice (well-known dev key). Validator keys
-                      # must be injected via `author.insertKey` RPC or keystore file.
+                      # must be injected via author.insertKey RPC or keystore file.
                       # P1-24 FIX: Removed --force-authoring (blocks produced while unsynced)
                       - "--reserved-nodes-file"
                       - "/etc/belizechain/reserved-nodes.txt"
