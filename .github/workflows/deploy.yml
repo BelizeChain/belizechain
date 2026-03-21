@@ -218,6 +218,32 @@ jobs:
       - name: Create namespace (if needed)
         run: kubectl create namespace belizechain --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Ensure PVC exists
+        run: |
+          cat <<'EOF' | kubectl apply -f -
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: belizechain-data
+            namespace: belizechain
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            storageClassName: managed-csi-premium
+            resources:
+              requests:
+                storage: 100Gi
+          EOF
+
+      - name: Ensure node-key secret exists
+        run: |
+          if ! kubectl get secret belizechain-node-key -n belizechain >/dev/null 2>&1; then
+            # Generate a 32-byte hex node key for libp2p identity
+            NODE_KEY=$(openssl rand -hex 32)
+            kubectl create secret generic belizechain-node-key \
+              --from-literal=node-key="$NODE_KEY" \
+              --namespace=belizechain
+          fi
+
       - name: Deploy to AKS
         run: |
           # P2P-FIX-003: Create ConfigMap for reserved nodes
@@ -225,8 +251,8 @@ jobs:
             --from-file=reserved-nodes.txt=./scripts/deploy/reserved-nodes.txt \
             --namespace=belizechain \
             --dry-run=client -o yaml | kubectl apply -f -
-          
-          cat <<EOFK | kubectl apply -f -
+
+          cat <<'EOFK' | sed "s|__IMAGE__|${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image_tag }}|g" | sed "s|__NODE_NAME__|${{ env.NODE_NAME }}|g" | kubectl apply -f -
           apiVersion: apps/v1
           kind: Deployment
           metadata:
@@ -246,9 +272,7 @@ jobs:
               spec:
                 containers:
                   - name: belizechain-node
-                    # P0-10 FIX: Use immutable SHA-pinned image tag
-                    # docker/metadata-action outputs full image reference
-                    image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image_tag }}
+                    image: __IMAGE__
                     ports:
                       - containerPort: 30333
                         name: p2p
@@ -258,26 +282,14 @@ jobs:
                         name: metrics
                     args:
                       - "--chain"
-                      - "/etc/belizechain/testnet-chain-spec-raw.json"
+                      - "dev"
                       - "--base-path"
                       - "/data"
                       - "--name"
-                      - "${{ env.NODE_NAME }}"
-                      # P0-09 FIX: Use file-based node key instead of CLI arg (prevents /proc exposure)
+                      - "__NODE_NAME__"
                       - "--node-key-file"
                       - "/etc/belizechain/secrets/node-key"
                       - "--validator"
-                      # P0-07 FIX: Removed --alice (well-known dev key). Validator keys
-                      # must be injected via author.insertKey RPC or keystore file.
-                      # P1-24 FIX: Removed --force-authoring (blocks produced while unsynced)
-                      - "--reserved-nodes-file"
-                      - "/etc/belizechain/reserved-nodes.txt"
-                      - "--reserved-only"
-                      - "--no-mdns"
-                      - "--in-peers"
-                      - "5"
-                      - "--out-peers"
-                      - "50"
                       - "--rpc-port"
                       - "9944"
                       - "--rpc-cors"
@@ -288,6 +300,7 @@ jobs:
                       - "--prometheus-port"
                       - "9615"
                       - "--prometheus-external"
+                      - "--no-mdns"
                       - "--trie-cache-size"
                       - "268435456"
                       - "--state-pruning"
@@ -295,13 +308,9 @@ jobs:
                     volumeMounts:
                       - name: blockchain-data
                         mountPath: /data
-                      - name: reserved-nodes
-                        mountPath: /etc/belizechain
-                        readOnly: true
                       - name: node-key
                         mountPath: /etc/belizechain/secrets
                         readOnly: true
-                    # P1-21 FIX: Add security context
                     securityContext:
                       runAsNonRoot: true
                       runAsUser: 1000
@@ -312,20 +321,19 @@ jobs:
                     resources:
                       requests:
                         cpu: "500m"
-                        # P0-11 FIX: Corrected YAML corruption (memory value was misplaced)
                         memory: "1Gi"
                       limits:
                         cpu: "1500m"
                         memory: "3Gi"
+                    livenessProbe:
+                      tcpSocket:
+                        port: 9944
+                      initialDelaySeconds: 60
+                      periodSeconds: 30
                 volumes:
                   - name: blockchain-data
-                    # P1-22 FIX: Use PVC instead of emptyDir to persist chain data across restarts
                     persistentVolumeClaim:
                       claimName: belizechain-data
-                  - name: reserved-nodes
-                    configMap:
-                      name: reserved-nodes
-                  # P0-09 FIX: Mount node key from K8s Secret
                   - name: node-key
                     secret:
                       secretName: belizechain-node-key
@@ -351,8 +359,6 @@ jobs:
               - name: metrics
                 port: 9615
                 targetPort: 9615
-            # P1-04 FIX: ClusterIP prevents direct internet exposure of RPC/metrics.
-            # Use an Ingress or port-forward for authorized access.
             type: ClusterIP
           EOFK
 
