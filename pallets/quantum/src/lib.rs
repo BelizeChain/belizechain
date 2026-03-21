@@ -1209,8 +1209,8 @@ pub mod pallet {
             job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>>,
             achievement_type_index: u8,  // Index into AchievementType enum
             transferable: bool,
-            circuit_qubits: u16,
-            accuracy: u8,
+            _circuit_qubits: u16,
+            _accuracy: u8,
         ) -> DispatchResult {
             // Convert index to enum with validation
             let achievement_type = match achievement_type_index {

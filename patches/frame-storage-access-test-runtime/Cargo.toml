@@ -16,9 +16,9 @@ publish = false
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.6", default-features = false, features = ["derive"] }
-sp-core = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
-sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
-sp-trie = { git = "https://github.com/paritytech/polkadot-sdk", branch = "stable2512", default-features = false }
+sp-core = { git = "https://github.com/paritytech/polkadot-sdk", rev = "ad8a23ac25e6ad4f0afe27f2960565f0e8741828", default-features = false }
+sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk", rev = "ad8a23ac25e6ad4f0afe27f2960565f0e8741828", default-features = false }
+sp-trie = { git = "https://github.com/paritytech/polkadot-sdk", rev = "ad8a23ac25e6ad4f0afe27f2960565f0e8741828", default-features = false }
 
 [features]
 default = ["std"]
