@@ -247,7 +247,8 @@ jobs:
                 containers:
                   - name: belizechain-node
                     # P0-10 FIX: Use immutable SHA-pinned image tag
-                    image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+                    # docker/metadata-action outputs full image reference
+                    image: ${{ needs.build.outputs.image_tag }}
                     ports:
                       - containerPort: 30333
                         name: p2p

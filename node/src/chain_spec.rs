@@ -152,9 +152,8 @@ fn testnet_genesis(
                 .map(|x| (x.1.clone(), 1))
                 .collect::<Vec<_>>(),
         },
-        "sudo": {
-            "key": Some(root_key.clone()),
-        },
+        // NOTE: Sudo pallet excluded — gated behind #[cfg(feature = "dev")] in runtime.
+        // Validator keys must be injected via `author.insertKey` RPC or keystore file.
         
         // BelizeChain custom pallet configurations
         // Note: Economy pallet doesn't have genesis config yet
@@ -343,9 +342,7 @@ fn mainnet_genesis() -> Result<serde_json::Value, String> {
                 .map(|x| (x.1.clone(), 1))
                 .collect::<Vec<_>>(),
         },
-        "sudo": {
-            "key": Some(root_key.clone()),
-        },
+        // NOTE: Sudo pallet excluded — gated behind #[cfg(feature = "dev")] in runtime.
         
         // BelizeChain custom pallet configurations
         // Note: Economy pallet doesn't have genesis config yet
@@ -599,7 +596,7 @@ mod tests {
     }
 
     #[test]
-    fn test_testnet_genesis_sudo_key_is_set() {
+    fn test_testnet_genesis_no_sudo_key() {
         let alice_acct = get_account_id_from_seed::<sr25519::Public>("Alice");
         let genesis = testnet_genesis(
             vec![authority_keys_from_seed("Alice")],
@@ -608,9 +605,11 @@ mod tests {
             false,
         )
         .unwrap();
+        // Sudo pallet is gated behind #[cfg(feature = "dev")] in the runtime, so the
+        // genesis config patch must NOT contain a "sudo" field in production builds.
         assert!(
-            !genesis["sudo"]["key"].is_null(),
-            "sudo key must be present and non-null in testnet genesis"
+            genesis.get("sudo").is_none(),
+            "sudo must NOT be present in production genesis config"
         );
     }
 
