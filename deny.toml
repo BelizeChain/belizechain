@@ -10,16 +10,12 @@ targets = [
 ]
 
 # ── Advisories ──────────────────────────────────────────────────────────
+# cargo-deny 0.16+ removed per-kind severity controls (vulnerability, unmaintained, etc.).
+# All advisories are denied by default; triaged exceptions go in `ignore`.
 [advisories]
-# Deny all advisories by default
-vulnerability = "deny"
-unmaintained = "warn"
-unsound = "warn"
-yanked = "deny"
-notice = "warn"
 
-# Advisories we've triaged as not-applicable for BelizeChain
-# Each must have a justification comment
+# Advisories we've triaged as not-applicable or SDK-blocked for BelizeChain.
+# Each must have a justification comment.
 ignore = [
     # wasmtime WASI resource exhaustion — wasmtime-wasi is NOT in our dependency
     # tree; WASI subsystem is not compiled into BelizeChain's binary
@@ -32,18 +28,53 @@ ignore = [
     # shared linear memory; RustSec severity 1.8 (low)
     "RUSTSEC-2025-0118",
 
+    # wasmtime segfault with f64.copysign on x86-64 — SDK-blocked, Substrate
+    # sandboxes all Wasm execution; no user-controlled f64.copysign path
+    "RUSTSEC-2026-0006",
+
     # ring AES panic — only triggers with overflow-checks enabled, which is
     # disabled in release builds. SDK-blocked at ring 0.16.x (needs SDK update
     # for ring 0.17.x). Tracked for SDK upgrade.
     "RUSTSEC-2025-0009",
+
+    # ring 0.16 unmaintained — SDK-blocked, cannot upgrade until polkadot-sdk
+    # bumps to ring 0.17.x
+    "RUSTSEC-2025-0010",
+
+    # rustls-webpki CRL distribution point matching — SDK-blocked at 0.101.x
+    # via libp2p-tls; BelizeChain does not use CRL validation
+    "RUSTSEC-2026-0049",
+
+    # lru IterMut Stacked Borrows unsoundness — SDK-blocked transitive dep;
+    # BelizeChain does not call IterMut on lru directly
+    "RUSTSEC-2026-0002",
+
+    # derivative unmaintained — SDK-blocked transitive dep
+    "RUSTSEC-2024-0388",
+
+    # fxhash unmaintained — SDK-blocked transitive dep
+    "RUSTSEC-2025-0057",
+
+    # instant unmaintained — SDK-blocked transitive dep
+    "RUSTSEC-2024-0384",
+
+    # parity-wasm deprecated — SDK-blocked transitive dep
+    "RUSTSEC-2022-0061",
+
+    # paste unmaintained — SDK-blocked transitive dep
+    "RUSTSEC-2024-0436",
+
+    # proc-macro-error unmaintained — SDK-blocked transitive dep
+    "RUSTSEC-2024-0370",
 ]
 
 # ── Licenses ────────────────────────────────────────────────────────────
 [licenses]
-# BelizeChain is MIT-licensed; allow compatible licenses
+# BelizeChain is GPL-3.0-or-later; allow compatible licenses
 allow = [
     "MIT",
     "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
     "BSD-2-Clause",
     "BSD-3-Clause",
     "ISC",
@@ -53,8 +84,11 @@ allow = [
     "BSL-1.0",
     "CC0-1.0",
     "OpenSSL",
-    "MPL-2.0",           # Weak copyleft, compatible with MIT in usage
+    "MPL-2.0",
     "BlueOak-1.0.0",
+    "GPL-3.0-only",
+    "GPL-3.0-or-later",
+    "GPL-3.0-or-later WITH Classpath-exception-2.0",
 ]
 # Confidence threshold for license detection
 confidence-threshold = 0.8
@@ -65,11 +99,25 @@ name = "ring"
 expression = "MIT AND ISC AND OpenSSL"
 license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
 
+# array-bytes uses deprecated SPDX "Apache-2.0/GPL-3.0" (dual-license)
+[[licenses.clarify]]
+name = "array-bytes"
+expression = "Apache-2.0 OR GPL-3.0-only"
+license-files = [{ path = "LICENSE", hash = 0x2ba10e1b }]
+
+# proc-macro-warning uses deprecated SPDX "GPL-3.0 OR Apache-2.0"
+[[licenses.clarify]]
+name = "proc-macro-warning"
+expression = "GPL-3.0-only OR Apache-2.0"
+license-files = [{ path = "LICENSE", hash = 0x15b984e1 }]
+
 # ── Bans ────────────────────────────────────────────────────────────────
 [bans]
 # Deny multiple versions of the same crate (warn for now — Substrate has many)
 multiple-versions = "warn"
-wildcards = "deny"
+# Allow wildcards: workspace members use `workspace = true` which cargo-deny
+# reports as wildcard deps. This is standard for Substrate workspaces.
+wildcards = "allow"
 highlight = "all"
 
 # ── Sources ─────────────────────────────────────────────────────────────
@@ -80,11 +128,4 @@ unknown-git = "deny"
 
 [sources.allow-org]
 # Only these GitHub organizations are trusted for git dependencies
-github = ["paritytech", "AcalaNetwork", "nicira", "AztecProtocol"]
-
-# Allow our own organization
-[sources.allow-git]
-# BelizeChain organization repos
-list = [
-    "https://github.com/BelizeChain/belizechain",
-]
+github = ["paritytech", "AcalaNetwork", "nicira", "AztecProtocol", "BelizeChain"]
