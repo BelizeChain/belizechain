@@ -262,6 +262,8 @@ jobs:
               app: belizechain-node
           spec:
             replicas: 1
+            strategy:
+              type: Recreate
             selector:
               matchLabels:
                 app: belizechain-node
@@ -283,6 +285,7 @@ jobs:
                     args:
                       - "--chain"
                       - "dev"
+                      - "--alice"
                       - "--base-path"
                       - "/data"
                       - "--name"
@@ -311,6 +314,8 @@ jobs:
                       - name: node-key
                         mountPath: /etc/belizechain/secrets
                         readOnly: true
+                      - name: tmp
+                        mountPath: /tmp
                     securityContext:
                       runAsNonRoot: true
                       runAsUser: 1000
@@ -325,11 +330,19 @@ jobs:
                       limits:
                         cpu: "1500m"
                         memory: "3Gi"
+                    readinessProbe:
+                      httpGet:
+                        path: /health
+                        port: 9615
+                      initialDelaySeconds: 30
+                      periodSeconds: 10
+                      failureThreshold: 30
                     livenessProbe:
                       tcpSocket:
                         port: 9944
-                      initialDelaySeconds: 60
+                      initialDelaySeconds: 120
                       periodSeconds: 30
+                      failureThreshold: 5
                 volumes:
                   - name: blockchain-data
                     persistentVolumeClaim:
@@ -340,6 +353,10 @@ jobs:
                       items:
                         - key: node-key
                           path: node-key
+                  - name: tmp
+                    emptyDir:
+                      medium: Memory
+                      sizeLimit: 256Mi
           ---
           apiVersion: v1
           kind: Service
@@ -363,7 +380,7 @@ jobs:
           EOFK
 
       - name: Wait for rollout
-        run: kubectl rollout status deployment/belizechain-node -n belizechain --timeout=300s
+        run: kubectl rollout status deployment/belizechain-node -n belizechain --timeout=600s
 
       - name: Verify deployment
         run: |
