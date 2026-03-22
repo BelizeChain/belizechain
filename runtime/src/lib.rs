@@ -1947,8 +1947,11 @@ impl_runtime_apis! {
     // A short seed from a misconfigured client previously caused a node process panic
     // (DoS via the public RPC endpoint). Short seeds are now rejected with a warning
     // and keys are generated from secure random entropy instead.
+    // Exception: Substrate dev URI seeds (e.g. "//Alice") are derivation paths,
+    // not raw entropy, and are allowed regardless of length.
     let validated_seed = match seed {
         Some(s) if s.len() >= 32 => Some(s),
+        Some(s) if s.starts_with(b"//") => Some(s),
         Some(s) => {
             log::warn!(
                 target: "session",

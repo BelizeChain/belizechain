@@ -48,6 +48,7 @@ pub fn new_partial(
             sc_consensus_babe::BabeBlockImport<Block, FullClient, sc_consensus_grandpa::GrandpaBlockImport<FullBackend, Block, FullClient, FullSelectChain>, BabeCreateInherentDataProviders<Block>, FullSelectChain>,
             sc_consensus_grandpa::LinkHalf<Block, FullClient, FullSelectChain>,
             sc_consensus_babe::BabeLink<Block>,
+            sc_consensus_babe::BabeWorkerHandle<Block>,
             Option<Telemetry>,
         ),
     >,
@@ -120,7 +121,7 @@ pub fn new_partial(
     )?;
 
     let slot_duration = babe_link.config().slot_duration();
-    let (import_queue, _babe_worker_handle) = sc_consensus_babe::import_queue(
+    let (import_queue, babe_worker_handle) = sc_consensus_babe::import_queue(
         sc_consensus_babe::ImportQueueParams {
             link: babe_link.clone(),
             block_import: babe_block_import.clone(),
@@ -141,7 +142,7 @@ pub fn new_partial(
         keystore_container: keystore,
         select_chain,
         transaction_pool,
-        other: (babe_block_import, grandpa_link, babe_link, telemetry),
+        other: (babe_block_import, grandpa_link, babe_link, babe_worker_handle, telemetry),
     })
 }
 
@@ -157,7 +158,7 @@ pub fn new_full<
         keystore_container,
         select_chain,
         transaction_pool,
-        other: (block_import, grandpa_link, babe_link, mut telemetry),
+        other: (block_import, grandpa_link, babe_link, babe_worker_handle, mut telemetry),
     } = new_partial(&config)?;
 
     let mut net_config = sc_network::config::FullNetworkConfiguration::<
@@ -252,6 +253,10 @@ pub fn new_full<
 			crate::rpc::create_full(deps).map_err(Into::into)
 		})
 	};
+
+	// Keep babe_worker_handle alive for the node lifetime.
+	// Dropping it closes the channel to the essential babe-worker task, crashing the node.
+	task_manager.keep_alive(babe_worker_handle);
 
 	let _rpc_handlers = sc_service::spawn_tasks(sc_service::SpawnTasksParams {
 		network: network.clone(),

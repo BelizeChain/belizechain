@@ -272,6 +272,18 @@ jobs:
                 labels:
                   app: belizechain-node
               spec:
+                securityContext:
+                  fsGroup: 1000
+                  fsGroupChangePolicy: "OnRootMismatch"
+                initContainers:
+                  - name: fix-permissions
+                    image: busybox:1.36
+                    command: ["sh", "-c", "chown -R 1000:1000 /data"]
+                    volumeMounts:
+                      - name: blockchain-data
+                        mountPath: /data
+                    securityContext:
+                      runAsUser: 0
                 containers:
                   - name: belizechain-node
                     image: __IMAGE__
@@ -330,17 +342,23 @@ jobs:
                       limits:
                         cpu: "1500m"
                         memory: "3Gi"
-                    readinessProbe:
-                      httpGet:
-                        path: /health
-                        port: 9615
-                      initialDelaySeconds: 30
+                    startupProbe:
+                      tcpSocket:
+                        port: 9944
+                      initialDelaySeconds: 10
                       periodSeconds: 10
                       failureThreshold: 30
+                    readinessProbe:
+                      httpGet:
+                        path: /metrics
+                        port: 9615
+                      initialDelaySeconds: 5
+                      periodSeconds: 10
+                      failureThreshold: 3
                     livenessProbe:
                       tcpSocket:
                         port: 9944
-                      initialDelaySeconds: 120
+                      initialDelaySeconds: 10
                       periodSeconds: 30
                       failureThreshold: 5
                 volumes:
