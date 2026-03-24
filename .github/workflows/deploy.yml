@@ -297,7 +297,6 @@ jobs:
                     args:
                       - "--chain"
                       - "dev"
-                      - "--alice"
                       - "--base-path"
                       - "/data"
                       - "--name"
@@ -308,8 +307,8 @@ jobs:
                       - "--rpc-port"
                       - "9944"
                       - "--rpc-cors"
-                      - "all"
-                      - "--unsafe-rpc-external"
+                      - "https://portal.belizechain.org,https://explorer.belizechain.org,http://localhost:3000"
+                      - "--rpc-external"
                       - "--rpc-methods"
                       - "Safe"
                       - "--prometheus-port"
