@@ -304,6 +304,7 @@ jobs:
                       - "--node-key-file"
                       - "/etc/belizechain/secrets/node-key"
                       - "--validator"
+                      - "--alice"
                       - "--rpc-port"
                       - "9944"
                       - "--rpc-cors"
