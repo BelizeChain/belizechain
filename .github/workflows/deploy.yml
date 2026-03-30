@@ -244,6 +244,13 @@ jobs:
               --namespace=belizechain
           fi
 
+      - name: Create validator-keys secret
+        run: |
+          kubectl create secret generic belizechain-validator-keys \
+            --from-literal=mnemonic="${{ secrets.VALIDATOR_MNEMONIC }}" \
+            --namespace=belizechain \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Deploy to AKS
         run: |
           # P2P-FIX-003: Create ConfigMap for reserved nodes
@@ -284,6 +291,28 @@ jobs:
                         mountPath: /data
                     securityContext:
                       runAsUser: 0
+                  - name: inject-session-keys
+                    image: busybox:1.36
+                    command:
+                      - sh
+                      - -c
+                      - |
+                        MNEMONIC=$(cat /secrets/mnemonic)
+                        mkdir -p /keystore
+                        # BABE key: type=babe (0x62616265) + Sr25519 pubkey hex
+                        printf '"%s"' "$MNEMONIC" > /keystore/626162654a48876b291c69f1b53e139dd00a1c980df4b8c23c9cd4e2d2efd75f67f60f3f
+                        # GRANDPA key: type=gran (0x6772616e) + Ed25519 pubkey hex
+                        printf '"%s"' "$MNEMONIC" > /keystore/6772616ea83ff30b72f0494f0174ded39861d13fd7841d9355d4a5e08ae4a5968e65b4ee
+                        chown -R 1000:1000 /keystore
+                        echo "Session keys injected (2 files)"
+                    volumeMounts:
+                      - name: validator-keys
+                        mountPath: /secrets
+                        readOnly: true
+                      - name: keystore
+                        mountPath: /keystore
+                    securityContext:
+                      runAsUser: 0
                 containers:
                   - name: belizechain-node
                     image: __IMAGE__
@@ -296,15 +325,16 @@ jobs:
                         name: metrics
                     args:
                       - "--chain"
-                      - "dev"
+                      - "testnet"
                       - "--base-path"
                       - "/data"
                       - "--name"
                       - "__NODE_NAME__"
                       - "--node-key-file"
                       - "/etc/belizechain/secrets/node-key"
+                      - "--keystore-path"
+                      - "/keystore"
                       - "--validator"
-                      - "--alice"
                       - "--rpc-port"
                       - "9944"
                       - "--rpc-cors"
@@ -325,6 +355,9 @@ jobs:
                         mountPath: /data
                       - name: node-key
                         mountPath: /etc/belizechain/secrets
+                        readOnly: true
+                      - name: keystore
+                        mountPath: /keystore
                         readOnly: true
                       - name: tmp
                         mountPath: /tmp
@@ -371,6 +404,13 @@ jobs:
                       items:
                         - key: node-key
                           path: node-key
+                  - name: validator-keys
+                    secret:
+                      secretName: belizechain-validator-keys
+                  - name: keystore
+                    emptyDir:
+                      medium: Memory
+                      sizeLimit: 16Mi
                   - name: tmp
                     emptyDir:
                       medium: Memory

@@ -527,7 +527,7 @@ parameter_types! {
     pub const PayrollPalletId: PalletId = PalletId(*b"py/payrl");
     pub const BelizeXPalletId: PalletId = PalletId(*b"py/bzdex");
     pub const MaxDallaSupply: Balance = 501_000_000_000 * DOLLARS; // 501 billion DALLA (12 decimals)
-    pub const MinValidatorStake: Balance = 100 * DOLLARS; // 100 DALLA (12 decimals)
+    pub const MinValidatorStake: Balance = 1_000 * DOLLARS; // 1,000 DALLA (12 decimals)
     pub const BaseReward: Balance = 1 * DOLLARS; // 1 DALLA per block
     pub const EpochDuration: BlockNumber = 14_400; // ~24 hours
     pub const MinimumDeposit: Balance = 10 * DOLLARS; // 10 DALLA
@@ -622,7 +622,7 @@ parameter_types! {
 
     pub const MinimumPayment: Balance = 1 * DOLLARS; // 1 DALLA
     pub const MinBridgeAmount: Balance = 50 * DOLLARS; // 50 DALLA
-    pub const BridgeFeeRate: u32 = 100; // 1%
+    pub const BridgeFeeRate: u32 = 80; // 0.8% (80 basis points)
     pub const PQSignatureThreshold: u32 = 3; // 3 of 5 validators
     pub const InteroperabilityPalletId: PalletId = PalletId(*b"bz/intop");
 }
@@ -1014,8 +1014,8 @@ impl pallet_belize_landledger::Config for Runtime {
     type TransferTaxRate = ConstU32<10>; // 0.1%
     type MaxDescriptionLength = ConstU32<256>;
     type WeightInfo = pallet_belize_landledger::weights::SubstrateWeight<Runtime>;
-    // 10 billion DALLA — upper bound to prevent registry abuse / overflow
-    type MaxPropertyPrice = ConstU128<{ 10_000_000_000 * DOLLARS }>;
+    // 100 million DALLA — upper bound; governance can raise via runtime upgrade
+    type MaxPropertyPrice = ConstU128<{ 100_000_000 * DOLLARS }>;
 }
 
 impl pallet_belize_consensus::Config for Runtime {

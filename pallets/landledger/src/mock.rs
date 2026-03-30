@@ -138,7 +138,7 @@ impl pallet_belize_landledger::Config for Test {
     type TransferTaxRate = TransferTaxRate;
     type MaxDescriptionLength = MaxDescriptionLength;
     type WeightInfo = ();
-    type MaxPropertyPrice = ConstU128<{ 10_000_000_000_000_000_000_000 }>; // 10B * 10^12
+    type MaxPropertyPrice = ConstU128<{ 100_000_000_000_000_000_000 }>; // 100M * 10^12
 }
 
 // Test account constants

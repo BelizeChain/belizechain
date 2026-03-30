@@ -52,12 +52,14 @@ impl SubstrateCli for Cli {
     /// Supported chain IDs:
     /// - "dev" - Development mode with Alice as validator
     /// - "local" - Local testnet with Alice and Bob
+    /// - "testnet" - Single-validator testnet for AKS deployment
     /// - "belize" or "" - Mainnet configuration
     /// - Custom path - Load from JSON file
     fn load_spec(&self, id: &str) -> Result<Box<dyn ChainSpec>, String> {
         Ok(match id {
             "dev" => Box::new(chain_spec::development_config()?),
             "local" => Box::new(chain_spec::local_testnet_config()?),
+            "testnet" => Box::new(chain_spec::belizechain_testnet_config()?),
             "" | "belize" => Box::new(chain_spec::belizechain_mainnet_config()?),
             path => {
                 Box::new(chain_spec::ChainSpec::from_json_file(std::path::PathBuf::from(path))?)

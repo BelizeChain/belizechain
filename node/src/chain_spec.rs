@@ -106,6 +106,80 @@ pub fn local_testnet_config() -> Result<ChainSpec, String> {
     .build())
 }
 
+/// BelizeChain Testnet — single-validator chain for AKS deployment.
+///
+/// Uses real keys generated via `subkey` (not dev seeds).
+/// Sr25519 (BABE/Account): 5Dk6wqPb2wzD1DscaBqNemv1xrETVQnmqXpjk2z6oHpQgjx8
+/// Ed25519 (GRANDPA):      5FsJu5aQCFsz2kEB2pdYpXF7JD2Jfr1qWUXhzz81uMThSGcw
+pub fn belizechain_testnet_config() -> Result<ChainSpec, String> {
+    use sp_core::crypto::Ss58Codec;
+
+    let babe_key = BabeId::from_ss58check(
+        "5Dk6wqPb2wzD1DscaBqNemv1xrETVQnmqXpjk2z6oHpQgjx8",
+    )
+    .map_err(|e| format!("Invalid BABE key: {e:?}"))?;
+    let grandpa_key = GrandpaId::from_ss58check(
+        "5FsJu5aQCFsz2kEB2pdYpXF7JD2Jfr1qWUXhzz81uMThSGcw",
+    )
+    .map_err(|e| format!("Invalid GRANDPA key: {e:?}"))?;
+
+    let initial_authorities: Vec<(BabeId, GrandpaId)> = vec![(babe_key, grandpa_key)];
+
+    let root_key: AccountId = sp_runtime::AccountId32::from_ss58check(
+        "5Dk6wqPb2wzD1DscaBqNemv1xrETVQnmqXpjk2z6oHpQgjx8",
+    )
+    .map_err(|e| format!("Invalid root key: {e:?}"))?;
+
+    let endowment: u128 = 10_000_000 * 1_000_000_000_000; // 10M DALLA
+
+    Ok(ChainSpec::builder(
+        WASM_BINARY.ok_or_else(|| "Testnet wasm not available".to_string())?,
+        Default::default(),
+    )
+    .with_name("BelizeChain Testnet")
+    .with_id("belizechain_testnet")
+    .with_chain_type(ChainType::Live)
+    .with_genesis_config_patch(serde_json::json!({
+        "balances": {
+            "balances": vec![(root_key.clone(), endowment)],
+        },
+        "babe": {
+            "authorities": initial_authorities.iter().map(|x| (x.0.clone(), 1u64)).collect::<Vec<_>>(),
+            "epochConfig": Some(BABE_GENESIS_EPOCH_CONFIG),
+        },
+        "grandpa": {
+            "authorities": initial_authorities
+                .iter()
+                .map(|x| (x.1.clone(), 1))
+                .collect::<Vec<_>>(),
+        },
+        "identity": {
+            "operationFee": Some(10u128 * 1_000_000_000_000u128),
+            "ssnStandardVersion": 1u8,
+            "passportStandardVersion": 1u8,
+            "initialSsnIssuers": vec![ root_key.clone() ],
+            "initialPassportIssuers": vec![ root_key.clone() ],
+            "initialBiometricIssuers": vec![ root_key.clone() ],
+            "paused": false,
+            "startIdentityId": 1u64,
+            "issuerBondAmount": Some(1_000u128 * 1_000_000_000_000u128),
+            "rateWindowBlocks": Some(14_400u32),
+            "rateLimitSsn": Some(500u32),
+            "rateLimitPassport": Some(200u32),
+            "rateLimitBiometrics": Some(100u32),
+        },
+        "governance": {
+            "councilMembers": vec![
+                (root_key.clone(), 1u32, 0u32),
+            ],
+            "democracyLaunchPeriod": 28800u32,
+            "democracyVotingPeriod": 43200u32,
+            "democracyMinimumDeposit": 1000u128 * 1_000_000_000_000u128,
+        },
+    }))
+    .build())
+}
+
 pub fn belizechain_mainnet_config() -> Result<ChainSpec, String> {
     Ok(ChainSpec::builder(
         WASM_BINARY.ok_or_else(|| "Production wasm not available".to_string())?,
@@ -735,5 +809,13 @@ mod tests {
     fn test_staging_config_succeeds() {
         staging_config()
             .expect("staging_config must succeed in test build");
+    }
+
+    #[test]
+    fn test_belizechain_testnet_config_succeeds() {
+        let spec = belizechain_testnet_config()
+            .expect("belizechain_testnet_config must succeed in test build");
+        assert_eq!(spec.name(), "BelizeChain Testnet");
+        assert_eq!(spec.id(), "belizechain_testnet");
     }
 }
