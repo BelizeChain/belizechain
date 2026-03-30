@@ -339,7 +339,7 @@ jobs:
                       - "9944"
                       - "--rpc-cors"
                       - "https://portal.belizechain.org,https://explorer.belizechain.org,http://localhost:3000"
-                      - "--rpc-external"
+                      - "--unsafe-rpc-external"
                       - "--rpc-methods"
                       - "Safe"
                       - "--prometheus-port"
