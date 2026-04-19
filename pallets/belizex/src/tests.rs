@@ -1,6 +1,4 @@
 //! Unit tests for BelizeX pallet
-#![cfg(test)]
-#![allow(clippy::duplicated_attributes)]
 
 use super::*;
 use crate::mock::*;
@@ -1064,8 +1062,8 @@ fn get_lp_balance_across_multiple_pairs() {
             RuntimeOrigin::signed(1), 2, 1, 5_000u128, 5_000u128, 0
         ));
         // Total LP should be sum across both pairs.
-        let lp_pair_0_1 = BelizeX::lp_balances(&1, (0u8, 1u8));
-        let lp_pair_2_1 = BelizeX::lp_balances(&1, (2u8, 1u8));
+        let lp_pair_0_1 = BelizeX::lp_balances(1, (0u8, 1u8));
+        let lp_pair_2_1 = BelizeX::lp_balances(1, (2u8, 1u8));
         let total = BelizeX::get_lp_balance(&1);
         assert_eq!(total, lp_pair_0_1 + lp_pair_2_1);
         assert!(total > 0);
@@ -1094,7 +1092,7 @@ fn add_liquidity_subsequent_uses_proportional_formula() {
         assert_ok!(BelizeX::add_liquidity(
             RuntimeOrigin::signed(1), 0, 1, 10_000u128, 10_000u128, 0
         ));
-        let lp1 = BelizeX::lp_balances(&1, (0u8, 1u8));
+        let lp1 = BelizeX::lp_balances(1, (0u8, 1u8));
         assert_eq!(lp1, 10_000);
 
         // Account 2: proportional deposit with same ratio.
@@ -1102,7 +1100,7 @@ fn add_liquidity_subsequent_uses_proportional_formula() {
         assert_ok!(BelizeX::add_liquidity(
             RuntimeOrigin::signed(2), 0, 1, 5_000u128, 5_000u128, 0
         ));
-        let lp2 = BelizeX::lp_balances(&2, (0u8, 1u8));
+        let lp2 = BelizeX::lp_balances(2, (0u8, 1u8));
         assert_eq!(lp2, 5_000);
     });
 }

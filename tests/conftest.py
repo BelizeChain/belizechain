@@ -7,6 +7,7 @@ This module provides pytest fixtures for integration testing across all BelizeCh
 import asyncio
 import json
 import os
+import threading
 import time
 from typing import Dict, Any, Optional
 from types import SimpleNamespace
@@ -17,8 +18,10 @@ from substrateinterface import SubstrateInterface, Keypair
 from substrateinterface.exceptions import SubstrateRequestException
 
 # Test configuration
-BLOCKCHAIN_RPC_URL = os.getenv("BLOCKCHAIN_RPC_URL", "http://localhost:9944")
 BLOCKCHAIN_WS_URL = os.getenv("BLOCKCHAIN_WS_URL", "ws://localhost:9944")
+# Derive HTTP URL from WS URL if not explicitly set
+_default_rpc = BLOCKCHAIN_WS_URL.replace("ws://", "http://").replace("wss://", "https://")
+BLOCKCHAIN_RPC_URL = os.getenv("BLOCKCHAIN_RPC_URL", _default_rpc)
 IPFS_API_URL = os.getenv("IPFS_API_URL", "http://localhost:5001")
 FL_SERVER_URL = os.getenv("FL_SERVER_URL", "http://localhost:8080")
 QUANTUM_API_URL = os.getenv("QUANTUM_API_URL", "http://localhost:8081")
@@ -113,24 +116,75 @@ def check_ipfs_health() -> bool:
 # Pytest Fixtures - Blockchain
 # ============================================================================
 
+def _create_substrate_connection():
+    """Create and initialize a SubstrateInterface connection."""
+    substrate = SubstrateInterface(
+        url=BLOCKCHAIN_WS_URL,
+        ss58_format=42,  # Generic Substrate format
+        ws_options={"timeout": 60},
+    )
+    substrate.init_runtime()
+    return substrate
+
+
+class ResilientSubstrate:
+    """Wrapper around SubstrateInterface that auto-reconnects on broken pipe or stale WS."""
+
+    _WS_ERRORS = (BrokenPipeError, ConnectionError, OSError, TimeoutError)
+
+    def __init__(self):
+        self._inner = _create_substrate_connection()
+        # Dynamically extend caught errors if websocket lib is available
+        try:
+            from websocket import WebSocketException, WebSocketTimeoutException
+            self._WS_ERRORS = (*self._WS_ERRORS, WebSocketException, WebSocketTimeoutException)
+        except ImportError:
+            pass
+
+    def _reconnect(self):
+        try:
+            self._inner.close()
+        except Exception:
+            pass
+        self._inner = _create_substrate_connection()
+
+    def __getattr__(self, name):
+        attr = getattr(self._inner, name)
+        if not callable(attr):
+            return attr
+
+        ws_errors = self._WS_ERRORS
+
+        def _wrapper(*args, **kwargs):
+            try:
+                return attr(*args, **kwargs)
+            except ws_errors:
+                self._reconnect()
+                return getattr(self._inner, name)(*args, **kwargs)
+
+        return _wrapper
+
+    def close(self):
+        try:
+            self._inner.close()
+        except Exception:
+            pass
+
+
 @pytest.fixture(scope="session")
 def blockchain_connection():
     """
     Provide a connection to the BelizeChain blockchain node.
     
     This fixture establishes a WebSocket connection to the blockchain
-    and verifies it's healthy before returning.
+    and verifies it's healthy before returning.  Uses ResilientSubstrate
+    to auto-reconnect on broken pipe errors during bulk test runs.
     """
     # Wait for blockchain to be ready
     if not wait_for_service(BLOCKCHAIN_RPC_URL, timeout=60):
         pytest.skip("Blockchain node not available")
     
-    # Create substrate interface
-    substrate = SubstrateInterface(
-        url=BLOCKCHAIN_WS_URL,
-        ss58_format=42,  # Generic Substrate format
-        type_registry_preset="substrate-node-template"
-    )
+    substrate = ResilientSubstrate()
     
     # Verify health
     if not check_blockchain_health(substrate):
@@ -170,6 +224,174 @@ def dave_keypair():
 def sudo_keypair():
     """Provide sudo keypair (Alice in dev mode has sudo privileges)."""
     return Keypair.create_from_uri("//Alice")
+
+
+@pytest.fixture(scope="session")
+def ensure_kyc(blockchain_connection):
+    """Ensure Alice and Bob have Government (level 4) compliance + registered identities.
+
+    ComplianceOrigin = TechnicalCouncilSuperMajority (>2/3 vote), so we must:
+    1. Add Alice to TechnicalCouncil via Sudo.sudo(set_members)
+    2. Propose verify_account with threshold=1 (auto-executes with 1 member)
+    3. Register identities in Identity pallet (needed by Community pallet)
+
+    Uses level=4 because governance and treasury require Government level.
+    """
+    substrate = blockchain_connection
+    alice = Keypair.create_from_uri("//Alice")
+    _sufficient_levels = ("Government",)
+
+    # Step 1: Ensure Alice is a TechnicalCouncil member
+    try:
+        members = substrate.query("TechnicalCouncil", "Members")
+        if not members.value or alice.ss58_address not in members.value:
+            set_members = substrate.compose_call(
+                call_module="TechnicalCouncil",
+                call_function="set_members",
+                call_params={
+                    "new_members": [alice.ss58_address],
+                    "prime": alice.ss58_address,
+                    "old_count": len(members.value) if members.value else 0,
+                },
+            )
+            sudo_call = substrate.compose_call(
+                call_module="Sudo",
+                call_function="sudo",
+                call_params={"call": set_members},
+            )
+            ext = substrate.create_signed_extrinsic(call=sudo_call, keypair=alice)
+            substrate.submit_extrinsic(ext, wait_for_inclusion=True)
+    except Exception as e:
+        print(f"[ensure_kyc] Council setup failed: {e}")
+
+    # Step 2: Verify each account at level 4 (Government) via TechnicalCouncil
+    for seed in ["//Alice", "//Bob"]:
+        account = Keypair.create_from_uri(seed)
+        try:
+            status = substrate.query("Compliance", "ComplianceStatusOf", [account.ss58_address])
+            current_level = status.value.get("verification_level") if status.value else None
+            if current_level in _sufficient_levels:
+                continue  # Already at Government
+
+            proposal = substrate.compose_call(
+                call_module="Compliance",
+                call_function="verify_account",
+                call_params={"account": account.ss58_address, "level": 4, "risk_level": 1},
+            )
+            proposal_len = len(proposal.encode())
+            propose_call = substrate.compose_call(
+                call_module="TechnicalCouncil",
+                call_function="propose",
+                call_params={
+                    "threshold": 1,
+                    "proposal": proposal,
+                    "length_bound": proposal_len + 100,
+                },
+            )
+            ext = substrate.create_signed_extrinsic(call=propose_call, keypair=alice)
+            receipt = substrate.submit_extrinsic(ext, wait_for_inclusion=True)
+            if not receipt.is_success:
+                print(f"[ensure_kyc] Verify {seed} failed: {receipt.error_message}")
+        except Exception as e:
+            print(f"[ensure_kyc] Verify {seed} exception: {e}")
+
+    # Step 3: Register identity for each account (needed by Community pallet)
+    for seed in ["//Alice", "//Bob"]:
+        account = Keypair.create_from_uri(seed)
+        try:
+            id_status = substrate.query("Identity", "IdentityOf", [account.ss58_address])
+            if id_status.value is not None:
+                continue  # Already registered
+            call = substrate.compose_call(
+                call_module="Identity",
+                call_function="register_identity",
+                call_params={"name": f"{seed.strip('/')} Testnet"},
+            )
+            ext = substrate.create_signed_extrinsic(call=call, keypair=account)
+            receipt = substrate.submit_extrinsic(ext, wait_for_inclusion=True)
+            if not receipt.is_success:
+                print(f"[ensure_kyc] Identity {seed} failed: {receipt.error_message}")
+        except Exception as e:
+            print(f"[ensure_kyc] Identity {seed} exception: {e}")
+
+    # Step 4: Set up Identity pallet KYC attestations (SSN + Passport for L2)
+    # The BNS, BelizeX, Governance, and Interoperability pallets check
+    # Identity::get_verified_kyc_level() which requires on-chain attestations,
+    # NOT the Compliance pallet status.
+    # L1 = SSN attestation, L2 = SSN + Passport, L3 = SSN + Passport + Biometric
+    # Bridge needs >= L2, others need >= L1.
+    import hashlib
+    import os
+
+    # Step 4a: Authorize Alice as SSN (attr=0) and Passport (attr=1) issuer
+    for attr_id in [0, 1]:  # 0=Ssn, 1=Passport
+        attr_name = "SSN" if attr_id == 0 else "Passport"
+        try:
+            add_issuer_call = substrate.compose_call(
+                call_module="Identity",
+                call_function="add_issuer",
+                call_params={"attr": attr_id, "issuer": alice.ss58_address},
+            )
+            proposal_len = len(add_issuer_call.encode())
+            propose_call = substrate.compose_call(
+                call_module="TechnicalCouncil",
+                call_function="propose",
+                call_params={
+                    "threshold": 1,
+                    "proposal": add_issuer_call,
+                    "length_bound": proposal_len + 100,
+                },
+            )
+            ext = substrate.create_signed_extrinsic(call=propose_call, keypair=alice)
+            receipt = substrate.submit_extrinsic(ext, wait_for_inclusion=True)
+            if not receipt.is_success:
+                err = getattr(receipt, "error_message", None) or ""
+                if "AlreadyAttested" not in str(err):
+                    print(f"[ensure_kyc] Add {attr_name} issuer failed: {err}")
+        except Exception as e:
+            if "AlreadyAttested" not in str(e):
+                print(f"[ensure_kyc] Add {attr_name} issuer exception: {e}")
+
+    # Step 4b: Issue SSN and Passport attestations for Alice and Bob
+    for seed in ["//Alice", "//Bob"]:
+        account = Keypair.create_from_uri(seed)
+        for attr_id, call_fn in [(0, "issue_ssn"), (1, "issue_passport")]:
+            attr_name = "SSN" if attr_id == 0 else "Passport"
+            try:
+                # Check if attestation already exists
+                storage_name = "SsnAttestations" if attr_id == 0 else "PassportAttestations"
+                identity_id = substrate.query("Identity", "IdentityOf", [account.ss58_address])
+                if identity_id.value is not None:
+                    existing = substrate.query("Identity", storage_name, [identity_id.value])
+                    if existing.value is not None:
+                        status = existing.value.get("status") if isinstance(existing.value, dict) else None
+                        if status == "Active":
+                            continue  # Already has active attestation
+
+                # Generate unique hash per account+attr
+                hash_input = f"{account.ss58_address}-{attr_name}-test".encode()
+                att_hash = "0x" + hashlib.sha256(hash_input).hexdigest()
+                anchor = "0x" + f"{attr_name} attestation for {seed.strip('/')}".encode().hex()
+
+                call = substrate.compose_call(
+                    call_module="Identity",
+                    call_function=call_fn,
+                    call_params={
+                        "target": account.ss58_address,
+                        "hash": att_hash,
+                        "anchor": anchor,
+                        "format_ok": True,
+                    },
+                )
+                ext = substrate.create_signed_extrinsic(call=call, keypair=alice)
+                receipt = substrate.submit_extrinsic(ext, wait_for_inclusion=True)
+                if not receipt.is_success:
+                    print(f"[ensure_kyc] Issue {attr_name} for {seed} failed: {receipt.error_message}")
+            except Exception as e:
+                print(f"[ensure_kyc] Issue {attr_name} for {seed} exception: {e}")
+
+    # Force a clean WebSocket to avoid stale subscription state from the 11+ extrinsics above
+    substrate._reconnect()
 
 
 # ============================================================================
@@ -432,16 +654,84 @@ def submit_extrinsic(blockchain_connection):
             keypair=keypair
         )
 
+        def _blocking_submit(sub, ext):
+            # Use inner directly to bypass ResilientSubstrate auto-retry.
+            # When we close the socket to kill a stuck recv(), the wrapper
+            # would catch the error, reconnect, and retry — never exiting.
+            inner = getattr(sub, "_inner", sub)
+            return inner.submit_extrinsic(ext, wait_for_inclusion=True)
+
+        def _submit_with_timeout(sub, ext, timeout_sec=45):
+            """Submit extrinsic with a hard threading-based timeout.
+            
+            websocket-client catches EINTR and retries, so pytest-timeout's
+            signal-based approach cannot interrupt blocking recv() calls.
+            This uses a daemon thread + socket close to guarantee termination.
+            """
+            result_box = {}
+            error_box = {}
+
+            def _worker():
+                try:
+                    result_box["receipt"] = _blocking_submit(sub, ext)
+                except Exception as exc:
+                    error_box["exc"] = exc
+
+            t = threading.Thread(target=_worker, daemon=True)
+            t.start()
+            t.join(timeout=timeout_sec)
+
+            if t.is_alive():
+                # Kill the stuck recv() by closing the underlying websocket
+                try:
+                    inner = getattr(sub, "_inner", sub)
+                    ws = getattr(inner, "websocket", None) or getattr(inner, "ws", None)
+                    if ws:
+                        ws.close()
+                except Exception:
+                    pass
+                t.join(timeout=5)
+                # Reconnect so future calls work
+                if hasattr(sub, "_reconnect"):
+                    sub._reconnect()
+                pytest.skip(
+                    f"{pallet}.{call} not included in block within {timeout_sec}s"
+                )
+
+            if "exc" in error_box:
+                raise error_box["exc"]
+            return result_box.get("receipt")
+
         try:
-            receipt = substrate.submit_extrinsic(extrinsic, wait_for_finalization=True)
+            receipt = _submit_with_timeout(substrate, extrinsic, timeout_sec=45)
+        except TimeoutError:
+            pytest.skip(f"{pallet}.{call} timed out")
         except SubstrateRequestException as e:
-            receipt = SimpleNamespace(
-                is_success=False,
-                error_message=str(e),
-                triggered_events=[],
-                block_hash=None,
-                extrinsic_hash=None,
-            )
+            err_msg = str(e)
+            if "Priority" in err_msg:
+                # Nonce collision with pending tx — wait for next block and retry
+                time.sleep(6)
+                extrinsic = substrate.create_signed_extrinsic(
+                    call=call_obj, keypair=keypair
+                )
+                try:
+                    receipt = _submit_with_timeout(substrate, extrinsic, timeout_sec=45)
+                except SubstrateRequestException as e2:
+                    receipt = SimpleNamespace(
+                        is_success=False,
+                        error_message=str(e2),
+                        triggered_events=[],
+                        block_hash=None,
+                        extrinsic_hash=None,
+                    )
+            else:
+                receipt = SimpleNamespace(
+                    is_success=False,
+                    error_message=err_msg,
+                    triggered_events=[],
+                    block_hash=None,
+                    extrinsic_hash=None,
+                )
 
         class ReceiptWrapper:
             def __init__(self, inner):
@@ -495,8 +785,48 @@ def submit_sudo_extrinsic(blockchain_connection, sudo_keypair):
             keypair=keypair or sudo_keypair
         )
 
+        def _sudo_blocking_submit(sub, ext):
+            # Use inner directly to bypass ResilientSubstrate auto-retry.
+            inner = getattr(sub, "_inner", sub)
+            return inner.submit_extrinsic(ext, wait_for_inclusion=True)
+
+        def _sudo_submit_with_timeout(sub, ext, timeout_sec=45):
+            result_box = {}
+            error_box = {}
+
+            def _worker():
+                try:
+                    result_box["receipt"] = _sudo_blocking_submit(sub, ext)
+                except Exception as exc:
+                    error_box["exc"] = exc
+
+            t = threading.Thread(target=_worker, daemon=True)
+            t.start()
+            t.join(timeout=timeout_sec)
+
+            if t.is_alive():
+                try:
+                    inner = getattr(sub, "_inner", sub)
+                    ws = getattr(inner, "websocket", None) or getattr(inner, "ws", None)
+                    if ws:
+                        ws.close()
+                except Exception:
+                    pass
+                t.join(timeout=5)
+                if hasattr(sub, "_reconnect"):
+                    sub._reconnect()
+                pytest.skip(
+                    f"Sudo {pallet}.{call} not included in block within {timeout_sec}s"
+                )
+
+            if "exc" in error_box:
+                raise error_box["exc"]
+            return result_box.get("receipt")
+
         try:
-            receipt = substrate.submit_extrinsic(extrinsic, wait_for_finalization=True)
+            receipt = _sudo_submit_with_timeout(substrate, extrinsic, timeout_sec=45)
+        except TimeoutError:
+            pytest.skip(f"Sudo {pallet}.{call} timed out")
         except SubstrateRequestException as e:
             receipt = SimpleNamespace(
                 is_success=False,

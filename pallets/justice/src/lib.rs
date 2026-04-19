@@ -448,7 +448,7 @@ pub mod pallet {
                         RehabilitationStatus::<T>::insert(&record.target, RehabStatus::InCoolingOff);
                     }
                     DisputeResolution::Mediated { slash_bps } => {
-                        let slash_amount = escrowed.saturating_mul((*slash_bps as u32).into())
+                        let slash_amount = escrowed.saturating_mul((*slash_bps).into())
                             / 10_000u32.into();
                         let refund = escrowed.saturating_sub(slash_amount);
                         // AUDIT FIX (C-JUST-4): Slash reserved funds atomically
@@ -540,7 +540,7 @@ pub mod pallet {
             account: T::AccountId,
         ) -> DispatchResult {
             // Either governance or a mediator may reinstate
-            let _ = T::GovernanceOrigin::ensure_origin(origin.clone())
+            T::GovernanceOrigin::ensure_origin(origin.clone())
                 .map(|_| ())
                 .or_else(|_| T::MediatorOrigin::ensure_origin(origin).map(|_| ()))?;
 

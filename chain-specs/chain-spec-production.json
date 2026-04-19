@@ -1,0 +1,36 @@
+{
+  "name": "BelizeChain Mainnet",
+  "id": "belizechain_mainnet",
+  "chainType": "Live",
+  "bootNodes": [
+    "/ip4/NODE1_IP/tcp/30333/p2p/NODE1_PEER_ID",
+    "/ip4/NODE2_IP/tcp/30333/p2p/NODE2_PEER_ID",
+    "/ip4/NODE3_IP/tcp/30333/p2p/NODE3_PEER_ID"
+  ],
+  "telemetryEndpoints": [
+    [
+      "wss://telemetry.belizechain.org/submit/",
+      0
+    ]
+  ],
+  "protocolId": "bzc",
+  "properties": {
+    "tokenSymbol": "DALLA",
+    "tokenDecimals": 12,
+    "ss58Format": 2025
+  },
+  "consensusEngine": "belize-pow",
+  "genesis": {
+    "runtime": {
+      "system": {},
+      "palletEconomy": {
+        "totalIssuance": "1000000000000000000000"
+      },
+      "palletBelizex": {},
+      "palletGovernance": {},
+      "palletIdentity": {},
+      "palletStaking": {},
+      "palletContracts": {}
+    }
+  }
+}

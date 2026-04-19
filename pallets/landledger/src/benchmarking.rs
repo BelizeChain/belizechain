@@ -61,6 +61,13 @@ mod benchmarks {
         // Verify property so transfer is allowed (requires government_verified = true)
         let _ = Pallet::<T>::verify_property(RawOrigin::Root.into(), property_id);
 
+        // Mark property as surveyed (required for transfer)
+        Properties::<T>::mutate(property_id, |maybe_prop| {
+            if let Some(prop) = maybe_prop {
+                prop.surveyed = true;
+            }
+        });
+
         #[extrinsic_call]
         _(
             RawOrigin::Signed(caller),

@@ -1,5 +1,4 @@
 //! Comprehensive tests for the Moderation pallet
-#![cfg(test)]
 
 use crate::{mock::*, pallet::*, *};
 use frame_support::{assert_noop, assert_ok};

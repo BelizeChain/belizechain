@@ -24,13 +24,13 @@ use frame_support::{
     derive_impl,
     genesis_builder_helper::{build_state, get_preset},
     parameter_types,
-    traits::{ConstBool, ConstU128, ConstU32, ConstU64, ConstU8, Get},
+    traits::{ConstBool, ConstU128, ConstU32, ConstU64, ConstU8, EitherOfDiverse, Get},
     weights::{
         constants::WEIGHT_REF_TIME_PER_SECOND, Weight,
     },
     PalletId,
 };
-use frame_system::EnsureRoot;
+use frame_system::{EnsureRoot, EnsureRootWithSuccess};
 use pallet_collective::{EnsureMember, EnsureProportionMoreThan, EnsureProportionAtLeast};
 use pallet_grandpa::AuthorityId as GrandpaId;
 use sp_api::impl_runtime_apis;
@@ -94,7 +94,8 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     impl_name: Cow::Borrowed("belizechain"),
     authoring_version: 1,
     // AR-2: bumped to 101 — pallet_session added (validator rotation enabled).
-    spec_version: 103,
+    // AR-3: bumped to 104 — pallet_sudo ungated for testnet bootstrapping.
+    spec_version: 104,
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 1,
@@ -461,8 +462,8 @@ impl pallet_transaction_payment::Config for Runtime {
     type WeightInfo = pallet_transaction_payment::weights::SubstrateWeight<Runtime>;
 }
 
-// CONS-004 FIX: pallet_sudo is a development-only override; excluded from production builds.
-#[cfg(feature = "dev")]
+// CONS-004: pallet_sudo provides root-level dispatch for testnet bootstrapping.
+// Included unconditionally during testnet phase; will be gated or removed before mainnet.
 impl pallet_sudo::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type RuntimeCall = RuntimeCall;
@@ -475,7 +476,7 @@ impl pallet_sudo::Config for Runtime {
 
 // Constants for smart contract limits
 parameter_types! {
-    pub const DepositPerItem: Balance = 1 * DOLLARS; // 1 DALLA per storage item
+    pub const DepositPerItem: Balance = DOLLARS; // 1 DALLA per storage item
     pub const DepositPerByte: Balance = DOLLARS / 10_000; // 0.0001 DALLA per byte
     pub const DefaultDepositLimit: Balance = 1_000 * DOLLARS; // 1000 DALLA max deposit
     pub const MaxCodeLen: u32 = 128 * 1024; // 128 KB max contract code size (reduced for CallStack safety)
@@ -528,7 +529,7 @@ parameter_types! {
     pub const BelizeXPalletId: PalletId = PalletId(*b"py/bzdex");
     pub const MaxDallaSupply: Balance = 501_000_000_000 * DOLLARS; // 501 billion DALLA (12 decimals)
     pub const MinValidatorStake: Balance = 1_000 * DOLLARS; // 1,000 DALLA (12 decimals)
-    pub const BaseReward: Balance = 1 * DOLLARS; // 1 DALLA per block
+    pub const BaseReward: Balance = DOLLARS; // 1 DALLA per block
     pub const EpochDuration: BlockNumber = 14_400; // ~24 hours
     pub const MinimumDeposit: Balance = 10 * DOLLARS; // 10 DALLA
     pub const VotingPeriod: BlockNumber = 7_200; // ~12 hours
@@ -620,7 +621,7 @@ parameter_types! {
     /// Nawal risk score above which content is auto-queued (0–100).
     pub const ModerationNawalAutoQueueScore: u8 = 50;
 
-    pub const MinimumPayment: Balance = 1 * DOLLARS; // 1 DALLA
+    pub const MinimumPayment: Balance = DOLLARS; // 1 DALLA
     pub const MinBridgeAmount: Balance = 50 * DOLLARS; // 50 DALLA
     pub const BridgeFeeRate: u32 = 80; // 0.8% (80 basis points)
     pub const PQSignatureThreshold: u32 = 3; // 3 of 5 validators
@@ -738,32 +739,52 @@ impl pallet_collective::Config<GovernanceCouncilInstance> for Runtime {
 }
 
 // ── Origin type aliases ───────────────────────────────────────────────────────
-// These replace the 20 EnsureRoot<AccountId> usages in pallet configs below.
-// EnsureRoot is kept only for pallet_sudo itself and SetMembersOrigin above.
+// All origin types include an EnsureRoot fallback so that:
+// 1. Sudo can bootstrap operations on dev / testnet chains.
+// 2. `frame-benchmarking` can use `RawOrigin::Root` in benchmark harnesses.
+// TODO: remove EnsureRoot fallback before mainnet launch.
 
-/// Any single member of TechnicalCouncil (low-risk admin operations).
-pub type TechnicalCouncilMember =
-    EnsureMember<AccountId, TechnicalCouncilInstance>;
+parameter_types! {
+    /// Default AccountId returned when Root bypasses a member-based origin check.
+    /// Pallets discard this value; it exists only to satisfy the type system.
+    pub RootAccountSuccess: AccountId = AccountId::new([0u8; 32]);
+}
 
-/// Simple majority (>1/2) of TechnicalCouncil — standard technical decisions.
-pub type TechnicalCouncilMajority =
-    EnsureProportionMoreThan<AccountId, TechnicalCouncilInstance, 1, 2>;
+/// Any single member of TechnicalCouncil (low-risk admin operations), OR Root.
+pub type TechnicalCouncilMember = EitherOfDiverse<
+    EnsureRootWithSuccess<AccountId, RootAccountSuccess>,
+    EnsureMember<AccountId, TechnicalCouncilInstance>,
+>;
 
-/// Supermajority (>2/3) of TechnicalCouncil — sensitive compliance/security.
-pub type TechnicalCouncilSuperMajority =
-    EnsureProportionMoreThan<AccountId, TechnicalCouncilInstance, 2, 3>;
+/// Simple majority (>1/2) of TechnicalCouncil — standard technical decisions, OR Root.
+pub type TechnicalCouncilMajority = EitherOfDiverse<
+    EnsureRoot<AccountId>,
+    EnsureProportionMoreThan<AccountId, TechnicalCouncilInstance, 1, 2>,
+>;
 
-/// Three quarters (>=3/4) of TechnicalCouncil — emergency and critical actions.
-pub type TechnicalCouncilThreeQuarters =
-    EnsureProportionAtLeast<AccountId, TechnicalCouncilInstance, 3, 4>;
+/// Supermajority (>2/3) of TechnicalCouncil — sensitive compliance/security, OR Root.
+pub type TechnicalCouncilSuperMajority = EitherOfDiverse<
+    EnsureRoot<AccountId>,
+    EnsureProportionMoreThan<AccountId, TechnicalCouncilInstance, 2, 3>,
+>;
 
-/// Simple majority (>1/2) of GovernanceCouncil — standard democratic decisions.
-pub type GovernanceCouncilMajority =
-    EnsureProportionMoreThan<AccountId, GovernanceCouncilInstance, 1, 2>;
+/// Three quarters (>=3/4) of TechnicalCouncil — emergency and critical actions, OR Root.
+pub type TechnicalCouncilThreeQuarters = EitherOfDiverse<
+    EnsureRoot<AccountId>,
+    EnsureProportionAtLeast<AccountId, TechnicalCouncilInstance, 3, 4>,
+>;
 
-/// Supermajority (>2/3) of GovernanceCouncil — sanctions and punitive actions.
-pub type GovernanceCouncilSuperMajority =
-    EnsureProportionMoreThan<AccountId, GovernanceCouncilInstance, 2, 3>;
+/// Simple majority (>1/2) of GovernanceCouncil — standard democratic decisions, OR Root.
+pub type GovernanceCouncilMajority = EitherOfDiverse<
+    EnsureRoot<AccountId>,
+    EnsureProportionMoreThan<AccountId, GovernanceCouncilInstance, 1, 2>,
+>;
+
+/// Supermajority (>2/3) of GovernanceCouncil — sanctions and punitive actions, OR Root.
+pub type GovernanceCouncilSuperMajority = EitherOfDiverse<
+    EnsureRoot<AccountId>,
+    EnsureProportionMoreThan<AccountId, GovernanceCouncilInstance, 2, 3>,
+>;
 
 // ==================== END PHASE 0 COLLECTIVES ====================
 
@@ -811,6 +832,7 @@ impl pallet_belize_identity::Config for Runtime {
     type Currency = Balances;
     type PalletId = IdentityPalletId;
     type Treasury = TreasuryAccount;
+    /// EnsureRoot fallback is built into the TechnicalCouncilSuperMajority alias.
     type AdminOrigin = TechnicalCouncilSuperMajority;
     type RevokeOrigin = TechnicalCouncilSuperMajority;
     type Oracle = IdentityOracleProvider;
@@ -978,7 +1000,10 @@ impl pallet_belize_interoperability::Config for Runtime {
     type WeightInfo = pallet_belize_interoperability::weights::SubstrateWeight<Runtime>;
     type MaxBridgePerBlock = ConstU32<5>;
     // AR-6: ML-DSA-87 (NIST FIPS 204) post-quantum signature verifier.
+    #[cfg(not(feature = "runtime-benchmarks"))]
     type PQVerifier = pallet_belize_interoperability::MLDsaVerifier;
+    #[cfg(feature = "runtime-benchmarks")]
+    type PQVerifier = pallet_belize_interoperability::PassthroughPQVerifier;
     type PalletId = InteroperabilityPalletId;
     // P0-1: Oracle-attested burn proof verification
     type OracleCheck = InteropOracleCheck;
@@ -1030,7 +1055,10 @@ impl pallet_belize_consensus::Config for Runtime {
     type ConsensusReward = ConstU128<{ 5 * DOLLARS }>; // 5 DALLA per epoch
     type WeightInfo = pallet_belize_consensus::weights::SubstrateWeight<Runtime>;
     type MaxSubmitPerBlock = ConstU32<3>;
+    #[cfg(not(feature = "runtime-benchmarks"))]
     type PqVerifier = pallet_belize_consensus::RealPqVerifier;
+    #[cfg(feature = "runtime-benchmarks")]
+    type PqVerifier = pallet_belize_consensus::SizeOnlyPqVerifier;
     type ValidatorUnbondingPeriod = ConstU32<{ 28 * DAYS }>; // 28-day unbonding
 }
 
@@ -1129,7 +1157,13 @@ impl pallet_belize_justice::Config for Runtime {
     /// Governance council majority required for appeals (constitutional-grade).
     type GovernanceOrigin = GovernanceCouncilMajority;
     /// Technical council member can act as mediator.
-    type MediatorOrigin = TechnicalCouncilMember;
+    /// Uses raw EnsureMember (not the Root-wrapped alias) because this origin
+    /// requires `Success = AccountId`.
+    /// In benchmarks, use EnsureSigned so benchmarking doesn't need collective setup.
+    #[cfg(not(feature = "runtime-benchmarks"))]
+    type MediatorOrigin = EnsureMember<AccountId, TechnicalCouncilInstance>;
+    #[cfg(feature = "runtime-benchmarks")]
+    type MediatorOrigin = frame_system::EnsureSigned<AccountId>;
     type OpenDisputeBond = JusticeOpenDisputeBond;
     type CoolingOffPeriod = JusticeCoolingOffPeriod;
     type MaxMediators = ConstU32<20>;
@@ -1196,8 +1230,7 @@ construct_runtime!(
         Grandpa: pallet_grandpa = 3,
         Balances: pallet_balances = 4,
         TransactionPayment: pallet_transaction_payment = 5,
-        // CONS-004 FIX: Sudo excluded from production builds; only available in dev feature.
-        #[cfg(feature = "dev")]
+        // CONS-004: Sudo included during testnet; gate or remove before mainnet.
         Sudo: pallet_sudo = 6,
         // Phase 0: Multi-house governance collectives
         // TechnicalCouncil  (Instance1) — protocol-level & security-sensitive decisions
@@ -1454,7 +1487,9 @@ impl pallet_belize_identity::IdentityOracleProvider<AccountId> for IdentityOracl
         providers::oracle_kyc_level(account).is_some_and(|kyc| kyc >= level)
     }
     fn is_sanctioned(account: &AccountId) -> bool {
-        providers::runtime_is_sanctioned(account)
+        // Call Oracle pallet directly — NOT runtime_is_sanctioned() which calls
+        // Identity::is_account_sanctioned() → T::Oracle::is_sanctioned() → infinite recursion.
+        Oracle::is_sanctioned(account)
     }
 }
 
@@ -1780,7 +1815,7 @@ where
     RuntimeCall: From<LocalCall>,
 {
     fn create_bare(call: RuntimeCall) -> UncheckedExtrinsic {
-        generic::UncheckedExtrinsic::new_bare(call).into()
+        generic::UncheckedExtrinsic::new_bare(call)
     }
 }
 
@@ -1824,6 +1859,9 @@ mod benches {
         [pallet_belize_quantum, Quantum]
         [pallet_belize_bns, Bns]
         [pallet_belize_mesh, Mesh]
+        [pallet_belize_justice, BelizeJustice]
+        [pallet_belize_whistleblower, BelizeWhistleblower]
+        [pallet_belize_moderation, BelizeModeration]
     );
 }
 
@@ -2061,7 +2099,7 @@ impl_runtime_apis! {
                 .map(|(activity_type, block_number, description)| {
                     pallet_belize_compliance::runtime_api::SuspiciousActivityEntry {
                         activity_type: activity_type.encode().first().copied().unwrap_or(0),
-                        block_number: block_number,
+                        block_number,
                         description: description.into_inner(),
                     }
                 })

@@ -153,6 +153,9 @@ pub fn belizechain_testnet_config() -> Result<ChainSpec, String> {
                 .map(|x| (x.1.clone(), 1))
                 .collect::<Vec<_>>(),
         },
+        "sudo": {
+            "key": Some(root_key.clone()),
+        },
         "identity": {
             "operationFee": Some(10u128 * 1_000_000_000_000u128),
             "ssnStandardVersion": 1u8,
@@ -226,8 +229,10 @@ fn testnet_genesis(
                 .map(|x| (x.1.clone(), 1))
                 .collect::<Vec<_>>(),
         },
-        // NOTE: Sudo pallet excluded — gated behind #[cfg(feature = "dev")] in runtime.
-        // Validator keys must be injected via `author.insertKey` RPC or keystore file.
+        // Sudo key set to root_key (Alice in dev, real key in testnet)
+        "sudo": {
+            "key": Some(root_key.clone()),
+        },
         
         // BelizeChain custom pallet configurations
         // Note: Economy pallet doesn't have genesis config yet
@@ -670,7 +675,7 @@ mod tests {
     }
 
     #[test]
-    fn test_testnet_genesis_no_sudo_key() {
+    fn test_testnet_genesis_has_sudo_key() {
         let alice_acct = get_account_id_from_seed::<sr25519::Public>("Alice");
         let genesis = testnet_genesis(
             vec![authority_keys_from_seed("Alice")],
@@ -679,11 +684,11 @@ mod tests {
             false,
         )
         .unwrap();
-        // Sudo pallet is gated behind #[cfg(feature = "dev")] in the runtime, so the
-        // genesis config patch must NOT contain a "sudo" field in production builds.
+        // Sudo pallet is still included for testnet bootstrapping (CONS-004).
+        // It will be removed before mainnet (Phase 0, Step 0.4).
         assert!(
-            genesis.get("sudo").is_none(),
-            "sudo must NOT be present in production genesis config"
+            genesis.get("sudo").is_some(),
+            "sudo must be present in testnet genesis for bootstrapping"
         );
     }
 

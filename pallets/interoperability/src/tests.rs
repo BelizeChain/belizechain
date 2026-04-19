@@ -2801,7 +2801,7 @@ fn ml_dsa_verify_wrong_context() {
 
     // MLDsaVerifier hardcodes b"belizechain-bridge-v1", so this must fail
     assert!(
-        !MLDsaVerifier::verify(&pk_bytes, message, &sig.to_vec()),
+        !MLDsaVerifier::verify(&pk_bytes, message, sig.as_ref()),
         "signature with wrong context must not verify"
     );
 }

@@ -129,6 +129,18 @@ mod benchmarks {
             None,
         );
 
+        // P0-18: council_override requires JaguarMode to be active
+        JaguarMode::<T>::put(EmergencyStatus {
+            active: true,
+            emergency_type: EmergencyType::Other,
+            description: BoundedVec::truncate_from(b"Benchmark emergency".to_vec()),
+            declared_at: frame_system::Pallet::<T>::block_number(),
+            expires_at: None,
+            declared_by: None,
+            is_pending: false,
+            veto_window_ends_at: None,
+        });
+
         let proposal_id: u32 = 0;
         let override_reason: Vec<u8> = b"Emergency override required".to_vec();
 

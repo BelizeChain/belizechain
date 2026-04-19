@@ -238,6 +238,9 @@ mod benchmarks {
         let job_id = make_job_id::<T>(3);
         insert_quantum_job::<T>(&submitter, &job_id);
 
+        // Set executor reputation to required minimum (100)
+        ValidatorReputation::<T>::insert(&executor, 100u32);
+
         // Set job status to Running with executor
         QuantumJobs::<T>::mutate(&job_id, |maybe_job| {
             if let Some(job) = maybe_job {
@@ -283,6 +286,13 @@ mod benchmarks {
         let job_id = make_job_id::<T>(5);
         insert_quantum_job::<T>(&caller, &job_id);
         insert_quantum_result::<T>(&executor, &job_id);
+
+        // Mark job as verified (required for minting)
+        QuantumJobs::<T>::mutate(&job_id, |maybe_job| {
+            if let Some(job) = maybe_job {
+                job.verification_status = VerificationStatus::Verified;
+            }
+        });
 
         // Ensure NFTCounter starts at 0
         NFTCounter::<T>::put(0u64);
@@ -412,6 +422,9 @@ mod benchmarks {
         insert_quantum_job::<T>(&submitter, &job_id);
         insert_quantum_result::<T>(&executor, &job_id);
         insert_verification_request::<T>(&job_id);
+
+        // Set validator reputation to required minimum (50)
+        ValidatorReputation::<T>::insert(&validator, 100u32);
 
         #[extrinsic_call]
         submit_verification(

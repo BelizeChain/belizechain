@@ -123,7 +123,7 @@ impl pallet_belize_identity::BelizeKyc<u64, u64> for MockKyc {
             pallet_belize_identity::KycLevel::L2 => 2,
             pallet_belize_identity::KycLevel::L3 => 3,
         };
-        MockOracle::get_kyc_level(who).map_or(false, |l| l >= required)
+        MockOracle::get_kyc_level(who).is_some_and(|l| l >= required)
     }
 }
 
@@ -138,7 +138,7 @@ impl pallet_belize_landledger::Config for Test {
     type TransferTaxRate = TransferTaxRate;
     type MaxDescriptionLength = MaxDescriptionLength;
     type WeightInfo = ();
-    type MaxPropertyPrice = ConstU128<{ 100_000_000_000_000_000_000 }>; // 100M * 10^12
+    type MaxPropertyPrice = ConstU128<100_000_000_000_000_000_000>; // 100M * 10^12
 }
 
 // Test account constants

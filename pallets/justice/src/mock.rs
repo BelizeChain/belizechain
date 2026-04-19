@@ -1,5 +1,4 @@
 //! Mock runtime for Justice pallet tests
-#![cfg(test)]
 
 use crate as pallet_belize_justice;
 use frame_support::{construct_runtime, parameter_types, traits::{ConstU16, ConstU32, Everything, Hooks}};

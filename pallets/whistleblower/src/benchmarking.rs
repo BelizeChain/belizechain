@@ -5,6 +5,8 @@ use codec::Encode;
 use frame_benchmarking::v2::*;
 use frame_support::traits::{Currency, Get};
 use frame_system::RawOrigin;
+use sp_runtime::SaturatedConversion;
+use sp_std::vec::Vec;
 
 #[benchmarks]
 mod benchmarks {
@@ -56,10 +58,11 @@ mod benchmarks {
         let bond = T::ReportBond::get();
         let _ = T::Currency::make_free_balance_be(&reporter, bond * 10u32.into());
 
-        // Compute alias_hash = blake2_256(reporter ++ nonce)
-        let nonce: [u8; 32] = [42u8; 32];
-        let mut preimage = reporter.encode();
-        preimage.extend_from_slice(&nonce);
+        // Compute alias_hash = blake2_256(DOMAIN_TAG ++ reporter ++ secret)
+        let secret: [u8; 32] = [42u8; 32];
+        let mut preimage = Vec::from(b"BelizeChainWhistleblowerV1".as_slice());
+        preimage.extend_from_slice(&reporter.encode());
+        preimage.extend_from_slice(&secret);
         let alias_hash = sp_io::hashing::blake2_256(&preimage);
 
         let _ = Pallet::<T>::submit_report(
@@ -81,15 +84,17 @@ mod benchmarks {
         );
 
         #[extrinsic_call]
-        _(RawOrigin::Signed(reporter), 1u32, nonce);
+        _(RawOrigin::Signed(reporter), 1u32, secret);
     }
 
     #[benchmark]
     fn fund_whistleblower_pool() {
-        let amount: BalanceOf<T> = 1_000u32.into();
+        let caller: T::AccountId = whitelisted_caller();
+        let amount: BalanceOf<T> = (1_000_000_000_000u128).saturated_into();
+        let _ = T::Currency::make_free_balance_be(&caller, amount * 10u32.into());
 
         #[extrinsic_call]
-        _(RawOrigin::Root, amount);
+        _(RawOrigin::Signed(caller), amount);
     }
 
     impl_benchmark_test_suite!(Pallet, crate::mock::new_test_ext(), crate::mock::Test);

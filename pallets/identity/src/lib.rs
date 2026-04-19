@@ -1116,7 +1116,7 @@ pub mod pallet {
             }
             if let Some(id) = IdentityOf::<T>::get(who) {
                 if let Some(rec) = Identities::<T>::get(id) {
-                    return rec.accounts.iter().any(|a| T::Oracle::is_sanctioned(a));
+                    return rec.accounts.iter().any(T::Oracle::is_sanctioned);
                 }
             }
             false

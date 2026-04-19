@@ -1,5 +1,4 @@
 //! Comprehensive tests for the Justice pallet
-#![cfg(test)]
 
 use crate::{mock::*, pallet::*};
 use frame_support::{assert_noop, assert_ok};
@@ -40,8 +39,8 @@ fn open_dispute_works() {
         assert_eq!(Balances::reserved_balance(ALICE), reserved_before + 500);
 
         // Target now in cooling-off
-        assert_eq!(Justice::rehab_status(&BOB), RehabStatus::InCoolingOff);
-        assert!(Justice::cooling_off_end(&BOB).is_some());
+        assert_eq!(Justice::rehab_status(BOB), RehabStatus::InCoolingOff);
+        assert!(Justice::cooling_off_end(BOB).is_some());
     });
 }
 
@@ -368,7 +367,7 @@ fn mediator_ruling_dismissed_with_escrow_refunds() {
         ));
 
         assert_eq!(Balances::reserved_balance(BOB), 0);
-        assert!(Justice::slash_pending(&BOB).is_none());
+        assert!(Justice::slash_pending(BOB).is_none());
 
         System::assert_has_event(
             Event::<Test>::SlashRefunded { account: BOB, amount: 10_000 }.into()
@@ -553,7 +552,7 @@ fn complete_rehabilitation_works() {
         assert_ok!(Justice::mediator_ruling(
             RuntimeOrigin::signed(MEDIATOR), id, 0, 0,
         ));
-        assert_eq!(Justice::rehab_status(&BOB), RehabStatus::InRehabilitation);
+        assert_eq!(Justice::rehab_status(BOB), RehabStatus::InRehabilitation);
 
         // Advance past cooling-off period (block 1 + 100 = 101)
         run_to_block(102);
@@ -564,8 +563,8 @@ fn complete_rehabilitation_works() {
             BOB,
         ));
 
-        assert_eq!(Justice::rehab_status(&BOB), RehabStatus::Reinstated);
-        assert!(Justice::cooling_off_end(&BOB).is_none());
+        assert_eq!(Justice::rehab_status(BOB), RehabStatus::Reinstated);
+        assert!(Justice::cooling_off_end(BOB).is_none());
     });
 }
 
@@ -626,7 +625,7 @@ fn complete_rehabilitation_emits_event() {
 fn escrow_slash_works() {
     new_test_ext().execute_with(|| {
         assert_ok!(Justice::escrow_slash(&BOB, 5_000));
-        assert_eq!(Justice::slash_pending(&BOB), Some(5_000));
+        assert_eq!(Justice::slash_pending(BOB), Some(5_000));
         assert_eq!(Balances::reserved_balance(BOB), 5_000);
     });
 }

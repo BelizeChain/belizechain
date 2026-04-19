@@ -2,6 +2,7 @@
 
 use super::*;
 use frame_benchmarking::v2::*;
+use frame_support::traits::Get;
 use frame_support::BoundedVec;
 use frame_system::RawOrigin;
 use sp_std::vec;
@@ -27,6 +28,10 @@ mod benchmarks {
         let caller: T::AccountId = whitelisted_caller();
         let target: T::AccountId = account("target", 0, 0);
         
+        // Advance block number past SrsUpdateCooldown so the extrinsic doesn't reject
+        let cooldown = T::SrsUpdateCooldown::get();
+        frame_system::Pallet::<T>::set_block_number(cooldown);
+
         // Ensure target has some participation history for the update
         let activity = ParticipationRecord {
             activity_type: ActivityType::VoteCast,

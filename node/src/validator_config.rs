@@ -362,7 +362,7 @@ pub mod node_roles {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sc_network::config::{SetConfig, TransportConfig};
+    use sc_network::config::TransportConfig;
     use sc_service::config::{DatabaseSource, KeystoreConfig};
 
     #[test]

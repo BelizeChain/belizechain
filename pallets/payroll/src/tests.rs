@@ -2,7 +2,7 @@ use crate::{mock::*, Error, Event, PaymentFrequency, WorkerType, EmployerType, P
 use codec::Encode;
 use frame_support::{
     assert_noop, assert_ok,
-    traits::{OnInitialize, OnIdle},
+    traits::OnIdle,
     weights::Weight,
 };
 
@@ -1552,7 +1552,7 @@ fn schedule_advances_after_processing() {
         assert_eq!(schedule.payments_made, 1);
 
         // Should NOT trigger again at block 150
-        let before = Balances::free_balance(3);
+        let _before = Balances::free_balance(3);
         System::set_block_number(150);
         Payroll::on_idle(150, Weight::from_parts(u64::MAX, u64::MAX));
 

@@ -1,6 +1,4 @@
 //! Mock runtime for BelizeX pallet tests
-#![cfg(test)]
-#![allow(clippy::duplicated_attributes)]
 #![allow(dead_code)]
 
 use crate as pallet_belize_belizex;

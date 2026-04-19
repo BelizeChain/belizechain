@@ -1,5 +1,4 @@
 //! Mock runtime for Moderation pallet tests
-#![cfg(test)]
 
 use crate as pallet_belize_moderation;
 use frame_support::{

@@ -1,5 +1,4 @@
 //! Comprehensive tests for the Whistleblower pallet
-#![cfg(test)]
 
 use crate::{mock::*, pallet::*};
 use frame_support::{assert_noop, assert_ok};
@@ -946,7 +945,7 @@ fn bond_exhaustion_prevents_further_reports() {
             }
             count += 1;
             // Advance block every 50 reports to stay within rate limit
-            if count % 50 == 0 {
+            if count.is_multiple_of(50) {
                 block += 1;
                 System::set_block_number(block);
                 ReportsThisBlock::<Test>::kill();

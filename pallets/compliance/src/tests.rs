@@ -1,4 +1,4 @@
-use crate::{mock::*, Error, Event, RiskLevel, VerificationLevel, ComplianceStatus, SuspiciousActivityType};
+use crate::{mock::*, Error, Event, RiskLevel, VerificationLevel, ComplianceStatus};
 use frame_support::{assert_noop, assert_ok};
 
 #[test]

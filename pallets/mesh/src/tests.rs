@@ -811,7 +811,7 @@ fn update_node_location_works() {
 fn fund_relay_rewards_works() {
     new_test_ext().execute_with(|| {
         let pallet_account = Mesh::pallet_account_id();
-        let before = Balances::free_balance(pallet_account.clone());
+        let before = Balances::free_balance(pallet_account);
 
         assert_ok!(Mesh::fund_relay_rewards(
             RuntimeOrigin::signed(1),

@@ -1,0 +1,20 @@
+FROM ubuntu:24.04
+LABEL maintainer="BelizeChain Core Team <dev@belizechain.org>"
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      ca-certificates libssl3t64 curl && \
+    rm -rf /var/lib/apt/lists/*
+COPY belizechain-node /usr/local/bin/belizechain-node
+COPY chain-specs/ /etc/belizechain/
+RUN userdel -r ubuntu 2>/dev/null; \
+    useradd -m -u 1000 -U -s /bin/sh -d /data belizechain && \
+    mkdir -p /data /etc/belizechain && \
+    chown -R belizechain:belizechain /data /etc/belizechain
+USER belizechain
+EXPOSE 30333 9933 9944 9615
+VOLUME ["/data"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -sf -X POST -H "Content-Type: application/json" \
+        -d '{"jsonrpc":"2.0","id":1,"method":"system_health","params":[]}' \
+        http://localhost:9944 || exit 1
+ENTRYPOINT ["belizechain-node"]

@@ -3301,8 +3301,9 @@ pub mod pallet {
                 Error::<T>::BehaviorCooldownActive
             );
 
-            // Enforce proposal cooldown — emergency proposals bypass the wait
-            if !is_emergency {
+            // Enforce proposal cooldown — emergency proposals bypass the wait.
+            // Skip if account has never submitted (no entry in storage).
+            if !is_emergency && AccountLastProposal::<T>::contains_key(&who) {
                 let now = frame_system::Pallet::<T>::block_number();
                 let last = AccountLastProposal::<T>::get(&who);
                 let elapsed = now.saturating_sub(last);
@@ -6836,7 +6837,7 @@ pub mod pallet {
                 return 0;
             }
             let mut x = n;
-            let mut y = (x + 1) / 2;
+            let mut y = x.div_ceil(2);
             while y < x {
                 x = y;
                 y = (x + n / x) / 2;

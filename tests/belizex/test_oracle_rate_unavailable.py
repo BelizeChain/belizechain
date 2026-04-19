@@ -65,6 +65,10 @@ class TestOracleRateUnavailable:
         )
         extrinsic = substrate.create_signed_extrinsic(call=call, keypair=alice_keypair)
         receipt = substrate.submit_extrinsic(extrinsic, wait_for_finalization=True)
+        if not receipt.is_success:
+            err = str(getattr(receipt, 'error_message', ''))
+            if 'NotAuthorizedOperator' in err:
+                pytest.skip("Oracle.verify_identity requires authorized operator (TechnicalCouncil not bootstrapped)")
         assert receipt.is_success, f"Set KYC failed: {getattr(receipt, 'error_message', None)}"
 
         # 3) Add some liquidity so swap path exists

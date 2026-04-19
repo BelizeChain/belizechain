@@ -93,7 +93,7 @@ mod benchmarks {
     fn initiate_bridge() {
         setup_chain_config::<T>();
         let caller: T::AccountId = whitelisted_caller();
-        let amount = 1_000_000_000_000u128;
+        let amount = 100_000_000_000_000u128; // 100 DALLA (above MinBridgeAmount of 50 DALLA)
         // SAFETY(saturated_into): benchmark seed balance, well within Balance range
         T::Currency::make_free_balance_be(&caller, (amount * 10).saturated_into());
 
@@ -204,6 +204,10 @@ mod benchmarks {
         BridgeTransactions::<T>::insert(tx_id, bridge_tx);
         NextTxId::<T>::put(tx_id.saturating_add(1));
 
+        // Fund the escrow account so the unlock transfer succeeds
+        let escrow: T::AccountId = T::PalletId::get().into_account_truncating();
+        T::Currency::make_free_balance_be(&escrow, (amount * 10).saturated_into());
+
         #[extrinsic_call]
         process_unlock(
             RawOrigin::Signed(validator),
@@ -220,6 +224,12 @@ mod benchmarks {
     fn send_message() {
         setup_chain_config::<T>();
         let caller: T::AccountId = whitelisted_caller();
+        let fee = T::MinBridgeAmount::get();
+        T::Currency::make_free_balance_be(&caller, fee * 10u32.into());
+
+        // Pre-fund treasury so it stays above ExistentialDeposit
+        let treasury = T::Treasury::get();
+        T::Currency::make_free_balance_be(&treasury, fee * 10u32.into());
 
         #[extrinsic_call]
         send_cross_chain_message(

@@ -1200,7 +1200,7 @@ fn multiple_models_per_account_tracked() {
     new_test_ext().execute_with(|| {
         for i in 0..5u8 {
             assert_ok!(Consensus::register_ai_model(
-                RuntimeOrigin::signed(ALICE), (i % 8), test_parameters_hash(i),
+                RuntimeOrigin::signed(ALICE), i % 8, test_parameters_hash(i),
                 1000, test_pq_signature(4627),
             ));
         }

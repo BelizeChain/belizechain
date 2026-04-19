@@ -1,5 +1,4 @@
 //! Mock runtime for Whistleblower pallet tests
-#![cfg(test)]
 
 use crate as pallet_belize_whistleblower;
 use frame_support::{
