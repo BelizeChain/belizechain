@@ -8,7 +8,7 @@ use sp_runtime::{
 use sc_service::ChainType;
 use frame_support::{BoundedVec, pallet_prelude::ConstU32};
 
-use belizechain_runtime::{AccountId, BABE_GENESIS_EPOCH_CONFIG, WASM_BINARY};
+use belizechain_runtime::{AccountId, BABE_GENESIS_EPOCH_CONFIG, WASM_BINARY, opaque::SessionKeys};
 use crate::chain_spec_configs::NetworkConfig;
 
 /// Specialized `ChainSpec`. This is a specialization of the general Substrate ChainSpec type.
@@ -31,9 +31,10 @@ where
     AccountPublic::from(get_from_seed::<TPublic>(seed)).into_account()
 }
 
-/// Generate a BABE authority key.
-pub fn authority_keys_from_seed(s: &str) -> (BabeId, GrandpaId) {
+/// Generate a BABE authority key pair plus the derived account ID.
+pub fn authority_keys_from_seed(s: &str) -> (AccountId, BabeId, GrandpaId) {
     (
+        get_account_id_from_seed::<sr25519::Public>(s),
         get_from_seed::<BabeId>(s),
         get_from_seed::<GrandpaId>(s),
     )
@@ -123,8 +124,6 @@ pub fn belizechain_testnet_config() -> Result<ChainSpec, String> {
     )
     .map_err(|e| format!("Invalid GRANDPA key: {e:?}"))?;
 
-    let initial_authorities: Vec<(BabeId, GrandpaId)> = vec![(babe_key, grandpa_key)];
-
     let root_key: AccountId = sp_runtime::AccountId32::from_ss58check(
         "5Dk6wqPb2wzD1DscaBqNemv1xrETVQnmqXpjk2z6oHpQgjx8",
     )
@@ -143,16 +142,20 @@ pub fn belizechain_testnet_config() -> Result<ChainSpec, String> {
         "balances": {
             "balances": vec![(root_key.clone(), endowment)],
         },
+        "session": {
+            "keys": vec![(
+                root_key.clone(),
+                root_key.clone(),
+                SessionKeys {
+                    babe: babe_key,
+                    grandpa: grandpa_key,
+                },
+            )],
+        },
         "babe": {
-            "authorities": initial_authorities.iter().map(|x| (x.0.clone(), 1u64)).collect::<Vec<_>>(),
             "epochConfig": Some(BABE_GENESIS_EPOCH_CONFIG),
         },
-        "grandpa": {
-            "authorities": initial_authorities
-                .iter()
-                .map(|x| (x.1.clone(), 1))
-                .collect::<Vec<_>>(),
-        },
+        "grandpa": {},
         "sudo": {
             "key": Some(root_key.clone()),
         },
@@ -203,7 +206,7 @@ pub fn belizechain_mainnet_config() -> Result<ChainSpec, String> {
 
 /// Configure initial storage state for BelizeChain.
 fn testnet_genesis(
-    initial_authorities: Vec<(BabeId, GrandpaId)>,
+    initial_authorities: Vec<(AccountId, BabeId, GrandpaId)>,
     root_key: AccountId,
     endowed_accounts: Vec<AccountId>,
     _enable_println: bool,
@@ -219,16 +222,22 @@ fn testnet_genesis(
                 .map(|k| (k, endowment))
                 .collect::<Vec<_>>(),
         },
+        "session": {
+            "keys": initial_authorities.iter().map(|(account, babe, grandpa)| {
+                (
+                    account.clone(),
+                    account.clone(),
+                    SessionKeys {
+                        babe: babe.clone(),
+                        grandpa: grandpa.clone(),
+                    },
+                )
+            }).collect::<Vec<_>>(),
+        },
         "babe": {
-            "authorities": initial_authorities.iter().map(|x| (x.0.clone(), 1u64)).collect::<Vec<_>>(),
             "epochConfig": Some(BABE_GENESIS_EPOCH_CONFIG),
         },
-        "grandpa": {
-            "authorities": initial_authorities
-                .iter()
-                .map(|x| (x.1.clone(), 1))
-                .collect::<Vec<_>>(),
-        },
+        "grandpa": {},
         // Sudo key set to root_key (Alice in dev, real key in testnet)
         "sudo": {
             "key": Some(root_key.clone()),
@@ -385,7 +394,7 @@ fn mainnet_genesis() -> Result<serde_json::Value, String> {
     //   let gran_key = GrandpaId::from_slice(&hex!("...")).unwrap();
     //
     // PLACEHOLDER keys (will be rejected at runtime by the guard above):
-    let initial_authorities: Vec<(BabeId, GrandpaId)> = vec![
+    let initial_authorities: Vec<(AccountId, BabeId, GrandpaId)> = vec![
         authority_keys_from_seed("ValidatorOne"),
         authority_keys_from_seed("ValidatorTwo"),
         authority_keys_from_seed("ValidatorThree"),
@@ -411,16 +420,22 @@ fn mainnet_genesis() -> Result<serde_json::Value, String> {
                 .map(|k| (k, endowment))
                 .collect::<Vec<_>>(),
         },
+        "session": {
+            "keys": initial_authorities.iter().map(|(account, babe, grandpa)| {
+                (
+                    account.clone(),
+                    account.clone(),
+                    SessionKeys {
+                        babe: babe.clone(),
+                        grandpa: grandpa.clone(),
+                    },
+                )
+            }).collect::<Vec<_>>(),
+        },
         "babe": {
-            "authorities": initial_authorities.iter().map(|x| (x.0.clone(), 1u64)).collect::<Vec<_>>(),
             "epochConfig": Some(BABE_GENESIS_EPOCH_CONFIG),
         },
-        "grandpa": {
-            "authorities": initial_authorities
-                .iter()
-                .map(|x| (x.1.clone(), 1))
-                .collect::<Vec<_>>(),
-        },
+        "grandpa": {},
         // NOTE: Sudo pallet excluded — gated behind #[cfg(feature = "dev")] in runtime.
         
         // BelizeChain custom pallet configurations
@@ -462,7 +477,7 @@ fn mainnet_genesis() -> Result<serde_json::Value, String> {
 pub(crate) fn public_testnet_config() -> Result<ChainSpec, String> {
     let config = NetworkConfig::public_testnet();
     
-    let authorities: Vec<(BabeId, GrandpaId)> = config.initial_authorities
+    let authorities: Vec<(AccountId, BabeId, GrandpaId)> = config.initial_authorities
         .iter()
         .map(|(babe_seed, grandpa_seed)| {
             authority_keys_from_seed(&format!("{}{}", babe_seed, grandpa_seed))
@@ -498,7 +513,7 @@ pub(crate) fn public_testnet_config() -> Result<ChainSpec, String> {
 pub(crate) fn staging_config() -> Result<ChainSpec, String> {
     let config = NetworkConfig::staging();
     
-    let authorities: Vec<(BabeId, GrandpaId)> = config.initial_authorities
+    let authorities: Vec<(AccountId, BabeId, GrandpaId)> = config.initial_authorities
         .iter()
         .map(|(babe_seed, grandpa_seed)| {
             authority_keys_from_seed(&format!("{}{}", babe_seed, grandpa_seed))
@@ -539,16 +554,18 @@ mod tests {
     fn test_authority_keys_from_seed_deterministic() {
         let keys1 = authority_keys_from_seed("Alice");
         let keys2 = authority_keys_from_seed("Alice");
-        assert_eq!(keys1.0, keys2.0, "BabeId must be deterministic for the same seed");
-        assert_eq!(keys1.1, keys2.1, "GrandpaId must be deterministic for the same seed");
+        assert_eq!(keys1.0, keys2.0, "AccountId must be deterministic for the same seed");
+        assert_eq!(keys1.1, keys2.1, "BabeId must be deterministic for the same seed");
+        assert_eq!(keys1.2, keys2.2, "GrandpaId must be deterministic for the same seed");
     }
 
     #[test]
     fn test_authority_keys_from_seed_distinct_for_different_seeds() {
         let alice = authority_keys_from_seed("Alice");
         let bob = authority_keys_from_seed("Bob");
-        assert_ne!(alice.0, bob.0, "Different seeds must yield different BabeIds");
-        assert_ne!(alice.1, bob.1, "Different seeds must yield different GrandpaIds");
+        assert_ne!(alice.0, bob.0, "Different seeds must yield different AccountIds");
+        assert_ne!(alice.1, bob.1, "Different seeds must yield different BabeIds");
+        assert_ne!(alice.2, bob.2, "Different seeds must yield different GrandpaIds");
     }
 
     // ── get_account_id_from_seed ───────────────────────────────────────────
@@ -628,7 +645,7 @@ mod tests {
     }
 
     #[test]
-    fn test_testnet_genesis_babe_authority_count() {
+    fn test_testnet_genesis_session_keys_count() {
         let alice_acct = get_account_id_from_seed::<sr25519::Public>("Alice");
         let genesis = testnet_genesis(
             vec![
@@ -640,12 +657,12 @@ mod tests {
             false,
         )
         .unwrap();
-        let authorities = genesis["babe"]["authorities"].as_array().unwrap();
-        assert_eq!(authorities.len(), 2, "babe must list exactly 2 authorities");
+        let keys = genesis["session"]["keys"].as_array().unwrap();
+        assert_eq!(keys.len(), 2, "session must list exactly 2 validator key sets");
     }
 
     #[test]
-    fn test_testnet_genesis_grandpa_authority_count() {
+    fn test_testnet_genesis_babe_has_epoch_config_only() {
         let alice_acct = get_account_id_from_seed::<sr25519::Public>("Alice");
         let genesis = testnet_genesis(
             vec![authority_keys_from_seed("Alice")],
@@ -654,12 +671,19 @@ mod tests {
             false,
         )
         .unwrap();
-        let authorities = genesis["grandpa"]["authorities"].as_array().unwrap();
-        assert_eq!(authorities.len(), 1, "grandpa must have 1 authority entry");
+        // BABE should only have epochConfig — authorities are managed by session
+        assert!(
+            !genesis["babe"]["epochConfig"].is_null(),
+            "babe must have epochConfig"
+        );
+        assert!(
+            genesis["babe"].get("authorities").is_none(),
+            "babe must NOT have direct authorities when session manages them"
+        );
     }
 
     #[test]
-    fn test_testnet_genesis_grandpa_weight_is_one() {
+    fn test_testnet_genesis_grandpa_has_no_authorities() {
         let alice_acct = get_account_id_from_seed::<sr25519::Public>("Alice");
         let genesis = testnet_genesis(
             vec![authority_keys_from_seed("Alice")],
@@ -668,10 +692,11 @@ mod tests {
             false,
         )
         .unwrap();
-        // Each grandpa entry is [key, weight]. Weight must be 1 for uniform voting power.
-        let entry = &genesis["grandpa"]["authorities"].as_array().unwrap()[0];
-        let weight = entry.as_array().unwrap()[1].as_u64().unwrap();
-        assert_eq!(weight, 1, "grandpa authority weight must be 1");
+        // GRANDPA authorities are managed by session, not set directly
+        assert!(
+            genesis["grandpa"].get("authorities").is_none(),
+            "grandpa must NOT have direct authorities when session manages them"
+        );
     }
 
     #[test]
