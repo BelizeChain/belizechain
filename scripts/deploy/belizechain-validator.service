@@ -1,0 +1,40 @@
+[Unit]
+Description=BelizeChain Validator (Alice) on Ceiba
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=wicked
+Group=wicked
+ExecStart=/usr/local/bin/belizechain-node \
+  --chain local \
+  --alice \
+  --base-path /data/chain \
+  --port 30333 \
+  --rpc-port 9944 \
+  --prometheus-port 9615 \
+  --prometheus-external \
+  --rpc-cors all \
+  --rpc-external \
+  --rpc-methods Safe \
+  --validator \
+  --name Ceiba-Validator-Alice \
+  --node-key-file /data/chain/node-key \
+  --telemetry-url ""
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+# Hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/data/chain
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+
+[Install]
+WantedBy=multi-user.target

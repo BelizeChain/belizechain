@@ -117,3 +117,5 @@ coverage.xml
 .next/
 out/
 .cache/
+# Docker build staging (contains release binary)
+build-context/
