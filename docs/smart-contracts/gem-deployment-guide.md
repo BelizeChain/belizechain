@@ -461,8 +461,8 @@ version = "1.0.0"
 
 Tag in git:
 ```bash
-git tag -a v1.0.0 -m "Initial release"
-git push origin v1.0.0
+git tag -a <release-tag> -m "Release"
+git push origin <release-tag>
 ```
 
 ### 3. Audit Before Mainnet

@@ -76,12 +76,22 @@ fi
 
 # Check disk space
 echo "✓ Checking disk space..."
-AVAILABLE=$(df -BG /mnt/workspace-storage | tail -1 | awk '{print $4}' | sed 's/G//')
-if [ "$AVAILABLE" -lt 15 ]; then
-    echo "  ⚠️  Low disk space: ${AVAILABLE}GB available (need 15GB+)"
-    ERRORS=$((ERRORS + 1))
+DISK_PATH="/mnt/workspace-storage"
+if [ ! -d "$DISK_PATH" ]; then
+    DISK_PATH="."
+fi
+
+AVAILABLE=$(df -BG "$DISK_PATH" 2>/dev/null | tail -1 | awk '{print $4}' | sed 's/G//')
+if [[ "$AVAILABLE" =~ ^[0-9]+$ ]]; then
+    if [ "$AVAILABLE" -lt 15 ]; then
+        echo "  ⚠️  Low disk space on $DISK_PATH: ${AVAILABLE}GB available (need 15GB+)"
+        ERRORS=$((ERRORS + 1))
+    else
+        echo "  ✅ ${AVAILABLE}GB available on $DISK_PATH"
+    fi
 else
-    echo "  ✅ ${AVAILABLE}GB available"
+    echo "  ⚠️  Unable to determine available disk space on $DISK_PATH"
+    ERRORS=$((ERRORS + 1))
 fi
 
 echo

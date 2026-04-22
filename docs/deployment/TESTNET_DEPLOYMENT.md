@@ -1,8 +1,8 @@
 # 🌐 BelizeChain Testnet Deployment Guide
 
-**Version**: 1.0.0  
+**Version**: Rolling (testnet)  
 **Date**: November 4, 2025  
-**Status**: Production Ready  
+**Status**: Active testing and remediation  
 
 ---
 
@@ -23,7 +23,7 @@
 
 ## Overview
 
-The BelizeChain Testnet is a production-ready test environment for:
+The BelizeChain Testnet is an active test environment for:
 - Smart contract deployment and testing
 - Validator onboarding and training
 - Application integration testing
@@ -180,7 +180,8 @@ docker run -d \
 
 ```bash
 # Download latest release
-wget https://github.com/BelizeChain/belizechain/releases/download/v1.0.0-testnet/belizechain-node-linux-amd64
+LATEST_TAG=$(curl -s https://api.github.com/repos/BelizeChain/belizechain/releases/latest | grep '"tag_name":' | head -n1 | cut -d '"' -f4)
+wget "https://github.com/BelizeChain/belizechain/releases/download/${LATEST_TAG}/belizechain-node-linux-amd64"
 
 # Make executable
 chmod +x belizechain-node-linux-amd64

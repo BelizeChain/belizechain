@@ -575,22 +575,20 @@ cargo contract call \
 
 ## Quantum/Nawal Issues
 
-### 1. Azure Quantum Connection Failed
+### 1. Quantum Backend Connection Failed
 
 **Error**:
 ```
-Error: Unable to connect to Azure Quantum workspace
+Error: Unable to connect to configured quantum backend
 ```
 
 **Diagnosis**:
 ```bash
-# Check Azure credentials
-az account show
+# Check Kinich backend configuration
+kinich-cli config --show
 
-# Test workspace connectivity
-az quantum workspace show \
-  --resource-group belizechain-rg \
-  --name belizechain-quantum
+# Validate required environment variables
+env | grep -E "KINICH_BACKEND|KINICH_API_KEY"
 
 # Check Kinich node logs
 tail -f ~/.kinich/logs/quantum_node.log
@@ -598,18 +596,14 @@ tail -f ~/.kinich/logs/quantum_node.log
 
 **Solution**:
 ```bash
-# Solution 1: Refresh Azure credentials
-az login
-az account set --subscription SUBSCRIPTION_ID
+# Solution 1: Reconfigure preferred backend
+kinich-cli config --backend-preference ionq
 
-# Solution 2: Reconfigure workspace
-kinich-cli config \
-  --azure-workspace belizechain-quantum \
-  --azure-resource-group belizechain-rg \
-  --azure-location westus
-
-# Solution 3: Fallback to IBM Quantum
+# Solution 2: Switch to fallback backend
 kinich-cli config --backend-preference ibm
+
+# Solution 3: Use simulator mode during outage
+kinich-cli config --backend-preference simulator
 
 # Verify
 kinich-cli test-connection

@@ -374,7 +374,7 @@ pub fn request_quantum_compression(
 3. Store compressed result back to Pakit
 4. Update on-chain proof with new hash
 
-**Cost:** ~$10 per GB (Azure Quantum compute)
+**Cost:** ~$10 per GB (configured quantum backend compute)
 
 **Events:**
 - `QuantumCompressionRequested(AccountId, H256, u8)`

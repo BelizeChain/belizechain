@@ -55,7 +55,7 @@ graph TB
     
     subgraph "Quantum Layer"
         QC --> Q1[Qiskit Adapter<br/>IBM Quantum]
-        QC --> Q2[Azure Quantum<br/>Cloud Quantum]
+        QC --> Q2[Configured Quantum Provider<br/>Cloud Quantum]
         QC --> Q3[Algorithm Library<br/>Consensus/Crypto]
         QC --> Q4[Hybrid Circuits<br/>Classical-Quantum]
     end
@@ -152,7 +152,7 @@ graph TB
    - Privacy-preserving local training
    - Quantized model support (4-bit, 8-bit)
    - Belizean data sovereignty compliance
-   - Azure ML integration for participants
+   - External ML integration for participants
 
 3. **Model Registry**
    - Versioned model storage on IPFS
@@ -176,7 +176,7 @@ graph TB
 
 2. **Provider Adapters**
    - **Qiskit**: IBM Quantum Network integration
-   - **Azure Quantum**: Microsoft quantum cloud services
+   - **Configured Quantum Provider**: Microsoft quantum cloud services
    - **Rigetti**: Forest/pyQuil integration
    - **IonQ**: Trapped ion quantum computers
 
@@ -411,7 +411,7 @@ timeline
              
     2025 9/29 : Production Deployment
              : Advanced AI Features
-             : Azure Quantum Integration
+             : Configured Quantum Provider Integration
              : Full UI Suite
              
     2025 09/30 : Cross-Chain Bridges

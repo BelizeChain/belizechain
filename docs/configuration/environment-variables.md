@@ -89,22 +89,22 @@ KINICH_API_HOST=0.0.0.0
 KINICH_API_PORT=8888
 KINICH_MAX_CONCURRENT_JOBS=10
 
-# Azure Quantum (primary backend)
+# Quantum backend (provider-agnostic)
 AZURE_QUANTUM_ENABLED=true
-AZURE_QUANTUM_SUBSCRIPTION_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-AZURE_QUANTUM_RESOURCE_GROUP=your-resource-group-name
-AZURE_QUANTUM_WORKSPACE=your-workspace-name
-AZURE_QUANTUM_LOCATION=eastus
+AZURE_QUANTUM_SUBSCRIPTION_ID=provider-account-id
+AZURE_QUANTUM_RESOURCE_GROUP=provider-project-or-group
+AZURE_QUANTUM_WORKSPACE=provider-workspace
+AZURE_QUANTUM_LOCATION=provider-region
 
-# IBM Quantum (fallback backend)
+# Optional secondary backend
 IBM_QUANTUM_ENABLED=false
-IBM_QUANTUM_TOKEN=your-ibm-quantum-token-here
+IBM_QUANTUM_TOKEN=your-secondary-backend-token
 ```
 
-**Getting Azure Quantum Credentials:**
-1. Create Azure account: https://azure.microsoft.com/
-2. Create Quantum Workspace: https://portal.azure.com/#create/Microsoft.Quantum
-3. Copy subscription ID, resource group, and workspace name
+**Getting Quantum Backend Credentials:**
+1. Create an account with your selected provider
+2. Create a workspace/project in the provider console
+3. Copy account ID, project/group, workspace, and region values
 
 ### Pakit Decentralized Storage
 
@@ -223,7 +223,7 @@ WORKERS=8            # Scale based on CPU cores
 
 # Production domains
 POSTGRES_HOST=your-postgres-server.amazonaws.com
-REDIS_HOST=your-redis-cluster.azure.com
+REDIS_HOST=your-redis-host.example.com
 BLOCKCHAIN_RPC=wss://mainnet.belizechain.org:9944
 
 # Enable all security features
@@ -328,7 +328,7 @@ docker-compose up -d --force-recreate postgres
 For production deployments, use proper secret management:
 
 - **AWS**: AWS Secrets Manager
-- **Azure**: Azure Key Vault
+- **External secret manager**: provider of your choice
 - **GCP**: Google Secret Manager
 - **Kubernetes**: Sealed Secrets or External Secrets Operator
 
@@ -420,7 +420,7 @@ Before deploying to production:
 - [ ] Rate limiting enabled
 - [ ] .env file NOT in version control
 - [ ] Secret rotation schedule established
-- [ ] All Azure Quantum credentials configured
+- [ ] Quantum backend credentials configured
 - [ ] IPFS/Arweave API keys secured
 
 ## Additional Resources
@@ -428,7 +428,7 @@ Before deploying to production:
 - **BelizeChain Documentation**: `/docs/README.md`
 - **Development Guide**: `/DEVELOPMENT_GUIDE.md`
 - **Docker Compose Reference**: https://docs.docker.com/compose/
-- **Azure Quantum**: https://azure.microsoft.com/en-us/services/quantum/
+- **Quantum backend docs**: use your selected provider documentation
 - **IPFS**: https://docs.ipfs.tech/
 - **Substrate**: https://docs.substrate.io/
 

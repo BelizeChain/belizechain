@@ -502,5 +502,5 @@ After successful environment setup:
 - [Blockchain Development Guide](./blockchain-development.md)
 - [Smart Contract Development](./smart-contract-development.md)
 - [Multi-Repo Architecture](../architecture/multi-repo-overview.md)
-- [Deployment Guide](../deployment/azure-deployment.md)
+- [Deployment Guide](../deployment/TESTNET_DEPLOYMENT.md)
 - [Troubleshooting Guide](../operations/troubleshooting.md)

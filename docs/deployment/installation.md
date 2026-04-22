@@ -112,8 +112,8 @@ rustup target add wasm32-unknown-unknown
 git clone https://github.com/BelizeChain/belizechain.git
 cd belizechain
 
-# Checkout latest stable
-git checkout tags/v1.0.0
+# Checkout active branch
+git checkout belizechain
 
 # Build (takes 30-60 minutes)
 cargo build --release
@@ -357,76 +357,14 @@ docker-compose down
 
 ---
 
-## ☸️ Kubernetes Deployment
+## ☸️ Kubernetes Deployment (Legacy Reference)
 
-`belizechain-deployment.yaml`:
+Kubernetes is not the active deployment target at this stage.
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: belizechain-node
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: belizechain
-  template:
-    metadata:
-      labels:
-        app: belizechain
-    spec:
-      containers:
-      - name: belizechain
-        image: belizechain/node:latest
-        ports:
-        - containerPort: 30333
-          name: p2p
-        - containerPort: 9933
-          name: http-rpc
-        - containerPort: 9944
-          name: ws-rpc
-        volumeMounts:
-        - name: data
-          mountPath: /data
-        command:
-          - "/usr/local/bin/belizechain-node"
-          - "--base-path=/data"
-          - "--chain=mainnet"
-          - "--name=K8sNode"
-        resources:
-          requests:
-            memory: "8Gi"
-            cpu: "4"
-          limits:
-            memory: "16Gi"
-            cpu: "8"
-      volumes:
-      - name: data
-        persistentVolumeClaim:
-          claimName: belizechain-pvc
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: belizechain-pvc
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 500Gi
-```
+For current operations, use:
 
-**Deploy**:
-
-```bash
-kubectl apply -f belizechain-deployment.yaml
-
-# Check status
-kubectl get pods
-kubectl logs -f deployment/belizechain-node
-```
+- Ceiba host deployment flow in docs/deployment/TESTNET_DEPLOYMENT.md
+- Ceiba runtime operations in docs/operations/CEIBA_OPERATIONS_RUNBOOK.md
 
 ---
 

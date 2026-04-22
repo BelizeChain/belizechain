@@ -128,7 +128,7 @@ check_optional "NAWAL_MIN_PARTICIPANTS"
 # Kinich
 check_required "KINICH_API_PORT"
 if [ "$AZURE_QUANTUM_ENABLED" = "true" ]; then
-    echo -e "${BLUE}Azure Quantum is enabled - checking credentials...${NC}"
+    echo -e "${BLUE}Quantum backend integration is enabled - checking credentials...${NC}"
     check_optional "AZURE_QUANTUM_SUBSCRIPTION_ID"
     check_optional "AZURE_QUANTUM_RESOURCE_GROUP"
     check_optional "AZURE_QUANTUM_WORKSPACE"

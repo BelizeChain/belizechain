@@ -250,7 +250,7 @@ Phone: +501-223-6420
 
 **Third-party services**:
 - KYC verification: Jumio (identity document scanning)
-- Cloud hosting: Azure (encrypted data storage)
+- Cloud hosting: self-hosted Ceiba infrastructure (encrypted data storage)
 - Analytics: Google Analytics (anonymized, opt-out available)
 - Email: SendGrid (transactional emails)
 
@@ -335,7 +335,7 @@ Phone: +501-223-6420
 ### 8. International Data Transfers
 
 **Primary jurisdiction**: Belize (data sovereignty)  
-**Cloud hosting**: Azure (Belize region preferred, US/EU fallback)  
+**Cloud hosting**: Ceiba/self-hosted (Belize-first operations)  
 **GDPR compliance**: Voluntary (Belize not EU member)  
 **Data localization**: KYC documents stored in Belize-based servers
 

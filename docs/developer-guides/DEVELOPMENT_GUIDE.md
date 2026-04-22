@@ -46,7 +46,7 @@ This is the master instruction file for AI coding agents working on BelizeChain.
 │  LAYER 2: NAWAL AI  │ │ LAYER 3: KINICH     │ │ LAYER 4: PAKIT      │
 │  Federated Learning │ │ Quantum Computing   │ │ Storage System      │
 │                     │ │                     │ │                     │
-│  • DP-SGD Privacy   │ │  • Azure Quantum    │ │  • Quantum Compress │
+│  • DP-SGD Privacy   │ │  • configured quantum backend    │ │  • Quantum Compress │
 │  • Genome Evolution │ │  • Multi-Backend    │ │  • Deduplication    │
 │  • PoUW Integration │ │  • PQW Rewards      │ │  • IPFS/Arweave     │
 │  • Multilingual     │ │  • QKD Security     │ │  • Blockchain Proofs│
@@ -128,7 +128,7 @@ format!("{} bBZD (pegged to BZD)", amount)
 │  (training)     │  │  (quantum work) │  │  • Arweave      │
 │                 │  │                 │  │  • Local        │
 │  Uses:          │  │  Uses:          │  │                 │
-│  • Kinich       │  │  • Azure Quantum│  │  Proofs in:     │
+│  • Kinich       │  │  • configured quantum backend│  │  Proofs in:     │
 │  (quantum ML)   │  │  • IBM Quantum  │  │  • LandLedger   │
 └─────────────────┘  └─────────────────┘  └─────────────────┘
          │                    │                    │
@@ -210,7 +210,7 @@ python -m nawal.orchestrator server --config config.dev.yaml
 # 4. Kinich Quantum (Python)
 cd ../kinich/
 pip install -e .
-# Configure Azure Quantum credentials
+# Configure configured quantum backend credentials
 az login
 export AZURE_QUANTUM_WORKSPACE="<workspace-id>"
 
@@ -476,7 +476,7 @@ docs/
 │   ├── create-proposal.md
 │   └── run-validator.md
 ├── deployment/              # Production guides
-│   ├── kubernetes.md
+│   ├── ceiba-operations.md
 │   ├── monitoring.md
 │   └── backup-recovery.md
 └── archive/                # Historical docs
@@ -504,7 +504,7 @@ docs/
 - [ ] Quantum error mitigation (Kinich)
 
 ### Phase 3: Production Hardening (⏳ Q1 2026)
-- [ ] Kubernetes deployment (Azure)
+- [ ] Ceiba self-hosted deployment hardening
 - [ ] High-availability clustering
 - [ ] Automated monitoring & alerting
 - [ ] Disaster recovery procedures
@@ -538,7 +538,7 @@ AI Performance:
   
 Quantum Performance:
   Job Success Rate: 95%+ (with error mitigation)
-  Average Queue Time: <30 minutes (Azure Quantum)
+  Average Queue Time: <30 minutes (configured quantum backend)
   Fidelity: 98%+ (after error mitigation)
   Cost per Job: <$5 USD (converted to GBP internally)
   
@@ -564,7 +564,7 @@ User Adoption:
 - **Documentation**: https://docs.belizechain.org
 - **Polkadot SDK**: https://github.com/paritytech/polkadot-sdk
 - **Substrate Docs**: https://docs.substrate.io
-- **Azure Quantum**: https://azure.microsoft.com/products/quantum/
+- **Quantum backend documentation**: use selected provider docs
 
 ---
 

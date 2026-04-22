@@ -27,7 +27,7 @@ This document establishes a comprehensive performance and scalability framework 
 
 ✅ **Theoretical Performance**: Substrate-based architecture supports 600-1,000 TPS  
 ⚠️ **Actual Performance**: NOT YET BENCHMARKED - requires testing to validate  
-✅ **Load Testing Framework**: Azure Load Testing integrated (Step 7 security monitoring)  
+✅ **Load Testing Framework**: Distributed Locust testing integrated (Step 7 security monitoring)  
 ✅ **Monitoring Infrastructure**: Prometheus + Grafana ready (Step 7)  
 🚧 **Performance Baseline**: To be established through benchmarking  
 
@@ -102,7 +102,7 @@ This document establishes a comprehensive performance and scalability framework 
 - **Substrate Benchmarking Framework** (`frame-benchmarking`)
 - **Polkadot.js Scripts** (automated transaction submission)
 - **Locust Load Testing** (Python-based, realistic user behavior)
-- **Azure Load Testing** (cloud-based, multi-region simulation)
+- **Distributed Locust** (self-hosted multi-node simulation)
 
 **Metrics to Collect**:
 - Transactions per second (TPS)
@@ -345,19 +345,16 @@ locust -f locust_scripts/citizen_wallet.py --master --expect-workers 10
 # Worker nodes (run on separate machines)
 locust -f locust_scripts/citizen_wallet.py --worker --master-host <master_ip>
 
-# Azure Load Testing integration (see Step 7 security monitoring)
-az load test create \
-  --name "belizechain-tps-test" \
-  --test-plan locust_scripts/citizen_wallet.py \
-  --engine-instances 10 \
-  --max-throughput 1000
+# Distributed Locust integration (see Step 7 security monitoring)
+# Start 10 Locust workers against Ceiba/self-hosted stack
+locust -f locust_scripts/citizen_wallet.py --master --expect-workers 10
 ```
 
-#### 2.2 Azure Load Testing Integration
+#### 2.2 Distributed Load Testing Integration
 
-**Purpose**: Cloud-based load testing with multi-region simulation.
+**Purpose**: Self-hosted load testing with multi-node simulation.
 
-**Configuration** (`azure-load-test.yaml`):
+**Configuration** (`distributed-load-test.yaml`):
 ```yaml
 version: v0.1
 testName: BelizeChain TPS Benchmark
@@ -389,29 +386,16 @@ failureCriteria:
     condition: ">5"  # Fail if error rate >5%
 ```
 
-**Running Azure Load Test**:
+**Running Distributed Load Test**:
 ```bash
-# Create test
-az load test create \
-  --name "belizechain-mainnet-simulation" \
-  --resource-group "belizechain-perf-testing" \
-  --load-test-config-file azure-load-test.yaml
+# Master node
+locust -f locust_scripts/citizen_wallet.py --master --expect-workers 20
 
-# Run test
-az load test run \
-  --name "belizechain-mainnet-simulation" \
-  --resource-group "belizechain-perf-testing"
+# Worker nodes (run on 20 hosts or containers)
+locust -f locust_scripts/citizen_wallet.py --worker --master-host <master_ip>
 
-# Monitor test
-az load test show \
-  --name "belizechain-mainnet-simulation" \
-  --resource-group "belizechain-perf-testing"
-
-# Download results
-az load test download-results \
-  --name "belizechain-mainnet-simulation" \
-  --resource-group "belizechain-perf-testing" \
-  --output-folder ./test-results/
+# Save results
+mkdir -p ./test-results
 ```
 
 #### 2.3 Multi-Scenario Testing
@@ -1329,7 +1313,7 @@ plt.savefig('forecast.png')
 | Validator nodes | 5 | $200 | 3 months | $3,000 |
 | RPC nodes | 2 | $150 | 3 months | $900 |
 | Load testing VMs | 10 | $50 | 3 months | $1,500 |
-| Azure Load Testing | 1 | $200 | 3 months | $600 |
+| Distributed Locust Nodes | 10 | $20 | 3 months | $600 |
 | **TOTAL** | | | | **$6,000** |
 
 ### Personnel (Performance Engineering)
@@ -1362,7 +1346,7 @@ plt.savefig('forecast.png')
 - Locust load testing scripts (3 scenarios)
 - Prometheus custom metrics exporter (Rust)
 - Performance analysis scripts (Python)
-- Azure Load Testing configurations
+- Distributed Locust configurations
 - Grafana dashboard templates
 
 ### Reports
@@ -1409,7 +1393,7 @@ plt.savefig('forecast.png')
 
 1. ✅ **Competitive Analysis**: BelizeChain's 600-1,000 TPS target is ADEQUATE for national use case (26x current need, 12x growth scenario)
 2. ✅ **Benchmarking Framework**: Complete methodology for throughput, latency, finality, database, and RPC testing
-3. ✅ **Load Testing Infrastructure**: Locust scripts + Azure Load Testing integration for realistic simulation
+3. ✅ **Load Testing Infrastructure**: Locust scripts + distributed self-hosted workers for realistic simulation
 4. ✅ **Optimization Strategies**: Weight functions, database indexing, WASM runtime, network bandwidth, state pruning
 5. ✅ **Capacity Planning**: Hardware scaling, storage projections, bandwidth analysis, cost-performance trade-offs
 6. ✅ **Performance Monitoring**: Real-time metrics, baselines, alerting, forecasting, trend analysis
@@ -1434,7 +1418,7 @@ plt.savefig('forecast.png')
 ✅ **Performance framework documentation**: COMPLETE  
 ⏳ **Performance validation testing**: REQUIRED before mainnet launch (10-week timeline)  
 ✅ **Monitoring infrastructure**: Ready (Prometheus + Grafana from Step 7)  
-✅ **Load testing tools**: Integrated (Azure Load Testing, Locust)  
+✅ **Load testing tools**: Integrated (Distributed Locust)  
 
 **Recommendation**: Proceed with testnet deployment and performance validation in parallel with security audits (Step 7).
 

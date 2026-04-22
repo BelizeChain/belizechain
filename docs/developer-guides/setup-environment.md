@@ -334,7 +334,7 @@ cargo build --release
 
 **Expected output** (final lines):
 ```
-   Compiling belizechain-node v1.0.0 (/home/you/projects/belizechain/node)
+   Compiling belizechain-node (current workspace build) (/home/you/projects/belizechain/node)
     Finished release [optimized] target(s) in 18m 32s
 ✅ BelizeChain built successfully!
 ```
@@ -599,7 +599,7 @@ cargo build -p pallet-belize-economy
 
 **Expected output**:
 ```
-   Compiling pallet-belize-economy v1.0.0
+   Compiling pallet-belize-economy (current workspace build)
     Finished dev [unoptimized + debuginfo] target(s) in 27.3s
 ```
 

@@ -8,6 +8,8 @@
 
 These guides are for **system administrators**, **DevOps engineers**, and **infrastructure teams** deploying BelizeChain nodes, validators, and infrastructure.
 
+> Current operational target: Ceiba self-hosted testnet. Kubernetes/Azure material is legacy unless explicitly reactivated.
+
 ---
 
 ## 🎯 Who These Guides Are For
@@ -39,6 +41,8 @@ These guides are for **system administrators**, **DevOps engineers**, and **infr
 ---
 
 ## 📖 Available Guides
+
+- [Phase 2 Ceiba Services Plan](./PHASE2_CEIBA_SERVICES_PLAN.md) - Sibling service rollout order, health gates, and rollback pattern
 
 ### 1. [System Requirements](./requirements.md)
 **Hardware and software prerequisites**
@@ -222,25 +226,23 @@ These guides are for **system administrators**, **DevOps engineers**, and **infr
 
 ---
 
-### 10. [Kubernetes Deployment](./kubernetes-deployment.md)
-**Deploy on Kubernetes cluster**
+### 10. [Testnet Deployment (Ceiba)](./TESTNET_DEPLOYMENT.md)
+**Deploy to the current Ceiba self-hosted testnet target**
 
 **What you'll learn**:
-- Helm charts
-- StatefulSets
-- Persistent volumes
-- Service mesh
-- Auto-scaling
-- Rolling updates
+- Host prerequisites
+- Node build and rollout
+- Validator/full-node topology
+- Monitoring and maintenance
+- Troubleshooting
 
-**Time**: 3-4 hours  
-**Level**: ⭐⭐⭐⭐ Expert
+**Time**: 2-3 hours  
+**Level**: ⭐⭐⭐ Advanced
 
 **Use cases**:
-- Enterprise deployments
-- High availability
-- Auto-scaling
-- Multi-region
+- Current BelizeChain testnet operations
+- Validator onboarding
+- Self-hosted node administration
 
 ---
 
@@ -279,7 +281,7 @@ These guides are for **system administrators**, **DevOps engineers**, and **infr
 **Production-grade infrastructure**
 
 1. ✅ [System Requirements](./requirements.md)
-2. ✅ [Kubernetes Deployment](./kubernetes-deployment.md)
+2. ✅ [Testnet Deployment (Ceiba)](./TESTNET_DEPLOYMENT.md)
 3. ✅ [Configuration Guide](./configuration.md)
 4. ✅ [Security Guide](./security.md)
 5. ✅ [High Availability Setup](./high-availability.md)

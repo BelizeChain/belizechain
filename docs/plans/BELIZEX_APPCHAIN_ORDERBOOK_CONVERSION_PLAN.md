@@ -92,7 +92,7 @@ Multi-tier fee structure with three discount layers:
 | LP balance query | O(n) per user pair count | Off-chain only, acceptable |
 | Trading pair count | Unbounded | Governance-gated creation |
 | Oracle dependency | Hard requirement for WUSDC/bBZD | Rejects if Oracle unavailable |
-| AKS resources | 2 vCPU, 8GB RAM (shared) | $75/month budget ceiling |
+| Ceiba host resources | 2 vCPU, 8GB RAM (shared) | $75/month budget ceiling |
 
 ### 1.6 Audit Status
 
@@ -161,7 +161,7 @@ Begin when **ALL** of the following are true:
 **Timeline:** 4–6 weeks  
 **Engineering:** 1 backend engineer + 1 DevOps  
 **Chain changes:** Minimal — 1 new extrinsic, 1 storage enhancement  
-**Cost impact:** ~$15/month additional (bot container on AKS)
+**Cost impact:** ~$15/month additional (bot container on Ceiba) 
 
 ### 3.1 Architecture
 
@@ -183,7 +183,7 @@ Begin when **ALL** of the following are true:
           │                   │
           │    ┌──────────────┴──────────────┐
           │    │    Order Matcher Bot         │
-          │    │  (off-chain, AKS sidecar)   │
+          │    │  (off-chain, Ceiba sidecar) │
           │    │                              │
           │    │  1. Subscribe to OrderBook   │
           │    │     storage changes          │
@@ -277,7 +277,7 @@ Update `remaining` field to be decremented on each partial fill.
 ### 3.3 Off-Chain Matcher Bot
 
 **Language:** Rust (shared toolchain with node)  
-**Deployment:** AKS sidecar container alongside belizechain-node  
+**Deployment:** Ceiba sidecar container alongside belizechain-node  
 **Resource limits:** 50m CPU, 128Mi memory
 
 **Bot logic:**
@@ -310,7 +310,7 @@ Update `remaining` field to be decremented on each partial fill.
 ### 3.6 Rollback Plan
 
 The off-chain bot is a pure addition. If issues arise:
-1. Remove bot container from AKS deployment
+1. Remove bot container from Ceiba deployment
 2. Orders remain in storage but are unmatched (same as current state)
 3. No chain state corruption possible — bot only submits standard extrinsics
 
@@ -428,7 +428,7 @@ All existing BelizeX features must carry forward:
 **Timeline:** 12–16 weeks  
 **Engineering:** 2 backend engineers + 1 researcher  
 **Chain changes:** New pallet (`pallet-orderbook`) + runtime integration  
-**Cost impact:** Higher block weight consumption; may require upgrading AKS node
+**Cost impact:** Higher block weight consumption; may require upgrading Ceiba host resources
 
 ### 5.1 Architecture
 
@@ -710,7 +710,7 @@ At high volume, Maximal Extractable Value (MEV) becomes a real concern:
 |-----------|---------------|-------------------|
 | Appchain validator node(s) | 2x Standard_D4s_v3 (4 vCPU, 16GB) | $300 |
 | Appchain RPC node | 1x Standard_D2s_v3 | $75 |
-| Bridge relayer | Sidecar on main chain AKS | $0 (shared) |
+| Bridge relayer | Sidecar on main chain host (Ceiba) | $0 (shared) |
 | Monitoring (Grafana/Prom) | Shared with main cluster | $0 |
 | Storage (appchain state) | 50GB Premium SSD | $10 |
 | **Total** | | **~$385/month** |
@@ -798,7 +798,7 @@ At high volume, Maximal Extractable Value (MEV) becomes a real concern:
 
 | Risk | Probability | Impact | Mitigation |
 |------|------------|--------|-----------|
-| AKS budget exceeded during transition | Medium | Medium | Each phase has explicit cost ceiling; governance pre-approval |
+| Ceiba budget exceeded during transition | Medium | Medium | Each phase has explicit cost ceiling; governance pre-approval |
 | Phase overlap causes instability | Low | Medium | Strict trigger criteria prevent premature phase starts |
 | Community confusion during migration | Medium | Low | Clear documentation; 30-day notice periods; UI guidance |
 
@@ -828,7 +828,7 @@ Understanding what other sovereign/national blockchain projects and DEX architec
 | Metric | Target | Measurement |
 |--------|--------|-------------|
 | Limit order fill rate | >60% of placed orders within 24h | On-chain event tracking |
-| Matcher bot uptime | >99.5% | AKS health checks |
+| Matcher bot uptime | >99.5% | Ceiba health checks |
 | Fill latency | <2 blocks (12 seconds) from price crossing | Event timestamp analysis |
 | User adoption | >20% of trades via limit orders within 3 months | Extrinsic ratio tracking |
 

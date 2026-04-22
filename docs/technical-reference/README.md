@@ -307,7 +307,7 @@
 
 ### Kinich Orchestrator
 - **Purpose**: Coordinate quantum workloads
-- **Providers**: IBM Quantum, Azure Quantum, local simulators
+- **Providers**: IBM Quantum, configured quantum providers, local simulators
 - **Algorithms**: 
   - Shor's algorithm (factoring)
   - Grover's search

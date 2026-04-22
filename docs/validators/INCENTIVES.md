@@ -1,6 +1,6 @@
 # 💰 BelizeChain Validator Incentive Structure
 
-**Version**: 1.0.0  
+**Version**: Rolling (testnet)  
 **Updated**: November 4, 2025  
 **Effective Date**: Mainnet Launch  
 

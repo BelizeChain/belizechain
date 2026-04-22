@@ -13,7 +13,7 @@ Comprehensive performance metrics for BelizeChain's blockchain, storage, AI, and
 | 24 validators (Full) | 6 seconds | 600 | 1,500 | 24 seconds |
 | 50 validators (Decentralized) | 6 seconds | 400 | 1,000 | 42 seconds |
 
-**Test Environment**: Azure AKS, Standard_D8s_v5 VMs, 1 Gbps network
+**Test Environment**: Ceiba self-hosted cluster simulation, 1 Gbps network
 
 ```bash
 # TPS load test command
@@ -154,7 +154,7 @@ cargo build --release --features runtime-benchmarks
 | Zstandard (balanced) | 1,024 MB | 262 MB | 3.9x | 180 |
 | LZMA2 (high) | 1,024 MB | 189 MB | 5.4x | 35 |
 | **Quantum** | | | | |
-| QAOA (Azure Quantum) | 1,024 MB | 150 MB | 6.8x | 12 |
+| QAOA (Cloud Quantum Backend) | 1,024 MB | 150 MB | 6.8x | 12 |
 | QAOA + Classical hybrid | 1,024 MB | 134 MB | 7.6x | 22 |
 
 ```python

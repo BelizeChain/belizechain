@@ -328,7 +328,9 @@ curl -H "Content-Type: application/json" \
 - [ ] Prometheus monitoring configured
 - [ ] Backup/restore procedures tested
 
-📚 **Full Guide**: [docs/deployment/azure-kubernetes-deployment.md](docs/deployment/azure-kubernetes-deployment.md)
+📚 **Full Guide**: [docs/deployment/TESTNET_DEPLOYMENT.md](docs/deployment/TESTNET_DEPLOYMENT.md)
+
+🛠️ **Ceiba Runbook**: [docs/operations/CEIBA_OPERATIONS_RUNBOOK.md](docs/operations/CEIBA_OPERATIONS_RUNBOOK.md)
 
 ## 🤝 Contributing
 

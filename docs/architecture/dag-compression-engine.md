@@ -217,7 +217,7 @@ Experimental quantum compression via Kinich integration:
 from pakit.quantum.compression import QuantumCompressor
 
 compressor = QuantumCompressor(
-    backend='azure',  # Azure Quantum
+    backend='azure',  # configured quantum backend
     optimization_level=2
 )
 

@@ -1,6 +1,6 @@
 # 🚀 BelizeChain Validator Onboarding Guide
 
-**Version**: 1.0.0  
+**Version**: Rolling (testnet)  
 **Updated**: November 4, 2025  
 **Estimated Time**: 2-3 hours (technical setup)  
 
@@ -311,10 +311,11 @@ belizechain-node --version
 
 ```bash
 # Download latest release
-wget https://github.com/BelizeChain/belizechain/releases/download/v1.0.0-testnet/belizechain-node-linux-amd64
+LATEST_TAG=$(curl -s https://api.github.com/repos/BelizeChain/belizechain/releases/latest | grep '"tag_name":' | head -n1 | cut -d '"' -f4)
+wget "https://github.com/BelizeChain/belizechain/releases/download/${LATEST_TAG}/belizechain-node-linux-amd64"
 
 # Verify checksum
-wget https://github.com/BelizeChain/belizechain/releases/download/v1.0.0-testnet/checksums.txt
+wget "https://github.com/BelizeChain/belizechain/releases/download/${LATEST_TAG}/checksums.txt"
 sha256sum --check checksums.txt
 
 # Install

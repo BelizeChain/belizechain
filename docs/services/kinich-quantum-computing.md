@@ -1,6 +1,6 @@
 # Kinich Quantum Computing Layer
 
-Kinich (named after the Mayan sun god) is BelizeChain's quantum computing orchestration layer that enables validators to perform quantum workloads and earn Proof of Quantum Work (PQW) rewards. The system integrates with Azure Quantum (primary) and IBM Quantum (fallback) for hybrid quantum-classical computation.
+Kinich (named after the Mayan sun god) is BelizeChain's quantum computing orchestration layer that enables validators to perform quantum workloads and earn Proof of Quantum Work (PQW) rewards. The system integrates with configured quantum backend (primary) and IBM Quantum (fallback) for hybrid quantum-classical computation.
 
 ## Architecture Overview
 
@@ -35,7 +35,7 @@ Kinich (named after the Mayan sun god) is BelizeChain's quantum computing orches
 │  ┌──────────────────────────────────────────────────────┐  │
 │  │ Compression Engine Integration                        │  │
 │  │ - Quantum-classical hybrid compression (6.8x ratio)   │  │
-│  │ - Azure Quantum optimization                          │  │
+│  │ - configured quantum backend optimization                          │  │
 │  └──────────────────────────────────────────────────────┘  │
 └───────────────────────┬──────────────────────────────────┘
                         │
@@ -63,7 +63,7 @@ Kinich (named after the Mayan sun god) is BelizeChain's quantum computing orches
 ┌─────────────────────────────────────────────────┐
 │           Kinich-Type Validators                │
 │  - 16 cores / 64 GB RAM                         │
-│  - Quantum SDK (Qiskit, Azure Quantum)          │
+│  - Quantum SDK (Qiskit, configured quantum backend)          │
 │  - Job submission & verification                │
 └─────────────────────────────────────────────────┘
 ```
@@ -107,7 +107,7 @@ node = QuantumNode(
 
 job_id = await node.submit_job(
     circuit=qc,
-    backend_preference='ionq',  # IonQ on Azure Quantum (primary)
+    backend_preference='ionq',  # IonQ on configured quantum backend (primary)
     shots=1024,
     optimization_level=3,
     error_mitigation='zne',  # Zero-noise extrapolation
@@ -159,7 +159,7 @@ def select_backend(circuit, preference):
     qubit_count = circuit.num_qubits
     circuit_depth = circuit.depth()
     
-    # Azure Quantum backends
+    # configured quantum backend backends
     backends = {
         'ionq': {
             'qubits': 25,
@@ -466,7 +466,7 @@ def generate_quantum_signature(circuit, result, backend, job_id):
     
     # Backend certificate (simulated - real version from Azure/IBM)
     backend_cert = {
-        'provider': 'Azure Quantum',
+        'provider': 'configured quantum backend',
         'backend': backend,
         'job_id': job_id,
         'timestamp': '2026-01-31T12:00:00Z',
@@ -513,7 +513,7 @@ source kinich-env/bin/activate
 pip install qiskit==1.2.0
 pip install qiskit-aer==0.15.0  # Local quantum simulator
 
-# Install Azure Quantum SDK
+# Install configured quantum backend SDK
 pip install azure-quantum==1.0.0
 
 # Install Kinich SDK
@@ -521,11 +521,11 @@ pip install kinich-quantum-client==1.0.0
 
 # Verify installation
 python -c "from qiskit import QuantumCircuit; print('Qiskit OK')"
-python -c "from azure.quantum import Workspace; print('Azure Quantum OK')"
+python -c "from azure.quantum import Workspace; print('configured quantum backend OK')"
 python -c "from kinich.core.quantum_node import QuantumNode; print('Kinich OK')"
 ```
 
-### Azure Quantum Workspace Setup
+### configured quantum backend Workspace Setup
 
 ```bash
 # Login to Azure

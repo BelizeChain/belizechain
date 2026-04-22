@@ -62,7 +62,7 @@ No. BelizeChain is built on **Substrate** (same framework as Polkadot) but is a 
 - **Smart contracts**: Rust (ink! for WebAssembly)
 - **Runtime pallets**: Rust (Substrate framework)
 - **AI/ML (Nawal)**: Python (PyTorch, Flower, Opacus)
-- **Quantum (Kinich)**: Python (Qiskit, Azure Quantum SDK)
+- **Quantum (Kinich)**: Python (Qiskit + provider SDKs)
 - **Storage (Pakit)**: Python (DAG compression, deduplication)
 - **UI**: TypeScript/JavaScript (React, Next.js)
 - **SDKs**: JavaScript, TypeScript, Python, Rust

@@ -33,7 +33,7 @@ Technical terminology and BelizeChain-specific concepts.
 
 → See [Staking Rewards](economics/staking-rewards.md)
 
-**Azure Quantum**: Microsoft cloud quantum computing service. Kinich integrates IonQ, Quantinuum, IBM, Rigetti backends.
+**Quantum Backend Provider**: External quantum compute service. Kinich integrates IonQ, Quantinuum, IBM, Rigetti, and simulator backends.
 
 → See [Kinich Quantum](services/kinich-quantum-computing.md)
 

@@ -318,7 +318,7 @@ State storage:
 
 ### Audit Results
 ```
-Contract: dalla_token v1.0.0
+Contract: dalla_token (current release tag)
 Auditor: CertiK (January 2026)
 Severity breakdown:
 - Critical: 0

@@ -9,7 +9,7 @@ The Gem enables developers to deploy WebAssembly (Wasm) smart contracts that can
 - **💰 Economy Integration**: Direct access to DALLA/bBZD token transfers, balances, and treasury operations
 - **🆔 Identity Verification**: Query BelizeID credentials (SSN, Passport, KYC status) for compliance
 - **🤖 AI Capabilities**: Access Nawal federated learning predictions and genome-evolved models
-- **⚛️ Quantum Computing**: Execute quantum workloads through Kinich (Azure Quantum + IBM Quantum)
+- **⚛️ Quantum Computing**: Execute quantum workloads through Kinich (multi-provider backends)
 - **📦 Sovereign Storage**: Store data via Pakit DAG storage with on-chain proof verification
 - **🏛️ Governance Participation**: Create proposals, vote, and manage district council operations
 - **🌐 Domain Services**: Register and manage .bz domains through BNS (Belize Name Service)

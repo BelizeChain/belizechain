@@ -15,7 +15,7 @@
 ### **Phase 2: Full Quantum (Target)**
 - **Block Production**: Quantum-enhanced BABE with Falcon signatures
 - **Finality**: Quantum-resistant GRANDPA
-- **Random Beacon**: Azure Quantum true random numbers
+- **Random Beacon**: provider-backed true random numbers
 - **Post-Quantum Security**: Full Falcon/Dilithium implementation
 
 ## 🤖 Federated Learning Integration

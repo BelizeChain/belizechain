@@ -1,6 +1,6 @@
 # 🆘 BelizeChain Disaster Recovery Guide
 
-**Version**: 1.0.0  
+**Version**: Rolling (testnet)  
 **Updated**: November 4, 2025  
 **Criticality**: ESSENTIAL - Review quarterly  
 

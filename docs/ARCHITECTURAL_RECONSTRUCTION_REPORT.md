@@ -790,7 +790,7 @@ QuantumJobs, JobsByAccount (max 100), QuantumResults, QuantumAchievements, NFTCo
 
 #### Quantum Backends (8)
 
-AzureIonQ, AzureQuantinuum, AzureRigetti, IBMQuantum, Qiskit, SpinQGemini, SpinQTriangulum, Other.
+IonQProvider, QuantinuumProvider, RigettiProvider, IBMQuantum, Qiskit, SpinQGemini, SpinQTriangulum, Other.
 
 #### Achievement Types (12)
 

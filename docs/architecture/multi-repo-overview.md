@@ -92,35 +92,25 @@ cd ui && npm run dev:all
 ./scripts/start_dev.sh
 ```
 
-### Production (Kubernetes)
-```yaml
-# Namespace: belizechain-prod
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: belizechain-core
-spec:
-  replicas: 3  # 3 validator nodes
-  containers:
-  - name: node
-    image: belizechain/node:stable2512
-    ports: [9944, 9933, 30333]
----
-# Separate deployments for each component
-# - nawal-ai (replicas: 2)
-# - kinich-quantum (replicas: 1)  
-# - pakit-storage (replicas: 5)
-# - gem-faucet (replicas: 1)
-# - ui-maya-wallet (replicas: 3)
-# - ui-blue-hole-portal (replicas: 2)
+### Production (Ceiba Self-Hosted)
+```bash
+# Core node
+belizechain-node --dev --base-path /data/chain --port 30333 --rpc-port 9944 --prometheus-port 9615
+
+# Sibling services managed via compose/host automation
+# - nawal-ai
+# - kinich-quantum
+# - pakit-storage
+# - gem
+# - ui (maya wallet + blue hole portal)
 ```
 
-### Cloud (Azure)
-- **Blockchain Nodes**: 3x Standard_D8s_v5 (8 vCPU, 32 GB RAM)
-- **Nawal AI**: 2x Standard_NC6s_v3 (6 vCPU, 112 GB, V100 GPU)
-- **Kinich Quantum**: Azure Quantum workspace (pay-per-use)
-- **Pakit Storage**: 5x Standard_E8s_v5 (8 vCPU, 64 GB, 4TB NVMe)
-- **UI**: Azure Static Web Apps (CDN-backed)
+### Host Allocation (Ceiba)
+- **Blockchain Node**: primary runtime process on Ceiba
+- **Nawal AI**: containerized service on Ceiba
+- **Kinich Quantum**: containerized service on Ceiba
+- **Pakit Storage**: containerized service on Ceiba
+- **UI**: self-hosted services behind reverse proxy on Ceiba
 
 ---
 
@@ -149,12 +139,12 @@ UI ────→ Blockchain ←──── Nawal
 - **Blockchain**: 100% Belize nodes (Belmopan, Belize City, San Pedro)
 - **Pakit**: Sovereign DAG (no IPFS/Arweave gateways)
 - **Nawal**: On-premise training (no cloud ML APIs)
-- **Kinich**: Azure Quantum (West US) - acceptable for compute-only
-- **UI**: Hosted in Belize (static assets on Pakit DAG)
+- **Kinich**: self-hosted service with configurable backend providers
+- **UI**: Hosted in Belize on Ceiba/self-hosted stack
 
 ### Foreign Dependencies (Acceptable)
 - **Development Tools**: GitHub, npm registry, crates.io
-- **Quantum Backends**: Azure Quantum, IBM Quantum (compute only, no data storage)
+- **Quantum Backends**: configurable providers (compute only, no on-chain data storage)
 - **Telemetry**: Optional Prometheus/Grafana (can be self-hosted)
 
 ---
@@ -196,7 +186,7 @@ gh pr create --title "Add XYZ pallet"
 ### Release Process
 1. **Core Blockchain**: Tag release → Docker build → Deploy to testnet → Mainnet (1 week)
 2. **Python Components**: PyPI publish → Update configs → Rolling deployment (1 day)
-3. **UI**: npm build → Azure Static Web Apps → CDN propagation (1 hour)
+3. **UI**: npm build → Ceiba reverse proxy deployment (1 hour)
 4. **GEM Contracts**: Compile → Upload to faucet → Documentation update (immediate)
 
 ---
@@ -221,7 +211,7 @@ Loki Stack:
 - Nawal: /var/log/nawal/*.log (JSON format)
 - Kinich: /var/log/kinich/*.log (JSON format)
 - Pakit: /var/log/pakit/*.log (JSON format)
-- UI: Azure App Insights
+- UI: self-hosted logs and Prometheus-compatible metrics
 
 Query: {component="nawal"} |= "ERROR"
 ```

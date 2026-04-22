@@ -1,6 +1,6 @@
 # 🔐 BelizeChain Validator Requirements
 
-**Version**: 1.0.0  
+**Version**: Rolling (testnet)  
 **Updated**: November 4, 2025  
 **Network**: Testnet → Mainnet  
 
@@ -76,7 +76,7 @@ Debian 11+ (supported)
 RHEL 8+ (supported)
 
 # Node Software
-BelizeChain Node v1.0.0+
+BelizeChain Node (current belizechain branch build)
 Rust 1.75+
 Docker (optional)
 

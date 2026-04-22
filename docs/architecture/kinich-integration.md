@@ -1,8 +1,8 @@
 # Kinich Quantum Integration
 
-**Azure Quantum Integration for Hybrid Classical-Quantum Workloads**
+**configured quantum backend Integration for Hybrid Classical-Quantum Workloads**
 
-Kinich provides quantum computing capabilities to BelizeChain through Azure Quantum workspace integration.
+Kinich provides quantum computing capabilities to BelizeChain through configured quantum backend workspace integration.
 
 ---
 
@@ -20,10 +20,10 @@ Kinich provides quantum computing capabilities to BelizeChain through Azure Quan
 │ quantum_node.py │ ← Orchestrates quantum jobs
 │ :8888           │
 └────────┬────────┘
-         │ Azure Quantum SDK
+         │ configured quantum backend SDK
          ↓
 ┌─────────────────┐
-│ Azure Quantum   │
+│ configured quantum backend   │
 │ West US Region  │ ← IonQ, Quantinuum, Rigetti
 └─────────────────┘
 ```
@@ -174,4 +174,4 @@ Quantum (Kinich optimization level 2):
 - [Multi-Repo Overview](./multi-repo-overview.md)
 - [Kinich Repository](https://github.com/BelizeChain/kinich-quantum)
 - [Consensus Pallet](../developer-guides/pallet-consensus.md)
-- [Azure Quantum Docs](https://learn.microsoft.com/azure/quantum/)
+- [configured quantum backend Docs](https://learn.microsoft.com/azure/quantum/)

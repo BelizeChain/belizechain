@@ -14,8 +14,8 @@ BelizeChain supports **four validator types** based on capabilities:
 |------|--------------|---------|----------|
 | **Standard** | 10K DALLA stake + KYC Verified | Base 144K DALLA/day | Basic block production |
 | **Nawal** | Standard + GPU (8GB+ VRAM) | Base + 50-350 DALLA/session | Federated learning participation |
-| **Kinich** | Standard + Azure Quantum account | Base + 50-200 DALLA/job | Quantum work execution |
-| **Full** | Standard + GPU + Azure Quantum | All rewards combined | Maximum earnings (54.6M DALLA/year) |
+| **Kinich** | Standard + Kinich client + configured quantum backend | Base + 50-200 DALLA/job | Quantum work execution |
+| **Full** | Standard + GPU + Kinich client | All rewards combined | Maximum earnings (54.6M DALLA/year) |
 
 ---
 
@@ -316,37 +316,23 @@ python -m nawal.client.fl_client \
 
 ## Kinich Quantum Work (Optional)
 
-### Setup Azure Quantum
+### Setup Kinich Quantum Backend
 
 ```bash
-# Install Azure CLI
-curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
-
-# Login to Azure
-az login
-
-# Create quantum workspace
-az quantum workspace create \
-    --resource-group belizechain-validators \
-    --workspace-name validator-quantum \
-    --location westus \
-    --storage-account validatorquantumstorage
-
 # Setup Kinich client
 cd ~/belizechain/kinich/
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Configure credentials
-export AZURE_QUANTUM_WORKSPACE_ID="..."
-export AZURE_QUANTUM_LOCATION="westus"
-export AZURE_SUBSCRIPTION_ID="..."
+# Configure backend credentials (provider-specific)
+export KINICH_BACKEND="ionq"
+export KINICH_API_KEY="..."
 
 # Start Kinich node
 python -m kinich.core.quantum_node \
     --blockchain-rpc wss://rpc.belizechain.org \
     --validator-account 5GrwvaEF... \
-    --backends ionq,quantinuum
+    --backends ionq,quantinuum,simulator
 ```
 
 **Earnings:** 50-200 DALLA per quantum job (10 jobs/week = 78K DALLA/year)
@@ -429,7 +415,7 @@ ping -c 10 other-validator-ip
 1. **Hardware security module (HSM):** Use YubiHSM 2 or Ledger for session keys
 2. **Firewall:** Only allow P2P port (30333), block RPC/WS externally
 3. **DDoS protection:** Use Cloudflare or AWS Shield
-4. **Backups:** Weekly snapshots to Azure Blob Storage
+4. **Backups:** Weekly encrypted snapshots to off-host storage
 5. **Monitoring:** Set up alerts for >1 minute downtime
 6. **Updates:** Subscribe to GitHub releases, upgrade within 24 hours
 
@@ -439,5 +425,5 @@ ping -c 10 other-validator-ip
 
 - [Staking Pallet API](../developer-guides/pallet-apis-financial.md#staking-pallet)
 - [Staking Rewards](../economics/staking-rewards.md)
-- [Azure Deployment](../deployment/azure-kubernetes-deployment.md)
+- [Testnet Deployment](../deployment/TESTNET_DEPLOYMENT.md)
 - [Security Hardening](../security/security-audit-results.md)

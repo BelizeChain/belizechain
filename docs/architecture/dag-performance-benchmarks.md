@@ -331,7 +331,7 @@ Benchmark: 1M block inserts
 
 ```
 Dataset: 1 GB mixed content
-Backend: Azure Quantum (West US)
+Backend: configured quantum backend (West US)
 
 Classical (ZSTD level 3):
 - Ratio: 3.2x → 312 MB

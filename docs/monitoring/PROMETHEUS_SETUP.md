@@ -1,6 +1,6 @@
 # 📊 BelizeChain Network Monitoring Setup
 
-**Version**: 1.0.0  
+**Version**: Rolling (testnet)  
 **Updated**: November 4, 2025  
 **Setup Time**: 45-60 minutes  
 

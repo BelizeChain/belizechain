@@ -13,40 +13,39 @@
 - Multi-stage Docker build: `paritytech/ci-linux:production` → `debian:bookworm-slim`
 - Ports: 30333 (P2P), 9933 (RPC HTTP), 9944 (RPC WebSocket), 9615 (Prometheus)
 
-## Azure Deployment (LIVE)
-- **ACR**: `belizechainacr.azurecr.io` (Basic SKU, admin-enabled)
-- **AKS**: `belizechain-aks` (Free tier, 1x Standard_D2s_v3, K8s v1.33.6)
-- **Resource Group**: `BelizeChain` in `centralus`
-- **Subscription**: `77e6d0a2-78d2-4568-9f5a-34bd62357c40`
-- **Tenant**: `belizechain.org` (`8e20a9b6-5590-46ec-a8aa-1c71aa0a7e13`)
-- **Service Principal**: `belizechain-github-actions` (Contributor on RG)
-- **CI/CD**: `.github/workflows/deploy.yml` — test → coverage → benchmark → build (Docker+ACR) → deploy (AKS kubectl)
+## Production Deployment (LIVE)
+- **Primary Host**: `ceiba` (Ubuntu 24.04 LTS)
+- **Primary Access**: `ssh wicked@100.81.45.25` (Tailscale)
+- **LAN Fallback**: `ssh wicked@10.0.0.222` (wired segment)
+- **Node Process**: `belizechain-node --dev --base-path /data/chain --port 30333 --rpc-port 9944 --prometheus-port 9615`
+- **Binding Note**: RPC is exposed on Ceiba's Tailscale address (not localhost)
+- **Runtime Ports**: `30333` (P2P), `9944` (RPC), `9615` (Prometheus)
 
 ## GitHub Secrets (on this repo)
-`ACR_USERNAME`, `ACR_PASSWORD`, `AZURE_CREDENTIALS`, `AZURE_RESOURCE_GROUP`, `AKS_CLUSTER_NAME`, `POSTGRES_HOST`, `POSTGRES_PASSWORD`, `POSTGRES_USER`, `REDIS_HOST`, `REDIS_PASSWORD`, `REDIS_PORT`, `VM_HOST`, `VM_SSH_KEY`, `VM_USER`
+`POSTGRES_HOST`, `POSTGRES_PASSWORD`, `POSTGRES_USER`, `REDIS_HOST`, `REDIS_PASSWORD`, `REDIS_PORT`, `VM_HOST`, `VM_SSH_KEY`, `VM_USER`
 
-## Sibling Repos (same AKS cluster)
-| Repo | Role | Image |
-|------|------|-------|
-| `BelizeChain/ui` | Maya Wallet + Blue Hole Portal (Next.js) | `belizechainacr.azurecr.io/ui` |
-| `BelizeChain/infra` | GitOps: Helm, ArgoCD, Grafana, K8s manifests | — |
-| `BelizeChain/kinich-quantum` | Hybrid quantum-classical compute | `belizechainacr.azurecr.io/kinich` |
-| `BelizeChain/nawal-ai` | Federated learning + privacy ML | `belizechainacr.azurecr.io/nawal` |
-| `BelizeChain/gem` | Smart contracts (ink! 4.0) | `belizechainacr.azurecr.io/gem` |
-| `BelizeChain/pakit-storage` | DAG-based decentralized storage | `belizechainacr.azurecr.io/pakit` |
+## Sibling Repos
+| Repo | Role | Runtime Target |
+|------|------|----------------|
+| `BelizeChain/ui` | Maya Wallet + Blue Hole Portal (Next.js) | Ceiba/self-hosted plan |
+| `BelizeChain/infra` | Compose + host infrastructure manifests | Ceiba/self-hosted plan |
+| `BelizeChain/kinich-quantum` | Hybrid quantum-classical compute | Ceiba/self-hosted plan |
+| `BelizeChain/nawal-ai` | Federated learning + privacy ML | Ceiba/self-hosted plan |
+| `BelizeChain/gem` | Smart contracts (ink! 4.0) | Ceiba/self-hosted plan |
+| `BelizeChain/pakit-storage` | DAG-based decentralized storage | Ceiba/self-hosted plan |
 
 ## Current Task Context
-- Phase 1 COMPLETE: ACR + AKS + SP + secrets + deploy workflow migrated to AKS
-- Phase 2 TODO: Containerize & deploy sibling services (ui, pakit, nawal, kinich, gem)
-- Phase 3 TODO: Deploy infra repo Helm charts, ArgoCD, Grafana to AKS
+- Phase 1 COMPLETE: Ceiba host hardening + BelizeChain node running via Tailscale
+- Phase 2 TODO: Containerize and deploy sibling services (ui, pakit, nawal, kinich, gem) on Ceiba
+- Phase 3 TODO: Productionize observability + backup/restore + host-level automation
 
 ## Dev Commands
 ```bash
 cargo build --release                    # Build node
 cargo test                               # Run all tests
 docker build -t belizechain-node .       # Build Docker image
-az acr login --name belizechainacr       # Login to ACR
-kubectl get pods -n belizechain          # Check AKS pods
+ssh wicked@100.81.45.25                  # Access Ceiba node host
+curl -H "Content-Type: application/json" -d '{"id":1,"jsonrpc":"2.0","method":"system_health","params":[]}' http://100.81.45.25:9944
 ```
 
 ## Rules
@@ -54,4 +53,4 @@ kubectl get pods -n belizechain          # Check AKS pods
 - No floating-point in consensus logic
 - All state transitions must be deterministic
 - Use `Result<T, Error>` — no `unwrap()` in production
-- AKS cost ceiling: Free tier only, 1 node Standard_D2s_v3 (~$75/mo total)
+- Keep deployment guidance aligned with current Ceiba self-hosted architecture

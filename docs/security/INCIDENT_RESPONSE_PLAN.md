@@ -2,7 +2,7 @@
 
 **Version:** 1.0  
 **Last Updated:** November 4, 2025  
-**Status:** Production Ready  
+**Status:** Active testing and hardening  
 **Compliance:** FSC Security Requirements, ISO 27001, NIST Cybersecurity Framework  
 
 ---
@@ -302,12 +302,12 @@ This Incident Response Plan (IRP) defines BelizeChain's procedures for detecting
    
    - **Infrastructure Update:**
      ```bash
-     # Rolling update (Kubernetes)
-     kubectl set image deployment/belizechain-node \
-       belizechain-node=belizechain:patched-version
-     
+     # Rolling update (Ceiba/self-hosted)
+     docker compose -f /home/wicked/Projects/infra/docker-compose.yml pull belizechain-node
+     docker compose -f /home/wicked/Projects/infra/docker-compose.yml up -d belizechain-node
+
      # Monitor rollout
-     kubectl rollout status deployment/belizechain-node
+     docker compose -f /home/wicked/Projects/infra/docker-compose.yml ps
      ```
 
 4. **Verify Fix:**
@@ -983,15 +983,11 @@ BelizeChain
 
 4. **Scale Up Infrastructure (15 minutes)**
    ```bash
-   # Increase RPC node replicas (Kubernetes)
-   kubectl scale deployment/belizechain-rpc --replicas=10
-   # (from 3 to 10 nodes)
-   
-   # Monitor autoscaling
-   kubectl get hpa
-   
-   # Verify new nodes online
-   kubectl get pods -l app=belizechain-rpc
+   # Increase RPC capacity on Ceiba/self-hosted stack
+   docker compose -f /home/wicked/Projects/infra/docker-compose.yml up -d --scale belizechain-rpc=10
+
+   # Verify containers online
+   docker compose -f /home/wicked/Projects/infra/docker-compose.yml ps belizechain-rpc
    ```
 
 5. **Monitor Attack Mitigation (60 minutes)**
@@ -1019,7 +1015,7 @@ BelizeChain
      playbooks/nginx-ratelimit-restore.yml
    
    # Scale down RPC nodes (gradually)
-   kubectl scale deployment/belizechain-rpc --replicas=5
+   docker compose -f /home/wicked/Projects/infra/docker-compose.yml up -d --scale belizechain-rpc=5
    # Wait 30 minutes, then scale to 3 if stable
    ```
 

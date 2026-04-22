@@ -1,10 +1,7 @@
-# ─────────────────────────────────────────────────────────
-# BelizeChain Node — CI/CD Pipeline
-# Trigger: push to main  ·  manual dispatch
-# Flow:    test → build → push ACR → deploy Azure VM
-# ─────────────────────────────────────────────────────────
+# BelizeChain Node CI
+# Self-hosted Ceiba deployment is handled outside this workflow.
 
-name: Build & Deploy Blockchain Node
+name: Build and Validate
 
 on:
   push:
@@ -13,20 +10,13 @@ on:
     branches: [belizechain]
   workflow_dispatch:
 
-env:
-  REGISTRY: belizechainacr.azurecr.io
-  IMAGE_NAME: belizechain-node
-  NODE_NAME: "BelizeChain-Testnet-Validator-1"
-
-# Only one deploy at a time; cancel superseded runs
 concurrency:
-  group: deploy-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # ── 1. Run Rust unit tests ────────────────────────────
   test:
-    name: 🧪 Rust Tests
+    name: Rust Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,7 +32,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler libclang-dev
 
-      - name: Cache cargo registry & build
+      - name: Cache cargo registry and build output
         uses: actions/cache@v4
         with:
           path: |
@@ -55,9 +45,8 @@ jobs:
       - name: Run tests
         run: cargo test --release --workspace
 
-  # ── 1c. Coverage gate (must reach 100%) ──────────────────────────────
   coverage:
-    name: 📊 Coverage Gate (100%)
+    name: Coverage Gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -73,7 +62,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler libclang-dev
 
-      - name: Cache cargo registry & build
+      - name: Cache cargo registry and build output
         uses: actions/cache@v4
         with:
           path: |
@@ -86,23 +75,18 @@ jobs:
       - name: Install cargo-tarpaulin
         run: cargo install cargo-tarpaulin --locked
 
-      - name: Run coverage (enforce 100%)
-        # .tarpaulin.toml is picked up automatically.
-        # Excludes service.rs and rpc.rs (infrastructure layer).
-        # Fails the job if coverage drops below 100%.
+      - name: Run coverage (enforce configured threshold)
         run: cargo tarpaulin
 
-      - name: Upload coverage report (Lcov → Codecov)
+      - name: Upload coverage report
         uses: codecov/codecov-action@v4
         with:
           files: target/coverage/lcov.info
-          fail_ci_if_error: false   # coverage upload is best-effort; gate is tarpaulin
+          fail_ci_if_error: false
 
-  # ── 1b. Run pallet benchmarks (smoke test) ───────────
   benchmark:
-    name: ⚖️ Benchmark Smoke Test
+    name: Benchmark Smoke Test
     runs-on: ubuntu-latest
-    # Benchmarks are expensive — only run on push to main, not on PRs
     if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v4
@@ -118,7 +102,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler libclang-dev
 
-      - name: Cache cargo registry & build
+      - name: Cache cargo registry and build output
         uses: actions/cache@v4
         with:
           path: |
@@ -135,304 +119,3 @@ jobs:
         run: |
           chmod +x ./scripts/bench_smoke.sh
           ./scripts/bench_smoke.sh
-        # Smoke test only — keeps benchmark parameters low for CI runtime,
-        # but exercises all Belize pallets and fails fast on any regression.
-
-  # ── 2. Build Docker image & push to ACR ───────────────
-  build:
-    name: 🐳 Build & Push Image
-    needs: test
-    runs-on: ubuntu-latest
-    # Only build on pushes to main (not on PRs)
-    if: github.event_name != 'pull_request'
-    # ACR credentials (ACR_USERNAME / ACR_PASSWORD) must be valid in GitHub Secrets.
-    # If login fails with 403, rotate the service principal in Azure Portal and
-    # update the secrets at: Settings → Secrets and variables → Actions → Secrets.
-    # P0-08 FIX: Removed continue-on-error: true — failed builds must NOT trigger deployment.
-    outputs:
-      image_tag: ${{ steps.meta.outputs.version }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Generate image metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          # P0-10 FIX: Use immutable SHA-based tag only. Removed mutable :latest tag
-          # to prevent tag mutation attacks.
-          tags: |
-            type=sha,prefix=
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to ACR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
-
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
-          cache-to:   type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
-
-  # ── 3. Deploy to AKS ──────────────────────────────────
-  deploy:
-    name: 🚀 Deploy to Testnet (AKS)
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: testnet               # add environment protection rules in GitHub Settings
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Azure Login
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Set AKS context
-        uses: azure/aks-set-context@v4
-        with:
-          resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
-          cluster-name: ${{ secrets.AKS_CLUSTER_NAME }}
-
-      - name: Create namespace (if needed)
-        run: kubectl create namespace belizechain --dry-run=client -o yaml | kubectl apply -f -
-
-      - name: Ensure PVC exists
-        run: |
-          cat <<'EOF' | kubectl apply -f -
-          apiVersion: v1
-          kind: PersistentVolumeClaim
-          metadata:
-            name: belizechain-data
-            namespace: belizechain
-          spec:
-            accessModes: ["ReadWriteOnce"]
-            storageClassName: managed-csi-premium
-            resources:
-              requests:
-                storage: 100Gi
-          EOF
-
-      - name: Ensure node-key secret exists
-        run: |
-          if ! kubectl get secret belizechain-node-key -n belizechain >/dev/null 2>&1; then
-            # Generate a 32-byte hex node key for libp2p identity
-            NODE_KEY=$(openssl rand -hex 32)
-            kubectl create secret generic belizechain-node-key \
-              --from-literal=node-key="$NODE_KEY" \
-              --namespace=belizechain
-          fi
-
-      - name: Create validator-keys secret
-        run: |
-          kubectl create secret generic belizechain-validator-keys \
-            --from-literal=mnemonic="${{ secrets.VALIDATOR_MNEMONIC }}" \
-            --namespace=belizechain \
-            --dry-run=client -o yaml | kubectl apply -f -
-
-      - name: Deploy to AKS
-        run: |
-          # P2P-FIX-003: Create ConfigMap for reserved nodes
-          kubectl create configmap reserved-nodes \
-            --from-file=reserved-nodes.txt=./scripts/deploy/reserved-nodes.txt \
-            --namespace=belizechain \
-            --dry-run=client -o yaml | kubectl apply -f -
-
-          cat <<'EOFK' | sed "s|__IMAGE__|${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image_tag }}|g" | sed "s|__NODE_NAME__|${{ env.NODE_NAME }}|g" | kubectl apply -f -
-          apiVersion: apps/v1
-          kind: Deployment
-          metadata:
-            name: belizechain-node
-            namespace: belizechain
-            labels:
-              app: belizechain-node
-          spec:
-            replicas: 1
-            strategy:
-              type: Recreate
-            selector:
-              matchLabels:
-                app: belizechain-node
-            template:
-              metadata:
-                labels:
-                  app: belizechain-node
-              spec:
-                securityContext:
-                  fsGroup: 1000
-                  fsGroupChangePolicy: "OnRootMismatch"
-                initContainers:
-                  - name: fix-permissions
-                    image: busybox:1.36
-                    command: ["sh", "-c", "chown -R 1000:1000 /data"]
-                    volumeMounts:
-                      - name: blockchain-data
-                        mountPath: /data
-                    securityContext:
-                      runAsUser: 0
-                  - name: inject-session-keys
-                    image: busybox:1.36
-                    command:
-                      - sh
-                      - -c
-                      - |
-                        MNEMONIC=$(cat /secrets/mnemonic)
-                        mkdir -p /keystore
-                        # BABE key: type=babe (0x62616265) + Sr25519 pubkey hex
-                        printf '"%s"' "$MNEMONIC" > /keystore/626162654a48876b291c69f1b53e139dd00a1c980df4b8c23c9cd4e2d2efd75f67f60f3f
-                        # GRANDPA key: type=gran (0x6772616e) + Ed25519 pubkey hex
-                        printf '"%s"' "$MNEMONIC" > /keystore/6772616ea83ff30b72f0494f0174ded39861d13fd7841d9355d4a5e08ae4a5968e65b4ee
-                        chown -R 1000:1000 /keystore
-                        echo "Session keys injected (2 files)"
-                    volumeMounts:
-                      - name: validator-keys
-                        mountPath: /secrets
-                        readOnly: true
-                      - name: keystore
-                        mountPath: /keystore
-                    securityContext:
-                      runAsUser: 0
-                containers:
-                  - name: belizechain-node
-                    image: __IMAGE__
-                    ports:
-                      - containerPort: 30333
-                        name: p2p
-                      - containerPort: 9944
-                        name: rpc
-                      - containerPort: 9615
-                        name: metrics
-                    args:
-                      - "--chain"
-                      - "testnet"
-                      - "--base-path"
-                      - "/data"
-                      - "--name"
-                      - "__NODE_NAME__"
-                      - "--node-key-file"
-                      - "/etc/belizechain/secrets/node-key"
-                      - "--keystore-path"
-                      - "/keystore"
-                      - "--validator"
-                      - "--rpc-port"
-                      - "9944"
-                      - "--rpc-cors"
-                      - "https://portal.belizechain.org,https://explorer.belizechain.org,http://localhost:3000"
-                      - "--unsafe-rpc-external"
-                      - "--rpc-methods"
-                      - "Safe"
-                      - "--prometheus-port"
-                      - "9615"
-                      - "--prometheus-external"
-                      - "--no-mdns"
-                      - "--trie-cache-size"
-                      - "268435456"
-                      - "--state-pruning"
-                      - "archive"
-                    volumeMounts:
-                      - name: blockchain-data
-                        mountPath: /data
-                      - name: node-key
-                        mountPath: /etc/belizechain/secrets
-                        readOnly: true
-                      - name: keystore
-                        mountPath: /keystore
-                        readOnly: true
-                      - name: tmp
-                        mountPath: /tmp
-                    securityContext:
-                      runAsNonRoot: true
-                      runAsUser: 1000
-                      allowPrivilegeEscalation: false
-                      readOnlyRootFilesystem: true
-                      capabilities:
-                        drop: ["ALL"]
-                    resources:
-                      requests:
-                        cpu: "500m"
-                        memory: "1Gi"
-                      limits:
-                        cpu: "1500m"
-                        memory: "3Gi"
-                    startupProbe:
-                      tcpSocket:
-                        port: 9944
-                      initialDelaySeconds: 10
-                      periodSeconds: 10
-                      failureThreshold: 30
-                    readinessProbe:
-                      httpGet:
-                        path: /metrics
-                        port: 9615
-                      initialDelaySeconds: 5
-                      periodSeconds: 10
-                      failureThreshold: 3
-                    livenessProbe:
-                      tcpSocket:
-                        port: 9944
-                      initialDelaySeconds: 10
-                      periodSeconds: 30
-                      failureThreshold: 5
-                volumes:
-                  - name: blockchain-data
-                    persistentVolumeClaim:
-                      claimName: belizechain-data
-                  - name: node-key
-                    secret:
-                      secretName: belizechain-node-key
-                      items:
-                        - key: node-key
-                          path: node-key
-                  - name: validator-keys
-                    secret:
-                      secretName: belizechain-validator-keys
-                  - name: keystore
-                    emptyDir:
-                      medium: Memory
-                      sizeLimit: 16Mi
-                  - name: tmp
-                    emptyDir:
-                      medium: Memory
-                      sizeLimit: 256Mi
-          ---
-          apiVersion: v1
-          kind: Service
-          metadata:
-            name: belizechain-node
-            namespace: belizechain
-          spec:
-            selector:
-              app: belizechain-node
-            ports:
-              - name: p2p
-                port: 30333
-                targetPort: 30333
-              - name: rpc
-                port: 9944
-                targetPort: 9944
-              - name: metrics
-                port: 9615
-                targetPort: 9615
-            type: ClusterIP
-          EOFK
-
-      - name: Wait for rollout
-        run: kubectl rollout status deployment/belizechain-node -n belizechain --timeout=600s
-
-      - name: Verify deployment
-        run: |
-          kubectl get pods -n belizechain -o wide
-          kubectl get svc -n belizechain

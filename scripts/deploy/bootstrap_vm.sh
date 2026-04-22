@@ -1,13 +1,10 @@
 #!/bin/bash
-# ─────────────────────────────────────────────────────────
-# BelizeChain — Azure VM Bootstrap
-# Run this ONCE on each VM before the first CI/CD deploy.
-# It creates the shared Docker network and pulls base images.
-# ─────────────────────────────────────────────────────────
+# BelizeChain host bootstrap (Ceiba/self-hosted)
+# Run this once on each host before first deployment.
 set -euo pipefail
 
-echo "🔧 BelizeChain VM Bootstrap"
-echo "==========================="
+echo "🔧 BelizeChain Host Bootstrap"
+echo "============================="
 
 # ── 1. Docker network shared by all BelizeChain containers ──
 NETWORK="belizechain-net"
@@ -19,16 +16,14 @@ else
   echo "✅ Network created"
 fi
 
-# ── 2. Login to ACR ─────────────────────────────────────────
-REGISTRY="belizechainregistry.azurecr.io"
-ACR_USER="${ACR_USERNAME:-wicked}"
+# ── 2. Optional container registry login ─────────────────────
 echo ""
-echo "🔑 Logging in to ACR ($REGISTRY)…"
-if [ -n "${ACR_PASSWORD:-}" ]; then
-  echo "$ACR_PASSWORD" | docker login "$REGISTRY" -u "$ACR_USER" --password-stdin
+if [ -n "${CONTAINER_REGISTRY:-}" ] && [ -n "${CONTAINER_REGISTRY_USER:-}" ] && [ -n "${CONTAINER_REGISTRY_PASSWORD:-}" ]; then
+  echo "🔑 Logging in to container registry ($CONTAINER_REGISTRY)…"
+  echo "$CONTAINER_REGISTRY_PASSWORD" | docker login "$CONTAINER_REGISTRY" -u "$CONTAINER_REGISTRY_USER" --password-stdin
+  echo "✅ Registry login complete"
 else
-  echo "   Enter ACR password when prompted."
-  docker login "$REGISTRY" -u "$ACR_USER"
+  echo "ℹ️  Skipping registry login (CONTAINER_REGISTRY* not set)"
 fi
 
 # ── 3. Create persistent volumes ────────────────────────────
@@ -38,9 +33,9 @@ for vol in blockchain-data pakit-data quantum-results nawal-models; do
   docker volume create "$vol" 2>/dev/null && echo "   ✅ $vol" || echo "   ✅ $vol (exists)"
 done
 
-# ── 4. Firewall / NSG reminder ──────────────────────────────
+# ── 4. Firewall reminder ─────────────────────────────────────
 echo ""
-echo "🔒 Verify Azure NSG allows inbound traffic on:"
+echo "🔒 Verify host firewall allows inbound traffic on:"
 echo "   • 30333  (P2P)"
 echo "   • 9944   (RPC / WebSocket)"
 echo "   • 9615   (Prometheus)"
@@ -49,4 +44,4 @@ echo "   • 8081   (Kinich API)"
 echo "   • 8002   (Nawal API)"
 echo "   • 3000-3002 (UI apps)"
 echo ""
-echo "🎉 Bootstrap complete. CI/CD deploys can now target this VM."
+echo "🎉 Bootstrap complete. Host is ready for Ceiba/self-hosted deployments."

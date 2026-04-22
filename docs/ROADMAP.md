@@ -130,7 +130,7 @@ Project timeline: past milestones, current development, and future vision.
 - ✅ Differential privacy: ε=0.1 privacy budget enforced
 
 **November 2025**:
-- ✅ Kinich Azure Quantum integration (IonQ, Quantinuum, IBM, Rigetti)
+- ✅ Kinich multi-provider quantum integration (IonQ, Quantinuum, IBM, Rigetti)
 - ✅ Quantum compression: 6.8x ratio achieved
 - ✅ First PQW rewards: 50-200 DALLA per quantum job
 

@@ -386,7 +386,7 @@ This framework defines the comprehensive security audit requirements for BelizeC
 - **Quantum Work Submission:**
   - Kinich proof validation (circuit execution proofs)
   - Reward calculation (PQW scoring)
-  - Azure Quantum integration
+  - Configurable quantum backend integration
   
 - **Post-Quantum Cryptography:**
   - CRYSTALS-Dilithium signature verification
