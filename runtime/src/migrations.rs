@@ -14,7 +14,6 @@ use frame_support::{
     traits::OnRuntimeUpgrade,
     weights::Weight,
 };
-use sp_runtime::RuntimeDebug;
 use sp_std::marker::PhantomData;
 
 #[cfg(feature = "try-runtime")]
@@ -25,14 +24,14 @@ use sp_std::prelude::*;
 const CURRENT_RUNTIME_VERSION: u32 = 1;
 
 /// Migration tracker for coordinated multi-pallet upgrades
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug)]
 pub struct MigrationStatus {
     pub completed_migrations: u32,
     pub total_migrations: u32,
     pub current_step: MigrationStep,
 }
 
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug)]
 pub enum MigrationStep {
     NotStarted,
     InProgress(u32), // Step number

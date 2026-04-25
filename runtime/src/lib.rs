@@ -1980,7 +1980,10 @@ impl_runtime_apis! {
     }
 
     impl sp_session::SessionKeys<Block> for Runtime {
-        fn generate_session_keys(seed: Option<Vec<u8>>) -> Vec<u8> {
+        fn generate_session_keys(
+            owner: Vec<u8>,
+            seed: Option<Vec<u8>>,
+        ) -> sp_session::OpaqueGeneratedSessionKeys {
     // CONS-038 FIX: Replace panicking assert with a logged fallback.
     // A short seed from a misconfigured client previously caused a node process panic
     // (DoS via the public RPC endpoint). Short seeds are now rejected with a warning
@@ -2001,7 +2004,7 @@ impl_runtime_apis! {
         }
         None => None,
     };
-    opaque::SessionKeys::generate(validated_seed)
+    opaque::SessionKeys::generate(&owner, validated_seed).into()
         }
 
         fn decode_session_keys(

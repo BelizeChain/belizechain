@@ -200,7 +200,6 @@ use frame_support::{
 };
 use sp_runtime::{
     traits::Saturating,
-    RuntimeDebug,
 };
 use sp_io::hashing::blake2_256;
 use codec::{Encode, Decode, MaxEncodedLen};
@@ -266,7 +265,7 @@ const MAX_DELEGATION_RECEIVERS: usize = 100;
 ///     ParticipationTier::Validator => { /* Full governance access */ },
 /// }
 /// ```
-#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum ParticipationTier {
     /// Observer tier - Basic KYC verification
     ///
@@ -373,7 +372,7 @@ impl ParticipationTier {
 ///     metadata: None,
 /// };
 /// ```
-#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum Department {
     /// Ministry of Finance - Economic management and fiscal policy
     ///
@@ -506,7 +505,7 @@ impl Department {
 ///
 /// Encoded as `call_data` bytes in `ProposalAction::DepartmentAction`.
 /// New variants must be added here and handled in `execute_department_action`.
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo)]
 pub enum DepartmentCall<AccountId, Balance> {
     /// Transfer `amount` from the governance treasury to `recipient`.
     SpendBudget {
@@ -562,7 +561,7 @@ pub use DepartmentCall as GovDepartmentCall;
 ///     term_years: 2,
 /// };
 /// ```
-#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum BoardRole {
     /// Founder - Strategic lead and innovation oversight
     ///
@@ -687,7 +686,7 @@ impl BoardRole {
 }
 
 /// Belize's 6 administrative districts (Phase 6)
-#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum BelizeDistrict {
     /// Belize District (largest population, includes Belize City)
     Belize,
@@ -755,7 +754,7 @@ impl BelizeDistrict {
 }
 
 /// Election status (Phase 6)
-#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum ElectionStatus {
     /// Election announced, candidates can register
     Registration,
@@ -976,7 +975,7 @@ pub mod pallet {
     pub type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
     /// Council member information
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct CouncilMember<AccountId, BlockNumber> {
         /// Member account ID
         pub account: AccountId,
@@ -1006,7 +1005,7 @@ pub mod pallet {
     }
 
     /// Proposal information
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct Proposal<AccountId, BlockNumber, Balance> {
         /// Proposal ID
         pub id: u32,
@@ -1079,7 +1078,7 @@ pub mod pallet {
     ///     metadata: None,
     /// };
     /// ```
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum ProposalType {
         /// Constitutional amendments - Fundamental governance changes
         ///
@@ -1220,7 +1219,7 @@ pub mod pallet {
     }
 
     /// Voting threshold requirements
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum VotingThreshold {
         /// Simple majority (>50%)
         SimpleMajority,
@@ -1233,7 +1232,7 @@ pub mod pallet {
     }
 
     /// Vote tally tracking
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct VoteTally {
         /// Votes in favor
         pub ayes: u32,
@@ -1248,7 +1247,7 @@ pub mod pallet {
     }
 
     /// Proposal status
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum ProposalStatus {
         /// Proposal submitted, waiting for launch period
         Pending,
@@ -1265,7 +1264,7 @@ pub mod pallet {
     }
 
     /// Individual vote record
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct Vote {
         /// Vote choice
         pub vote: VoteChoice,
@@ -1278,7 +1277,7 @@ pub mod pallet {
     }
 
     /// Vote choices
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum VoteChoice {
         /// Vote in favor
         Aye,
@@ -1289,7 +1288,7 @@ pub mod pallet {
     }
 
     /// Executable actions for approved proposals (Phase 5)
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum ProposalAction<AccountId, Balance> {
         /// Transfer funds from treasury
         TreasurySpend { 
@@ -1317,7 +1316,7 @@ pub mod pallet {
     }
 
     /// Governance parameters that can be changed via proposals (Phase 5)
-    #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum GovernanceParameter {
         /// Duration of voting period in blocks
         VotingPeriod,
@@ -1334,7 +1333,7 @@ pub mod pallet {
     }
 
     /// Emergency action types (Phase 5)
-    #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum EmergencyActionType {
         /// Activate emergency mode
         ActivateEmergency,
@@ -1351,7 +1350,7 @@ pub mod pallet {
     }
 
     /// Council election information (Phase 6)
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct Election<BlockNumber> {
         /// Election ID (block number when started)
         pub id: BlockNumber,
@@ -1372,7 +1371,7 @@ pub mod pallet {
     }
 
     /// Election candidate information (Phase 6)
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct ElectionCandidate<AccountId, BlockNumber> {
         /// Candidate account ID
         pub account: AccountId,
@@ -1389,7 +1388,7 @@ pub mod pallet {
     }
 
     /// Vote delegation information (Phase 7)
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct VoteDelegation<AccountId, BlockNumber> {
         /// Account delegating votes
         pub delegator: AccountId,
@@ -1404,7 +1403,7 @@ pub mod pallet {
     }
 
     /// Proposal amendment (Phase 7)
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct ProposalAmendment<BlockNumber> {
         /// Proposal ID being amended
         pub proposal_id: u32,
@@ -1448,7 +1447,7 @@ pub mod pallet {
     ///     district: None,  // National referendum
     /// )
     /// ```
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct Referendum<AccountId, BlockNumber> {
         /// Unique referendum ID
         pub id: u32,
@@ -1479,7 +1478,7 @@ pub mod pallet {
     }
 
     /// Referendum status tracking
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum ReferendumStatus {
         /// Referendum is active, accepting votes
         Active,
@@ -1492,7 +1491,7 @@ pub mod pallet {
     }
 
     /// Individual vote on a referendum
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct ReferendumVote {
         /// Voter account
         pub voter: BoundedVec<u8, ConstU32<32>>, // AccountId as bytes
@@ -1526,7 +1525,7 @@ pub mod pallet {
     ///     fiscal_year_blocks: 5_256_000,  // 1 year in blocks
     /// )
     /// ```
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct DistrictBudget<Balance, BlockNumber> {
         /// District identifier
         pub district: BelizeDistrict,
@@ -1573,7 +1572,7 @@ pub mod pallet {
     ///     district: Some(BelizeDistrict::Cayo),
     /// )
     /// ```
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct TreasurySpendProposal<AccountId, Balance, BlockNumber> {
         /// Unique proposal ID
         pub id: u32,
@@ -1630,7 +1629,7 @@ pub mod pallet {
     ///     priority: ProposalPriority::Critical,
     /// };
     /// ```
-    #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum ProposalPriority {
         /// Low priority - Community initiatives and non-urgent changes
         ///
@@ -1713,7 +1712,7 @@ pub mod pallet {
     /// 
     /// Named after Belize's national animal, the Jaguar (Panthera onca), 
     /// representing swift, decisive action during national crises.
-    #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum EmergencyType {
         /// Hurricane or tropical storm emergency
         Hurricane,
@@ -1747,7 +1746,7 @@ pub mod pallet {
     /// 
     /// Tracks active national emergencies with detailed metadata for
     /// crisis response coordination.
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct EmergencyStatus<BlockNumber> {
         /// Whether Jaguar Mode is currently active
         pub active: bool,

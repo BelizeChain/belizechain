@@ -72,7 +72,7 @@ use frame_support::{
 };
 use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
-use sp_runtime::{RuntimeDebug, Saturating, SaturatedConversion};
+use sp_runtime::{Saturating, SaturatedConversion};
 use sp_std::prelude::*;
 
 #[cfg(test)]
@@ -97,7 +97,7 @@ mod benchmarking;
 pub type SuspiciousActivityReport<BlockNumber> = (SuspiciousActivityType, BlockNumber, BoundedVec<u8, ConstU32<256>>);
 
 /// Verification levels for compliance
-#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum VerificationLevel {
     /// No verification - restricted operations only
     None,
@@ -134,7 +134,7 @@ impl VerificationLevel {
 }
 
 /// Risk assessment levels
-#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum RiskLevel {
     /// Low risk - normal operations
     Low,
@@ -147,7 +147,7 @@ pub enum RiskLevel {
 }
 
 /// Compliance status for an account
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub struct ComplianceStatus {
     /// Current verification level
     pub verification_level: VerificationLevel,
@@ -174,7 +174,7 @@ impl Default for ComplianceStatus {
 }
 
 /// Suspicious activity types for AML/CFT reporting
-#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum SuspiciousActivityType {
     /// Unusual transaction patterns
     UnusualVolumePattern,
@@ -195,7 +195,7 @@ pub enum SuspiciousActivityType {
 }
 
 /// Compliance audit record
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[scale_info(skip_type_params(T))]
 pub struct ComplianceAuditRecord<T: Config> {
     /// Account being audited
@@ -213,7 +213,7 @@ pub struct ComplianceAuditRecord<T: Config> {
 }
 
 /// Types of compliance-relevant actions
-#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum ActionType {
     /// Verification status changed
     VerificationUpdated,
@@ -236,7 +236,7 @@ pub enum ActionType {
 }
 
 /// Sanctions list entry (hash-based for privacy)
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub struct SanctionEntry {
     /// Hash of sanctioned entity identifier
     pub entity_hash: [u8; 32],

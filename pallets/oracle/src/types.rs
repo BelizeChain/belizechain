@@ -9,7 +9,6 @@ use frame_support::{
     pallet_prelude::*,
     BoundedVec,
 };
-use sp_runtime::RuntimeDebug;
 
 #[cfg(feature = "std")]
 use serde::{Serialize, Deserialize};
@@ -27,7 +26,7 @@ pub const MAX_REASON_LEN: u32 = 256;
 pub const MAX_CERT_LEN: u32 = 128;
 
 /// Currency types supported by the oracle
-#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub enum Currency {
     /// Belize Dollar
@@ -56,7 +55,7 @@ impl Currency {
 }
 
 /// Currency pair for exchange rates
-#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct CurrencyPair {
     /// Base currency
@@ -72,7 +71,7 @@ impl CurrencyPair {
 }
 
 /// Oracle data point with metadata
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct OracleDataPoint<AccountId, BlockNumber> {
     /// The actual data value (encoded as bytes for flexibility)
@@ -88,7 +87,7 @@ pub struct OracleDataPoint<AccountId, BlockNumber> {
 }
 
 /// Aggregated price feed data
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct PriceFeedData<BlockNumber> {
     /// Currency pair
@@ -104,7 +103,7 @@ pub struct PriceFeedData<BlockNumber> {
 }
 
 /// Merchant category for tourism incentives
-#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub enum MerchantCategory {
     /// Hotels, resorts, lodging (8% cashback)
@@ -148,7 +147,7 @@ impl MerchantCategory {
 }
 
 /// Merchant verification information
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct MerchantInfo<AccountId, BlockNumber> {
     /// Merchant account
@@ -168,7 +167,7 @@ pub struct MerchantInfo<AccountId, BlockNumber> {
 }
 
 /// Source of sanction information
-#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub enum SanctionSource {
     /// US Office of Foreign Assets Control
@@ -197,7 +196,7 @@ impl SanctionSource {
 }
 
 /// Sanction information
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct SanctionInfo<BlockNumber> {
     /// Sanction source
@@ -215,7 +214,7 @@ pub struct SanctionInfo<BlockNumber> {
 
 
 /// Oracle feed type identifier
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub enum OracleFeedType {
     /// Price feed for currency pair
@@ -233,7 +232,7 @@ pub enum OracleFeedType {
 }
 
 /// KYC verification levels
-#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub enum KycLevel {
     /// Level 0: No verification (email/phone only)
@@ -279,7 +278,7 @@ impl KycLevel {
 }
 
 /// Identity verification information
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct IdentityInfo<AccountId, BlockNumber> {
     /// Account being verified
@@ -304,7 +303,7 @@ pub struct IdentityInfo<AccountId, BlockNumber> {
 pub type PropertyId = [u8; 32];
 
 /// Land registry encumbrance (mortgage, lien, etc.)
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct Encumbrance<BlockNumber> {
     /// Type of encumbrance ("mortgage", "lien", "easement")
@@ -318,7 +317,7 @@ pub struct Encumbrance<BlockNumber> {
 }
 
 /// Simplified land ownership information (MaxEncodedLen compatible)
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct LandOwnershipInfo<AccountId, BlockNumber> {
     /// Property identifier
@@ -344,7 +343,7 @@ pub struct LandOwnershipInfo<AccountId, BlockNumber> {
 // ============================================================================
 
 /// AI/ML model domain types for data classification
-#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub enum ModelDomain {
     /// General purpose AI
@@ -383,7 +382,7 @@ impl ModelDomain {
 }
 
 /// IoT device sensor types
-#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub enum SensorType {
     /// Temperature sensor (Celsius * 100)
@@ -409,7 +408,7 @@ pub enum SensorType {
 }
 
 /// Drone specifications
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct DroneSpec {
     /// Drone model/manufacturer
@@ -425,7 +424,7 @@ pub struct DroneSpec {
 }
 
 /// Phone sensor specifications
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct PhoneSpec {
     /// Operating system
@@ -439,7 +438,7 @@ pub struct PhoneSpec {
 }
 
 /// Generic IoT sensor specifications
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct SensorSpec {
     /// Sensor type
@@ -451,7 +450,7 @@ pub struct SensorSpec {
 }
 
 /// IoT device type with specifications
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub enum DeviceType {
     /// Aerial or underwater drone
@@ -473,7 +472,7 @@ pub enum DeviceType {
 }
 
 /// IoT device registration information
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct IoTDevice<AccountId, BlockNumber> {
     /// Unique device identifier (hash of serial number + owner)
@@ -497,7 +496,7 @@ pub struct IoTDevice<AccountId, BlockNumber> {
 }
 
 /// Data quality metrics for scoring submissions
-#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct DataQualityMetrics {
     /// Accuracy (0-100): Compared to ground truth or peer validation
@@ -526,7 +525,7 @@ impl DataQualityMetrics {
 }
 
 /// Collection type for mobile phone data
-#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub enum CollectionType {
     /// Photo submission
@@ -542,7 +541,7 @@ pub enum CollectionType {
 }
 
 /// Extended oracle feed types including IoT data
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub enum DataFeedType {
     // Existing feed types
@@ -573,7 +572,7 @@ pub enum DataFeedType {
 }
 
 /// IoT data submission with quality metrics
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct IoTDataSubmission<AccountId, BlockNumber> {
     /// Device that submitted the data
@@ -597,7 +596,7 @@ pub struct IoTDataSubmission<AccountId, BlockNumber> {
 }
 
 /// Oracle operator contribution stats
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct OracleOperatorStats<BlockNumber> {
     /// Total data submissions

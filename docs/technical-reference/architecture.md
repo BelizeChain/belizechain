@@ -329,40 +329,40 @@ graph TB
 
 ## Deployment Architecture
 
-### Infrastructure as Code
+### Current Ceiba Self-Hosted Deployment
 
 ```yaml
-# Kubernetes deployment example
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: belizechain-node
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: belizechain-node
-  template:
-    metadata:
-      labels:
-        app: belizechain-node
-    spec:
-      containers:
-      - name: belizechain
-        image: belizechain/node:latest
-        ports:
-        - containerPort: 30333
-        - containerPort: 9933
-        - containerPort: 9944
+services:
+   ceiba-node:
+      image: belizechain/ceiba-node:latest
+      container_name: ceiba-node
+      restart: unless-stopped
+      ports:
+         - "0.0.0.0:30333:30333"
+         - "100.81.45.25:9944:9944"
+         - "9615:9615"
+      volumes:
+         - /data/chain:/data/chain
+      command: >
+         --dev
+         --base-path /data/chain
+         --port 30333
+         --rpc-port 9944
+         --prometheus-port 9615
+         --rpc-external
+         --rpc-methods Safe
+         --name Ceiba-Node-1
 ```
 
-### Cloud-Native Architecture
+Kubernetes examples in older documents are legacy references. Current operations are Docker and Docker Compose on Ceiba.
+
+### Current Operating Model
 
 1. **Container Orchestration**
-   - Kubernetes deployment
-   - Docker containerization
-   - Service mesh (Istio)
-   - Auto-scaling policies
+    - Docker Compose on Ceiba
+    - Containerized node and sibling services
+    - Tailscale-scoped RPC exposure
+    - Host-level automation and recovery procedures
 
 2. **Monitoring and Observability**
    - Prometheus metrics collection

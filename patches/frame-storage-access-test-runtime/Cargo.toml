@@ -1,6 +1,6 @@
 # Dummy patch for frame-storage-access-test-runtime
 #
-# frame-benchmarking-cli (stable2512) depends on this crate, whose build.rs
+# frame-benchmarking-cli depends on this crate, whose build.rs
 # invokes substrate-wasm-builder which panics outside the polkadot-sdk
 # workspace ("Failed to find entry for package frame-storage-access-test-runtime").
 #
@@ -16,9 +16,9 @@ publish = false
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.6", default-features = false, features = ["derive"] }
-sp-core = { git = "https://github.com/paritytech/polkadot-sdk", rev = "ad8a23ac25e6ad4f0afe27f2960565f0e8741828", default-features = false }
-sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk", rev = "ad8a23ac25e6ad4f0afe27f2960565f0e8741828", default-features = false }
-sp-trie = { git = "https://github.com/paritytech/polkadot-sdk", rev = "ad8a23ac25e6ad4f0afe27f2960565f0e8741828", default-features = false }
+sp-core = { git = "https://github.com/paritytech/polkadot-sdk", rev = "2e4dd0bc22366a5af820492528869a493b5a5208", default-features = false }
+sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk", rev = "2e4dd0bc22366a5af820492528869a493b5a5208", default-features = false }
+sp-trie = { git = "https://github.com/paritytech/polkadot-sdk", rev = "2e4dd0bc22366a5af820492528869a493b5a5208", default-features = false }
 
 [features]
 default = ["std"]

@@ -52,7 +52,7 @@ pub mod pallet {
         <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
     // ── Dispute severity ──────────────────────────────────────────────────────
-    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum DisputeSeverity {
         /// Minor infractions — compulsory cooling-off only, no escrow.
         Minor,
@@ -74,7 +74,7 @@ pub mod pallet {
     }
 
     // ── Dispute status ────────────────────────────────────────────────────────
-    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum DisputeStatus {
         /// Freshly opened; awaiting mediator assignment.
         Pending,
@@ -89,7 +89,7 @@ pub mod pallet {
     }
 
     // ── Dispute resolution ────────────────────────────────────────────────────
-    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum DisputeResolution {
         /// Allegation dismissed; no penalty. Escrowed slash is refunded.
         Dismissed,
@@ -100,7 +100,7 @@ pub mod pallet {
     }
 
     // ── Rehabilitation status ─────────────────────────────────────────────────
-    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum RehabStatus {
         /// No active justice proceedings.
         Clean,
@@ -117,7 +117,7 @@ pub mod pallet {
     }
 
     // ── DisputeRecord ─────────────────────────────────────────────────────────
-    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
     pub struct DisputeRecord<T: Config> {
         /// Account that filed the dispute (pays the bond).

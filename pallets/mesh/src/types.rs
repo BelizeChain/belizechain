@@ -12,14 +12,13 @@ use frame_support::BoundedVec;
 use frame_support::pallet_prelude::ConstU32;
 use scale_info::TypeInfo;
 use sp_core::H256;
-use sp_runtime::RuntimeDebug;
 
 // ==================================
 // Meshtastic Node Types
 // ==================================
 
 /// Meshtastic hardware node registered on-chain
-#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub struct MeshNode<AccountId, BlockNumber> {
     /// On-chain account that owns this node
     pub owner: AccountId,
@@ -58,7 +57,7 @@ pub struct MeshNode<AccountId, BlockNumber> {
 pub type MeshtasticNodeId = [u8; 4];
 
 /// Role a mesh node plays in the network
-#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, Default)]
+#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, Default)]
 pub enum MeshNodeRole {
     /// Client node: phone + Meshtastic radio for end-user transactions
     #[default]
@@ -76,7 +75,7 @@ pub enum MeshNodeRole {
 }
 
 /// Supported Meshtastic hardware
-#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, Default)]
+#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, Default)]
 pub enum MeshHardware {
     /// Heltec LoRa 32 V3 (ESP32-S3 + SX1262)
     HeltecV3,
@@ -98,7 +97,7 @@ pub enum MeshHardware {
 }
 
 /// LoRa frequency region (ISM band regulations)
-#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, Default)]
+#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, Default)]
 pub enum LoRaRegion {
     /// 915 MHz - United States, Belize, Central America, South America
     #[default]
@@ -128,7 +127,7 @@ pub enum LoRaRegion {
 ///
 /// Format: [version(1)] [type(1)] [sender(4)] [recipient(4)] [amount(8)]
 ///         [nonce(4)] [signature(64)] [flags(1)] = 87 bytes base
-#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub struct MeshTransaction<BlockNumber> {
     /// Protocol version (for forward compatibility)
     pub version: u8,
@@ -161,7 +160,7 @@ pub struct MeshTransaction<BlockNumber> {
 }
 
 /// Mesh transaction type
-#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, Default)]
+#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, Default)]
 pub enum MeshTxType {
     /// Transfer DALLA tokens
     #[default]
@@ -177,7 +176,7 @@ pub enum MeshTxType {
 }
 
 /// Transaction flags (bitfield)
-#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub struct MeshTxFlags {
     /// Bit 0: urgent (higher relay priority)
     pub urgent: bool,
@@ -205,7 +204,7 @@ impl Default for MeshTxFlags {
 // ==================================
 
 /// Emergency alert broadcast through the mesh network
-#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub struct EmergencyAlert<AccountId, BlockNumber> {
     /// Unique alert ID
     pub alert_id: u32,
@@ -237,7 +236,7 @@ pub struct EmergencyAlert<AccountId, BlockNumber> {
 }
 
 /// Emergency severity levels
-#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, PartialOrd, Ord, Default)]
+#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, PartialOrd, Ord, Default)]
 pub enum AlertSeverity {
     /// Advisory: informational, no immediate danger
     #[default]
@@ -253,7 +252,7 @@ pub enum AlertSeverity {
 }
 
 /// Types of emergencies
-#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, Default)]
+#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, Default)]
 pub enum EmergencyType {
     /// Hurricane (Belize is in hurricane belt)
     Hurricane,
@@ -289,7 +288,7 @@ pub enum EmergencyType {
 /// Compressed block header for mesh relay between validators
 /// When internet connectivity fails, validators relay critical
 /// consensus data through the LoRa mesh network
-#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub struct MeshBlockHeader {
     /// Block number
     pub block_number: u32,
@@ -310,7 +309,7 @@ pub struct MeshBlockHeader {
 }
 
 /// Proof that a mesh node relayed data (for relay mining rewards)
-#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub struct RelayProof<BlockNumber> {
     /// Node that performed the relay
     pub relayer: MeshtasticNodeId,
@@ -333,7 +332,7 @@ pub struct RelayProof<BlockNumber> {
 }
 
 /// Type of content relayed
-#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum RelayType {
     /// Relayed a user transaction
     Transaction,
@@ -348,7 +347,7 @@ pub enum RelayType {
 }
 
 /// Relay destination
-#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum RelayDestination {
     /// Specific node
     Node(MeshtasticNodeId),
@@ -363,7 +362,7 @@ pub enum RelayDestination {
 // ==================================
 
 /// Aggregate mesh network statistics (stored on-chain)
-#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, Default)]
+#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, Default)]
 pub struct MeshNetworkStats {
     /// Total registered mesh nodes
     pub total_nodes: u32,
@@ -396,7 +395,7 @@ pub struct MeshNetworkStats {
 // ==================================
 
 /// Coverage zone registered by a mesh node
-#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub struct CoverageZone {
     /// Center latitude (* 1e7)
     pub latitude: i32,
@@ -411,7 +410,7 @@ pub struct CoverageZone {
 }
 
 /// Belize administrative districts
-#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, Default)]
+#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, Default)]
 pub enum BelizeDistrict {
     /// Belize District (Belize City)
     #[default]
@@ -429,7 +428,7 @@ pub enum BelizeDistrict {
 }
 
 /// Terrain classification (affects LoRa range estimates)
-#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, Default)]
+#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, Default)]
 pub enum TerrainType {
     /// Flat coastal (best LoRa range, 10-15+ km)
     #[default]

@@ -125,7 +125,7 @@ pub mod pallet {
     pub type DidOf<T> = BoundedVec<u8, <T as Config>::MaxAnchorLen>;
 
     /// Attribute types supported by BelizeID
-    #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum AttributeType {
         Ssn,
         Passport,
@@ -145,7 +145,7 @@ pub mod pallet {
     }
 
     /// Attestation status
-    #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum AttestationStatus {
         Active,
         Suspended,
@@ -153,7 +153,7 @@ pub mod pallet {
     }
 
     /// KYC levels
-    #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum KycLevel {
         L0,
         L1,
@@ -162,7 +162,7 @@ pub mod pallet {
     }
 
     /// KYC overall state including grace
-    #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum KycState {
         Valid,
         Grace,
@@ -170,7 +170,7 @@ pub mod pallet {
     }
 
     /// Identity core record
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
     pub struct IdentityRecord<T: Config> {
         /// Display name (not PII-critical but bounded)
@@ -184,7 +184,7 @@ pub mod pallet {
     }
 
     /// Attestation structure
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
     pub struct Attestation<T: Config> {
         pub attr_type: AttributeType,
@@ -212,11 +212,11 @@ pub mod pallet {
     }
 
     /// History action
-    #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum HistoryAction { Issued, Suspended, Revoked, Updated }
 
     /// History event
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
     pub struct HistoryEvent<T: Config> {
         pub when: BlockNumberFor<T>,
@@ -287,7 +287,7 @@ pub mod pallet {
     pub type RateMaxPerWindowBiometrics<T: Config> = StorageValue<_, u32, ValueQuery>;
 
     /// Rate counter per issuer per attribute
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
     pub struct RateCounter<T: Config> {
         pub window_start: BlockNumberFor<T>,

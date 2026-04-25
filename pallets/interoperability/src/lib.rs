@@ -255,7 +255,7 @@ pub mod pallet {
     /// attack surface and requires a functioning oracle/relayer. New chains should only
     /// be added via governance proposal after security review. Chains without active
     /// validators or oracle coverage should be disabled via `ChainConfigurations`.
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum BridgeChain {
         // L1s and Major Networks
         Bitcoin,            // 0
@@ -313,7 +313,7 @@ pub mod pallet {
     }
 
     /// Bridgeable assets (DALLA and bBZD only for sovereignty)
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum BridgeAsset {
         /// Native DALLA token
         DALLA,
@@ -322,7 +322,7 @@ pub mod pallet {
     }
 
     /// Bridge operation types
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum BridgeOperation {
         /// Lock assets on BelizeChain, mint on target chain
         LockAndMint {
@@ -348,7 +348,7 @@ pub mod pallet {
     }
 
     /// Bridge transaction status
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum BridgeStatus {
         /// Transaction initiated
         Initiated,
@@ -369,7 +369,7 @@ pub mod pallet {
     }
 
     /// Bridge validator information for post-quantum security
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct BridgeValidator<AccountId> {
         /// Validator account
         pub account: AccountId,
@@ -388,7 +388,7 @@ pub mod pallet {
     }
 
     /// Bridge liquidity pool
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct LiquidityPool<AccountId> {
         /// Pool ID
         pub pool_id: u32,
@@ -411,7 +411,7 @@ pub mod pallet {
     }
 
     /// Bridge transaction record
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct BridgeTransaction<AccountId, BlockNumber> {
         /// Transaction ID
         pub tx_id: u32,
@@ -440,7 +440,7 @@ pub mod pallet {
     }
 
     /// Cross-chain message
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct CrossChainMessage {
         /// Message ID
         pub message_id: u32,
@@ -604,7 +604,7 @@ pub mod pallet {
     >;
 
     /// Chain-specific configuration
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct ChainConfig {
         /// Chain enabled for bridging
         pub enabled: bool,

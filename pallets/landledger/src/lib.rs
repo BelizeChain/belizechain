@@ -24,7 +24,6 @@ use sp_runtime::{
     traits::{
         SaturatedConversion,
     },
-    RuntimeDebug,
 };
 use sp_std::vec::Vec;
 use codec::{Encode, Decode, MaxEncodedLen};
@@ -113,7 +112,7 @@ pub mod pallet {
     }
 
     /// Land property information
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(AccountId))]
     pub struct PropertyRecord<AccountId> {
         /// Unique property ID
@@ -151,7 +150,7 @@ pub mod pallet {
     }
 
     /// Property types in Belize
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum PropertyType {
         /// Residential property
         Residential,
@@ -172,7 +171,7 @@ pub mod pallet {
     }
 
     /// Zoning classifications
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum ZoningType {
         /// Urban residential
         UrbanResidential,
@@ -195,7 +194,7 @@ pub mod pallet {
     }
 
     /// Encumbrances on property
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(AccountId))]
     pub struct Encumbrance<AccountId> {
         /// Encumbrance type
@@ -211,7 +210,7 @@ pub mod pallet {
     }
 
     /// Types of encumbrances
-    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum EncumbranceType {
         /// Mortgage lien
         Mortgage,
@@ -228,7 +227,7 @@ pub mod pallet {
     }
 
     /// Property transfer record
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(AccountId, Moment))]
     pub struct TransferRecord<AccountId, Moment> {
         /// Transfer ID
@@ -252,7 +251,7 @@ pub mod pallet {
     }
 
     /// Transfer types
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum TransferType {
         /// Sale transaction
         Sale,

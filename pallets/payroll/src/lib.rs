@@ -58,13 +58,12 @@ mod tests;
 
 use codec::{self, Encode, Decode, MaxEncodedLen};
 use scale_info::TypeInfo;
-use sp_runtime::RuntimeDebug;
 use frame_support::pallet_prelude::*;
 
 // ===== EMPLOYER & WORKER CLASSIFICATION =====
 
 /// Employer type — determines compliance requirements and reporting categories
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking, Default)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking, Default)]
 pub enum EmployerType {
     /// Government ministry, department, or agency
     Government,
@@ -82,7 +81,7 @@ pub enum EmployerType {
 }
 
 /// Worker type — determines labor law compliance and payment rules
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking, Default)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking, Default)]
 pub enum WorkerType {
     /// Full-time salaried employee
     #[default]
@@ -102,7 +101,7 @@ pub enum WorkerType {
 // ===== DEDUCTION TYPES =====
 
 /// Deduction type for payroll withholdings
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking)]
 pub enum DeductionType {
     /// Income tax withholding
     IncomeTax,
@@ -117,7 +116,7 @@ pub enum DeductionType {
 }
 
 /// A single deduction entry
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking)]
 pub struct Deduction<Balance> {
     /// Type of deduction
     pub deduction_type: DeductionType,
@@ -130,7 +129,7 @@ pub struct Deduction<Balance> {
 // ===== EMPLOYER PROFILE =====
 
 /// Employer registration profile
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking)]
 pub struct EmployerProfile {
     /// Type of employer
     pub employer_type: EmployerType,
@@ -145,7 +144,7 @@ pub struct EmployerProfile {
 // ===== CORE TYPES =====
 
 /// Employee record
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking)]
 pub struct Employee<AccountId, Balance> {
     /// Employee account
     pub account: AccountId,
@@ -176,7 +175,7 @@ pub struct Employee<AccountId, Balance> {
 }
 
 /// Payment frequency
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking)]
 pub enum PaymentFrequency {
     /// Weekly (every 50,400 blocks ~7 days at 6s blocks)
     Weekly,
@@ -201,7 +200,7 @@ impl PaymentFrequency {
 }
 
 /// Payroll schedule
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking)]
 pub struct PayrollSchedule<BlockNumber> {
     /// Schedule ID
     pub id: u32,
@@ -220,7 +219,7 @@ pub struct PayrollSchedule<BlockNumber> {
 }
 
 /// Payment token type
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking)]
 pub enum TokenType {
     /// DALLA token
     Dalla,
@@ -229,7 +228,7 @@ pub enum TokenType {
 }
 
 /// Payment category for audit trail
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking, Default)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking, Default)]
 pub enum PaymentCategory {
     /// Regular salary/wage
     #[default]
@@ -251,7 +250,7 @@ pub enum PaymentCategory {
 /// On-chain stores amount commitments and off-chain anchor.
 /// Full payment details (amounts, deduction breakdown) stored off-chain via Pakit CID.
 /// This prevents salary/payment amounts from being queryable on-chain.
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking)]
 pub struct PayrollRecord<AccountId, Balance, BlockNumber> {
     /// Record ID
     pub id: u64,
@@ -279,7 +278,7 @@ pub struct PayrollRecord<AccountId, Balance, BlockNumber> {
 }
 
 /// Payroll statistics
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, Default, codec::DecodeWithMemTracking)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, Default, codec::DecodeWithMemTracking)]
 pub struct PayrollStats<Balance> {
     /// Total payroll disbursed (all time, gross)
     pub total_disbursed: Balance,

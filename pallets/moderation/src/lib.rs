@@ -63,7 +63,7 @@ pub use pallet::*;
 pub type ContentHash = [u8; 32];
 
 /// Reasons a community member may flag content.
-#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum FlagReason {
     /// Hate speech or harassment (0)
     HateSpeech,
@@ -91,7 +91,7 @@ impl FlagReason {
 }
 
 /// Ruling issued by a human moderator after content review.
-#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum ModerationRuling {
     /// Content is acceptable; close the queue item (0)
     Cleared,
@@ -251,7 +251,7 @@ pub mod pallet {
     }
 
     /// What triggered an auto-queue action.
-    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum AutoQueueTrigger {
         /// Community flag count reached `FlagThreshold`.
         FlagThreshold,

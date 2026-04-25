@@ -23,7 +23,7 @@ use sp_runtime::{
     traits::{
         Saturating, SaturatedConversion, IntegerSquareRoot, AccountIdConversion,
     },
-    RuntimeDebug, FixedU128, FixedPointNumber,
+    FixedU128, FixedPointNumber,
 };
 
 use codec::{Encode, Decode, MaxEncodedLen};
@@ -135,7 +135,7 @@ pub mod pallet {
     // Active LP tracking uses LiquidityProvider and LPBalances storage.
 
     /// Trading order information
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     #[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
     pub struct TradingPair {
         /// Base asset identifier
@@ -155,7 +155,7 @@ pub mod pallet {
     }
 
     /// Asset identifiers in BelizeChain
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, Ord, PartialOrd)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, Ord, PartialOrd)]
     #[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
     pub enum AssetId {
         /// Native DALLA token
@@ -193,7 +193,7 @@ pub mod pallet {
     }
 
     /// Liquidity provider information
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct LiquidityProvider<AccountId> {
         /// Account providing liquidity
         pub provider: AccountId,
@@ -206,7 +206,7 @@ pub mod pallet {
     }
 
     /// Order book entry for limit orders
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct OrderEntry<AccountId, BlockNumber> {
         /// Order ID
         pub order_id: u32,
@@ -229,7 +229,7 @@ pub mod pallet {
     }
 
     /// Order types
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     #[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
     pub enum OrderType {
         /// Buy order

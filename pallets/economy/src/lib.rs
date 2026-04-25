@@ -42,7 +42,7 @@ use frame_support::{
 use frame_system::pallet_prelude::*;
 use sp_runtime::{
     traits::{Saturating, Zero},
-    SaturatedConversion, Permill, RuntimeDebug,
+    SaturatedConversion, Permill, Debug,
 };
 use codec::{Encode, Decode, MaxEncodedLen};
 use scale_info::TypeInfo;
@@ -151,7 +151,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 // treasury operations. Will be re-introduced when multi-sig is implemented.
 
 /// Tourism spending categories for different incentive rates
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum TourismCategory {
     /// Accommodation (hotels, resorts)
     Accommodation,
@@ -173,7 +173,7 @@ pub enum TourismCategory {
 // EconomicMetrics struct removed (E-7): write-only, never read on-chain.
 
 /// Redemption status for tracking off-chain settlement
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum RedemptionStatus {
     /// Awaiting Central Bank processing
     Pending,
@@ -184,7 +184,7 @@ pub enum RedemptionStatus {
 }
 
 /// Redemption request for off-chain settlement
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub struct RedemptionRequest<AccountId> {
     /// User requesting redemption
     pub user: AccountId,

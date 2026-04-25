@@ -24,7 +24,6 @@
 
 use codec::{Encode, Decode, MaxEncodedLen};
 use scale_info::TypeInfo;
-use sp_runtime::RuntimeDebug;
 use sp_std::vec::Vec;
 
 /// A temporal anchor record representing a point-in-time snapshot of content
@@ -32,7 +31,7 @@ use sp_std::vec::Vec;
 /// Temporal anchors form a blockchain-within-a-blockchain, creating an immutable
 /// history of content evolution. Each anchor links to its predecessor and contains
 /// a merkle root of the entire history for cryptographic verification.
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub struct TemporalAnchor<BlockNumber> {
     /// IPFS content hash (CID) of the current document version
     pub content_hash: [u8; 32],
@@ -58,7 +57,7 @@ pub struct TemporalAnchor<BlockNumber> {
 }
 
 /// Types of content that can be temporally anchored
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum AnchorType {
     /// Land title deed or ownership record
     LandTitle,

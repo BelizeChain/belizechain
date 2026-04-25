@@ -68,7 +68,7 @@ BelizeChain is a **Substrate blockchain in active development** for Belize's nat
 | **Pakit Storage** | Sovereign DAG-based storage | [pakit-storage](https://github.com/BelizeChain/pakit-storage) |
 | **GEM Platform** | Smart contract SDK (ink!) | [gem](https://github.com/BelizeChain/gem) |
 | **UI Suite** | Maya Wallet + Blue Hole Portal | [ui](https://github.com/BelizeChain/ui) |
-| **Infrastructure** | Kubernetes deployment configs | [infra](https://github.com/BelizeChain/infra) |
+| **Infrastructure** | Ceiba Docker Compose and host automation manifests | [infra](https://github.com/BelizeChain/infra) |
 
 ## 💎 The 16 Custom Pallets
 

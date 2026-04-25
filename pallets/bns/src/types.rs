@@ -3,12 +3,11 @@
 use codec::{Encode, Decode, MaxEncodedLen};
 use frame_support::BoundedVec;
 use scale_info::TypeInfo;
-use sp_core::RuntimeDebug;
 
 // ===== DOMAIN TIER =====
 
 /// Domain tier pricing and features
-#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum DomainTier {
     /// Standard domain (100 DALLA)
     Standard,
@@ -35,7 +34,7 @@ impl DomainTier {
 // ===== HOSTING TIER =====
 
 /// Web hosting tier (monthly fees)
-#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum HostingTier {
     /// Free tier - 100MB storage, basic DAG
     Free,
@@ -62,7 +61,7 @@ impl HostingTier {
 // ===== DOMAIN RECORD =====
 
 /// Core domain ownership record (immutable once registered)
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[scale_info(skip_type_params(T))]
 pub struct DomainRecord<AccountId, BlockNumber> {
     /// Current owner (can be transferred)
@@ -84,7 +83,7 @@ pub struct DomainRecord<AccountId, BlockNumber> {
 // ===== RESOLUTION RECORDS =====
 
 /// Domain resolution data (wallet, content, metadata)
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[scale_info(skip_type_params(MaxTextRecords))]
 pub struct ResolutionRecords<AccountId, MaxTextRecords: Get<u32>> {
     /// Wallet address (for payment routing)
@@ -100,7 +99,7 @@ pub struct ResolutionRecords<AccountId, MaxTextRecords: Get<u32>> {
 }
 
 /// Custom text record for arbitrary data
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub struct TextRecord {
     /// Record key (e.g., "email", "twitter", "github")
     pub key: BoundedVec<u8, frame_support::traits::ConstU32<32>>,
@@ -111,7 +110,7 @@ pub struct TextRecord {
 // ===== MARKETPLACE =====
 
 /// Domain listing for sale
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[scale_info(skip_type_params(T))]
 pub struct DomainListing<AccountId, BlockNumber> {
     /// Seller account
@@ -129,7 +128,7 @@ pub struct DomainListing<AccountId, BlockNumber> {
 // ===== WEB HOSTING =====
 
 /// Active web hosting subscription
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[scale_info(skip_type_params(T))]
 pub struct HostingInfo<AccountId, BlockNumber> {
     /// Account paying for hosting
@@ -155,7 +154,7 @@ pub struct HostingInfo<AccountId, BlockNumber> {
 // ===== EXTERNAL DOMAINS =====
 
 /// External domain (.com, .org, .net, etc.) registration
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[scale_info(skip_type_params(T, MaxDomainLength))]
 pub struct ExternalDomainInfo<AccountId, BlockNumber, MaxDomainLength: Get<u32>> {
     /// Domain owner
@@ -177,7 +176,7 @@ pub struct ExternalDomainInfo<AccountId, BlockNumber, MaxDomainLength: Get<u32>>
 }
 
 /// Domain verification status
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[scale_info(skip_type_params(T))]
 pub struct VerificationStatus<BlockNumber> {
     /// Verification token
@@ -210,7 +209,7 @@ use frame_support::traits::Get;
 // ===== CONTENT VERSIONING =====
 
 /// Content version record for rollback capability
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub struct ContentVersion<BlockNumber> {
     /// IPFS content hash
     pub content_hash: [u8; 32],
@@ -225,7 +224,7 @@ pub struct ContentVersion<BlockNumber> {
 // ===== SSL/TLS CERTIFICATES =====
 
 /// SSL/TLS certificate information
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub struct SSLCertInfo<BlockNumber> {
     /// SHA-256 hash of certificate (for verification)
     pub cert_hash: [u8; 32],

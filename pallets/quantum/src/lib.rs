@@ -21,7 +21,6 @@ use frame_support::{
 use frame_system::pallet_prelude::*;
 use sp_runtime::{
     traits::{SaturatedConversion, Saturating, Zero},
-    RuntimeDebug,
 };
 use scale_info::TypeInfo;
 
@@ -96,7 +95,7 @@ pub mod pallet {
     // ========== TYPE DEFINITIONS (Inside pallet module for Substrate v42 compatibility) ==========
 
     /// Status of a quantum job
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum JobStatus {
         Pending,
         Running,
@@ -106,7 +105,7 @@ pub mod pallet {
     }
 
     /// Verification status for quantum results
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum VerificationStatus {
         Unverified,
         Verifying,
@@ -115,7 +114,7 @@ pub mod pallet {
     }
 
     /// Quantum backend types
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum QuantumBackend {
         AzureIonQ,
         AzureQuantinuum,
@@ -128,7 +127,7 @@ pub mod pallet {
     }
 
     /// Achievement types for quantum NFTs
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum AchievementType {
         FirstQuantumJob,
         GroverAlgorithm,
@@ -145,7 +144,7 @@ pub mod pallet {
     }
 
     /// Vote for verification consensus
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum VerificationVote {
         Approve,
         Reject,
@@ -153,7 +152,7 @@ pub mod pallet {
     }
 
     /// NFT Rarity Tiers
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum NFTRarity {
         Common,
         Rare,
@@ -162,7 +161,7 @@ pub mod pallet {
     }
 
     /// NFT Categories
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum NFTCategory {
         Volume,
         Accuracy,
@@ -173,7 +172,7 @@ pub mod pallet {
     }
 
     /// Cross-Chain Destination
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum ChainDestination {
         Ethereum,
         Polkadot,
@@ -297,7 +296,7 @@ pub mod pallet {
     }
 
     /// On-chain quantum job record
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
     pub struct QuantumJob<AccountId, Balance, BlockNumber> {
         /// Unique job identifier (UUID from Kinich)
@@ -331,7 +330,7 @@ pub mod pallet {
     }
 
     /// Quantum result record
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct QuantumResult {
         /// Job identifier
         pub job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>>,
@@ -350,7 +349,7 @@ pub mod pallet {
     }
 
     /// Quantum achievement NFT (Phase 2.3 Enhanced)
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
     pub struct QuantumAchievement<AccountId, BlockNumber> {
         /// Unique NFT identifier
@@ -384,7 +383,7 @@ pub mod pallet {
     // ========== PHASE 2.3: MULTI-VALIDATOR VERIFICATION ==========
 
     /// Individual validator's verification
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct ValidatorVerification {
         /// Validator account (as bytes for storage)
         pub validator: BoundedVec<u8, ConstU32<32>>,
@@ -399,7 +398,7 @@ pub mod pallet {
     }
 
     /// Verification request for multi-validator consensus
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct VerificationRequest {
         /// Job being verified
         pub job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>>,
@@ -422,7 +421,7 @@ pub mod pallet {
     }
 
     /// NFT Marketplace Listing (Phase 2.3.3)
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct NFTListing<AccountId, Balance, BlockNumber> {
         /// NFT being listed
         pub nft_id: u64,
@@ -439,7 +438,7 @@ pub mod pallet {
     }
 
     /// NFT Auction (Phase 2.3.3)
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct AuctionListing<AccountId, Balance, BlockNumber> {
         /// NFT being auctioned
         pub nft_id: u64,
@@ -460,7 +459,7 @@ pub mod pallet {
     }
 
     /// Bridge Request (Phase 2.3.4)
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct BridgeRequest<AccountId, BlockNumber> {
         /// NFT being bridged
         pub nft_id: u64,
@@ -568,7 +567,7 @@ pub mod pallet {
     >;
 
     /// Quantum computing statistics per account
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, Default)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, Default)]
     pub struct QuantumAccountStats<Balance> {
         /// Total jobs submitted
         pub total_jobs: u32,

@@ -77,9 +77,9 @@ These guides are for **system administrators**, **DevOps engineers**, and **infr
 
 **Installation methods**:
 - Binary installation (easiest)
-- Docker container (recommended)
+- Docker and Docker Compose (recommended)
 - Build from source (advanced)
-- Kubernetes deployment (enterprise)
+- Kubernetes deployment (legacy reference)
 
 ---
 
@@ -372,7 +372,7 @@ These guides are for **system administrators**, **DevOps engineers**, and **infr
 
 **Use case**: Global applications, 99.99% uptime  
 **Cost**: $2000+/month  
-**Guides**: Kubernetes + High Availability + Security
+**Guides**: High Availability + Security. Treat Kubernetes content as legacy until it is rebuilt from current Ceiba operations.
 
 ---
 

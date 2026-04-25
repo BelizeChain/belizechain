@@ -25,7 +25,6 @@ use sp_runtime::{
     traits::{
         SaturatedConversion, Zero, Saturating,
     },
-    RuntimeDebug,
 };
 use sp_std::vec::Vec;
 use codec::{Encode, Decode, MaxEncodedLen};
@@ -226,7 +225,7 @@ pub mod pallet {
     }
 
     /// Federated AI model information
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct AIModel<AccountId, Moment> {
         /// Model ID
         pub model_id: u32,
@@ -253,7 +252,7 @@ pub mod pallet {
     }
 
     /// Types of AI models in the federated system
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum ModelType {
         /// Economic prediction models
         Economic,
@@ -280,7 +279,7 @@ pub mod pallet {
     /// - **Stake** (20%): Economic commitment for Sybil resistance
     /// - **Sustainability** (20%): Energy efficiency — quality per unit of computation
     /// - **Uptime** (10%): Network availability and participation reliability
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct ConsensusValidator<AccountId, Balance> {
         /// Validator account
         pub validator: AccountId,
@@ -321,7 +320,7 @@ pub mod pallet {
     }
 
     /// Consensus round information
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct ConsensusRound<BlockNumber, Moment> {
         /// Round ID
         pub round_id: u32,
@@ -342,7 +341,7 @@ pub mod pallet {
     }
 
     /// AI work submission for consensus
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct AIWorkSubmission {
         /// Submitter validator
         pub validator_id: u32,
@@ -366,7 +365,7 @@ pub mod pallet {
     }
 
     /// Types of useful AI work
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum WorkType {
         /// Model training iteration
         ModelTraining,
@@ -383,7 +382,7 @@ pub mod pallet {
     }
 
     /// Consensus round status
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum RoundStatus {
         /// Round in progress
         InProgress,
@@ -503,7 +502,7 @@ pub mod pallet {
     >;
 
     /// Global AI system metrics
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, Default, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, Default, MaxEncodedLen)]
     pub struct AISystemMetrics {
         /// Total models in system
         pub total_models: u32,

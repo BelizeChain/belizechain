@@ -24,7 +24,7 @@ use sp_runtime::{
     traits::{
         Zero, SaturatedConversion
     },
-    Perbill, RuntimeDebug,
+    Perbill, Debug,
 };
 use scale_info::TypeInfo;
 
@@ -151,7 +151,7 @@ pub mod pallet {
     }
 
     /// Validator information
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct ValidatorInfo<AccountId, Balance, BlockNumber> {
         /// Validator account ID
         pub account: AccountId,
@@ -176,7 +176,7 @@ pub mod pallet {
     }
 
     /// Federated learning task
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct FederatedLearningTask {
         /// Task ID
         pub task_id: u32,
@@ -191,7 +191,7 @@ pub mod pallet {
     }
 
     /// Model delta submission
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct ModelDelta {
         /// Validator who submitted
         pub validator: BoundedVec<u8, ConstU32<32>>, // AccountId encoded
@@ -209,7 +209,7 @@ pub mod pallet {
 
     /// Quantum job contribution for PoUW rewards
     /// Links quantum computing execution to validator staking
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct QuantumContribution {
         /// Quantum job ID from Kinich
         pub job_id: BoundedVec<u8, ConstU32<64>>,
@@ -230,7 +230,7 @@ pub mod pallet {
     }
 
     /// Aggregated quantum statistics per validator per epoch
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, Default)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, Default)]
     pub struct ValidatorQuantumStats {
         /// Total quantum jobs executed this epoch
         pub jobs_executed: u32,
@@ -347,7 +347,7 @@ pub mod pallet {
 
     /// Domain index matching Oracle pallet
     /// Must stay synchronized with pallets/oracle/src/types.rs ModelDomain
-    #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum DomainIndex {
         General = 0,
         AgriTech = 1,
@@ -357,7 +357,7 @@ pub mod pallet {
     }
 
     /// Domain-specific contribution statistics
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, Default)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, Default)]
     pub struct DomainStats {
         /// Number of contributions to this domain
         pub contribution_count: u32,
@@ -370,7 +370,7 @@ pub mod pallet {
     }
 
     /// Operator domain breakdown for current epoch
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, Default)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, Default)]
     pub struct OperatorDomainBreakdown {
         pub general: DomainStats,
         pub agritech: DomainStats,
@@ -543,7 +543,7 @@ pub mod pallet {
     }
 
     /// Reasons for slashing validators
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum SlashReason {
         /// Invalid computation proof submitted
         InvalidProof,

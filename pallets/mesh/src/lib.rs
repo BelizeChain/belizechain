@@ -109,7 +109,7 @@ use frame_support::{
 use frame_system::pallet_prelude::*;
 use sp_runtime::{
     traits::SaturatedConversion,
-    RuntimeDebug, Saturating,
+    Saturating,
 };
 use sp_std::vec::Vec;
 use codec::{Encode, Decode, MaxEncodedLen};
@@ -407,7 +407,7 @@ pub mod pallet {
     pub type MeshConfig<T: Config> = StorageValue<_, MeshNetworkConfig, ValueQuery>;
 
     /// Meshtastic network configuration parameters
-    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub struct MeshNetworkConfig {
         /// Maximum allowed hops for mesh messages
         pub max_hops: u8,
@@ -440,7 +440,7 @@ pub mod pallet {
     }
 
     /// Meshtastic LoRa channel presets
-    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, Default)]
+    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, Default)]
     pub enum ChannelPreset {
         /// Long range, fast data rate (default for BelizeChain)
         #[default]

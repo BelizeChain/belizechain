@@ -69,7 +69,7 @@ pub mod pallet {
     const COMMITMENT_DOMAIN: &[u8] = b"BelizeChainWhistleblowerV1";
 
     // ── Report category ───────────────────────────────────────────────────────
-    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum ReportCategory {
         /// Fraudulent governance votes, bribery.
         Fraud,
@@ -91,7 +91,7 @@ pub mod pallet {
     }
 
     // ── Report status ─────────────────────────────────────────────────────────
-    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum ReportStatus {
         /// Freshly submitted; awaiting a reviewer.
         Pending,
@@ -106,7 +106,7 @@ pub mod pallet {
     }
 
     // ── Report record ─────────────────────────────────────────────────────────
-    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
     pub struct Report<T: Config> {
         /// Reporter commitment = blake2_256(DOMAIN_TAG ++ account ++ secret).

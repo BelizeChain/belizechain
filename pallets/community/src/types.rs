@@ -4,14 +4,13 @@ use codec::{Encode, Decode, MaxEncodedLen};
 use frame_support::{BoundedVec, pallet_prelude::ConstU32};
 use scale_info::TypeInfo;
 use sp_core::H256;
-use sp_runtime::RuntimeDebug;
 
 // ================================
 // Social Responsibility Score Types
 // ================================
 
 /// Complete SRS data for an account
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub struct SRSData<BlockNumber> {
     /// Current total score (0-10,000 scale)
     pub score: u32,
@@ -35,7 +34,7 @@ pub struct SRSData<BlockNumber> {
 }
 
 /// SRS tier classification
-#[derive(Encode, Decode, Clone, PartialEq, Eq, PartialOrd, Ord, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, TypeInfo, MaxEncodedLen)]
 #[derive(Default)]
 pub enum SRSTier {
     #[default]
@@ -64,7 +63,7 @@ impl SRSTier {
 // ================================
 
 /// Single participation activity record
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub struct ParticipationRecord<BlockNumber> {
     pub activity_type: ActivityType,
     pub block_number: BlockNumber,
@@ -72,7 +71,7 @@ pub struct ParticipationRecord<BlockNumber> {
 }
 
 /// Type of participation activity tracked
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum ActivityType {
     /// Governance participation
     ProposalSubmission,
@@ -122,7 +121,7 @@ impl ActivityType {
 }
 
 /// Proposal statistics for honesty score
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, Default)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, Default)]
 pub struct ProposalStats {
     pub total: u32,
     pub approved: u32,
@@ -133,7 +132,7 @@ pub struct ProposalStats {
 // ================================
 
 /// Types of peer endorsements
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum EndorsementType {
     /// General positive contribution
     GeneralContribution,
@@ -184,7 +183,7 @@ impl EndorsementType {
 // ================================
 
 /// Fee exemption data for zero-fee protocol
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub struct FeeExemptionData<BlockNumber, Balance> {
     /// Amount of fee exemption used this month
     pub used_this_month: Balance,
@@ -194,7 +193,7 @@ pub struct FeeExemptionData<BlockNumber, Balance> {
 }
 
 /// Fee exemption tiers
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum FeeExemptionTier {
     None,           // No exemption
     Basic,          // 100 dBZD/month (Bronze)
@@ -208,7 +207,7 @@ pub enum FeeExemptionTier {
 // ================================
 
 /// Community proposal status
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum ProposalStatus {
     EthicsReview,   // Awaiting ethics council approval
     Active,         // Open for voting
@@ -218,7 +217,7 @@ pub enum ProposalStatus {
 }
 
 /// Types of community proposals
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum CommunityProposalType {
     LocalProject,           // Community builder grants
     EducationModule,        // Learn-to-earn programs
@@ -258,7 +257,7 @@ impl CommunityProposalType {
 // ================================
 
 /// Green project types
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum GreenProjectType {
     CarbonOffset,
     CleanEnergy,
@@ -272,7 +271,7 @@ pub enum GreenProjectType {
 // ================================
 
 /// Proposal categories for ethics filtering
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum ProposalCategory {
     AddictiveProducts,      // Gambling, alcohol, tobacco
     SurveillanceTech,       // Privacy-invasive systems
@@ -285,7 +284,7 @@ pub enum ProposalCategory {
 // ================================
 
 /// Community proposal data
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[scale_info(skip_type_params(AccountId, Balance, BlockNumber))]
 pub struct CommunityProposal<AccountId, Balance, BlockNumber> {
     pub proposer: AccountId,
@@ -304,7 +303,7 @@ pub struct CommunityProposal<AccountId, Balance, BlockNumber> {
 }
 
 /// Vote record
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub struct Vote {
     pub approve: bool,
     pub weight: u32,
@@ -315,7 +314,7 @@ pub struct Vote {
 // ================================
 
 /// Ethics filter configuration
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[scale_info(skip_type_params(AccountId))]
 pub struct EthicsConfig<AccountId> {
     /// Minimum honesty rating required (0-10,000 scale, default 5,000 = 50%)
@@ -340,7 +339,7 @@ impl<AccountId> Default for EthicsConfig<AccountId> {
 }
 
 /// Sanction status for an account
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub struct SanctionStatus {
     pub active: bool,
     pub reason: BoundedVec<u8, ConstU32<128>>,
@@ -350,7 +349,7 @@ pub struct SanctionStatus {
 // ==================== Phase 5: Incentive Programs ====================
 
 /// Education module for learn-to-earn initiatives
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub struct EducationModule {
     pub id: u32,
     pub title: BoundedVec<u8, ConstU32<128>>,
@@ -362,14 +361,14 @@ pub struct EducationModule {
 }
 
 /// Record of education module completion
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub struct CompletionData {
     pub completed_at: u32, // Block number
     pub reward_claimed: bool,
 }
 
 /// Type of green/sustainability project
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum ProjectType {
     CarbonOffset,
     CleanEnergy,
@@ -379,7 +378,7 @@ pub enum ProjectType {
 }
 
 /// Green project for sustainability contributions
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub struct GreenProject {
     pub id: u32,
     pub project_type: ProjectType,
@@ -390,7 +389,7 @@ pub struct GreenProject {
 }
 
 /// Referral tracking data
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, Default)]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, Default)]
 pub struct ReferralData {
     pub total_referrals: u32,
     pub total_rewards_earned: u64,
