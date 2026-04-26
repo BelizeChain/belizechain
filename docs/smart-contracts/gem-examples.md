@@ -4,6 +4,8 @@
 
 This guide provides complete, production-ready code examples for common smart contract use cases on the GEM platform.
 
+Every public-testnet URL below is a placeholder. Replace it with the current operator-published endpoint before copying the example into a live environment.
+
 ---
 
 ## Table of Contents
@@ -27,7 +29,7 @@ const { GemSDK } = require('@belizechain/gem-sdk');
 
 async function checkBalance() {
     // Connect to testnet
-    const sdk = new GemSDK('wss://testnet.belizechain.org');
+    const sdk = new GemSDK('wss://<current-public-testnet-rpc>');
     await sdk.connect();
 
     // DALLA token contract
@@ -63,7 +65,7 @@ Transfer tokens between accounts.
 const { GemSDK } = require('@belizechain/gem-sdk');
 
 async function transferTokens() {
-    const sdk = new GemSDK('wss://testnet.belizechain.org');
+    const sdk = new GemSDK('wss://<current-public-testnet-rpc>');
     await sdk.connect();
 
     const dallaContract = '5GD4w5...NVsNB';
@@ -104,7 +106,7 @@ Mint a BeLi cultural NFT.
 const { GemSDK } = require('@belizechain/gem-sdk');
 
 async function mintNFT() {
-    const sdk = new GemSDK('wss://testnet.belizechain.org');
+    const sdk = new GemSDK('wss://<current-public-testnet-rpc>');
     await sdk.connect();
 
     const beliContract = '5Ho6Ks...iFQL7';
@@ -154,7 +156,7 @@ Transfer tokens to multiple recipients efficiently.
 const { GemSDK } = require('@belizechain/gem-sdk');
 
 async function batchTransfer() {
-    const sdk = new GemSDK('wss://testnet.belizechain.org');
+    const sdk = new GemSDK('wss://<current-public-testnet-rpc>');
     await sdk.connect();
 
     const dallaContract = '5GD4w5...NVsNB';
@@ -271,7 +273,7 @@ class NFTMarketplace {
 
 // Usage
 async function example() {
-    const marketplace = new NFTMarketplace('wss://testnet.belizechain.org');
+    const marketplace = new NFTMarketplace('wss://<current-public-testnet-rpc>');
     await marketplace.connect();
 
     const alice = marketplace.sdk.getAccount('//Alice');
@@ -300,7 +302,7 @@ Create and vote on governance proposals.
 const { GemSDK } = require('@belizechain/gem-sdk');
 
 async function daoGovernanceExample() {
-    const sdk = new GemSDK('wss://testnet.belizechain.org');
+    const sdk = new GemSDK('wss://<current-public-testnet-rpc>');
     await sdk.connect();
 
     const daoContract = '5DAOAddr...xyz';
@@ -357,7 +359,7 @@ Swap DALLA for another PSP22 token through DEX.
 const { GemSDK } = require('@belizechain/gem-sdk');
 
 async function swapTokens() {
-    const sdk = new GemSDK('wss://testnet.belizechain.org');
+    const sdk = new GemSDK('wss://<current-public-testnet-rpc>');
     await sdk.connect();
 
     const dallaContract = '5GD4w5...NVsNB';
@@ -478,7 +480,7 @@ class FaucetBot {
 // Usage
 async function runBot() {
     const bot = new FaucetBot(
-        'wss://testnet.belizechain.org',
+        'wss://<current-public-testnet-rpc>',
         '5FaucetAddr...xyz'
     );
 
@@ -511,7 +513,7 @@ interface WalletInfo {
 }
 
 const WalletConnect: React.FC = () => {
-    const [sdk] = useState(new GemSDK('wss://testnet.belizechain.org'));
+    const [sdk] = useState(new GemSDK('wss://<current-public-testnet-rpc>'));
     const [wallet, setWallet] = useState<WalletInfo | null>(null);
     const [loading, setLoading] = useState(false);
     
@@ -581,7 +583,7 @@ const app = express();
 app.use(express.json());
 
 // Initialize SDK
-const sdk = new GemSDK('wss://testnet.belizechain.org');
+const sdk = new GemSDK('wss://<current-public-testnet-rpc>');
 const dallaContract = '5GD4w5...NVsNB';
 
 // Connect on startup

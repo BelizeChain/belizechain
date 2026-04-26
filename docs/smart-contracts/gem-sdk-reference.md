@@ -4,6 +4,8 @@
 
 The GEM SDK provides a developer-friendly interface for interacting with BelizeChain's smart contract platform, including PSP22 tokens (DALLA), PSP34 NFTs (BeLi), DAO governance, and testnet faucet functionality.
 
+Replace the public-testnet endpoint placeholders below with the current operator-published RPC and faucet URLs for the active network.
+
 ---
 
 ## Installation
@@ -35,7 +37,7 @@ const { GemSDK } = require('@belizechain/gem-sdk');
 const sdk = new GemSDK();
 
 // Or specify custom node
-const sdkTestnet = new GemSDK('wss://testnet.belizechain.org');
+const sdkTestnet = new GemSDK('wss://<current-public-testnet-rpc>');
 
 // Connect to node
 await sdk.connect();
@@ -75,7 +77,7 @@ Create a new SDK instance.
 **Parameters:**
 - `nodeUrl` (optional): WebSocket URL
   - Default: `ws://localhost:9944`
-  - Testnet: `wss://testnet.belizechain.org`
+    - Testnet: `wss://<current-public-testnet-rpc>`
   - Mainnet: `wss://rpc.belizechain.org`
 
 **Example:**
@@ -706,7 +708,7 @@ class WalletService {
 }
 
 // Usage
-const wallet = new WalletService('wss://testnet.belizechain.org');
+const wallet = new WalletService('wss://<current-public-testnet-rpc>');
 await wallet.connect();
 
 const alice = wallet.sdk.getAccount('//Alice');
@@ -721,7 +723,7 @@ await wallet.disconnect();
 
 ```javascript
 async function listNftForSale(nftContract, tokenId, price) {
-    const sdk = new GemSDK('wss://testnet.belizechain.org');
+    const sdk = new GemSDK('wss://<current-public-testnet-rpc>');
     await sdk.connect();
 
     const seller = sdk.getAccount(process.env.SELLER_SEED);

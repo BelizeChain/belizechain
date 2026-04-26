@@ -7,7 +7,7 @@ fn main() {
         let version = env!("CARGO_PKG_VERSION");
         println!("cargo:rustc-env=SUBSTRATE_CLI_IMPL_VERSION={}", version);
     }
-    
+
     // Tell cargo to rerun this build script if the version changes
     println!("cargo:rerun-if-env-changed=CARGO_PKG_VERSION");
 }

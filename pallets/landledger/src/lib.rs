@@ -10,32 +10,20 @@
 //! 5. Environmental compliance monitoring for developments
 //! 6. Integration with government land offices
 
+use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::{
     pallet_prelude::*,
-    traits::{
-        Currency, ReservableCurrency,
-        Get,
-    },
-    PalletId, BoundedVec,
     sp_runtime::traits::AccountIdConversion,
+    traits::{Currency, Get, ReservableCurrency},
+    BoundedVec, PalletId,
 };
 use frame_system::pallet_prelude::*;
-use sp_runtime::{
-    traits::{
-        SaturatedConversion,
-    },
-};
-use sp_std::vec::Vec;
-use codec::{Encode, Decode, MaxEncodedLen};
 use scale_info::TypeInfo;
+use sp_runtime::traits::SaturatedConversion;
+use sp_std::vec::Vec;
 
 // BelizeChain temporal anchoring
-use pallet_belize_common::{
-    TemporalAnchor,
-    AnchorType,
-    TemporalAnchoring,
-    temporal_helpers,
-};
+use pallet_belize_common::{temporal_helpers, AnchorType, TemporalAnchor, TemporalAnchoring};
 
 pub use pallet::*;
 
@@ -50,7 +38,6 @@ const LAND_REGISTRY_ID: PalletId = PalletId(*b"bz/landr");
 pub mod pallet {
     use super::*;
     use pallet_belize_identity::BelizeKyc;
-    
 
     /// Property ID type - simple counter for on-chain properties
     pub type PropertyId = u32;
@@ -65,31 +52,31 @@ pub mod pallet {
 
         /// KYC provider — registrants must have at least L1 identity verification
         type BelizeKyc: pallet_belize_identity::BelizeKyc<Self::AccountId, BlockNumberFor<Self>>;
-        
+
         /// Government origin for land verification
         type GovernmentOrigin: EnsureOrigin<Self::RuntimeOrigin>;
-        
+
         /// Surveyor origin for land measurements
         type SurveyorOrigin: EnsureOrigin<Self::RuntimeOrigin>;
-        
+
         /// Environmental authority origin
         type EnvironmentalOrigin: EnsureOrigin<Self::RuntimeOrigin>;
-        
+
         /// Oracle provider for land ownership verification
         type Oracle: LandLedgerOracleProvider<Self::AccountId>;
-        
+
         /// Property registration deposit
         #[pallet::constant]
         type RegistrationDeposit: Get<<Self::Currency as Currency<Self::AccountId>>::Balance>;
-        
+
         /// Transfer tax rate (basis points)
         #[pallet::constant]
         type TransferTaxRate: Get<u32>;
-        
+
         /// Maximum property description length
         #[pallet::constant]
         type MaxDescriptionLength: Get<u32>;
-        
+
         /// Weight information
         type WeightInfo: WeightInfo;
 
@@ -103,10 +90,10 @@ pub mod pallet {
     pub trait LandLedgerOracleProvider<AccountId> {
         /// Verify property ownership via external land registry (uses internal u32 ID)
         fn verify_land_owner(property_id: u32, account: &AccountId) -> bool;
-        
+
         /// Get KYC level for property transfers
         fn get_kyc_level(account: &AccountId) -> Option<u8>;
-        
+
         /// Check if account is sanctioned (for property transactions)
         fn is_sanctioned(account: &AccountId) -> bool;
     }
@@ -122,7 +109,7 @@ pub mod pallet {
         /// Property title number
         pub title_number: BoundedVec<u8, ConstU32<64>>,
         /// Description of encumbrance
-    pub description: BoundedVec<u8, ConstU32<256>>,
+        pub description: BoundedVec<u8, ConstU32<256>>,
         /// GPS coordinates (latitude, longitude)
         pub coordinates: (i64, i64),
         /// Property area in square meters
@@ -210,7 +197,17 @@ pub mod pallet {
     }
 
     /// Types of encumbrances
-    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+    #[derive(
+        Encode,
+        Decode,
+        codec::DecodeWithMemTracking,
+        Clone,
+        PartialEq,
+        Eq,
+        Debug,
+        TypeInfo,
+        MaxEncodedLen,
+    )]
     pub enum EncumbranceType {
         /// Mortgage lien
         Mortgage,
@@ -322,13 +319,8 @@ pub mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn government_surveyors)]
     /// Registered government surveyors
-    pub type GovernmentSurveyors<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        bool,
-        ValueQuery,
-    >;
+    pub type GovernmentSurveyors<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, bool, ValueQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn zoning_map)]
@@ -408,13 +400,9 @@ pub mod pallet {
             encumbrance_index: u32,
         },
         /// Surveyor registered
-        SurveyorRegistered {
-            surveyor: T::AccountId,
-        },
+        SurveyorRegistered { surveyor: T::AccountId },
         /// LL-4 FIX: Surveyor removed
-        SurveyorRemoved {
-            surveyor: T::AccountId,
-        },
+        SurveyorRemoved { surveyor: T::AccountId },
     }
 
     #[pallet::error]
@@ -486,7 +474,11 @@ pub mod pallet {
             // P0-03 FIX: Require at least L1 KYC (SSN verified) for property registration
             let current_block = frame_system::Pallet::<T>::block_number();
             ensure!(
-                T::BelizeKyc::is_kyc_verified(&who, pallet_belize_identity::KycLevel::L1, current_block),
+                T::BelizeKyc::is_kyc_verified(
+                    &who,
+                    pallet_belize_identity::KycLevel::L1,
+                    current_block
+                ),
                 Error::<T>::KycNotVerified
             );
 
@@ -513,7 +505,10 @@ pub mod pallet {
 
             // Validate assessed value (non-zero, reasonable bounds)
             ensure!(assessed_value > 0, Error::<T>::InvalidPropertyPrice);
-            ensure!(assessed_value <= T::MaxPropertyPrice::get(), Error::<T>::PropertyPriceTooHigh);
+            ensure!(
+                assessed_value <= T::MaxPropertyPrice::get(),
+                Error::<T>::PropertyPriceTooHigh
+            );
 
             // Validate coordinates (basic bounds checking for Belize)
             ensure!(
@@ -523,7 +518,10 @@ pub mod pallet {
             );
 
             // Ensure property doesn't already exist
-            let title_bounded: BoundedVec<u8, ConstU32<64>> = title_number.clone().try_into().map_err(|_| Error::<T>::DescriptionTooLong)?;
+            let title_bounded: BoundedVec<u8, ConstU32<64>> = title_number
+                .clone()
+                .try_into()
+                .map_err(|_| Error::<T>::DescriptionTooLong)?;
             let title_hash = sp_io::hashing::blake2_256(&title_bounded);
             ensure!(
                 !PropertyByTitle::<T>::contains_key(title_hash),
@@ -542,7 +540,9 @@ pub mod pallet {
                 property_id,
                 owner: who.clone(),
                 title_number: title_bounded.clone(),
-                description: description.try_into().map_err(|_| Error::<T>::DescriptionTooLong)?,
+                description: description
+                    .try_into()
+                    .map_err(|_| Error::<T>::DescriptionTooLong)?,
                 coordinates,
                 area_sqm,
                 property_type: property_type.clone(),
@@ -553,15 +553,17 @@ pub mod pallet {
                 surveyed: false,
                 environmental_clearance: matches!(property_type, PropertyType::Protected),
                 is_tourism_property: matches!(property_type, PropertyType::Tourism),
-                zoning: Self::get_zoning_for_coordinates(coordinates).unwrap_or(ZoningType::MixedUse),
+                zoning: Self::get_zoning_for_coordinates(coordinates)
+                    .unwrap_or(ZoningType::MixedUse),
                 encumbrances: BoundedVec::default(),
             };
 
             Properties::<T>::insert(property_id, property);
             PropertyByTitle::<T>::insert(title_hash, property_id);
-            
+
             PropertyOwners::<T>::try_mutate(&who, |properties| {
-                properties.try_push(property_id)
+                properties
+                    .try_push(property_id)
                     .map_err(|_| Error::<T>::MaxPropertiesReached)
             })?;
 
@@ -573,7 +575,7 @@ pub mod pallet {
             content.extend_from_slice(&property_id.to_le_bytes());
             content.extend_from_slice(&title_number);
             let content_hash = sp_io::hashing::blake2_256(&content);
-            
+
             if let Ok(anchor_hash) = Self::create_anchor(content_hash, AnchorType::LandTitle) {
                 PropertyAnchorChain::<T>::insert(property_id, anchor_hash);
             }
@@ -609,18 +611,17 @@ pub mod pallet {
                 _ => TransferType::Sale,
             };
 
-            let mut property = Self::properties(property_id)
-                .ok_or(Error::<T>::PropertyNotFound)?;
+            let mut property = Self::properties(property_id).ok_or(Error::<T>::PropertyNotFound)?;
 
             // Verify current ownership
             ensure!(property.owner == who, Error::<T>::NotOwner);
-            
+
             // Verify ownership via Oracle (cross-checks with external land registry)
             ensure!(
                 T::Oracle::verify_land_owner(property_id, &who),
                 Error::<T>::OwnershipVerificationFailed
             );
-            
+
             // Check sanctions for both parties
             ensure!(
                 !T::Oracle::is_sanctioned(&who),
@@ -630,7 +631,7 @@ pub mod pallet {
                 !T::Oracle::is_sanctioned(&new_owner),
                 Error::<T>::AccountSanctioned
             );
-            
+
             // Verify buyer has sufficient KYC (Level 2 required for property transactions)
             if let Some(kyc_level) = T::Oracle::get_kyc_level(&new_owner) {
                 ensure!(kyc_level >= 2, Error::<T>::BuyerKycInsufficient);
@@ -640,7 +641,10 @@ pub mod pallet {
             }
 
             // Ensure property is verified for transfers
-            ensure!(property.government_verified, Error::<T>::PropertyNotVerified);
+            ensure!(
+                property.government_verified,
+                Error::<T>::PropertyNotVerified
+            );
 
             // AUDIT FIX (CRIT-01): Block transfer if any active encumbrance exists
             ensure!(
@@ -659,7 +663,8 @@ pub mod pallet {
             );
 
             // Calculate transfer tax
-            let transfer_tax = transfer_price.saturating_mul(T::TransferTaxRate::get() as u128) / 10000;
+            let transfer_tax =
+                transfer_price.saturating_mul(T::TransferTaxRate::get() as u128) / 10000;
 
             // Collect transfer tax
             if transfer_tax > 0 {
@@ -707,7 +712,8 @@ pub mod pallet {
                 properties.retain(|&x| x != property_id);
             });
             PropertyOwners::<T>::try_mutate(&new_owner, |properties| {
-                properties.try_push(property_id)
+                properties
+                    .try_push(property_id)
                     .map_err(|_| Error::<T>::MaxPropertiesReached)
             })?;
 
@@ -721,8 +727,9 @@ pub mod pallet {
                 content.extend_from_slice(&transfer_id.to_le_bytes());
                 content.extend_from_slice(new_owner.encode().as_slice());
                 let content_hash = sp_io::hashing::blake2_256(&content);
-                
-                if let Ok(new_anchor_hash) = Self::update_anchor(previous_anchor_hash, content_hash) {
+
+                if let Ok(new_anchor_hash) = Self::update_anchor(previous_anchor_hash, content_hash)
+                {
                     PropertyAnchorChain::<T>::insert(property_id, new_anchor_hash);
                 }
             }
@@ -743,10 +750,7 @@ pub mod pallet {
         /// Government verification of property
         #[pallet::call_index(2)]
         #[pallet::weight(T::WeightInfo::verify_property())]
-        pub fn verify_property(
-            origin: OriginFor<T>,
-            property_id: PropertyId,
-        ) -> DispatchResult {
+        pub fn verify_property(origin: OriginFor<T>, property_id: PropertyId) -> DispatchResult {
             T::GovernmentOrigin::ensure_origin(origin)?;
 
             Properties::<T>::mutate(property_id, |maybe_property| {
@@ -778,7 +782,10 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
 
             // Verify surveyor authorization
-            ensure!(Self::government_surveyors(&who), Error::<T>::NotAuthorizedSurveyor);
+            ensure!(
+                Self::government_surveyors(&who),
+                Error::<T>::NotAuthorizedSurveyor
+            );
 
             // AUDIT FIX (HIGH-03): Area must be positive
             ensure!(verified_area_sqm > 0, Error::<T>::InvalidArea);
@@ -787,18 +794,21 @@ pub mod pallet {
                 if let Some(property) = maybe_property {
                     property.surveyed = true;
                     property.area_sqm = verified_area_sqm;
-                    
+
                     if let Some(coords) = updated_coordinates {
                         // AUDIT FIX (HIGH-02): Validate updated coordinates
-                        if coords.0 < 15_000_000 || coords.0 > 19_000_000 ||
-                           coords.1 < -90_000_000 || coords.1 > -87_000_000 {
+                        if coords.0 < 15_000_000
+                            || coords.0 > 19_000_000
+                            || coords.1 < -90_000_000
+                            || coords.1 > -87_000_000
+                        {
                             return Err(Error::<T>::InvalidCoordinates);
                         }
                         property.coordinates = coords;
                         property.zoning = Self::get_zoning_for_coordinates(coords)
                             .unwrap_or(property.zoning.clone());
                     }
-                    
+
                     Ok(())
                 } else {
                     Err(Error::<T>::PropertyNotFound)
@@ -817,17 +827,12 @@ pub mod pallet {
         /// Register government surveyor
         #[pallet::call_index(4)]
         #[pallet::weight(T::WeightInfo::register_surveyor())]
-        pub fn register_surveyor(
-            origin: OriginFor<T>,
-            surveyor: T::AccountId,
-        ) -> DispatchResult {
+        pub fn register_surveyor(origin: OriginFor<T>, surveyor: T::AccountId) -> DispatchResult {
             T::GovernmentOrigin::ensure_origin(origin)?;
 
             GovernmentSurveyors::<T>::insert(&surveyor, true);
 
-            Self::deposit_event(Event::SurveyorRegistered {
-                surveyor,
-            });
+            Self::deposit_event(Event::SurveyorRegistered { surveyor });
 
             Ok(())
         }
@@ -835,10 +840,7 @@ pub mod pallet {
         /// LL-4 FIX: Remove a government surveyor from the registry
         #[pallet::call_index(5)]
         #[pallet::weight(T::WeightInfo::register_surveyor())]
-        pub fn remove_surveyor(
-            origin: OriginFor<T>,
-            surveyor: T::AccountId,
-        ) -> DispatchResult {
+        pub fn remove_surveyor(origin: OriginFor<T>, surveyor: T::AccountId) -> DispatchResult {
             T::GovernmentOrigin::ensure_origin(origin)?;
 
             ensure!(
@@ -847,9 +849,7 @@ pub mod pallet {
             );
             GovernmentSurveyors::<T>::remove(&surveyor);
 
-            Self::deposit_event(Event::SurveyorRemoved {
-                surveyor,
-            });
+            Self::deposit_event(Event::SurveyorRemoved { surveyor });
 
             Ok(())
         }
@@ -872,7 +872,9 @@ pub mod pallet {
                 .map_err(|_| Error::<T>::DescriptionTooLong)?;
 
             Properties::<T>::try_mutate(property_id, |maybe_property| -> DispatchResult {
-                let property = maybe_property.as_mut().ok_or(Error::<T>::PropertyNotFound)?;
+                let property = maybe_property
+                    .as_mut()
+                    .ok_or(Error::<T>::PropertyNotFound)?;
                 let encumbrance = Encumbrance {
                     encumbrance_type: encumbrance_type.clone(),
                     holder: holder.clone(),
@@ -880,7 +882,9 @@ pub mod pallet {
                     description: desc,
                     active: true,
                 };
-                property.encumbrances.try_push(encumbrance)
+                property
+                    .encumbrances
+                    .try_push(encumbrance)
                     .map_err(|_| Error::<T>::MaxEncumbrancesReached)?;
                 Ok(())
             })?;
@@ -905,8 +909,11 @@ pub mod pallet {
             T::GovernmentOrigin::ensure_origin(origin)?;
 
             Properties::<T>::try_mutate(property_id, |maybe_property| -> DispatchResult {
-                let property = maybe_property.as_mut().ok_or(Error::<T>::PropertyNotFound)?;
-                let enc = property.encumbrances
+                let property = maybe_property
+                    .as_mut()
+                    .ok_or(Error::<T>::PropertyNotFound)?;
+                let enc = property
+                    .encumbrances
                     .get_mut(encumbrance_index as usize)
                     .ok_or(Error::<T>::EncumbranceNotFound)?;
                 enc.active = false;
@@ -948,7 +955,7 @@ pub mod pallet {
             let block_number = frame_system::Pallet::<T>::block_number();
             // SAFETY(saturated_into): BlockNumber → u64 — lossless for BelizeChain's u32 blocks.
             let timestamp = block_number.saturated_into::<u64>();
-            
+
             let anchor = TemporalAnchor {
                 content_hash,
                 previous_hash: None,
@@ -958,33 +965,33 @@ pub mod pallet {
                 merkle_root: content_hash, // Genesis anchor - merkle root is just content hash
                 version: 0,
             };
-            
+
             let anchor_hash = temporal_helpers::calculate_anchor_hash(&anchor);
             LandAnchors::<T>::insert(anchor_hash, anchor);
-            
+
             Ok(anchor_hash)
         }
-        
+
         fn update_anchor(
             previous_anchor_hash: [u8; 32],
             new_content_hash: [u8; 32],
         ) -> Result<[u8; 32], &'static str> {
             // Get previous anchor
-            let previous_anchor = LandAnchors::<T>::get(previous_anchor_hash)
-                .ok_or("Previous anchor not found")?;
-            
+            let previous_anchor =
+                LandAnchors::<T>::get(previous_anchor_hash).ok_or("Previous anchor not found")?;
+
             let block_number = frame_system::Pallet::<T>::block_number();
             // SAFETY(saturated_into): BlockNumber → u64 is lossless for BelizeChain's
             // u32 block numbers. Used as timestamp in temporal anchor.
             let timestamp = block_number.saturated_into::<u64>();
-            
+
             // Build history for merkle root calculation
             let history = Self::get_anchor_history(previous_anchor_hash);
             let mut hashes: Vec<[u8; 32]> = history.iter().map(|a| a.content_hash).collect();
             hashes.push(new_content_hash);
-            
+
             let merkle_root = temporal_helpers::calculate_merkle_root(&hashes);
-            
+
             let new_anchor = TemporalAnchor {
                 content_hash: new_content_hash,
                 previous_hash: Some(previous_anchor_hash),
@@ -994,24 +1001,24 @@ pub mod pallet {
                 merkle_root,
                 version: previous_anchor.version.saturating_add(1),
             };
-            
+
             let anchor_hash = temporal_helpers::calculate_anchor_hash(&new_anchor);
             LandAnchors::<T>::insert(anchor_hash, new_anchor);
-            
+
             Ok(anchor_hash)
         }
-        
+
         fn get_anchor(hash: [u8; 32]) -> Option<TemporalAnchor<BlockNumberFor<T>>> {
             LandAnchors::<T>::get(hash)
         }
-        
+
         fn verify_anchor_chain(hash: [u8; 32]) -> bool {
             // M65 FIX: Depth-limit anchor chain traversal to prevent O(n²) DoS
             const MAX_CHAIN_DEPTH: u32 = 100;
             let mut current_hash = hash;
             let mut version = u32::MAX; // Start with max, should decrease as we go back
             let mut depth = 0u32;
-            
+
             loop {
                 depth = depth.saturating_add(1);
                 if depth > MAX_CHAIN_DEPTH {
@@ -1022,24 +1029,24 @@ pub mod pallet {
                     Some(a) => a,
                     None => return false, // Broken chain
                 };
-                
+
                 // Verify version decreases
                 if anchor.version >= version {
                     return false;
                 }
                 version = anchor.version;
-                
+
                 // Verify merkle root if not genesis
                 if anchor.previous_hash.is_some() {
                     let history = Self::get_anchor_history(current_hash);
                     let hashes: Vec<[u8; 32]> = history.iter().map(|a| a.content_hash).collect();
                     let calculated_root = temporal_helpers::calculate_merkle_root(&hashes);
-                    
+
                     if calculated_root != anchor.merkle_root {
                         return false;
                     }
                 }
-                
+
                 // Move to previous anchor
                 match anchor.previous_hash {
                     Some(prev) => current_hash = prev,
@@ -1047,14 +1054,14 @@ pub mod pallet {
                 }
             }
         }
-        
+
         fn get_anchor_history(hash: [u8; 32]) -> Vec<TemporalAnchor<BlockNumberFor<T>>> {
             // M65 FIX: Depth-limit history traversal to prevent unbounded loops
             const MAX_HISTORY_DEPTH: u32 = 100;
             let mut history = Vec::new();
             let mut current_hash = hash;
             let mut depth = 0u32;
-            
+
             while let Some(anchor) = LandAnchors::<T>::get(current_hash) {
                 depth = depth.saturating_add(1);
                 if depth > MAX_HISTORY_DEPTH {
@@ -1063,16 +1070,16 @@ pub mod pallet {
 
                 let previous_hash = anchor.previous_hash;
                 history.push(anchor);
-                
+
                 match previous_hash {
                     Some(prev) => current_hash = prev,
                     None => break, // Reached genesis
                 }
             }
-            
+
             history
         }
-        
+
         fn get_latest_anchor(_content_hash: [u8; 32]) -> Option<[u8; 32]> {
             // This would require additional storage mapping
             // For now, return None - can be enhanced later
@@ -1093,24 +1100,19 @@ pub trait WeightInfo {
 
 impl WeightInfo for () {
     fn register_property() -> Weight {
-        Weight::from_parts(35_000_000, 512)
-            .saturating_add(Weight::from_parts(0, 5000))
+        Weight::from_parts(35_000_000, 512).saturating_add(Weight::from_parts(0, 5000))
     }
     fn transfer_property() -> Weight {
-        Weight::from_parts(40_000_000, 512)
-            .saturating_add(Weight::from_parts(0, 6000))
+        Weight::from_parts(40_000_000, 512).saturating_add(Weight::from_parts(0, 6000))
     }
     fn verify_property() -> Weight {
-        Weight::from_parts(15_000_000, 512)
-            .saturating_add(Weight::from_parts(0, 2000))
+        Weight::from_parts(15_000_000, 512).saturating_add(Weight::from_parts(0, 2000))
     }
     fn survey_property() -> Weight {
-        Weight::from_parts(25_000_000, 512)
-            .saturating_add(Weight::from_parts(0, 3500))
+        Weight::from_parts(25_000_000, 512).saturating_add(Weight::from_parts(0, 3500))
     }
     fn register_surveyor() -> Weight {
-        Weight::from_parts(10_000_000, 512)
-            .saturating_add(Weight::from_parts(0, 1500))
+        Weight::from_parts(10_000_000, 512).saturating_add(Weight::from_parts(0, 1500))
     }
 }
 

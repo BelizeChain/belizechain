@@ -11,7 +11,7 @@
 //! - **Transaction pool logic**: Priority ordering for governance/emergency extrinsics
 //! - **Networking layer**: Optimized peer selection for Belizean network topology
 
-use std::{sync::Arc, time::Duration};
+use belizechain_runtime::{self, opaque::Block, RuntimeApi};
 use futures::FutureExt;
 use sc_client_api::{Backend, HeaderBackend};
 use sc_consensus_babe::{self, SlotProportion};
@@ -20,7 +20,7 @@ use sc_service::{error::Error as ServiceError, Configuration, TaskManager};
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sp_consensus_babe::inherents::BabeCreateInherentDataProviders;
-use belizechain_runtime::{self, opaque::Block, RuntimeApi};
+use std::{sync::Arc, time::Duration};
 
 pub(crate) type FullClient =
     sc_service::TFullClient<Block, RuntimeApi, WasmExecutor<sp_io::SubstrateHostFunctions>>;
@@ -45,7 +45,18 @@ pub fn new_partial(
         sc_consensus::DefaultImportQueue<Block>,
         sc_transaction_pool::TransactionPoolHandle<Block, FullClient>,
         (
-            sc_consensus_babe::BabeBlockImport<Block, FullClient, sc_consensus_grandpa::GrandpaBlockImport<FullBackend, Block, FullClient, FullSelectChain>, BabeCreateInherentDataProviders<Block>, FullSelectChain>,
+            sc_consensus_babe::BabeBlockImport<
+                Block,
+                FullClient,
+                sc_consensus_grandpa::GrandpaBlockImport<
+                    FullBackend,
+                    Block,
+                    FullClient,
+                    FullSelectChain,
+                >,
+                BabeCreateInherentDataProviders<Block>,
+                FullSelectChain,
+            >,
             sc_consensus_grandpa::LinkHalf<Block, FullClient, FullSelectChain>,
             sc_consensus_babe::BabeLink<Block>,
             sc_consensus_babe::BabeWorkerHandle<Block>,
@@ -77,7 +88,9 @@ pub fn new_partial(
     let client = Arc::new(client);
 
     let telemetry = telemetry.map(|(worker, telemetry)| {
-        task_manager.spawn_handle().spawn("telemetry", None, worker.run());
+        task_manager
+            .spawn_handle()
+            .spawn("telemetry", None, worker.run());
         telemetry
     });
 
@@ -122,8 +135,8 @@ pub fn new_partial(
     )?;
 
     let slot_duration = babe_link.config().slot_duration();
-    let (import_queue, babe_worker_handle) = sc_consensus_babe::import_queue(
-        sc_consensus_babe::ImportQueueParams {
+    let (import_queue, babe_worker_handle) =
+        sc_consensus_babe::import_queue(sc_consensus_babe::ImportQueueParams {
             link: babe_link.clone(),
             block_import: babe_block_import.clone(),
             justification_import: Some(Box::new(grandpa_block_import.clone())),
@@ -132,8 +145,7 @@ pub fn new_partial(
             spawner: &task_manager.spawn_essential_handle(),
             registry: config.prometheus_registry(),
             telemetry: telemetry.as_ref().map(|x| x.handle()),
-        },
-    )?;
+        })?;
 
     Ok(sc_service::PartialComponents {
         client,
@@ -143,14 +155,22 @@ pub fn new_partial(
         keystore_container: keystore,
         select_chain,
         transaction_pool,
-        other: (babe_block_import, grandpa_link, babe_link, babe_worker_handle, telemetry),
+        other: (
+            babe_block_import,
+            grandpa_link,
+            babe_link,
+            babe_worker_handle,
+            telemetry,
+        ),
     })
 }
 
 /// Builds a new service for a full client.
 pub fn new_full<
     N: sc_network::NetworkBackend<Block, <Block as sp_runtime::traits::Block>::Hash>,
->(config: Configuration) -> Result<TaskManager, ServiceError> {
+>(
+    config: Configuration,
+) -> Result<TaskManager, ServiceError> {
     let sc_service::PartialComponents {
         client,
         backend,
@@ -175,7 +195,7 @@ pub fn new_full<
         &config.chain_spec,
     );
 
-    let (grandpa_protocol_config, grandpa_notification_service) = 
+    let (grandpa_protocol_config, grandpa_notification_service) =
         sc_consensus_grandpa::grandpa_peers_set_config::<_, N>(
             grandpa_protocol_name.clone(),
             metrics.clone(),
@@ -187,8 +207,8 @@ pub fn new_full<
         backend.clone(),
         grandpa_link.shared_authority_set().clone(),
         Vec::default(), // P2P-FIX-004: Warp sync hard forks (empty = no authority set hard forks)
-        // NOTE: For warp sync security with trusted checkpoints, use --warp-sync-checkpoint CLI flag
-        // See WARP_SYNC_CHECKPOINTS constant documentation above for checkpoint management strategy
+                        // NOTE: For warp sync security with trusted checkpoints, use --warp-sync-checkpoint CLI flag
+                        // See WARP_SYNC_CHECKPOINTS constant documentation above for checkpoint management strategy
     ));
 
     // P2P-FIX-002: Content-based block announce validation (defense-in-depth)
@@ -228,53 +248,56 @@ pub fn new_full<
         task_manager.spawn_handle().spawn(
             "offchain-workers-runner",
             "offchain-worker",
-            offchain_workers.run(client.clone(), task_manager.spawn_handle()).boxed(),
+            offchain_workers
+                .run(client.clone(), task_manager.spawn_handle())
+                .boxed(),
         );
     }
 
-	let role = config.role;
-	let force_authoring = config.force_authoring;
-	// CONS-034 FIX: Enable BABE slot-skipping backoff when finality lags.
-	// A value of 10 means the node will skip authoring after producing
-	// 10 consecutive blocks without GRANDPA finality catching up.
-	let backoff_authoring_blocks =
-		Some(sc_consensus_slots::BackoffAuthoringOnFinalizedHeadLagging::default());
-	let name = config.network.node_name.clone();
-	let enable_grandpa = !config.disable_grandpa;
-	let prometheus_registry = config.prometheus_registry().cloned();
+    let role = config.role;
+    let force_authoring = config.force_authoring;
+    // CONS-034 FIX: Enable BABE slot-skipping backoff when finality lags.
+    // A value of 10 means the node will skip authoring after producing
+    // 10 consecutive blocks without GRANDPA finality catching up.
+    let backoff_authoring_blocks =
+        Some(sc_consensus_slots::BackoffAuthoringOnFinalizedHeadLagging::default());
+    let name = config.network.node_name.clone();
+    let enable_grandpa = !config.disable_grandpa;
+    let prometheus_registry = config.prometheus_registry().cloned();
 
-	let rpc_extensions_builder = {
-		let client = client.clone();
-		let pool = transaction_pool.clone();
+    let rpc_extensions_builder = {
+        let client = client.clone();
+        let pool = transaction_pool.clone();
 
-		Box::new(move |_| {
-			let deps = crate::rpc::FullDeps {
-				client: client.clone(),
-				pool: pool.clone(),
-			};
-			crate::rpc::create_full(deps).map_err(Into::into)
-		})
-	};
+        Box::new(move |_| {
+            let deps = crate::rpc::FullDeps {
+                client: client.clone(),
+                pool: pool.clone(),
+            };
+            crate::rpc::create_full(deps).map_err(Into::into)
+        })
+    };
 
-	// Keep babe_worker_handle alive for the node lifetime.
-	// Dropping it closes the channel to the essential babe-worker task, crashing the node.
-	task_manager.keep_alive(babe_worker_handle);
+    // Keep babe_worker_handle alive for the node lifetime.
+    // Dropping it closes the channel to the essential babe-worker task, crashing the node.
+    task_manager.keep_alive(babe_worker_handle);
 
-	let _rpc_handlers = sc_service::spawn_tasks(sc_service::SpawnTasksParams {
-		network: network.clone(),
-		client: client.clone(),
-		keystore: keystore_container.keystore(),
-		task_manager: &mut task_manager,
-		transaction_pool: transaction_pool.clone(),
-		rpc_builder: rpc_extensions_builder,
-		backend,
-		system_rpc_tx,
-		tx_handler_controller,
-		sync_service: sync_service.clone(),
-		config,
-		telemetry: telemetry.as_mut(),
-		tracing_execute_block: None,
-	})?;    if role.is_authority() {
+    let _rpc_handlers = sc_service::spawn_tasks(sc_service::SpawnTasksParams {
+        network: network.clone(),
+        client: client.clone(),
+        keystore: keystore_container.keystore(),
+        task_manager: &mut task_manager,
+        transaction_pool: transaction_pool.clone(),
+        rpc_builder: rpc_extensions_builder,
+        backend,
+        system_rpc_tx,
+        tx_handler_controller,
+        sync_service: sync_service.clone(),
+        config,
+        telemetry: telemetry.as_mut(),
+        tracing_execute_block: None,
+    })?;
+    if role.is_authority() {
         let proposer_factory = sc_basic_authorship::ProposerFactory::new(
             task_manager.spawn_handle(),
             client.clone(),
@@ -354,7 +377,7 @@ pub fn new_full<
             telemetry: telemetry.as_ref().map(|x| x.handle()),
             offchain_tx_pool_factory: OffchainTransactionPoolFactory::new(transaction_pool.clone()),
         };
-        
+
         task_manager.spawn_essential_handle().spawn_blocking(
             "grandpa-voter",
             None,
@@ -409,7 +432,7 @@ pub fn new_benchmark_partial(
 #[cfg(feature = "runtime-benchmarks")]
 pub fn inherent_benchmark_data() -> Result<sp_inherents::InherentData, sc_service::Error> {
     let inherent_data = sp_inherents::InherentData::new();
-    
+
     // InherentDataProvider now uses async provide_inherent_data
     // For benchmarking, we just return empty inherent data
     Ok(inherent_data)
@@ -427,28 +450,28 @@ impl RemarkBuilder {
         Self { client }
     }
 }
-// 
+//
 // impl frame_benchmarking_cli::ExtrinsicBuilder for RemarkBuilder {
 //     fn pallet(&self) -> &str {
 //         "system"
 //     }
-// 
+//
 //     fn extrinsic(&self) -> &str {
 //         "remark"
 //     }
-// 
+//
 //     fn build(&self, nonce: u32) -> std::result::Result<belizechain_runtime::UncheckedExtrinsic, &'static str> {
 //         let acc = AccountKeyring::Bob.pair();
 //         let extrinsic: belizechain_runtime::UncheckedExtrinsic =
 //             frame_system::Call::remark { remark: vec![] }.into();
-//         
+//
 //         Ok(extrinsic)
 //     }
 // }
-// 
+//
 // /// A [`ExtrinsicFactory`] which creates remark extrinsics.
 // pub struct ExtrinsicFactory(pub std::collections::BTreeMap<&'static str, Box<dyn frame_benchmarking_cli::ExtrinsicBuilder>>);
-// 
+//
 // impl frame_benchmarking_cli::ExtrinsicFactory for ExtrinsicFactory {
 //     fn try_get(&self, name: &str) -> Option<&dyn frame_benchmarking_cli::ExtrinsicBuilder> {
 //         self.0.get(name).map(|builder| builder.as_ref())

@@ -473,7 +473,7 @@ Technical terminology and BelizeChain-specific concepts.
 
 **WebSocket**: Real-time blockchain connection:
 - **Mainnet**: wss://rpc.belizechain.org
-- **Testnet**: wss://rpc.testnet.belizechain.org
+- **Testnet**: Use the current operator-provided RPC URL or your own node
 
 → See [API Reference](technical-reference/api-reference.md)
 

@@ -1,5 +1,5 @@
 [Unit]
-Description=BelizeChain Validator (Alice) on Ceiba
+Description=BelizeChain Public Testnet Validator on Ceiba
 After=network-online.target
 Wants=network-online.target
 
@@ -7,9 +7,12 @@ Wants=network-online.target
 Type=simple
 User=wicked
 Group=wicked
+ExecStartPre=/usr/bin/test -f /etc/belizechain/testnet-chain-spec-raw.json
+ExecStartPre=/bin/sh -c '! grep -Eq '"'"'"id"[[:space:]]*:[[:space:]]*"belizechain_local"'"'"' /etc/belizechain/testnet-chain-spec-raw.json'
+ExecStartPre=/bin/sh -c '! grep -Eq '"'"'"chainType"[[:space:]]*:[[:space:]]*"Local"'"'"' /etc/belizechain/testnet-chain-spec-raw.json'
+ExecStartPre=/bin/sh -c '! grep -Eq '"'"'/ip4/(127\\.0\\.0\\.1|0\\.0\\.0\\.0)/|/dns4/localhost/'"'"' /etc/belizechain/testnet-chain-spec-raw.json'
 ExecStart=/usr/local/bin/belizechain-node \
-  --chain local \
-  --alice \
+  --chain /etc/belizechain/testnet-chain-spec-raw.json \
   --base-path /data/chain \
   --port 30333 \
   --rpc-port 9944 \
@@ -19,7 +22,7 @@ ExecStart=/usr/local/bin/belizechain-node \
   --rpc-external \
   --rpc-methods Safe \
   --validator \
-  --name Ceiba-Validator-Alice \
+  --name Ceiba-Validator \
   --node-key-file /data/chain/node-key \
   --telemetry-url ""
 Restart=on-failure

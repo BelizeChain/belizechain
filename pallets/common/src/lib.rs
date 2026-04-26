@@ -13,8 +13,5 @@ pub mod temporal_anchor;
 
 // Re-export commonly used types
 pub use temporal_anchor::{
-    TemporalAnchor,
-    AnchorType,
-    TemporalAnchoring,
-    helpers as temporal_helpers,
+    helpers as temporal_helpers, AnchorType, TemporalAnchor, TemporalAnchoring,
 };

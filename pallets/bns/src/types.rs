@@ -1,6 +1,6 @@
 //! BNS Type Definitions
 
-use codec::{Encode, Decode, MaxEncodedLen};
+use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::BoundedVec;
 use scale_info::TypeInfo;
 
@@ -195,10 +195,10 @@ pub struct VerificationStatus<BlockNumber> {
 pub trait BnsIdentityProvider<AccountId> {
     /// Check if account can register domains (basic KYC)
     fn can_register_domain(account: &AccountId) -> bool;
-    
+
     /// Check if account can register verified domains (Level 3 KYC)
     fn can_register_verified(account: &AccountId) -> bool;
-    
+
     /// Check if account is sanctioned
     fn is_sanctioned(account: &AccountId) -> bool;
 }

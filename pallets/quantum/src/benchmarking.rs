@@ -11,8 +11,8 @@
 
 use super::*;
 use frame_benchmarking::v2::*;
-use frame_system::RawOrigin;
 use frame_support::traits::Currency;
+use frame_system::RawOrigin;
 use sp_runtime::BoundedVec;
 use sp_std::vec;
 
@@ -175,9 +175,7 @@ fn insert_bridge<T: Config>(nft_id: u64, owner: &T::AccountId) {
 }
 
 /// Insert a verification request for a job
-fn insert_verification_request<T: Config>(
-    job_id: &BoundedVec<u8, ConstU32<MAX_JOB_ID_LEN>>,
-) {
+fn insert_verification_request<T: Config>(job_id: &BoundedVec<u8, ConstU32<MAX_JOB_ID_LEN>>) {
     let current_block = frame_system::Pallet::<T>::block_number();
     let created: u32 = current_block.saturated_into::<u32>();
 
@@ -209,11 +207,11 @@ mod benchmarks {
         submit_quantum_job(
             RawOrigin::Signed(caller),
             job_id,
-            0u8,         // backend_index: Simulator
-            [1u8; 32],   // circuit_hash
-            5u16,        // num_qubits
-            10u32,       // circuit_depth
-            100u32,      // num_shots
+            0u8,       // backend_index: Simulator
+            [1u8; 32], // circuit_hash
+            5u16,      // num_qubits
+            10u32,     // circuit_depth
+            100u32,    // num_shots
         );
     }
 
@@ -227,7 +225,7 @@ mod benchmarks {
         update_job_status(
             RawOrigin::Signed(caller),
             job_id,
-            1u8,  // status_index: Running
+            1u8, // status_index: Running
         );
     }
 
@@ -256,9 +254,9 @@ mod benchmarks {
         record_quantum_result(
             RawOrigin::Signed(executor),
             job_id,
-            [2u8; 32],  // result_data_hash
-            proof,       // verification_proof
-            95u8,        // accuracy_score
+            [2u8; 32], // result_data_hash
+            proof,     // verification_proof
+            95u8,      // accuracy_score
         );
     }
 
@@ -275,7 +273,7 @@ mod benchmarks {
         verify_quantum_result(
             RawOrigin::Root,
             job_id,
-            true,  // verification_passed
+            true, // verification_passed
         );
     }
 
@@ -301,10 +299,10 @@ mod benchmarks {
         mint_achievement_nft(
             RawOrigin::Signed(caller),
             job_id,
-            0u8,    // achievement_type_index: FirstQuantumJob
-            true,   // transferable
-            5u16,   // circuit_qubits
-            90u8,   // accuracy
+            0u8,  // achievement_type_index: FirstQuantumJob
+            true, // transferable
+            5u16, // circuit_qubits
+            90u8, // accuracy
         );
     }
 
@@ -409,7 +407,7 @@ mod benchmarks {
         request_verification(
             RawOrigin::Signed(submitter),
             job_id,
-            3u8,  // required_verifications
+            3u8, // required_verifications
         );
     }
 
@@ -430,15 +428,11 @@ mod benchmarks {
         submit_verification(
             RawOrigin::Signed(validator),
             job_id,
-            0u8,        // vote_index: Approve
-            90u8,       // confidence
-            [3u8; 32],  // result_hash
+            0u8,       // vote_index: Approve
+            90u8,      // confidence
+            [3u8; 32], // result_hash
         );
     }
 
-    impl_benchmark_test_suite!(
-        Pallet,
-        crate::mock::new_test_ext(),
-        crate::mock::Test
-    );
+    impl_benchmark_test_suite!(Pallet, crate::mock::new_test_ext(), crate::mock::Test);
 }

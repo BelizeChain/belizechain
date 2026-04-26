@@ -17,9 +17,9 @@
 use frame_support::{
     dispatch::DispatchResult,
     pallet_prelude::*,
-    traits::{Currency, ExistenceRequirement, Get, ReservableCurrency, EnsureOrigin},
-    BoundedVec, PalletId,
     sp_runtime::traits::AccountIdConversion,
+    traits::{Currency, EnsureOrigin, ExistenceRequirement, Get, ReservableCurrency},
+    BoundedVec, PalletId,
 };
 use frame_system::pallet_prelude::*;
 
@@ -88,11 +88,11 @@ pub mod pallet {
 
         /// Number of blocks for KYC validity window (annual)
         #[pallet::constant]
-    type KycValidityBlocks: Get<BlockNumberFor<Self>>;
+        type KycValidityBlocks: Get<BlockNumberFor<Self>>;
 
         /// Number of blocks for grace window after validity
         #[pallet::constant]
-    type KycGraceBlocks: Get<BlockNumberFor<Self>>;
+        type KycGraceBlocks: Get<BlockNumberFor<Self>>;
 
         /// Max number of history events to keep per attribute per identity
         #[pallet::constant]
@@ -107,16 +107,17 @@ pub mod pallet {
     pub trait IdentityOracleProvider<AccountId> {
         /// Get KYC level for an account from Oracle
         fn get_kyc_level(account: &AccountId) -> Option<u8>;
-        
+
         /// Check if account meets minimum KYC requirement
         fn meets_kyc_requirement(account: &AccountId, required_level: u8) -> bool;
-        
+
         /// Check if account is sanctioned (OFAC/UN lists)
         fn is_sanctioned(account: &AccountId) -> bool;
     }
 
     /// Balance type alias
-    pub type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+    pub type BalanceOf<T> =
+        <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
     /// IdentityId internal type
     pub type IdentityId = u128;
@@ -134,13 +135,21 @@ pub mod pallet {
 
     impl AttributeType {
         pub fn as_u8(self) -> u8 {
-            match self { AttributeType::Ssn => 0, AttributeType::Passport => 1, AttributeType::Biometrics => 2 }
+            match self {
+                AttributeType::Ssn => 0,
+                AttributeType::Passport => 1,
+                AttributeType::Biometrics => 2,
+            }
         }
     }
 
     impl From<u8> for AttributeType {
         fn from(v: u8) -> Self {
-            match v { 0 => AttributeType::Ssn, 1 => AttributeType::Passport, _ => AttributeType::Biometrics }
+            match v {
+                0 => AttributeType::Ssn,
+                1 => AttributeType::Passport,
+                _ => AttributeType::Biometrics,
+            }
         }
     }
 
@@ -200,11 +209,11 @@ pub mod pallet {
         /// Issuer asserts that format complies with standard
         pub format_ok: bool,
         /// When issued
-    pub issued_at: BlockNumberFor<T>,
+        pub issued_at: BlockNumberFor<T>,
         /// Validity window end
-    pub valid_until: BlockNumberFor<T>,
+        pub valid_until: BlockNumberFor<T>,
         /// Grace window end
-    pub grace_until: BlockNumberFor<T>,
+        pub grace_until: BlockNumberFor<T>,
         /// Off-chain credential anchor (pakit CID)
         pub anchor: BoundedVec<u8, <T as Config>::MaxAnchorLen>,
         /// Current status (Active, Suspended, Revoked)
@@ -213,7 +222,12 @@ pub mod pallet {
 
     /// History action
     #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
-    pub enum HistoryAction { Issued, Suspended, Revoked, Updated }
+    pub enum HistoryAction {
+        Issued,
+        Suspended,
+        Revoked,
+        Updated,
+    }
 
     /// History event
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
@@ -241,15 +255,18 @@ pub mod pallet {
     // Attribute attestations per identity
     #[pallet::storage]
     #[pallet::getter(fn ssn_attestation)]
-    pub type SsnAttestations<T: Config> = StorageMap<_, Blake2_128Concat, IdentityId, Attestation<T>>;
+    pub type SsnAttestations<T: Config> =
+        StorageMap<_, Blake2_128Concat, IdentityId, Attestation<T>>;
 
     #[pallet::storage]
     #[pallet::getter(fn passport_attestation)]
-    pub type PassportAttestations<T: Config> = StorageMap<_, Blake2_128Concat, IdentityId, Attestation<T>>;
+    pub type PassportAttestations<T: Config> =
+        StorageMap<_, Blake2_128Concat, IdentityId, Attestation<T>>;
 
     #[pallet::storage]
     #[pallet::getter(fn biometric_attestation)]
-    pub type BiometricAttestations<T: Config> = StorageMap<_, Blake2_128Concat, IdentityId, Attestation<T>>;
+    pub type BiometricAttestations<T: Config> =
+        StorageMap<_, Blake2_128Concat, IdentityId, Attestation<T>>;
 
     // Reverse indexes to prevent duplicates and enable O(1) checks
     #[pallet::storage]
@@ -260,12 +277,28 @@ pub mod pallet {
     // Per-issuer flags
     #[pallet::storage]
     #[pallet::getter(fn is_issuer_flagged)]
-    pub type FlaggedIssuers<T: Config> = StorageDoubleMap<_, Blake2_128Concat, AttributeType, Blake2_128Concat, T::AccountId, bool, ValueQuery>;
+    pub type FlaggedIssuers<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        AttributeType,
+        Blake2_128Concat,
+        T::AccountId,
+        bool,
+        ValueQuery,
+    >;
 
     // Per-issuer bonds per attribute
     #[pallet::storage]
     #[pallet::getter(fn issuer_bond)]
-    pub type IssuerBonds<T: Config> = StorageDoubleMap<_, Blake2_128Concat, AttributeType, Blake2_128Concat, T::AccountId, BalanceOf<T>, ValueQuery>;
+    pub type IssuerBonds<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        AttributeType,
+        Blake2_128Concat,
+        T::AccountId,
+        BalanceOf<T>,
+        ValueQuery,
+    >;
 
     // Governance-configurable bond amount required (can be 0)
     #[pallet::storage]
@@ -296,23 +329,41 @@ pub mod pallet {
 
     #[pallet::storage]
     #[pallet::getter(fn rate_counter)]
-    pub type IssuerRate<T: Config> = StorageDoubleMap<_, Blake2_128Concat, AttributeType, Blake2_128Concat, T::AccountId, RateCounter<T>>;
+    pub type IssuerRate<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        AttributeType,
+        Blake2_128Concat,
+        T::AccountId,
+        RateCounter<T>,
+    >;
 
     // Attribute history: per identity and attr
     #[pallet::storage]
     #[pallet::getter(fn attribute_history)]
-    pub type AttributeHistory<T: Config> = StorageDoubleMap<_, Blake2_128Concat, IdentityId, Blake2_128Concat, AttributeType, BoundedVec<HistoryEvent<T>, <T as Config>::MaxHistoryLen>, ValueQuery>;
+    pub type AttributeHistory<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        IdentityId,
+        Blake2_128Concat,
+        AttributeType,
+        BoundedVec<HistoryEvent<T>, <T as Config>::MaxHistoryLen>,
+        ValueQuery,
+    >;
 
     // Issuer registries (governance-managed)
     #[pallet::storage]
     #[pallet::getter(fn ssn_issuers)]
-    pub type SsnIssuers<T: Config> = StorageValue<_, BoundedVec<T::AccountId, <T as Config>::MaxIssuerCount>, ValueQuery>;
+    pub type SsnIssuers<T: Config> =
+        StorageValue<_, BoundedVec<T::AccountId, <T as Config>::MaxIssuerCount>, ValueQuery>;
     #[pallet::storage]
     #[pallet::getter(fn passport_issuers)]
-    pub type PassportIssuers<T: Config> = StorageValue<_, BoundedVec<T::AccountId, <T as Config>::MaxIssuerCount>, ValueQuery>;
+    pub type PassportIssuers<T: Config> =
+        StorageValue<_, BoundedVec<T::AccountId, <T as Config>::MaxIssuerCount>, ValueQuery>;
     #[pallet::storage]
     #[pallet::getter(fn biometric_issuers)]
-    pub type BiometricIssuers<T: Config> = StorageValue<_, BoundedVec<T::AccountId, <T as Config>::MaxIssuerCount>, ValueQuery>;
+    pub type BiometricIssuers<T: Config> =
+        StorageValue<_, BoundedVec<T::AccountId, <T as Config>::MaxIssuerCount>, ValueQuery>;
 
     // Standards (versioned)
     #[pallet::storage]
@@ -373,22 +424,40 @@ pub mod pallet {
     #[pallet::genesis_build]
     impl<T: Config> BuildGenesisConfig for GenesisConfig<T> {
         fn build(&self) {
-            if let Some(fee) = &self.operation_fee { OperationFee::<T>::put(*fee); }
+            if let Some(fee) = &self.operation_fee {
+                OperationFee::<T>::put(*fee);
+            }
             SsnStandardVersion::<T>::put(self.ssn_standard_version);
             PassportStandardVersion::<T>::put(self.passport_standard_version);
-            if let Some(b) = &self.issuer_bond_amount { IssuerBondAmount::<T>::put(*b); }
-            if let Some(w) = &self.rate_window_blocks { RateWindowBlocks::<T>::put(*w); }
-            if let Some(v) = &self.rate_limit_ssn { RateMaxPerWindowSsn::<T>::put(*v); }
-            if let Some(v) = &self.rate_limit_passport { RateMaxPerWindowPassport::<T>::put(*v); }
-            if let Some(v) = &self.rate_limit_biometrics { RateMaxPerWindowBiometrics::<T>::put(*v); }
+            if let Some(b) = &self.issuer_bond_amount {
+                IssuerBondAmount::<T>::put(*b);
+            }
+            if let Some(w) = &self.rate_window_blocks {
+                RateWindowBlocks::<T>::put(*w);
+            }
+            if let Some(v) = &self.rate_limit_ssn {
+                RateMaxPerWindowSsn::<T>::put(*v);
+            }
+            if let Some(v) = &self.rate_limit_passport {
+                RateMaxPerWindowPassport::<T>::put(*v);
+            }
+            if let Some(v) = &self.rate_limit_biometrics {
+                RateMaxPerWindowBiometrics::<T>::put(*v);
+            }
             let mut ssn = BoundedVec::default();
-            for i in &self.initial_ssn_issuers { let _ = ssn.try_push(i.clone()); }
+            for i in &self.initial_ssn_issuers {
+                let _ = ssn.try_push(i.clone());
+            }
             SsnIssuers::<T>::put(ssn);
             let mut pass = BoundedVec::default();
-            for i in &self.initial_passport_issuers { let _ = pass.try_push(i.clone()); }
+            for i in &self.initial_passport_issuers {
+                let _ = pass.try_push(i.clone());
+            }
             PassportIssuers::<T>::put(pass);
             let mut bio = BoundedVec::default();
-            for i in &self.initial_biometric_issuers { let _ = bio.try_push(i.clone()); }
+            for i in &self.initial_biometric_issuers {
+                let _ = bio.try_push(i.clone());
+            }
             BiometricIssuers::<T>::put(bio);
             GlobalPaused::<T>::put(self.paused);
             NextIdentityId::<T>::put(self.start_identity_id);
@@ -399,36 +468,88 @@ pub mod pallet {
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// Identity created
-        IdentityRegistered { identity: IdentityId, owner: T::AccountId },
+        IdentityRegistered {
+            identity: IdentityId,
+            owner: T::AccountId,
+        },
         /// Account linked to identity
-        AccountLinked { identity: IdentityId, account: T::AccountId },
+        AccountLinked {
+            identity: IdentityId,
+            account: T::AccountId,
+        },
         /// DID document anchor updated
-        DidDocUpdated { identity: IdentityId },
+        DidDocUpdated {
+            identity: IdentityId,
+        },
         /// Issuers updated
-        IssuerAdded { attr: u8, issuer: T::AccountId },
-        IssuerRemoved { attr: u8, issuer: T::AccountId },
+        IssuerAdded {
+            attr: u8,
+            issuer: T::AccountId,
+        },
+        IssuerRemoved {
+            attr: u8,
+            issuer: T::AccountId,
+        },
         /// Standards version changes
-        StandardVersionUpdated { attr: u8, version: u32 },
+        StandardVersionUpdated {
+            attr: u8,
+            version: u32,
+        },
         /// Fees updated
-        OperationFeeUpdated { fee: BalanceOf<T> },
+        OperationFeeUpdated {
+            fee: BalanceOf<T>,
+        },
         /// Global pause/resume
         Paused,
         Resumed,
         /// Attestations lifecycle
-        Attested { identity: IdentityId, attr: u8, issuer: T::AccountId },
-        Suspended { identity: IdentityId, attr: u8 },
-        Revoked { identity: IdentityId, attr: u8 },
+        Attested {
+            identity: IdentityId,
+            attr: u8,
+            issuer: T::AccountId,
+        },
+        Suspended {
+            identity: IdentityId,
+            attr: u8,
+        },
+        Revoked {
+            identity: IdentityId,
+            attr: u8,
+        },
         /// Issuer flagged/unflagged
-        IssuerFlagged { attr: u8, issuer: T::AccountId, flagged: bool },
+        IssuerFlagged {
+            attr: u8,
+            issuer: T::AccountId,
+            flagged: bool,
+        },
         /// Issuer bond deposit/withdraw
-        IssuerBondDeposited { attr: u8, issuer: T::AccountId, amount: BalanceOf<T> },
-        IssuerBondWithdrawn { attr: u8, issuer: T::AccountId, amount: BalanceOf<T> },
+        IssuerBondDeposited {
+            attr: u8,
+            issuer: T::AccountId,
+            amount: BalanceOf<T>,
+        },
+        IssuerBondWithdrawn {
+            attr: u8,
+            issuer: T::AccountId,
+            amount: BalanceOf<T>,
+        },
         /// Issuer bond slashed
-        IssuerBondSlashed { attr: u8, issuer: T::AccountId, amount: BalanceOf<T> },
+        IssuerBondSlashed {
+            attr: u8,
+            issuer: T::AccountId,
+            amount: BalanceOf<T>,
+        },
         /// Rate limit config updated
-        RateLimitUpdated { window: BlockNumberFor<T>, ssn: u32, passport: u32, biometrics: u32 },
+        RateLimitUpdated {
+            window: BlockNumberFor<T>,
+            ssn: u32,
+            passport: u32,
+            biometrics: u32,
+        },
         /// Issuer bond requirement updated
-        IssuerBondAmountUpdated { amount: BalanceOf<T> },
+        IssuerBondAmountUpdated {
+            amount: BalanceOf<T>,
+        },
     }
 
     #[pallet::error]
@@ -478,19 +599,28 @@ pub mod pallet {
             match attr {
                 AttributeType::Ssn => SsnIssuers::<T>::get().into_inner().contains(who),
                 AttributeType::Passport => PassportIssuers::<T>::get().into_inner().contains(who),
-                AttributeType::Biometrics => BiometricIssuers::<T>::get().into_inner().contains(who),
+                AttributeType::Biometrics => {
+                    BiometricIssuers::<T>::get().into_inner().contains(who)
+                }
             }
         }
 
         fn charge_fee(who: &T::AccountId) -> DispatchResult {
             let fee = OperationFee::<T>::get();
             if !fee.is_zero() {
-                T::Currency::transfer(who, &Self::account_id(), fee, ExistenceRequirement::KeepAlive)?;
+                T::Currency::transfer(
+                    who,
+                    &Self::account_id(),
+                    fee,
+                    ExistenceRequirement::KeepAlive,
+                )?;
             }
             Ok(())
         }
 
-        fn now() -> BlockNumberFor<T> { <frame_system::Pallet<T>>::block_number() }
+        fn now() -> BlockNumberFor<T> {
+            <frame_system::Pallet<T>>::block_number()
+        }
 
         fn validity_windows() -> (BlockNumberFor<T>, BlockNumberFor<T>) {
             (T::KycValidityBlocks::get(), T::KycGraceBlocks::get())
@@ -538,13 +668,20 @@ pub mod pallet {
             let now = Self::now();
             let window = RateWindowBlocks::<T>::get();
             let max = Self::max_per_window(attr);
-            if max == 0 || window == Zero::zero() { return Ok(()); }
-            let mut rc = IssuerRate::<T>::get(attr, issuer.clone()).unwrap_or(RateCounter { window_start: now, count: 0 });
+            if max == 0 || window == Zero::zero() {
+                return Ok(());
+            }
+            let mut rc = IssuerRate::<T>::get(attr, issuer.clone()).unwrap_or(RateCounter {
+                window_start: now,
+                count: 0,
+            });
             if Self::sub_blocks(now, rc.window_start) > window {
                 rc.window_start = now;
                 rc.count = 0;
             }
-            if rc.count >= max { return Err(Error::<T>::IssuerRateLimitExceeded.into()); }
+            if rc.count >= max {
+                return Err(Error::<T>::IssuerRateLimitExceeded.into());
+            }
             rc.count = rc.count.saturating_add(1);
             IssuerRate::<T>::insert(attr, issuer, rc);
             Ok(())
@@ -556,25 +693,42 @@ pub mod pallet {
         /// Register a new identity for the caller, paying the configured fee
         #[pallet::call_index(0)]
         #[pallet::weight(T::WeightInfo::register_identity())]
-        pub fn register_identity(origin: OriginFor<T>, name: BoundedVec<u8, T::MaxNameLen>) -> DispatchResult {
+        pub fn register_identity(
+            origin: OriginFor<T>,
+            name: BoundedVec<u8, T::MaxNameLen>,
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Self::ensure_not_paused()?;
 
-            ensure!(!IdentityOf::<T>::contains_key(&who), Error::<T>::IdentityExists);
+            ensure!(
+                !IdentityOf::<T>::contains_key(&who),
+                Error::<T>::IdentityExists
+            );
 
             // charge fee
             Self::charge_fee(&who)?;
 
             let id = NextIdentityId::<T>::get();
-            let mut accounts: BoundedVec<T::AccountId, T::MaxAccountsPerIdentity> = BoundedVec::default();
-            accounts.try_push(who.clone()).map_err(|_| Error::<T>::TooManyAccounts)?;
+            let mut accounts: BoundedVec<T::AccountId, T::MaxAccountsPerIdentity> =
+                BoundedVec::default();
+            accounts
+                .try_push(who.clone())
+                .map_err(|_| Error::<T>::TooManyAccounts)?;
 
-            let record = IdentityRecord::<T> { name: name.clone(), owner: who.clone(), accounts, did_doc_cid: None };
+            let record = IdentityRecord::<T> {
+                name: name.clone(),
+                owner: who.clone(),
+                accounts,
+                did_doc_cid: None,
+            };
             Identities::<T>::insert(id, record);
             IdentityOf::<T>::insert(&who, id);
             NextIdentityId::<T>::put(id.saturating_add(1));
 
-            Self::deposit_event(Event::IdentityRegistered { identity: id, owner: who });
+            Self::deposit_event(Event::IdentityRegistered {
+                identity: id,
+                owner: who,
+            });
             Ok(())
         }
 
@@ -585,25 +739,39 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
             Self::ensure_not_paused()?;
             let id = IdentityOf::<T>::get(&who).ok_or(Error::<T>::IdentityNotFound)?;
-            ensure!(!IdentityOf::<T>::contains_key(&new_account), Error::<T>::IdentityExists);
+            ensure!(
+                !IdentityOf::<T>::contains_key(&new_account),
+                Error::<T>::IdentityExists
+            );
 
             Identities::<T>::try_mutate(id, |maybe| -> DispatchResult {
                 let rec = maybe.as_mut().ok_or(Error::<T>::IdentityNotFound)?;
                 // M50 FIX: Only primary account owner (first account) can link new accounts
                 // This prevents unauthorized delegation chains from compromised linked accounts
-                ensure!(!rec.accounts.is_empty() && rec.accounts[0] == who, Error::<T>::IdentityNotFound);
-                rec.accounts.try_push(new_account.clone()).map_err(|_| Error::<T>::TooManyAccounts)?;
+                ensure!(
+                    !rec.accounts.is_empty() && rec.accounts[0] == who,
+                    Error::<T>::IdentityNotFound
+                );
+                rec.accounts
+                    .try_push(new_account.clone())
+                    .map_err(|_| Error::<T>::TooManyAccounts)?;
                 Ok(())
             })?;
             IdentityOf::<T>::insert(&new_account, id);
-            Self::deposit_event(Event::AccountLinked { identity: id, account: new_account });
+            Self::deposit_event(Event::AccountLinked {
+                identity: id,
+                account: new_account,
+            });
             Ok(())
         }
 
         /// Update DID Document anchor (pakit CID)
         #[pallet::call_index(2)]
         #[pallet::weight(T::WeightInfo::update_did())]
-        pub fn update_did_doc(origin: OriginFor<T>, cid: BoundedVec<u8, T::MaxAnchorLen>) -> DispatchResult {
+        pub fn update_did_doc(
+            origin: OriginFor<T>,
+            cid: BoundedVec<u8, T::MaxAnchorLen>,
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             let id = IdentityOf::<T>::get(&who).ok_or(Error::<T>::IdentityNotFound)?;
             Identities::<T>::try_mutate(id, |maybe| -> DispatchResult {
@@ -629,26 +797,32 @@ pub mod pallet {
             // Ensure bond requirement met
             let required = IssuerBondAmount::<T>::get();
             if !required.is_zero() {
-                ensure!(IssuerBonds::<T>::get(attr_e, issuer.clone()) >= required, Error::<T>::BondInsufficient);
+                ensure!(
+                    IssuerBonds::<T>::get(attr_e, issuer.clone()) >= required,
+                    Error::<T>::BondInsufficient
+                );
             }
             // I-4 FIX: Prevent duplicate issuer registration
             match attr_e {
                 AttributeType::Ssn => {
                     SsnIssuers::<T>::try_mutate(|v| {
                         ensure!(!v.contains(&issuer), Error::<T>::AlreadyAttested);
-                        v.try_push(issuer.clone()).map_err(|_| Error::<T>::TooManyAccounts)
+                        v.try_push(issuer.clone())
+                            .map_err(|_| Error::<T>::TooManyAccounts)
                     })?;
                 }
                 AttributeType::Passport => {
                     PassportIssuers::<T>::try_mutate(|v| {
                         ensure!(!v.contains(&issuer), Error::<T>::AlreadyAttested);
-                        v.try_push(issuer.clone()).map_err(|_| Error::<T>::TooManyAccounts)
+                        v.try_push(issuer.clone())
+                            .map_err(|_| Error::<T>::TooManyAccounts)
                     })?;
                 }
                 AttributeType::Biometrics => {
                     BiometricIssuers::<T>::try_mutate(|v| {
                         ensure!(!v.contains(&issuer), Error::<T>::AlreadyAttested);
-                        v.try_push(issuer.clone()).map_err(|_| Error::<T>::TooManyAccounts)
+                        v.try_push(issuer.clone())
+                            .map_err(|_| Error::<T>::TooManyAccounts)
                     })?;
                 }
             }
@@ -659,19 +833,38 @@ pub mod pallet {
         /// Admin: remove an issuer
         #[pallet::call_index(4)]
         #[pallet::weight(T::WeightInfo::admin_simple())]
-        pub fn remove_issuer(origin: OriginFor<T>, attr: u8, issuer: T::AccountId) -> DispatchResult {
+        pub fn remove_issuer(
+            origin: OriginFor<T>,
+            attr: u8,
+            issuer: T::AccountId,
+        ) -> DispatchResult {
             T::AdminOrigin::ensure_origin(origin)?;
             let attr_e = AttributeType::from(attr);
             let removed = match attr_e {
-                AttributeType::Ssn => {
-                    SsnIssuers::<T>::mutate(|v| { if let Some(pos) = v.iter().position(|x| x == &issuer) { v.swap_remove(pos); true } else { false } })
-                }
-                AttributeType::Passport => {
-                    PassportIssuers::<T>::mutate(|v| { if let Some(pos) = v.iter().position(|x| x == &issuer) { v.swap_remove(pos); true } else { false } })
-                }
-                AttributeType::Biometrics => {
-                    BiometricIssuers::<T>::mutate(|v| { if let Some(pos) = v.iter().position(|x| x == &issuer) { v.swap_remove(pos); true } else { false } })
-                }
+                AttributeType::Ssn => SsnIssuers::<T>::mutate(|v| {
+                    if let Some(pos) = v.iter().position(|x| x == &issuer) {
+                        v.swap_remove(pos);
+                        true
+                    } else {
+                        false
+                    }
+                }),
+                AttributeType::Passport => PassportIssuers::<T>::mutate(|v| {
+                    if let Some(pos) = v.iter().position(|x| x == &issuer) {
+                        v.swap_remove(pos);
+                        true
+                    } else {
+                        false
+                    }
+                }),
+                AttributeType::Biometrics => BiometricIssuers::<T>::mutate(|v| {
+                    if let Some(pos) = v.iter().position(|x| x == &issuer) {
+                        v.swap_remove(pos);
+                        true
+                    } else {
+                        false
+                    }
+                }),
             };
             ensure!(removed, Error::<T>::NotAuthorizedIssuer);
             Self::deposit_event(Event::IssuerRemoved { attr, issuer });
@@ -681,7 +874,11 @@ pub mod pallet {
         /// Admin: update standards version
         #[pallet::call_index(5)]
         #[pallet::weight(T::WeightInfo::admin_simple())]
-        pub fn set_standard_version(origin: OriginFor<T>, attr: u8, version: u32) -> DispatchResult {
+        pub fn set_standard_version(
+            origin: OriginFor<T>,
+            attr: u8,
+            version: u32,
+        ) -> DispatchResult {
             T::AdminOrigin::ensure_origin(origin)?;
             // I-5 FIX: Return error for Biometrics instead of silent no-op
             match AttributeType::from(attr) {
@@ -689,7 +886,7 @@ pub mod pallet {
                 AttributeType::Passport => PassportStandardVersion::<T>::put(version),
                 AttributeType::Biometrics => {
                     return Err(Error::<T>::NoAttestation.into()); // No BiometricsStandardVersion storage exists
-                },
+                }
             }
             Self::deposit_event(Event::StandardVersionUpdated { attr, version });
             Ok(())
@@ -708,7 +905,10 @@ pub mod pallet {
         /// Admin: set issuer bond requirement (0 disables)
         #[pallet::call_index(7)]
         #[pallet::weight(T::WeightInfo::admin_simple())]
-        pub fn set_issuer_bond_amount(origin: OriginFor<T>, amount: BalanceOf<T>) -> DispatchResult {
+        pub fn set_issuer_bond_amount(
+            origin: OriginFor<T>,
+            amount: BalanceOf<T>,
+        ) -> DispatchResult {
             T::AdminOrigin::ensure_origin(origin)?;
             IssuerBondAmount::<T>::put(amount);
             Self::deposit_event(Event::IssuerBondAmountUpdated { amount });
@@ -730,24 +930,33 @@ pub mod pallet {
             RateMaxPerWindowSsn::<T>::put(ssn);
             RateMaxPerWindowPassport::<T>::put(passport);
             RateMaxPerWindowBiometrics::<T>::put(biometrics);
-            Self::deposit_event(Event::RateLimitUpdated { window, ssn, passport, biometrics });
+            Self::deposit_event(Event::RateLimitUpdated {
+                window,
+                ssn,
+                passport,
+                biometrics,
+            });
             Ok(())
         }
 
         /// Admin: pause/resume the pallet
-    #[pallet::call_index(9)]
+        #[pallet::call_index(9)]
         #[pallet::weight(T::WeightInfo::admin_simple())]
         pub fn set_pause(origin: OriginFor<T>, paused: bool) -> DispatchResult {
             T::AdminOrigin::ensure_origin(origin)?;
             GlobalPaused::<T>::put(paused);
-            if paused { Self::deposit_event(Event::Paused); } else { Self::deposit_event(Event::Resumed); }
+            if paused {
+                Self::deposit_event(Event::Paused);
+            } else {
+                Self::deposit_event(Event::Resumed);
+            }
             Ok(())
         }
 
         /// Issuer: issue SSN attestation.
         /// The `hash` must be computed OFF-CHAIN using Argon2id(secret_salt || ssn).
         /// The salt must NEVER be submitted on-chain (P0-01: SSN brute-force prevention).
-    #[pallet::call_index(10)]
+        #[pallet::call_index(10)]
         #[pallet::weight(T::WeightInfo::issue_attestation())]
         pub fn issue_ssn(
             origin: OriginFor<T>,
@@ -757,12 +966,23 @@ pub mod pallet {
             format_ok: bool,
         ) -> DispatchResult {
             let issuer = ensure_signed(origin)?;
-            ensure!(Self::is_authorized_issuer(AttributeType::Ssn, &issuer), Error::<T>::NotAuthorizedIssuer);
-            ensure!(!FlaggedIssuers::<T>::get(AttributeType::Ssn, issuer.clone()), Error::<T>::IssuerFlagged);
+            ensure!(
+                Self::is_authorized_issuer(AttributeType::Ssn, &issuer),
+                Error::<T>::NotAuthorizedIssuer
+            );
+            ensure!(
+                !FlaggedIssuers::<T>::get(AttributeType::Ssn, issuer.clone()),
+                Error::<T>::IssuerFlagged
+            );
             Self::ensure_not_paused()?;
             Self::check_and_bump_rate(AttributeType::Ssn, &issuer)?;
             let id = IdentityOf::<T>::get(&target).ok_or(Error::<T>::IdentityNotFound)?;
-            ensure!(SsnHashIndex::<T>::get(hash).map(|x| x == id).unwrap_or(true), Error::<T>::HashAlreadyTaken);
+            ensure!(
+                SsnHashIndex::<T>::get(hash)
+                    .map(|x| x == id)
+                    .unwrap_or(true),
+                Error::<T>::HashAlreadyTaken
+            );
 
             let now = Self::now();
             let (valid, grace) = Self::validity_windows();
@@ -788,12 +1008,16 @@ pub mod pallet {
             SsnAttestations::<T>::insert(id, att);
             SsnHashIndex::<T>::insert(hash, id);
             Self::append_history(id, AttributeType::Ssn, HistoryAction::Issued);
-            Self::deposit_event(Event::Attested { identity: id, attr: AttributeType::Ssn as u8, issuer });
+            Self::deposit_event(Event::Attested {
+                identity: id,
+                attr: AttributeType::Ssn as u8,
+                issuer,
+            });
             Ok(())
         }
 
         /// Issuer: issue Passport attestation
-    #[pallet::call_index(11)]
+        #[pallet::call_index(11)]
         #[pallet::weight(T::WeightInfo::issue_attestation())]
         pub fn issue_passport(
             origin: OriginFor<T>,
@@ -803,12 +1027,23 @@ pub mod pallet {
             format_ok: bool,
         ) -> DispatchResult {
             let issuer = ensure_signed(origin)?;
-            ensure!(Self::is_authorized_issuer(AttributeType::Passport, &issuer), Error::<T>::NotAuthorizedIssuer);
-            ensure!(!FlaggedIssuers::<T>::get(AttributeType::Passport, issuer.clone()), Error::<T>::IssuerFlagged);
+            ensure!(
+                Self::is_authorized_issuer(AttributeType::Passport, &issuer),
+                Error::<T>::NotAuthorizedIssuer
+            );
+            ensure!(
+                !FlaggedIssuers::<T>::get(AttributeType::Passport, issuer.clone()),
+                Error::<T>::IssuerFlagged
+            );
             Self::ensure_not_paused()?;
             Self::check_and_bump_rate(AttributeType::Passport, &issuer)?;
             let id = IdentityOf::<T>::get(&target).ok_or(Error::<T>::IdentityNotFound)?;
-            ensure!(PassportHashIndex::<T>::get(hash).map(|x| x == id).unwrap_or(true), Error::<T>::HashAlreadyTaken);
+            ensure!(
+                PassportHashIndex::<T>::get(hash)
+                    .map(|x| x == id)
+                    .unwrap_or(true),
+                Error::<T>::HashAlreadyTaken
+            );
 
             let now = Self::now();
             let (valid, grace) = Self::validity_windows();
@@ -834,12 +1069,16 @@ pub mod pallet {
             PassportAttestations::<T>::insert(id, att);
             PassportHashIndex::<T>::insert(hash, id);
             Self::append_history(id, AttributeType::Passport, HistoryAction::Issued);
-            Self::deposit_event(Event::Attested { identity: id, attr: AttributeType::Passport as u8, issuer });
+            Self::deposit_event(Event::Attested {
+                identity: id,
+                attr: AttributeType::Passport as u8,
+                issuer,
+            });
             Ok(())
         }
 
         /// Issuer: issue Biometrics attestation (optional issuer set)
-    #[pallet::call_index(12)]
+        #[pallet::call_index(12)]
         #[pallet::weight(T::WeightInfo::issue_attestation())]
         pub fn issue_biometrics(
             origin: OriginFor<T>,
@@ -847,8 +1086,14 @@ pub mod pallet {
             anchor: BoundedVec<u8, T::MaxAnchorLen>,
         ) -> DispatchResult {
             let issuer = ensure_signed(origin)?;
-            ensure!(Self::is_authorized_issuer(AttributeType::Biometrics, &issuer), Error::<T>::NotAuthorizedIssuer);
-            ensure!(!FlaggedIssuers::<T>::get(AttributeType::Biometrics, issuer.clone()), Error::<T>::IssuerFlagged);
+            ensure!(
+                Self::is_authorized_issuer(AttributeType::Biometrics, &issuer),
+                Error::<T>::NotAuthorizedIssuer
+            );
+            ensure!(
+                !FlaggedIssuers::<T>::get(AttributeType::Biometrics, issuer.clone()),
+                Error::<T>::IssuerFlagged
+            );
             Self::ensure_not_paused()?;
             Self::check_and_bump_rate(AttributeType::Biometrics, &issuer)?;
             let id = IdentityOf::<T>::get(&target).ok_or(Error::<T>::IdentityNotFound)?;
@@ -869,12 +1114,16 @@ pub mod pallet {
             };
             BiometricAttestations::<T>::insert(id, att);
             Self::append_history(id, AttributeType::Biometrics, HistoryAction::Issued);
-            Self::deposit_event(Event::Attested { identity: id, attr: AttributeType::Biometrics as u8, issuer });
+            Self::deposit_event(Event::Attested {
+                identity: id,
+                attr: AttributeType::Biometrics as u8,
+                issuer,
+            });
             Ok(())
         }
 
         /// Revoke an attribute attestation (governance or councils)
-    #[pallet::call_index(13)]
+        #[pallet::call_index(13)]
         #[pallet::weight(T::WeightInfo::revoke())]
         pub fn revoke(origin: OriginFor<T>, account: T::AccountId, attr: u8) -> DispatchResult {
             T::RevokeOrigin::ensure_origin(origin)?;
@@ -911,15 +1160,35 @@ pub mod pallet {
         }
 
         /// Suspend an attribute (temporarily disable)
-    #[pallet::call_index(14)]
+        #[pallet::call_index(14)]
         #[pallet::weight(T::WeightInfo::revoke())]
         pub fn suspend(origin: OriginFor<T>, account: T::AccountId, attr: u8) -> DispatchResult {
             T::RevokeOrigin::ensure_origin(origin)?;
             let id = IdentityOf::<T>::get(&account).ok_or(Error::<T>::IdentityNotFound)?;
             match AttributeType::from(attr) {
-                AttributeType::Ssn => SsnAttestations::<T>::try_mutate(id, |a| -> Result<(), DispatchError> { let att = a.as_mut().ok_or(Error::<T>::NoAttestation)?; att.status = AttestationStatus::Suspended; SsnHashIndex::<T>::remove(att.hash); Ok(()) })?,
-                AttributeType::Passport => PassportAttestations::<T>::try_mutate(id, |a| -> Result<(), DispatchError> { let att = a.as_mut().ok_or(Error::<T>::NoAttestation)?; att.status = AttestationStatus::Suspended; PassportHashIndex::<T>::remove(att.hash); Ok(()) })?,
-                AttributeType::Biometrics => BiometricAttestations::<T>::try_mutate(id, |a| -> Result<(), DispatchError> { let att = a.as_mut().ok_or(Error::<T>::NoAttestation)?; att.status = AttestationStatus::Suspended; Ok(()) })?,
+                AttributeType::Ssn => {
+                    SsnAttestations::<T>::try_mutate(id, |a| -> Result<(), DispatchError> {
+                        let att = a.as_mut().ok_or(Error::<T>::NoAttestation)?;
+                        att.status = AttestationStatus::Suspended;
+                        SsnHashIndex::<T>::remove(att.hash);
+                        Ok(())
+                    })?
+                }
+                AttributeType::Passport => {
+                    PassportAttestations::<T>::try_mutate(id, |a| -> Result<(), DispatchError> {
+                        let att = a.as_mut().ok_or(Error::<T>::NoAttestation)?;
+                        att.status = AttestationStatus::Suspended;
+                        PassportHashIndex::<T>::remove(att.hash);
+                        Ok(())
+                    })?
+                }
+                AttributeType::Biometrics => {
+                    BiometricAttestations::<T>::try_mutate(id, |a| -> Result<(), DispatchError> {
+                        let att = a.as_mut().ok_or(Error::<T>::NoAttestation)?;
+                        att.status = AttestationStatus::Suspended;
+                        Ok(())
+                    })?
+                }
             }
             Self::append_history(id, AttributeType::from(attr), HistoryAction::Suspended);
             Self::deposit_event(Event::Suspended { identity: id, attr });
@@ -927,61 +1196,112 @@ pub mod pallet {
         }
 
         /// Issuer self-bond deposit for a specific attribute (must be >= configured bond)
-    #[pallet::call_index(15)]
+        #[pallet::call_index(15)]
         #[pallet::weight(T::WeightInfo::admin_simple())]
         pub fn issuer_deposit_bond(origin: OriginFor<T>, attr: u8) -> DispatchResult {
             let issuer = ensure_signed(origin)?;
             let attr_e = AttributeType::from(attr);
             let required = IssuerBondAmount::<T>::get();
-            if required.is_zero() { return Ok(()); }
+            if required.is_zero() {
+                return Ok(());
+            }
             let current = IssuerBonds::<T>::get(attr_e, issuer.clone());
-            if current >= required { return Ok(()); }
+            if current >= required {
+                return Ok(());
+            }
             let diff = required - current;
-            T::Currency::transfer(&issuer, &Self::account_id(), diff, ExistenceRequirement::KeepAlive)?;
+            T::Currency::transfer(
+                &issuer,
+                &Self::account_id(),
+                diff,
+                ExistenceRequirement::KeepAlive,
+            )?;
             IssuerBonds::<T>::insert(attr_e, issuer.clone(), required);
-            Self::deposit_event(Event::IssuerBondDeposited { attr, issuer, amount: required });
+            Self::deposit_event(Event::IssuerBondDeposited {
+                attr,
+                issuer,
+                amount: required,
+            });
             Ok(())
         }
 
         /// Issuer withdraws bond (must not be currently authorized or flagged)
-    #[pallet::call_index(16)]
+        #[pallet::call_index(16)]
         #[pallet::weight(T::WeightInfo::admin_simple())]
         pub fn issuer_withdraw_bond(origin: OriginFor<T>, attr: u8) -> DispatchResult {
             let issuer = ensure_signed(origin)?;
             let attr_e = AttributeType::from(attr);
             // cannot be currently authorized
-            ensure!(!Self::is_authorized_issuer(attr_e, &issuer), Error::<T>::CannotWithdrawWhileAuthorized);
-            ensure!(!FlaggedIssuers::<T>::get(attr_e, issuer.clone()), Error::<T>::IssuerFlagged);
+            ensure!(
+                !Self::is_authorized_issuer(attr_e, &issuer),
+                Error::<T>::CannotWithdrawWhileAuthorized
+            );
+            ensure!(
+                !FlaggedIssuers::<T>::get(attr_e, issuer.clone()),
+                Error::<T>::IssuerFlagged
+            );
             let amount = IssuerBonds::<T>::get(attr_e, issuer.clone());
             ensure!(!amount.is_zero(), Error::<T>::BondNotFound);
-            T::Currency::transfer(&Self::account_id(), &issuer, amount, ExistenceRequirement::KeepAlive)?;
+            T::Currency::transfer(
+                &Self::account_id(),
+                &issuer,
+                amount,
+                ExistenceRequirement::KeepAlive,
+            )?;
             IssuerBonds::<T>::remove(attr_e, issuer.clone());
-            Self::deposit_event(Event::IssuerBondWithdrawn { attr, issuer, amount });
+            Self::deposit_event(Event::IssuerBondWithdrawn {
+                attr,
+                issuer,
+                amount,
+            });
             Ok(())
         }
 
         /// Admin: flag/unflag issuer (cannot issue when flagged)
-    #[pallet::call_index(17)]
+        #[pallet::call_index(17)]
         #[pallet::weight(T::WeightInfo::admin_simple())]
-        pub fn flag_issuer(origin: OriginFor<T>, attr: u8, issuer: T::AccountId, flagged: bool) -> DispatchResult {
+        pub fn flag_issuer(
+            origin: OriginFor<T>,
+            attr: u8,
+            issuer: T::AccountId,
+            flagged: bool,
+        ) -> DispatchResult {
             T::AdminOrigin::ensure_origin(origin)?;
             FlaggedIssuers::<T>::insert(AttributeType::from(attr), issuer.clone(), flagged);
-            Self::deposit_event(Event::IssuerFlagged { attr, issuer, flagged });
+            Self::deposit_event(Event::IssuerFlagged {
+                attr,
+                issuer,
+                flagged,
+            });
             Ok(())
         }
 
         /// Admin: slash issuer bond, funds transferred to Treasury
-    #[pallet::call_index(18)]
+        #[pallet::call_index(18)]
         #[pallet::weight(T::WeightInfo::admin_simple())]
-        pub fn slash_issuer_bond(origin: OriginFor<T>, attr: u8, issuer: T::AccountId, amount: BalanceOf<T>) -> DispatchResult {
+        pub fn slash_issuer_bond(
+            origin: OriginFor<T>,
+            attr: u8,
+            issuer: T::AccountId,
+            amount: BalanceOf<T>,
+        ) -> DispatchResult {
             T::AdminOrigin::ensure_origin(origin)?;
             let attr_e = AttributeType::from(attr);
             let current = IssuerBonds::<T>::get(attr_e, issuer.clone());
             ensure!(current >= amount, Error::<T>::BondInsufficient);
             let new_bal = current - amount;
             IssuerBonds::<T>::insert(attr_e, issuer.clone(), new_bal);
-            T::Currency::transfer(&Self::account_id(), &T::Treasury::get(), amount, ExistenceRequirement::KeepAlive)?;
-            Self::deposit_event(Event::IssuerBondSlashed { attr, issuer, amount });
+            T::Currency::transfer(
+                &Self::account_id(),
+                &T::Treasury::get(),
+                amount,
+                ExistenceRequirement::KeepAlive,
+            )?;
+            Self::deposit_event(Event::IssuerBondSlashed {
+                attr,
+                issuer,
+                amount,
+            });
             Ok(())
         }
 
@@ -998,7 +1318,11 @@ pub mod pallet {
             T::AdminOrigin::ensure_origin(origin)?;
             // flag/unflag
             FlaggedIssuers::<T>::insert(AttributeType::from(attr), issuer.clone(), flag);
-            Self::deposit_event(Event::IssuerFlagged { attr, issuer: issuer.clone(), flagged: flag });
+            Self::deposit_event(Event::IssuerFlagged {
+                attr,
+                issuer: issuer.clone(),
+                flagged: flag,
+            });
             // optional slash
             if !slash_amount.is_zero() {
                 let attr_e = AttributeType::from(attr);
@@ -1006,8 +1330,17 @@ pub mod pallet {
                 ensure!(current >= slash_amount, Error::<T>::BondInsufficient);
                 let new_bal = current - slash_amount;
                 IssuerBonds::<T>::insert(attr_e, issuer.clone(), new_bal);
-                T::Currency::transfer(&Self::account_id(), &T::Treasury::get(), slash_amount, ExistenceRequirement::KeepAlive)?;
-                Self::deposit_event(Event::IssuerBondSlashed { attr, issuer, amount: slash_amount });
+                T::Currency::transfer(
+                    &Self::account_id(),
+                    &T::Treasury::get(),
+                    slash_amount,
+                    ExistenceRequirement::KeepAlive,
+                )?;
+                Self::deposit_event(Event::IssuerBondSlashed {
+                    attr,
+                    issuer,
+                    amount: slash_amount,
+                });
             }
             Ok(())
         }
@@ -1027,35 +1360,64 @@ pub mod pallet {
 
     impl<T: Config> BelizeKyc<T::AccountId, BlockNumberFor<T>> for Pallet<T> {
         fn is_kyc_verified(who: &T::AccountId, level: KycLevel, now: BlockNumberFor<T>) -> bool {
-            let Some(id) = IdentityOf::<T>::get(who) else { return false };
+            let Some(id) = IdentityOf::<T>::get(who) else {
+                return false;
+            };
 
             let is_valid = |att: &Attestation<T>| -> bool {
-                if att.status != AttestationStatus::Active { return false; }
+                if att.status != AttestationStatus::Active {
+                    return false;
+                }
                 now <= att.valid_until
             };
 
             match level {
                 KycLevel::L0 => true,
-                KycLevel::L1 => SsnAttestations::<T>::get(id).as_ref().map(&is_valid).unwrap_or(false),
+                KycLevel::L1 => SsnAttestations::<T>::get(id)
+                    .as_ref()
+                    .map(&is_valid)
+                    .unwrap_or(false),
                 KycLevel::L2 => {
-                    let ssn_ok = SsnAttestations::<T>::get(id).as_ref().map(&is_valid).unwrap_or(false);
-                    let pass_ok = PassportAttestations::<T>::get(id).as_ref().map(&is_valid).unwrap_or(false);
+                    let ssn_ok = SsnAttestations::<T>::get(id)
+                        .as_ref()
+                        .map(&is_valid)
+                        .unwrap_or(false);
+                    let pass_ok = PassportAttestations::<T>::get(id)
+                        .as_ref()
+                        .map(&is_valid)
+                        .unwrap_or(false);
                     ssn_ok && pass_ok
                 }
                 KycLevel::L3 => {
                     let l2 = {
-                        let ssn_ok = SsnAttestations::<T>::get(id).as_ref().map(&is_valid).unwrap_or(false);
-                        let pass_ok = PassportAttestations::<T>::get(id).as_ref().map(&is_valid).unwrap_or(false);
+                        let ssn_ok = SsnAttestations::<T>::get(id)
+                            .as_ref()
+                            .map(&is_valid)
+                            .unwrap_or(false);
+                        let pass_ok = PassportAttestations::<T>::get(id)
+                            .as_ref()
+                            .map(&is_valid)
+                            .unwrap_or(false);
                         ssn_ok && pass_ok
                     };
-                    let bio_ok = BiometricAttestations::<T>::get(id).as_ref().map(is_valid).unwrap_or(false);
+                    let bio_ok = BiometricAttestations::<T>::get(id)
+                        .as_ref()
+                        .map(is_valid)
+                        .unwrap_or(false);
                     l2 && bio_ok
                 }
             }
         }
 
-        fn is_kyc_verified_or_grace(who: &T::AccountId, level: KycLevel, now: BlockNumberFor<T>) -> bool {
-            matches!(Self::kyc_state(who, level, now), KycState::Valid | KycState::Grace)
+        fn is_kyc_verified_or_grace(
+            who: &T::AccountId,
+            level: KycLevel,
+            now: BlockNumberFor<T>,
+        ) -> bool {
+            matches!(
+                Self::kyc_state(who, level, now),
+                KycState::Valid | KycState::Grace
+            )
         }
     }
 
@@ -1075,15 +1437,15 @@ pub mod pallet {
             if Self::kyc_state(who, KycLevel::L1, now) == KycState::Valid {
                 return Some(1);
             }
-            
+
             // Fallback to Oracle for external verification (supplementary)
             if let Some(oracle_level) = T::Oracle::get_kyc_level(who) {
                 return Some(oracle_level);
             }
-            
+
             Some(0) // L0 - no verification
         }
-        
+
         /// Check if account meets KYC requirement (for cross-pallet use)
         /// M51 FIX: On-chain verification takes priority over Oracle
         pub fn meets_kyc_requirement_level(who: &T::AccountId, required_level: u8) -> bool {
@@ -1095,18 +1457,21 @@ pub mod pallet {
                 2 => KycLevel::L2,
                 _ => KycLevel::L3,
             };
-            if matches!(Self::kyc_state(who, kyc_level, now), KycState::Valid | KycState::Grace) {
+            if matches!(
+                Self::kyc_state(who, kyc_level, now),
+                KycState::Valid | KycState::Grace
+            ) {
                 return true;
             }
-            
+
             // Fallback to Oracle as supplementary verification
             if T::Oracle::meets_kyc_requirement(who, required_level) {
                 return true;
             }
-            
+
             false
         }
-        
+
         /// Check if account is sanctioned (via Oracle).
         /// Resolves identity and checks ALL linked accounts — a sanctioned
         /// linked account taints the entire identity (MaxAccountsPerIdentity=5).
@@ -1124,11 +1489,19 @@ pub mod pallet {
 
         /// Return KYC state including grace handling (Valid, Grace, Invalid)
         pub fn kyc_state(who: &T::AccountId, level: KycLevel, now: BlockNumberFor<T>) -> KycState {
-            let Some(id) = IdentityOf::<T>::get(who) else { return KycState::Invalid };
+            let Some(id) = IdentityOf::<T>::get(who) else {
+                return KycState::Invalid;
+            };
             let state_of = |att: &Attestation<T>| -> KycState {
-                if att.status != AttestationStatus::Active { return KycState::Invalid; }
-                if now <= att.valid_until { return KycState::Valid; }
-                if now <= att.grace_until { return KycState::Grace; }
+                if att.status != AttestationStatus::Active {
+                    return KycState::Invalid;
+                }
+                if now <= att.valid_until {
+                    return KycState::Valid;
+                }
+                if now <= att.grace_until {
+                    return KycState::Grace;
+                }
                 KycState::Invalid
             };
             let combine = |a: KycState, b: KycState| -> KycState {
@@ -1141,19 +1514,37 @@ pub mod pallet {
             };
             match level {
                 KycLevel::L0 => KycState::Valid,
-                KycLevel::L1 => SsnAttestations::<T>::get(id).as_ref().map(state_of).unwrap_or(KycState::Invalid),
+                KycLevel::L1 => SsnAttestations::<T>::get(id)
+                    .as_ref()
+                    .map(state_of)
+                    .unwrap_or(KycState::Invalid),
                 KycLevel::L2 => {
-                    let ssn = SsnAttestations::<T>::get(id).as_ref().map(state_of).unwrap_or(KycState::Invalid);
-                    let pass = PassportAttestations::<T>::get(id).as_ref().map(state_of).unwrap_or(KycState::Invalid);
+                    let ssn = SsnAttestations::<T>::get(id)
+                        .as_ref()
+                        .map(state_of)
+                        .unwrap_or(KycState::Invalid);
+                    let pass = PassportAttestations::<T>::get(id)
+                        .as_ref()
+                        .map(state_of)
+                        .unwrap_or(KycState::Invalid);
                     combine(ssn, pass)
                 }
                 KycLevel::L3 => {
                     let l2 = {
-                        let ssn = SsnAttestations::<T>::get(id).as_ref().map(state_of).unwrap_or(KycState::Invalid);
-                        let pass = PassportAttestations::<T>::get(id).as_ref().map(state_of).unwrap_or(KycState::Invalid);
+                        let ssn = SsnAttestations::<T>::get(id)
+                            .as_ref()
+                            .map(state_of)
+                            .unwrap_or(KycState::Invalid);
+                        let pass = PassportAttestations::<T>::get(id)
+                            .as_ref()
+                            .map(state_of)
+                            .unwrap_or(KycState::Invalid);
                         combine(ssn, pass)
                     };
-                    let bio = BiometricAttestations::<T>::get(id).as_ref().map(state_of).unwrap_or(KycState::Invalid);
+                    let bio = BiometricAttestations::<T>::get(id)
+                        .as_ref()
+                        .map(state_of)
+                        .unwrap_or(KycState::Invalid);
                     combine(l2, bio)
                 }
             }
@@ -1166,8 +1557,13 @@ pub mod pallet {
             // Convert u128 to decimal string
             let mut n = id;
             let mut digits: sp_std::vec::Vec<u8> = vec![];
-            if n == 0 { digits.push(b'0'); }
-            while n > 0 { digits.push(b'0' + (n % 10) as u8); n /= 10; }
+            if n == 0 {
+                digits.push(b'0');
+            }
+            while n > 0 {
+                digits.push(b'0' + (n % 10) as u8);
+                n /= 10;
+            }
             digits.reverse();
             bytes.extend_from_slice(&digits);
             BoundedVec::try_from(bytes).ok()

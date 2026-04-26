@@ -2,19 +2,20 @@
 
 use super::*;
 use crate::mock::*;
-use frame_support::{assert_ok, assert_noop};
+use frame_support::{assert_noop, assert_ok};
 
 #[test]
 fn pause_and_resume_blocks_user_flows() {
     let mut ext = new_test_ext();
     ext.execute_with(|| {
         // ensure default pair exists (DALLA, BBZD) => (0,1)
-        assert!(BelizeX::trading_pairs((0,1)).is_some());
+        assert!(BelizeX::trading_pairs((0, 1)).is_some());
 
         // Add liquidity should work when not paused
         assert_ok!(BelizeX::add_liquidity(
             RuntimeOrigin::signed(1),
-            0, 1,
+            0,
+            1,
             1_000u128,
             1_000u128,
             1
@@ -24,16 +25,22 @@ fn pause_and_resume_blocks_user_flows() {
         assert_ok!(BelizeX::pause_global(RuntimeOrigin::root()));
 
         // Adding liquidity now should fail with Paused
-        assert_noop!(BelizeX::add_liquidity(
-            RuntimeOrigin::signed(1), 0, 1, 10u128, 10u128, 1
-        ), Error::<Test>::Paused);
+        assert_noop!(
+            BelizeX::add_liquidity(RuntimeOrigin::signed(1), 0, 1, 10u128, 10u128, 1),
+            Error::<Test>::Paused
+        );
 
         // Resume globally
         assert_ok!(BelizeX::resume_global(RuntimeOrigin::root()));
 
         // Add liquidity should succeed again
         assert_ok!(BelizeX::add_liquidity(
-            RuntimeOrigin::signed(1), 0, 1, 10u128, 10u128, 1
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            10u128,
+            10u128,
+            1
         ));
     });
 }
@@ -43,13 +50,14 @@ fn per_pair_toggle_enforced() {
     let mut ext = new_test_ext();
     ext.execute_with(|| {
         // Ensure default pair exists and is active
-        let mut pair = BelizeX::trading_pairs((0,1)).expect("pair exists");
+        let mut pair = BelizeX::trading_pairs((0, 1)).expect("pair exists");
         assert!(pair.active);
 
         // Add liquidity first so we can test trading
         assert_ok!(BelizeX::add_liquidity(
             RuntimeOrigin::signed(1),
-            0, 1,
+            0,
+            1,
             1_000u128,
             1_000u128,
             1
@@ -57,18 +65,24 @@ fn per_pair_toggle_enforced() {
 
         // Deactivate via governance
         assert_ok!(BelizeX::set_pair_status(RuntimeOrigin::root(), 0, 1, false));
-        pair = BelizeX::trading_pairs((0,1)).unwrap();
+        pair = BelizeX::trading_pairs((0, 1)).unwrap();
         assert!(!pair.active);
 
         // Try to trade should fail with PairNotActive
-        assert_noop!(BelizeX::execute_trade(
-            RuntimeOrigin::signed(1), 0, 1, 100u128, 1, false
-        ), Error::<Test>::PairNotActive);
+        assert_noop!(
+            BelizeX::execute_trade(RuntimeOrigin::signed(1), 0, 1, 100u128, 1, false),
+            Error::<Test>::PairNotActive
+        );
 
         // Reactivate and trade should proceed to at least pass dispatch
         assert_ok!(BelizeX::set_pair_status(RuntimeOrigin::root(), 0, 1, true));
         assert_ok!(BelizeX::execute_trade(
-            RuntimeOrigin::signed(1), 0, 1, 100u128, 0, false
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            100u128,
+            0,
+            false
         ));
     });
 }
@@ -80,7 +94,8 @@ fn remove_liquidity_returns_funds() {
         // Add liquidity first so we have LP tokens to remove.
         assert_ok!(BelizeX::add_liquidity(
             RuntimeOrigin::signed(1),
-            0, 1,
+            0,
+            1,
             10_000u128,
             10_000u128,
             1,
@@ -94,7 +109,8 @@ fn remove_liquidity_returns_funds() {
         // Remove all LP tokens.
         assert_ok!(BelizeX::remove_liquidity(
             RuntimeOrigin::signed(1),
-            0, 1,
+            0,
+            1,
             lp,
             0, // min_base — accept any
             0, // min_quote — accept any
@@ -102,7 +118,10 @@ fn remove_liquidity_returns_funds() {
 
         // Balance should have recovered (minus any rounding).
         let balance_after = Balances::free_balance(1);
-        assert!(balance_after >= balance_before, "funds should be returned on remove_liquidity");
+        assert!(
+            balance_after >= balance_before,
+            "funds should be returned on remove_liquidity"
+        );
         assert_eq!(BelizeX::get_lp_balance(&1), 0);
     });
 }
@@ -113,13 +132,7 @@ fn remove_liquidity_fails_with_insufficient_lp_tokens() {
     ext.execute_with(|| {
         // Account 2 never added liquidity.
         assert_noop!(
-            BelizeX::remove_liquidity(
-                RuntimeOrigin::signed(2),
-                0, 1,
-                1_000u128,
-                0,
-                0,
-            ),
+            BelizeX::remove_liquidity(RuntimeOrigin::signed(2), 0, 1, 1_000u128, 0, 0,),
             Error::<Test>::InsufficientLPTokens
         );
     });
@@ -132,7 +145,8 @@ fn cancel_order_removes_from_book() {
         // Place a limit order first.
         assert_ok!(BelizeX::place_limit_order(
             RuntimeOrigin::signed(1),
-            0, 1,
+            0,
+            1,
             OrderType::Buy.as_u8(),
             500, // price
             1,   // amount
@@ -157,7 +171,8 @@ fn cancel_order_fails_for_non_creator() {
     ext.execute_with(|| {
         assert_ok!(BelizeX::place_limit_order(
             RuntimeOrigin::signed(1),
-            0, 1,
+            0,
+            1,
             OrderType::Buy.as_u8(),
             500,
             1,
@@ -181,7 +196,8 @@ fn add_liquidity_increases_pair_reserves() {
 
         assert_ok!(BelizeX::add_liquidity(
             RuntimeOrigin::signed(2),
-            0, 1,
+            0,
+            1,
             5_000u128,
             5_000u128,
             1,
@@ -199,7 +215,8 @@ fn add_liquidity_zero_amount_fails() {
         assert_noop!(
             BelizeX::add_liquidity(
                 RuntimeOrigin::signed(1),
-                0, 1,
+                0,
+                1,
                 0u128, // zero base
                 1_000u128,
                 1,
@@ -215,7 +232,12 @@ fn global_pause_prevents_remove_liquidity() {
     ext.execute_with(|| {
         // Add liquidity, then pause.
         assert_ok!(BelizeX::add_liquidity(
-            RuntimeOrigin::signed(1), 0, 1, 1_000u128, 1_000u128, 1,
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            1_000u128,
+            1_000u128,
+            1,
         ));
         assert_ok!(BelizeX::pause_global(RuntimeOrigin::root()));
 
@@ -223,9 +245,7 @@ fn global_pause_prevents_remove_liquidity() {
         assert!(lp > 0);
 
         assert_noop!(
-            BelizeX::remove_liquidity(
-                RuntimeOrigin::signed(1), 0, 1, lp, 0, 0,
-            ),
+            BelizeX::remove_liquidity(RuntimeOrigin::signed(1), 0, 1, lp, 0, 0,),
             Error::<Test>::Paused
         );
     });
@@ -242,7 +262,13 @@ fn kyc_gating_blocks_when_not_verified() {
         // Since our MockKyc returns true, we check that Paused logic works and KYC path is covered by type.
         // For completeness, we still assert that placing an order with active pair works (requires KYC in code path).
         assert_ok!(BelizeX::place_limit_order(
-            RuntimeOrigin::signed(1), 0, 1, OrderType::Buy.as_u8(), 100, 1, 10
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            OrderType::Buy.as_u8(),
+            100,
+            1,
+            10
         ));
     });
 }
@@ -255,7 +281,12 @@ fn create_trading_pair_works() {
         assert!(BelizeX::trading_pairs((5u8, 6u8)).is_none());
 
         // Root creates a new pair with fee_rate = 50.
-        assert_ok!(BelizeX::create_trading_pair(RuntimeOrigin::root(), 5, 6, 50));
+        assert_ok!(BelizeX::create_trading_pair(
+            RuntimeOrigin::root(),
+            5,
+            6,
+            50
+        ));
 
         // Verify it now exists with correct fee rate and is active.
         let pair = BelizeX::trading_pairs((5u8, 6u8)).expect("pair must exist after creation");
@@ -303,12 +334,22 @@ fn execute_trade_tourism_works() {
 
         // Seed liquidity into pair (0,1).
         assert_ok!(BelizeX::add_liquidity(
-            RuntimeOrigin::signed(1), 0, 1, 100_000u128, 100_000u128, 1,
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            100_000u128,
+            100_000u128,
+            1,
         ));
 
         // Execute a tourism trade — should receive the discounted fee rate.
         assert_ok!(BelizeX::execute_trade(
-            RuntimeOrigin::signed(1), 0, 1, 500u128, 0, true,
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            500u128,
+            0,
+            true,
         ));
     });
 }
@@ -319,7 +360,12 @@ fn execute_multihop_trade_works() {
     ext.execute_with(|| {
         // Seed liquidity so pair (0,1) has non-zero reserves.
         assert_ok!(BelizeX::add_liquidity(
-            RuntimeOrigin::signed(1), 0, 1, 100_000u128, 100_000u128, 1,
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            100_000u128,
+            100_000u128,
+            1,
         ));
 
         // Execute a single-hop multihop trade: asset 0 → asset 1.
@@ -358,7 +404,8 @@ fn place_limit_order_sell_works() {
         // Place a sell limit order.
         assert_ok!(BelizeX::place_limit_order(
             RuntimeOrigin::signed(1),
-            0, 1,
+            0,
+            1,
             OrderType::Sell.as_u8(),
             200, // price
             50,  // amount
@@ -380,10 +427,11 @@ fn place_limit_order_zero_price_fails() {
         assert_noop!(
             BelizeX::place_limit_order(
                 RuntimeOrigin::signed(1),
-                0, 1,
+                0,
+                1,
                 OrderType::Buy.as_u8(),
-                100,  // amount
-                0,    // price = 0 is invalid
+                100, // amount
+                0,   // price = 0 is invalid
                 10,
             ),
             Error::<Test>::InvalidPrice
@@ -439,8 +487,12 @@ fn add_liquidity_insufficient_balance_fails() {
         // Account 1 has 1_000_000_000_000. Try to add more than that.
         assert_noop!(
             BelizeX::add_liquidity(
-                RuntimeOrigin::signed(1), 0, 1,
-                900_000_000_000u128, 900_000_000_000u128, 0
+                RuntimeOrigin::signed(1),
+                0,
+                1,
+                900_000_000_000u128,
+                900_000_000_000u128,
+                0
             ),
             Error::<Test>::InsufficientBalance
         );
@@ -503,7 +555,12 @@ fn execute_trade_tourism_unauthorized_fails() {
 
         // Seed some liquidity first.
         assert_ok!(BelizeX::add_liquidity(
-            RuntimeOrigin::signed(1), 0, 1, 100_000u128, 100_000u128, 1
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            100_000u128,
+            100_000u128,
+            1
         ));
 
         // Attempt tourism trade without registration.
@@ -520,7 +577,12 @@ fn execute_trade_slippage_exceeded_fails() {
     ext.execute_with(|| {
         // Seed liquidity.
         assert_ok!(BelizeX::add_liquidity(
-            RuntimeOrigin::signed(1), 0, 1, 100_000u128, 100_000u128, 1
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            100_000u128,
+            100_000u128,
+            1
         ));
 
         // Request unrealistically high min_amount_out.
@@ -553,8 +615,13 @@ fn place_limit_order_pair_not_found_fails() {
     ext.execute_with(|| {
         assert_noop!(
             BelizeX::place_limit_order(
-                RuntimeOrigin::signed(1), 9, 8,
-                OrderType::Buy.as_u8(), 100, 50, 10
+                RuntimeOrigin::signed(1),
+                9,
+                8,
+                OrderType::Buy.as_u8(),
+                100,
+                50,
+                10
             ),
             Error::<Test>::PairNotFound
         );
@@ -568,8 +635,13 @@ fn place_limit_order_paused_fails() {
         assert_ok!(BelizeX::pause_global(RuntimeOrigin::root()));
         assert_noop!(
             BelizeX::place_limit_order(
-                RuntimeOrigin::signed(1), 0, 1,
-                OrderType::Buy.as_u8(), 100, 50, 10
+                RuntimeOrigin::signed(1),
+                0,
+                1,
+                OrderType::Buy.as_u8(),
+                100,
+                50,
+                10
             ),
             Error::<Test>::Paused
         );
@@ -583,8 +655,13 @@ fn place_limit_order_tourism_unauthorized_fails() {
         // Account 1 is NOT a tourism trader — TourismBuy requires it.
         assert_noop!(
             BelizeX::place_limit_order(
-                RuntimeOrigin::signed(1), 0, 1,
-                OrderType::TourismBuy.as_u8(), 100, 50, 10
+                RuntimeOrigin::signed(1),
+                0,
+                1,
+                OrderType::TourismBuy.as_u8(),
+                100,
+                50,
+                10
             ),
             Error::<Test>::Unauthorized
         );
@@ -597,8 +674,13 @@ fn place_limit_order_tourism_sell_unauthorized_fails() {
     ext.execute_with(|| {
         assert_noop!(
             BelizeX::place_limit_order(
-                RuntimeOrigin::signed(1), 0, 1,
-                OrderType::TourismSell.as_u8(), 100, 50, 10
+                RuntimeOrigin::signed(1),
+                0,
+                1,
+                OrderType::TourismSell.as_u8(),
+                100,
+                50,
+                10
             ),
             Error::<Test>::Unauthorized
         );
@@ -622,8 +704,13 @@ fn cancel_order_paused_fails() {
     ext.execute_with(|| {
         // Place an order, then pause, then try to cancel.
         assert_ok!(BelizeX::place_limit_order(
-            RuntimeOrigin::signed(1), 0, 1,
-            OrderType::Buy.as_u8(), 500, 1, 10,
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            OrderType::Buy.as_u8(),
+            500,
+            1,
+            10,
         ));
         assert_ok!(BelizeX::pause_global(RuntimeOrigin::root()));
         assert_noop!(
@@ -638,7 +725,12 @@ fn remove_liquidity_zero_lp_tokens_fails() {
     let mut ext = new_test_ext();
     ext.execute_with(|| {
         assert_ok!(BelizeX::add_liquidity(
-            RuntimeOrigin::signed(1), 0, 1, 1_000u128, 1_000u128, 0
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            1_000u128,
+            1_000u128,
+            0
         ));
         assert_noop!(
             BelizeX::remove_liquidity(RuntimeOrigin::signed(1), 0, 1, 0, 0, 0),
@@ -663,7 +755,12 @@ fn remove_liquidity_pair_not_active_fails() {
     let mut ext = new_test_ext();
     ext.execute_with(|| {
         assert_ok!(BelizeX::add_liquidity(
-            RuntimeOrigin::signed(1), 0, 1, 1_000u128, 1_000u128, 0
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            1_000u128,
+            1_000u128,
+            0
         ));
         assert_ok!(BelizeX::set_pair_status(RuntimeOrigin::root(), 0, 1, false));
         let lp = BelizeX::get_lp_balance(&1);
@@ -679,7 +776,12 @@ fn remove_liquidity_slippage_min_base_fails() {
     let mut ext = new_test_ext();
     ext.execute_with(|| {
         assert_ok!(BelizeX::add_liquidity(
-            RuntimeOrigin::signed(1), 0, 1, 10_000u128, 10_000u128, 0
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            10_000u128,
+            10_000u128,
+            0
         ));
         let lp = BelizeX::get_lp_balance(&1);
         assert!(lp > 0);
@@ -696,7 +798,12 @@ fn remove_liquidity_slippage_min_quote_fails() {
     let mut ext = new_test_ext();
     ext.execute_with(|| {
         assert_ok!(BelizeX::add_liquidity(
-            RuntimeOrigin::signed(1), 0, 1, 10_000u128, 10_000u128, 0
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            10_000u128,
+            10_000u128,
+            0
         ));
         let lp = BelizeX::get_lp_balance(&1);
         assert!(lp > 0);
@@ -769,7 +876,11 @@ fn execute_multihop_paused_fails() {
         assert_ok!(BelizeX::pause_global(RuntimeOrigin::root()));
         assert_noop!(
             BelizeX::execute_multihop_trade(
-                RuntimeOrigin::signed(1), vec![0u8, 1u8], 100u128, 0, false
+                RuntimeOrigin::signed(1),
+                vec![0u8, 1u8],
+                100u128,
+                0,
+                false
             ),
             Error::<Test>::Paused
         );
@@ -783,7 +894,11 @@ fn execute_multihop_path_too_long_fails() {
         // Path length > 5 should fail.
         assert_noop!(
             BelizeX::execute_multihop_trade(
-                RuntimeOrigin::signed(1), vec![0, 1, 2, 0, 1, 2], 100u128, 0, false
+                RuntimeOrigin::signed(1),
+                vec![0, 1, 2, 0, 1, 2],
+                100u128,
+                0,
+                false
             ),
             Error::<Test>::SlippageExceeded
         );
@@ -799,13 +914,16 @@ fn create_trading_pair_emits_event() {
     let mut ext = new_test_ext();
     ext.execute_with(|| {
         System::set_block_number(1);
-        assert_ok!(BelizeX::create_trading_pair(RuntimeOrigin::root(), 5, 6, 50));
-        System::assert_last_event(RuntimeEvent::BelizeX(
-            Event::TradingPairCreated {
-                base_asset: 5,
-                quote_asset: 6,
-            }
+        assert_ok!(BelizeX::create_trading_pair(
+            RuntimeOrigin::root(),
+            5,
+            6,
+            50
         ));
+        System::assert_last_event(RuntimeEvent::BelizeX(Event::TradingPairCreated {
+            base_asset: 5,
+            quote_asset: 6,
+        }));
     });
 }
 
@@ -815,18 +933,21 @@ fn add_liquidity_emits_event() {
     ext.execute_with(|| {
         System::set_block_number(1);
         assert_ok!(BelizeX::add_liquidity(
-            RuntimeOrigin::signed(1), 0, 1, 10_000u128, 10_000u128, 0
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            10_000u128,
+            10_000u128,
+            0
         ));
         // sqrt(10_000 * 10_000) = 10_000 LP tokens for initial deposit.
-        System::assert_last_event(RuntimeEvent::BelizeX(
-            Event::LiquidityAdded {
-                provider: 1,
-                pair: (0, 1),
-                base_amount: 10_000,
-                quote_amount: 10_000,
-                lp_tokens: 10_000,
-            }
-        ));
+        System::assert_last_event(RuntimeEvent::BelizeX(Event::LiquidityAdded {
+            provider: 1,
+            pair: (0, 1),
+            base_amount: 10_000,
+            quote_amount: 10_000,
+            lp_tokens: 10_000,
+        }));
     });
 }
 
@@ -836,21 +957,29 @@ fn remove_liquidity_emits_event() {
     ext.execute_with(|| {
         System::set_block_number(1);
         assert_ok!(BelizeX::add_liquidity(
-            RuntimeOrigin::signed(1), 0, 1, 10_000u128, 10_000u128, 0
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            10_000u128,
+            10_000u128,
+            0
         ));
         let lp = BelizeX::get_lp_balance(&1);
         assert_ok!(BelizeX::remove_liquidity(
-            RuntimeOrigin::signed(1), 0, 1, lp, 0, 0
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            lp,
+            0,
+            0
         ));
-        System::assert_last_event(RuntimeEvent::BelizeX(
-            Event::LiquidityRemoved {
-                provider: 1,
-                pair: (0, 1),
-                base_amount: 10_000,
-                quote_amount: 10_000,
-                lp_tokens: lp,
-            }
-        ));
+        System::assert_last_event(RuntimeEvent::BelizeX(Event::LiquidityRemoved {
+            provider: 1,
+            pair: (0, 1),
+            base_amount: 10_000,
+            quote_amount: 10_000,
+            lp_tokens: lp,
+        }));
     });
 }
 
@@ -860,24 +989,32 @@ fn execute_trade_emits_event() {
     ext.execute_with(|| {
         System::set_block_number(1);
         assert_ok!(BelizeX::add_liquidity(
-            RuntimeOrigin::signed(1), 0, 1, 100_000u128, 100_000u128, 1
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            100_000u128,
+            100_000u128,
+            1
         ));
         assert_ok!(BelizeX::execute_trade(
-            RuntimeOrigin::signed(2), 0, 1, 1_000u128, 0, false
+            RuntimeOrigin::signed(2),
+            0,
+            1,
+            1_000u128,
+            0,
+            false
         ));
         // Verify the event is TradeExecuted type.
         // fee = 1000 * 30 / 10000 = 3; after_fee = 997
         // amount_out = 997 * 100000 / (100000 + 997) = 987
-        System::assert_has_event(RuntimeEvent::BelizeX(
-            Event::TradeExecuted {
-                trader: 2,
-                pair: (0, 1),
-                amount_in: 1_000,
-                amount_out: 987,
-                fee_paid: 3,
-                is_tourism_trade: false,
-            }
-        ));
+        System::assert_has_event(RuntimeEvent::BelizeX(Event::TradeExecuted {
+            trader: 2,
+            pair: (0, 1),
+            amount_in: 1_000,
+            amount_out: 987,
+            fee_paid: 3,
+            is_tourism_trade: false,
+        }));
     });
 }
 
@@ -887,19 +1024,22 @@ fn place_limit_order_emits_event() {
     ext.execute_with(|| {
         System::set_block_number(1);
         assert_ok!(BelizeX::place_limit_order(
-            RuntimeOrigin::signed(1), 0, 1,
-            OrderType::Buy.as_u8(), 500, 1, 10,
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            OrderType::Buy.as_u8(),
+            500,
+            1,
+            10,
         ));
-        System::assert_last_event(RuntimeEvent::BelizeX(
-            Event::OrderPlaced {
-                order_id: 0,
-                creator: 1,
-                pair: (0, 1),
-                order_type: OrderType::Buy.as_u8(),
-                amount: 500,
-                price: 1,
-            }
-        ));
+        System::assert_last_event(RuntimeEvent::BelizeX(Event::OrderPlaced {
+            order_id: 0,
+            creator: 1,
+            pair: (0, 1),
+            order_type: OrderType::Buy.as_u8(),
+            amount: 500,
+            price: 1,
+        }));
     });
 }
 
@@ -909,16 +1049,19 @@ fn cancel_order_emits_event() {
     ext.execute_with(|| {
         System::set_block_number(1);
         assert_ok!(BelizeX::place_limit_order(
-            RuntimeOrigin::signed(1), 0, 1,
-            OrderType::Sell.as_u8(), 200, 50, 10,
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            OrderType::Sell.as_u8(),
+            200,
+            50,
+            10,
         ));
         assert_ok!(BelizeX::cancel_order(RuntimeOrigin::signed(1), 0));
-        System::assert_last_event(RuntimeEvent::BelizeX(
-            Event::OrderCancelled {
-                order_id: 0,
-                creator: 1,
-            }
-        ));
+        System::assert_last_event(RuntimeEvent::BelizeX(Event::OrderCancelled {
+            order_id: 0,
+            creator: 1,
+        }));
     });
 }
 
@@ -928,9 +1071,9 @@ fn register_tourism_trader_emits_event() {
     ext.execute_with(|| {
         System::set_block_number(1);
         assert_ok!(BelizeX::register_tourism_trader(RuntimeOrigin::root(), 2));
-        System::assert_last_event(RuntimeEvent::BelizeX(
-            Event::TourismTraderVerified { trader: 2 }
-        ));
+        System::assert_last_event(RuntimeEvent::BelizeX(Event::TourismTraderVerified {
+            trader: 2,
+        }));
     });
 }
 
@@ -940,9 +1083,7 @@ fn pause_global_emits_event() {
     ext.execute_with(|| {
         System::set_block_number(1);
         assert_ok!(BelizeX::pause_global(RuntimeOrigin::root()));
-        System::assert_last_event(RuntimeEvent::BelizeX(
-            Event::DexPaused
-        ));
+        System::assert_last_event(RuntimeEvent::BelizeX(Event::DexPaused));
     });
 }
 
@@ -953,9 +1094,7 @@ fn resume_global_emits_event() {
         System::set_block_number(1);
         assert_ok!(BelizeX::pause_global(RuntimeOrigin::root()));
         assert_ok!(BelizeX::resume_global(RuntimeOrigin::root()));
-        System::assert_last_event(RuntimeEvent::BelizeX(
-            Event::DexResumed
-        ));
+        System::assert_last_event(RuntimeEvent::BelizeX(Event::DexResumed));
     });
 }
 
@@ -965,13 +1104,11 @@ fn set_pair_status_emits_event() {
     ext.execute_with(|| {
         System::set_block_number(1);
         assert_ok!(BelizeX::set_pair_status(RuntimeOrigin::root(), 0, 1, false));
-        System::assert_last_event(RuntimeEvent::BelizeX(
-            Event::PairStatusUpdated {
-                base_asset: 0,
-                quote_asset: 1,
-                active: false,
-            }
-        ));
+        System::assert_last_event(RuntimeEvent::BelizeX(Event::PairStatusUpdated {
+            base_asset: 0,
+            quote_asset: 1,
+            active: false,
+        }));
     });
 }
 
@@ -1002,7 +1139,12 @@ fn get_price_returns_correct_ratio() {
     ext.execute_with(|| {
         // Seed 1:2 ratio.
         assert_ok!(BelizeX::add_liquidity(
-            RuntimeOrigin::signed(1), 0, 1, 10_000u128, 20_000u128, 0
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            10_000u128,
+            20_000u128,
+            0
         ));
         let price = BelizeX::get_price(&AssetId::DALLA, &AssetId::BBZD).unwrap();
         // quote/base = 20_000/10_000 = 2.0
@@ -1056,10 +1198,20 @@ fn get_lp_balance_across_multiple_pairs() {
     ext.execute_with(|| {
         // Add liquidity to DALLA/BBZD (0,1) and TourismDALLA/BBZD (2,1).
         assert_ok!(BelizeX::add_liquidity(
-            RuntimeOrigin::signed(1), 0, 1, 10_000u128, 10_000u128, 0
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            10_000u128,
+            10_000u128,
+            0
         ));
         assert_ok!(BelizeX::add_liquidity(
-            RuntimeOrigin::signed(1), 2, 1, 5_000u128, 5_000u128, 0
+            RuntimeOrigin::signed(1),
+            2,
+            1,
+            5_000u128,
+            5_000u128,
+            0
         ));
         // Total LP should be sum across both pairs.
         let lp_pair_0_1 = BelizeX::lp_balances(1, (0u8, 1u8));
@@ -1076,7 +1228,12 @@ fn liquidity_provider_storage_update() {
     ext.execute_with(|| {
         assert!(BelizeX::liquidity_providers(1).is_none());
         assert_ok!(BelizeX::add_liquidity(
-            RuntimeOrigin::signed(1), 0, 1, 5_000u128, 5_000u128, 0
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            5_000u128,
+            5_000u128,
+            0
         ));
         let lp_info = BelizeX::liquidity_providers(1).expect("LP info must exist");
         assert_eq!(lp_info.total_value_locked, 10_000);
@@ -1090,7 +1247,12 @@ fn add_liquidity_subsequent_uses_proportional_formula() {
     ext.execute_with(|| {
         // Initial deposit: sqrt(10_000 * 10_000) = 10_000 LP.
         assert_ok!(BelizeX::add_liquidity(
-            RuntimeOrigin::signed(1), 0, 1, 10_000u128, 10_000u128, 0
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            10_000u128,
+            10_000u128,
+            0
         ));
         let lp1 = BelizeX::lp_balances(1, (0u8, 1u8));
         assert_eq!(lp1, 10_000);
@@ -1098,7 +1260,12 @@ fn add_liquidity_subsequent_uses_proportional_formula() {
         // Account 2: proportional deposit with same ratio.
         // min(5_000 * 10_000 / 10_000, 5_000 * 10_000 / 10_000) = 5_000.
         assert_ok!(BelizeX::add_liquidity(
-            RuntimeOrigin::signed(2), 0, 1, 5_000u128, 5_000u128, 0
+            RuntimeOrigin::signed(2),
+            0,
+            1,
+            5_000u128,
+            5_000u128,
+            0
         ));
         let lp2 = BelizeX::lp_balances(2, (0u8, 1u8));
         assert_eq!(lp2, 5_000);
@@ -1110,14 +1277,24 @@ fn execute_trade_reserves_update_correctly() {
     let mut ext = new_test_ext();
     ext.execute_with(|| {
         assert_ok!(BelizeX::add_liquidity(
-            RuntimeOrigin::signed(1), 0, 1, 100_000u128, 100_000u128, 1
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            100_000u128,
+            100_000u128,
+            1
         ));
         let pair_before = BelizeX::trading_pairs((0u8, 1u8)).unwrap();
         let base_before = pair_before.base_reserve;
         let quote_before = pair_before.quote_reserve;
 
         assert_ok!(BelizeX::execute_trade(
-            RuntimeOrigin::signed(2), 0, 1, 1_000u128, 0, false
+            RuntimeOrigin::signed(2),
+            0,
+            1,
+            1_000u128,
+            0,
+            false
         ));
 
         let pair_after = BelizeX::trading_pairs((0u8, 1u8)).unwrap();
@@ -1180,7 +1357,12 @@ fn get_pair_reserves_u128_works() {
     let mut ext = new_test_ext();
     ext.execute_with(|| {
         assert_ok!(BelizeX::add_liquidity(
-            RuntimeOrigin::signed(1), 0, 1, 7_000u128, 14_000u128, 0
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            7_000u128,
+            14_000u128,
+            0
         ));
         let (base, quote, lp) = BelizeX::get_pair_reserves_u128(0, 1).unwrap();
         assert_eq!(base, 7_000);
@@ -1203,7 +1385,12 @@ fn get_implied_price_scaled_1e6_works() {
     ext.execute_with(|| {
         // Seed 1:2 ratio.
         assert_ok!(BelizeX::add_liquidity(
-            RuntimeOrigin::signed(1), 0, 1, 10_000u128, 20_000u128, 0
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            10_000u128,
+            20_000u128,
+            0
         ));
         let scaled = BelizeX::get_implied_price_scaled_1e6(0, 1).unwrap();
         // quote/base = 2.0, scaled by 1e6 = 2_000_000.
@@ -1227,13 +1414,23 @@ fn next_order_id_increments() {
     ext.execute_with(|| {
         assert_eq!(BelizeX::next_order_id(), 0);
         assert_ok!(BelizeX::place_limit_order(
-            RuntimeOrigin::signed(1), 0, 1,
-            OrderType::Buy.as_u8(), 100, 10, 10
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            OrderType::Buy.as_u8(),
+            100,
+            10,
+            10
         ));
         assert_eq!(BelizeX::next_order_id(), 1);
         assert_ok!(BelizeX::place_limit_order(
-            RuntimeOrigin::signed(1), 0, 1,
-            OrderType::Sell.as_u8(), 200, 20, 10
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            OrderType::Sell.as_u8(),
+            200,
+            20,
+            10
         ));
         assert_eq!(BelizeX::next_order_id(), 2);
     });

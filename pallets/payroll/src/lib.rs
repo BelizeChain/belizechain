@@ -56,14 +56,25 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
-use codec::{self, Encode, Decode, MaxEncodedLen};
-use scale_info::TypeInfo;
+use codec::{self, Decode, Encode, MaxEncodedLen};
 use frame_support::pallet_prelude::*;
+use scale_info::TypeInfo;
 
 // ===== EMPLOYER & WORKER CLASSIFICATION =====
 
 /// Employer type — determines compliance requirements and reporting categories
-#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking, Default)]
+#[derive(
+    Encode,
+    Decode,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    TypeInfo,
+    MaxEncodedLen,
+    codec::DecodeWithMemTracking,
+    Default,
+)]
 pub enum EmployerType {
     /// Government ministry, department, or agency
     Government,
@@ -81,7 +92,18 @@ pub enum EmployerType {
 }
 
 /// Worker type — determines labor law compliance and payment rules
-#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking, Default)]
+#[derive(
+    Encode,
+    Decode,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    TypeInfo,
+    MaxEncodedLen,
+    codec::DecodeWithMemTracking,
+    Default,
+)]
 pub enum WorkerType {
     /// Full-time salaried employee
     #[default]
@@ -101,7 +123,17 @@ pub enum WorkerType {
 // ===== DEDUCTION TYPES =====
 
 /// Deduction type for payroll withholdings
-#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking)]
+#[derive(
+    Encode,
+    Decode,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    TypeInfo,
+    MaxEncodedLen,
+    codec::DecodeWithMemTracking,
+)]
 pub enum DeductionType {
     /// Income tax withholding
     IncomeTax,
@@ -116,7 +148,17 @@ pub enum DeductionType {
 }
 
 /// A single deduction entry
-#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking)]
+#[derive(
+    Encode,
+    Decode,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    TypeInfo,
+    MaxEncodedLen,
+    codec::DecodeWithMemTracking,
+)]
 pub struct Deduction<Balance> {
     /// Type of deduction
     pub deduction_type: DeductionType,
@@ -129,7 +171,17 @@ pub struct Deduction<Balance> {
 // ===== EMPLOYER PROFILE =====
 
 /// Employer registration profile
-#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking)]
+#[derive(
+    Encode,
+    Decode,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    TypeInfo,
+    MaxEncodedLen,
+    codec::DecodeWithMemTracking,
+)]
 pub struct EmployerProfile {
     /// Type of employer
     pub employer_type: EmployerType,
@@ -144,7 +196,17 @@ pub struct EmployerProfile {
 // ===== CORE TYPES =====
 
 /// Employee record
-#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking)]
+#[derive(
+    Encode,
+    Decode,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    TypeInfo,
+    MaxEncodedLen,
+    codec::DecodeWithMemTracking,
+)]
 pub struct Employee<AccountId, Balance> {
     /// Employee account
     pub account: AccountId,
@@ -175,7 +237,17 @@ pub struct Employee<AccountId, Balance> {
 }
 
 /// Payment frequency
-#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking)]
+#[derive(
+    Encode,
+    Decode,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    TypeInfo,
+    MaxEncodedLen,
+    codec::DecodeWithMemTracking,
+)]
 pub enum PaymentFrequency {
     /// Weekly (every 50,400 blocks ~7 days at 6s blocks)
     Weekly,
@@ -200,7 +272,17 @@ impl PaymentFrequency {
 }
 
 /// Payroll schedule
-#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking)]
+#[derive(
+    Encode,
+    Decode,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    TypeInfo,
+    MaxEncodedLen,
+    codec::DecodeWithMemTracking,
+)]
 pub struct PayrollSchedule<BlockNumber> {
     /// Schedule ID
     pub id: u32,
@@ -219,7 +301,17 @@ pub struct PayrollSchedule<BlockNumber> {
 }
 
 /// Payment token type
-#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking)]
+#[derive(
+    Encode,
+    Decode,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    TypeInfo,
+    MaxEncodedLen,
+    codec::DecodeWithMemTracking,
+)]
 pub enum TokenType {
     /// DALLA token
     Dalla,
@@ -228,7 +320,18 @@ pub enum TokenType {
 }
 
 /// Payment category for audit trail
-#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking, Default)]
+#[derive(
+    Encode,
+    Decode,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    TypeInfo,
+    MaxEncodedLen,
+    codec::DecodeWithMemTracking,
+    Default,
+)]
 pub enum PaymentCategory {
     /// Regular salary/wage
     #[default]
@@ -250,7 +353,17 @@ pub enum PaymentCategory {
 /// On-chain stores amount commitments and off-chain anchor.
 /// Full payment details (amounts, deduction breakdown) stored off-chain via Pakit CID.
 /// This prevents salary/payment amounts from being queryable on-chain.
-#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, codec::DecodeWithMemTracking)]
+#[derive(
+    Encode,
+    Decode,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    TypeInfo,
+    MaxEncodedLen,
+    codec::DecodeWithMemTracking,
+)]
 pub struct PayrollRecord<AccountId, Balance, BlockNumber> {
     /// Record ID
     pub id: u64,
@@ -278,7 +391,18 @@ pub struct PayrollRecord<AccountId, Balance, BlockNumber> {
 }
 
 /// Payroll statistics
-#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, Default, codec::DecodeWithMemTracking)]
+#[derive(
+    Encode,
+    Decode,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    TypeInfo,
+    MaxEncodedLen,
+    Default,
+    codec::DecodeWithMemTracking,
+)]
 pub struct PayrollStats<Balance> {
     /// Total payroll disbursed (all time, gross)
     pub total_disbursed: Balance,
@@ -295,12 +419,13 @@ pub struct PayrollStats<Balance> {
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
-    use frame_support::traits::{Currency, ReservableCurrency, ExistenceRequirement, UnixTime};
-    use frame_system::pallet_prelude::*;
-    use sp_runtime::traits::{Zero, Saturating, SaturatedConversion};
+    use frame_support::traits::{Currency, ExistenceRequirement, ReservableCurrency, UnixTime};
     use frame_support::PalletId;
+    use frame_system::pallet_prelude::*;
+    use sp_runtime::traits::{SaturatedConversion, Saturating, Zero};
 
-    pub type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+    pub type BalanceOf<T> =
+        <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
@@ -343,14 +468,14 @@ pub mod pallet {
 
         /// Origin that can verify employers (governance / compliance authority)
         type VerifierOrigin: EnsureOrigin<Self::RuntimeOrigin>;
-        
+
         /// Oracle for KYC verification
         type Oracle: PayrollOracleProvider<Self::AccountId>;
 
         /// Weight information
         type WeightInfo: WeightInfo;
     }
-    
+
     /// Oracle provider trait for payroll operations
     pub trait PayrollOracleProvider<AccountId> {
         fn get_kyc_level(account: &AccountId) -> Option<u8>;
@@ -364,8 +489,10 @@ pub mod pallet {
     #[pallet::storage]
     pub type Employees<T: Config> = StorageDoubleMap<
         _,
-        Blake2_128Concat, T::AccountId,  // Employer
-        Blake2_128Concat, T::AccountId,  // Employee
+        Blake2_128Concat,
+        T::AccountId, // Employer
+        Blake2_128Concat,
+        T::AccountId, // Employee
         Employee<T::AccountId, BalanceOf<T>>,
     >;
 
@@ -374,35 +501,38 @@ pub mod pallet {
     #[pallet::storage]
     pub type EmployeeDeductions<T: Config> = StorageDoubleMap<
         _,
-        Blake2_128Concat, T::AccountId,  // Employer
-        Blake2_128Concat, T::AccountId,  // Employee
+        Blake2_128Concat,
+        T::AccountId, // Employer
+        Blake2_128Concat,
+        T::AccountId, // Employee
         BoundedVec<Deduction<BalanceOf<T>>, ConstU32<10>>,
         ValueQuery,
     >;
 
     /// Employer profiles
     #[pallet::storage]
-    pub type EmployerProfiles<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat, T::AccountId,
-        EmployerProfile,
-    >;
+    pub type EmployerProfiles<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, EmployerProfile>;
 
     /// Department names per employer (dept_id => name hash)
     #[pallet::storage]
     pub type Departments<T: Config> = StorageDoubleMap<
         _,
-        Blake2_128Concat, T::AccountId,  // Employer
-        Blake2_128Concat, u32,           // Department ID
-        [u8; 32],                         // Name hash
+        Blake2_128Concat,
+        T::AccountId, // Employer
+        Blake2_128Concat,
+        u32,      // Department ID
+        [u8; 32], // Name hash
     >;
 
     /// Payroll schedules per employer (supports multiple schedules)
     #[pallet::storage]
     pub type PayrollSchedules<T: Config> = StorageDoubleMap<
         _,
-        Blake2_128Concat, T::AccountId,  // Employer
-        Blake2_128Concat, u32,           // Schedule ID
+        Blake2_128Concat,
+        T::AccountId, // Employer
+        Blake2_128Concat,
+        u32, // Schedule ID
         PayrollSchedule<BlockNumberFor<T>>,
     >;
 
@@ -414,7 +544,8 @@ pub mod pallet {
     #[pallet::storage]
     pub type PayrollRecords<T: Config> = StorageMap<
         _,
-        Blake2_128Concat, u64,
+        Blake2_128Concat,
+        u64,
         PayrollRecord<T::AccountId, BalanceOf<T>, BlockNumberFor<T>>,
     >;
 
@@ -424,20 +555,12 @@ pub mod pallet {
 
     /// Global payroll statistics
     #[pallet::storage]
-    pub type GlobalStats<T: Config> = StorageValue<
-        _,
-        PayrollStats<BalanceOf<T>>,
-        ValueQuery,
-    >;
+    pub type GlobalStats<T: Config> = StorageValue<_, PayrollStats<BalanceOf<T>>, ValueQuery>;
 
     /// Employer verification (KYC required) — DEPRECATED, use EmployerProfiles
     #[pallet::storage]
-    pub type VerifiedEmployers<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat, T::AccountId,
-        bool,
-        ValueQuery,
-    >;
+    pub type VerifiedEmployers<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, bool, ValueQuery>;
 
     /// Employer count (for statistics)
     #[pallet::storage]
@@ -446,19 +569,17 @@ pub mod pallet {
     /// P0-20 FIX: O(1) employee count per employer.
     /// Replaces unbounded `Employees::iter_prefix().count()` in extrinsics.
     #[pallet::storage]
-    pub type EmployeeCountPerEmployer<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat, T::AccountId,
-        u32,
-        ValueQuery,
-    >;
+    pub type EmployeeCountPerEmployer<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, u32, ValueQuery>;
 
     /// P0-20 FIX: O(1) department employee count.
     #[pallet::storage]
     pub type DeptEmployeeCount<T: Config> = StorageDoubleMap<
         _,
-        Blake2_128Concat, T::AccountId,
-        Blake2_128Concat, u32,  // department_id
+        Blake2_128Concat,
+        T::AccountId,
+        Blake2_128Concat,
+        u32, // department_id
         u32,
         ValueQuery,
     >;
@@ -638,10 +759,13 @@ pub mod pallet {
 
             // DOS-016 FIX: Per-scan-iteration read cost — each scanned entry
             // deserializes a PayrollSchedule even if not processed.
-            let per_scan_read = T::DbWeight::get().reads(1)
+            let per_scan_read = T::DbWeight::get()
+                .reads(1)
                 .saturating_add(Weight::from_parts(2_000_000, 256));
 
-            for (scanned, (employer, _schedule_id, schedule)) in PayrollSchedules::<T>::iter().enumerate() {
+            for (scanned, (employer, _schedule_id, schedule)) in
+                PayrollSchedules::<T>::iter().enumerate()
+            {
                 // DOS-016 FIX: Account for scan iteration cost in reported weight.
                 total_weight = total_weight.saturating_add(per_scan_read);
                 // Stop if we've hit the per-block cap or the remaining weight is exhausted.
@@ -748,7 +872,7 @@ pub mod pallet {
                     Error::<T>::DepartmentNotFound
                 );
             }
-            
+
             // Verify employee has minimum KYC level
             // Contractors/freelancers need Level 1, full-time needs Level 1
             let required_kyc = match worker_type {
@@ -786,9 +910,7 @@ pub mod pallet {
             );
 
             // Compute salary commitment: blake2_256(salary_encoded || employer || employee)
-            let salary_commitment = Self::compute_salary_commitment(
-                &salary, &employer, &employee
-            );
+            let salary_commitment = Self::compute_salary_commitment(&salary, &employer, &employee);
 
             // Create employee record
             let employee_record = Employee {
@@ -843,10 +965,7 @@ pub mod pallet {
         /// Remove employee from payroll
         #[pallet::call_index(1)]
         #[pallet::weight(T::WeightInfo::remove_employee())]
-        pub fn remove_employee(
-            origin: OriginFor<T>,
-            employee: T::AccountId,
-        ) -> DispatchResult {
+        pub fn remove_employee(origin: OriginFor<T>, employee: T::AccountId) -> DispatchResult {
             let employer = ensure_signed(origin)?;
 
             // CRIT-2 FIX: Verify employer is still KYC'd
@@ -908,8 +1027,8 @@ pub mod pallet {
                 Error::<T>::EmployerNotVerified
             );
 
-            let mut emp = Employees::<T>::get(&employer, &employee)
-                .ok_or(Error::<T>::EmployeeNotFound)?;
+            let mut emp =
+                Employees::<T>::get(&employer, &employee).ok_or(Error::<T>::EmployeeNotFound)?;
 
             emp.active = active;
             Employees::<T>::insert(&employer, &employee, emp);
@@ -950,13 +1069,12 @@ pub mod pallet {
                 Error::<T>::SalaryExceedsMaximum
             );
 
-            let mut emp = Employees::<T>::get(&employer, &employee)
-                .ok_or(Error::<T>::EmployeeNotFound)?;
+            let mut emp =
+                Employees::<T>::get(&employer, &employee).ok_or(Error::<T>::EmployeeNotFound)?;
 
             emp.salary = new_salary;
-            emp.salary_commitment = Self::compute_salary_commitment(
-                &new_salary, &employer, &employee
-            );
+            emp.salary_commitment =
+                Self::compute_salary_commitment(&new_salary, &employer, &employee);
 
             let new_commitment = emp.salary_commitment;
             Employees::<T>::insert(&employer, &employee, emp);
@@ -974,10 +1092,7 @@ pub mod pallet {
         /// Execute single payment to employee (with deductions)
         #[pallet::call_index(3)]
         #[pallet::weight(T::WeightInfo::execute_payment())]
-        pub fn execute_payment(
-            origin: OriginFor<T>,
-            employee: T::AccountId,
-        ) -> DispatchResult {
+        pub fn execute_payment(origin: OriginFor<T>, employee: T::AccountId) -> DispatchResult {
             let employer = ensure_signed(origin)?;
 
             // CRIT-2 FIX: Verify employer is still KYC'd
@@ -986,8 +1101,8 @@ pub mod pallet {
                 Error::<T>::EmployerNotVerified
             );
 
-            let mut emp = Employees::<T>::get(&employer, &employee)
-                .ok_or(Error::<T>::EmployeeNotFound)?;
+            let mut emp =
+                Employees::<T>::get(&employer, &employee).ok_or(Error::<T>::EmployeeNotFound)?;
 
             ensure!(emp.active, Error::<T>::EmployeeInactive);
 
@@ -1018,7 +1133,11 @@ pub mod pallet {
             // Create payment record with commitment
             let record_id = NextRecordId::<T>::get();
             let payment_commitment = Self::compute_payment_commitment(
-                &emp.salary, &total_deductions, &net_amount, &employer, &employee,
+                &emp.salary,
+                &total_deductions,
+                &net_amount,
+                &employer,
+                &employee,
             );
             let record = PayrollRecord {
                 id: record_id,
@@ -1079,7 +1198,10 @@ pub mod pallet {
             }
 
             // PR-2 FIX: Enforce MaxEmployees bound to prevent unbounded weight
-            ensure!(count <= T::MaxEmployees::get(), Error::<T>::MaxEmployeesReached);
+            ensure!(
+                count <= T::MaxEmployees::get(),
+                Error::<T>::MaxEmployeesReached
+            );
 
             let balance = T::Currency::free_balance(&employer);
             ensure!(balance >= total_gross, Error::<T>::InsufficientBalance);
@@ -1098,7 +1220,8 @@ pub mod pallet {
                     )?;
 
                     // SAFETY(saturated_into): BlockNumber → u32 is lossless; BelizeChain uses u32 block numbers.
-                    let current_block: u32 = frame_system::Pallet::<T>::block_number().saturated_into();
+                    let current_block: u32 =
+                        frame_system::Pallet::<T>::block_number().saturated_into();
                     emp.last_paid = current_block;
                     emp.total_paid = emp.total_paid.saturating_add(emp.salary);
                     emp.total_deductions = emp.total_deductions.saturating_add(deductions);
@@ -1106,7 +1229,11 @@ pub mod pallet {
 
                     let record_id = NextRecordId::<T>::get();
                     let payment_commitment = Self::compute_payment_commitment(
-                        &emp.salary, &deductions, &net_amount, &employer, &emp_account,
+                        &emp.salary,
+                        &deductions,
+                        &net_amount,
+                        &employer,
+                        &emp_account,
                     );
                     let record = PayrollRecord {
                         id: record_id,
@@ -1172,7 +1299,8 @@ pub mod pallet {
                 // for schedule metadata — not a DoS vector since employers control their own data.
                 Employees::<T>::iter_prefix(&employer)
                     .filter(|(_, e)| e.department_id == department_id)
-                    .count().min(u32::MAX as usize) as u32
+                    .count()
+                    .min(u32::MAX as usize) as u32
             };
 
             let schedule = PayrollSchedule {
@@ -1232,10 +1360,7 @@ pub mod pallet {
         /// Create a department / cost-center
         #[pallet::call_index(9)]
         #[pallet::weight(Weight::from_parts(15_000_000, 512))]
-        pub fn create_department(
-            origin: OriginFor<T>,
-            name_hash: [u8; 32],
-        ) -> DispatchResult {
+        pub fn create_department(origin: OriginFor<T>, name_hash: [u8; 32]) -> DispatchResult {
             let employer = ensure_signed(origin)?;
 
             ensure!(
@@ -1298,24 +1423,34 @@ pub mod pallet {
                 Error::<T>::EmployeeNotFound
             );
 
-            EmployeeDeductions::<T>::try_mutate(&employer, &employee, |deductions| -> DispatchResult {
-                // Check if this deduction type already exists — update it
-                if let Some(existing) = deductions.iter_mut().find(|d| d.deduction_type == deduction_type) {
-                    existing.amount = amount;
-                    existing.active = true;
-                } else {
-                    // Add new deduction
-                    deductions.try_push(Deduction {
-                        deduction_type: deduction_type.clone(),
-                        amount,
-                        active: true,
-                    }).map_err(|_| Error::<T>::MaxDeductionsReached)?;
-                }
-                Ok(())
-            })?;
+            EmployeeDeductions::<T>::try_mutate(
+                &employer,
+                &employee,
+                |deductions| -> DispatchResult {
+                    // Check if this deduction type already exists — update it
+                    if let Some(existing) = deductions
+                        .iter_mut()
+                        .find(|d| d.deduction_type == deduction_type)
+                    {
+                        existing.amount = amount;
+                        existing.active = true;
+                    } else {
+                        // Add new deduction
+                        deductions
+                            .try_push(Deduction {
+                                deduction_type: deduction_type.clone(),
+                                amount,
+                                active: true,
+                            })
+                            .map_err(|_| Error::<T>::MaxDeductionsReached)?;
+                    }
+                    Ok(())
+                },
+            )?;
 
             // Privacy: emit deduction commitment, NOT plaintext amount
-            let deduction_commitment = sp_core::hashing::blake2_256(&(deduction_type.clone(), amount).encode());
+            let deduction_commitment =
+                sp_core::hashing::blake2_256(&(deduction_type.clone(), amount).encode());
             Self::deposit_event(Event::DeductionUpdated {
                 employer,
                 employee,
@@ -1354,8 +1489,8 @@ pub mod pallet {
                 Error::<T>::SalaryExceedsMaximum
             );
 
-            let mut emp = Employees::<T>::get(&employer, &employee)
-                .ok_or(Error::<T>::EmployeeNotFound)?;
+            let mut emp =
+                Employees::<T>::get(&employer, &employee).ok_or(Error::<T>::EmployeeNotFound)?;
 
             let balance = T::Currency::free_balance(&employer);
             ensure!(balance >= amount, Error::<T>::InsufficientBalance);
@@ -1379,7 +1514,11 @@ pub mod pallet {
             let record_id = NextRecordId::<T>::get();
             let zero_deductions: BalanceOf<T> = Zero::zero();
             let payment_commitment = Self::compute_payment_commitment(
-                &amount, &zero_deductions, &amount, &employer, &employee,
+                &amount,
+                &zero_deductions,
+                &amount,
+                &employer,
+                &employee,
             );
             let record = PayrollRecord {
                 id: record_id,
@@ -1403,7 +1542,9 @@ pub mod pallet {
             });
 
             // Privacy: emit amount commitment, NOT plaintext
-            let amount_commitment = sp_core::hashing::blake2_256(&(amount, employer.clone(), employee.clone()).encode());
+            let amount_commitment = sp_core::hashing::blake2_256(
+                &(amount, employer.clone(), employee.clone()).encode(),
+            );
             Self::deposit_event(Event::BonusIssued {
                 employer,
                 employee,
@@ -1441,7 +1582,10 @@ pub mod pallet {
         }
 
         /// Calculate total active deductions for an employee
-        pub fn calculate_deductions(employer: &T::AccountId, employee: &T::AccountId) -> BalanceOf<T> {
+        pub fn calculate_deductions(
+            employer: &T::AccountId,
+            employee: &T::AccountId,
+        ) -> BalanceOf<T> {
             let deductions = EmployeeDeductions::<T>::get(employer, employee);
             let mut total: BalanceOf<T> = Zero::zero();
             for d in deductions.iter() {
@@ -1463,7 +1607,9 @@ pub mod pallet {
             // Filter by department if set
             let employees: sp_std::vec::Vec<_> = Employees::<T>::iter_prefix(employer)
                 .filter(|(_, emp)| {
-                    emp.active && (schedule.department_id == 0 || emp.department_id == schedule.department_id)
+                    emp.active
+                        && (schedule.department_id == 0
+                            || emp.department_id == schedule.department_id)
                 })
                 .collect();
 
@@ -1478,7 +1624,9 @@ pub mod pallet {
             }
 
             for (emp_account, mut emp) in Employees::<T>::iter_prefix(employer) {
-                if emp.active && (schedule.department_id == 0 || emp.department_id == schedule.department_id) {
+                if emp.active
+                    && (schedule.department_id == 0 || emp.department_id == schedule.department_id)
+                {
                     let deductions = Self::calculate_deductions(employer, &emp_account);
                     let net_amount = emp.salary.saturating_sub(deductions);
 
@@ -1490,7 +1638,8 @@ pub mod pallet {
                     )?;
 
                     // SAFETY(saturated_into): BlockNumber → u32 is lossless; BelizeChain uses u32 block numbers.
-                    let current_block: u32 = frame_system::Pallet::<T>::block_number().saturated_into();
+                    let current_block: u32 =
+                        frame_system::Pallet::<T>::block_number().saturated_into();
                     emp.last_paid = current_block;
                     emp.total_paid = emp.total_paid.saturating_add(emp.salary);
                     emp.total_deductions = emp.total_deductions.saturating_add(deductions);
@@ -1498,7 +1647,11 @@ pub mod pallet {
 
                     let record_id = NextRecordId::<T>::get();
                     let payment_commitment = Self::compute_payment_commitment(
-                        &emp.salary, &deductions, &net_amount, employer, &emp_account,
+                        &emp.salary,
+                        &deductions,
+                        &net_amount,
+                        employer,
+                        &emp_account,
                     );
                     let record = PayrollRecord {
                         id: record_id,
@@ -1519,7 +1672,8 @@ pub mod pallet {
             }
 
             // Update schedule
-            schedule.next_payment = frame_system::Pallet::<T>::block_number() + schedule.frequency.to_blocks().into();
+            schedule.next_payment =
+                frame_system::Pallet::<T>::block_number() + schedule.frequency.to_blocks().into();
             schedule.payments_made = schedule.payments_made.saturating_add(1);
             PayrollSchedules::<T>::insert(employer, schedule.id, schedule);
 
@@ -1578,32 +1732,29 @@ pub trait WeightInfo {
 
 impl WeightInfo for () {
     fn add_employee() -> Weight {
-        Weight::from_parts(25_000_000, 512)
-            .saturating_add(Weight::from_parts(0, 3_000))
+        Weight::from_parts(25_000_000, 512).saturating_add(Weight::from_parts(0, 3_000))
     }
     fn remove_employee() -> Weight {
-        Weight::from_parts(20_000_000, 512)
-            .saturating_add(Weight::from_parts(0, 2_000))
+        Weight::from_parts(20_000_000, 512).saturating_add(Weight::from_parts(0, 2_000))
     }
     fn update_salary() -> Weight {
-        Weight::from_parts(15_000_000, 512)
-            .saturating_add(Weight::from_parts(0, 2_000))
+        Weight::from_parts(15_000_000, 512).saturating_add(Weight::from_parts(0, 2_000))
     }
     fn execute_payment() -> Weight {
-        Weight::from_parts(50_000_000, 512)
-            .saturating_add(Weight::from_parts(0, 5_000))
+        Weight::from_parts(50_000_000, 512).saturating_add(Weight::from_parts(0, 5_000))
     }
     fn batch_payment(n: u32) -> Weight {
         Weight::from_parts(10_000_000, 512)
-            .saturating_add(Weight::from_parts(50_000_000u64.saturating_mul(n as u64), 0))
+            .saturating_add(Weight::from_parts(
+                50_000_000u64.saturating_mul(n as u64),
+                0,
+            ))
             .saturating_add(Weight::from_parts(0, 5_000u64.saturating_mul(n as u64)))
     }
     fn create_schedule() -> Weight {
-        Weight::from_parts(30_000_000, 512)
-            .saturating_add(Weight::from_parts(0, 3_000))
+        Weight::from_parts(30_000_000, 512).saturating_add(Weight::from_parts(0, 3_000))
     }
     fn update_schedule() -> Weight {
-        Weight::from_parts(20_000_000, 512)
-            .saturating_add(Weight::from_parts(0, 2_000))
+        Weight::from_parts(20_000_000, 512).saturating_add(Weight::from_parts(0, 2_000))
     }
 }

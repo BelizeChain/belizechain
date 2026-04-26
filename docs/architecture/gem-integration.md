@@ -254,7 +254,7 @@ import { GemClient, PSP22, PSP34 } from '@belizechain/gem-sdk';
 
 // Connect to network
 const client = new GemClient({
-  providerUrl: 'wss://testnet.belizechain.org',
+  providerUrl: 'wss://<current-public-testnet-rpc>',
   signer: keyring.getPair('//Alice')
 });
 
@@ -359,7 +359,7 @@ pub fn withdraw(&mut self, amount: Balance) -> Result<()> {
 
 ### Request Tokens
 ```bash
-curl -X POST https://faucet.belizechain.org/claim \
+curl -X POST https://<current-public-testnet-faucet>/claim \
   -H "Content-Type: application/json" \
   -d '{
     "address": "5GrwvaEF5C3pZCjQJ7K7VKJf...",
@@ -372,7 +372,7 @@ curl -X POST https://faucet.belizechain.org/claim \
 // JavaScript SDK
 import { Faucet } from '@belizechain/gem-sdk';
 
-const faucet = new Faucet('https://faucet.belizechain.org');
+const faucet = new Faucet('https://<current-public-testnet-faucet>');
 
 await faucet.claim({
   address: account.address,

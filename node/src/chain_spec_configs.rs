@@ -1,8 +1,8 @@
 // Chain specification configurations for different networks
 // Enables easy switching between testnet/mainnet/devnet
 
-use serde::{Deserialize, Serialize};
 use belizechain_runtime::{Balance, DOLLARS as DALLA};
+use serde::{Deserialize, Serialize};
 
 /// Network configuration presets (reserved for deployment automation)
 #[allow(dead_code)]
@@ -24,9 +24,7 @@ impl NetworkConfig {
         Self {
             name: "BelizeChain Development".to_string(),
             id: "belizechain_dev".to_string(),
-            initial_authorities: vec![
-                ("Alice".to_string(), "Alice".to_string()),
-            ],
+            initial_authorities: vec![("Alice".to_string(), "Alice".to_string())],
             initial_allocation: vec![
                 ("Alice".to_string(), 1_000_000 * DALLA),
                 ("Bob".to_string(), 1_000_000 * DALLA),
@@ -94,11 +92,26 @@ impl NetworkConfig {
             initial_authorities: vec![
                 // MUST be replaced with actual validator keys before mainnet launch
                 // These are placeholder seeds - DO NOT use in production
-                ("mainnet_validator_1".to_string(), "mainnet_validator_1".to_string()),
-                ("mainnet_validator_2".to_string(), "mainnet_validator_2".to_string()),
-                ("mainnet_validator_3".to_string(), "mainnet_validator_3".to_string()),
-                ("mainnet_validator_4".to_string(), "mainnet_validator_4".to_string()),
-                ("mainnet_validator_5".to_string(), "mainnet_validator_5".to_string()),
+                (
+                    "mainnet_validator_1".to_string(),
+                    "mainnet_validator_1".to_string(),
+                ),
+                (
+                    "mainnet_validator_2".to_string(),
+                    "mainnet_validator_2".to_string(),
+                ),
+                (
+                    "mainnet_validator_3".to_string(),
+                    "mainnet_validator_3".to_string(),
+                ),
+                (
+                    "mainnet_validator_4".to_string(),
+                    "mainnet_validator_4".to_string(),
+                ),
+                (
+                    "mainnet_validator_5".to_string(),
+                    "mainnet_validator_5".to_string(),
+                ),
             ],
             initial_allocation: vec![
                 // Central allocation (managed by multi-sig treasury)
@@ -126,9 +139,7 @@ impl NetworkConfig {
                 ("staging_val_2".to_string(), "staging_val_2".to_string()),
                 ("staging_val_3".to_string(), "staging_val_3".to_string()),
             ],
-            initial_allocation: vec![
-                ("treasury".to_string(), 1_000_000_000 * DALLA),
-            ],
+            initial_allocation: vec![("treasury".to_string(), 1_000_000_000 * DALLA)],
             enable_sudo: false, // Test without sudo to match mainnet
             enable_faucet: false,
             block_time_ms: 6000,
@@ -168,7 +179,10 @@ mod tests {
     fn test_public_testnet_config() {
         let config = NetworkConfig::public_testnet();
         assert_eq!(config.id, "belizechain_testnet");
-        assert!(config.enable_sudo, "public testnet retains sudo for emergency upgrades");
+        assert!(
+            config.enable_sudo,
+            "public testnet retains sudo for emergency upgrades"
+        );
         assert!(config.enable_faucet);
         assert_eq!(config.initial_authorities.len(), 3);
         assert!(!config.initial_allocation.is_empty());
@@ -179,7 +193,10 @@ mod tests {
         let config = NetworkConfig::staging();
         assert_eq!(config.id, "belizechain_staging");
         assert!(!config.enable_sudo, "staging must match mainnet: no sudo");
-        assert!(!config.enable_faucet, "staging must match mainnet: no faucet");
+        assert!(
+            !config.enable_faucet,
+            "staging must match mainnet: no faucet"
+        );
         assert_eq!(config.initial_authorities.len(), 3);
         assert_eq!(config.block_time_ms, 6000);
     }
@@ -207,7 +224,8 @@ mod tests {
         ] {
             assert_eq!(
                 config.block_time_ms, 6000,
-                "config '{}' must use 6 s blocks", config.id
+                "config '{}' must use 6 s blocks",
+                config.id
             );
         }
     }
@@ -224,12 +242,15 @@ mod tests {
         ] {
             assert!(
                 !config.initial_allocation.is_empty(),
-                "config '{}' must have initial_allocation entries", config.id
+                "config '{}' must have initial_allocation entries",
+                config.id
             );
             for (seed, balance) in &config.initial_allocation {
                 assert!(
                     *balance > 0,
-                    "allocation for '{}' in config '{}' must be > 0", seed, config.id
+                    "allocation for '{}' in config '{}' must be > 0",
+                    seed,
+                    config.id
                 );
             }
         }
@@ -256,7 +277,8 @@ mod tests {
         for cfg in &configs {
             assert!(
                 seen.insert(cfg.id.clone()),
-                "Duplicate network ID detected: {}", cfg.id
+                "Duplicate network ID detected: {}",
+                cfg.id
             );
         }
     }
@@ -273,11 +295,13 @@ mod tests {
             for (babe_seed, grandpa_seed) in &config.initial_authorities {
                 assert!(
                     !babe_seed.is_empty(),
-                    "babe seed must not be empty in config '{}'", config.id
+                    "babe seed must not be empty in config '{}'",
+                    config.id
                 );
                 assert!(
                     !grandpa_seed.is_empty(),
-                    "grandpa seed must not be empty in config '{}'", config.id
+                    "grandpa seed must not be empty in config '{}'",
+                    config.id
                 );
             }
         }
@@ -304,14 +328,17 @@ mod tests {
     #[test]
     fn test_network_config_serializes_and_deserializes() {
         let original = NetworkConfig::local_testnet();
-        let json = serde_json::to_string(&original)
-            .expect("NetworkConfig must be serializable to JSON");
-        let restored: NetworkConfig = serde_json::from_str(&json)
-            .expect("NetworkConfig must be deserializable from JSON");
+        let json =
+            serde_json::to_string(&original).expect("NetworkConfig must be serializable to JSON");
+        let restored: NetworkConfig =
+            serde_json::from_str(&json).expect("NetworkConfig must be deserializable from JSON");
         assert_eq!(original.id, restored.id);
         assert_eq!(original.name, restored.name);
         assert_eq!(original.enable_sudo, restored.enable_sudo);
         assert_eq!(original.block_time_ms, restored.block_time_ms);
-        assert_eq!(original.initial_authorities.len(), restored.initial_authorities.len());
+        assert_eq!(
+            original.initial_authorities.len(),
+            restored.initial_authorities.len()
+        );
     }
 }

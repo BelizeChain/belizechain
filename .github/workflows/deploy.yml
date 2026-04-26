@@ -15,6 +15,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint:
+    name: Formatting and Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.90.0"
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler libclang-dev
+
+      - name: Cache cargo registry and build output
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-lint-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-lint-
+
+      - name: Run rustfmt check
+        run: cargo fmt --all --check
+
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
   test:
     name: Rust Tests
     runs-on: ubuntu-latest
@@ -44,6 +78,49 @@ jobs:
 
       - name: Run tests
         run: cargo test --release --workspace
+
+      - name: Build release node for explicit-spec smoke test
+        run: cargo build --release -p belizechain-node
+
+      - name: Smoke test explicit raw spec boot
+        run: |
+          ./target/release/belizechain-node build-spec \
+            --disable-default-bootnode \
+            --chain testnet-template > /tmp/belizechain-testnet-template.json
+          ./target/release/belizechain-node build-spec \
+            --disable-default-bootnode \
+            --chain /tmp/belizechain-testnet-template.json \
+            --raw > /tmp/belizechain-testnet-template-raw.json
+          bash ./scripts/deploy/validate_chain_spec.sh /tmp/belizechain-testnet-template-raw.json
+
+          ./target/release/belizechain-node \
+            --chain /tmp/belizechain-testnet-template-raw.json \
+            --tmp \
+            --port 30334 \
+            --rpc-port 9935 \
+            --prometheus-port 9616 \
+            --rpc-methods Safe \
+            > /tmp/belizechain-testnet-smoke.log 2>&1 &
+          NODE_PID=$!
+          trap 'kill "$NODE_PID" 2>/dev/null || true; wait "$NODE_PID" 2>/dev/null || true' EXIT
+
+          for _ in $(seq 1 15); do
+            CHAIN=$(curl -sS -H "Content-Type: application/json" \
+              -d '{"id":1,"jsonrpc":"2.0","method":"system_chain","params":[]}' \
+              http://127.0.0.1:9935 || true)
+            TYPE=$(curl -sS -H "Content-Type: application/json" \
+              -d '{"id":1,"jsonrpc":"2.0","method":"system_chainType","params":[]}' \
+              http://127.0.0.1:9935 || true)
+
+            if echo "$CHAIN" | grep -q 'BelizeChain' && echo "$TYPE" | grep -q 'Live'; then
+              exit 0
+            fi
+
+            sleep 1
+          done
+
+          cat /tmp/belizechain-testnet-smoke.log
+          exit 1
 
   coverage:
     name: Coverage Gate

@@ -40,10 +40,7 @@ mod benchmarks {
             b"Bob Smith"[..].to_vec().try_into().expect("name fits");
 
         // Register identity first
-        let _ = Pallet::<T>::register_identity(
-            RawOrigin::Signed(caller.clone()).into(),
-            name,
-        );
+        let _ = Pallet::<T>::register_identity(RawOrigin::Signed(caller.clone()).into(), name);
 
         let new_account: T::AccountId = account("linked", 0, 0);
 
@@ -61,13 +58,12 @@ mod benchmarks {
             b"Carol White"[..].to_vec().try_into().expect("name fits");
 
         // Register identity first
-        let _ = Pallet::<T>::register_identity(
-            RawOrigin::Signed(caller.clone()).into(),
-            name,
-        );
+        let _ = Pallet::<T>::register_identity(RawOrigin::Signed(caller.clone()).into(), name);
 
-        let cid: BoundedVec<u8, T::MaxAnchorLen> =
-            b"QmBenchmarkDIDDoc123"[..].to_vec().try_into().expect("cid fits");
+        let cid: BoundedVec<u8, T::MaxAnchorLen> = b"QmBenchmarkDIDDoc123"[..]
+            .to_vec()
+            .try_into()
+            .expect("cid fits");
 
         #[extrinsic_call]
         update_did_doc(RawOrigin::Signed(caller), cid);
@@ -100,10 +96,7 @@ mod benchmarks {
         // Register target identity
         let name: BoundedVec<u8, T::MaxNameLen> =
             b"Target Person"[..].to_vec().try_into().expect("name fits");
-        let _ = Pallet::<T>::register_identity(
-            RawOrigin::Signed(target.clone()).into(),
-            name,
-        );
+        let _ = Pallet::<T>::register_identity(RawOrigin::Signed(target.clone()).into(), name);
 
         // Authorize issuer
         let _ = Pallet::<T>::add_issuer(
@@ -113,8 +106,10 @@ mod benchmarks {
         );
 
         let hash = sp_core::H256::from([1u8; 32]);
-        let anchor: BoundedVec<u8, T::MaxAnchorLen> =
-            b"ipfs://QmBenchAttest"[..].to_vec().try_into().expect("anchor fits");
+        let anchor: BoundedVec<u8, T::MaxAnchorLen> = b"ipfs://QmBenchAttest"[..]
+            .to_vec()
+            .try_into()
+            .expect("anchor fits");
 
         #[extrinsic_call]
         issue_ssn(RawOrigin::Signed(issuer), target, hash, anchor, true);
@@ -133,20 +128,15 @@ mod benchmarks {
         // Register target identity
         let name: BoundedVec<u8, T::MaxNameLen> =
             b"Target Revoke"[..].to_vec().try_into().expect("name fits");
-        let _ = Pallet::<T>::register_identity(
-            RawOrigin::Signed(target.clone()).into(),
-            name,
-        );
+        let _ = Pallet::<T>::register_identity(RawOrigin::Signed(target.clone()).into(), name);
 
         // Authorize and issue attestation
-        let _ = Pallet::<T>::add_issuer(
-            RawOrigin::Root.into(),
-            0u8,
-            issuer.clone(),
-        );
+        let _ = Pallet::<T>::add_issuer(RawOrigin::Root.into(), 0u8, issuer.clone());
         let hash = sp_core::H256::from([2u8; 32]);
-        let anchor: BoundedVec<u8, T::MaxAnchorLen> =
-            b"ipfs://QmRevoke"[..].to_vec().try_into().expect("anchor fits");
+        let anchor: BoundedVec<u8, T::MaxAnchorLen> = b"ipfs://QmRevoke"[..]
+            .to_vec()
+            .try_into()
+            .expect("anchor fits");
         let _ = Pallet::<T>::issue_ssn(
             RawOrigin::Signed(issuer).into(),
             target.clone(),

@@ -40,9 +40,8 @@ mod benchmarks {
 
         // Add mediator to the list
         let mediator: T::AccountId = whitelisted_caller();
-        MediatorList::<T>::try_mutate(|list| {
-            list.try_push(mediator.clone())
-        }).expect("mediator list not full");
+        MediatorList::<T>::try_mutate(|list| list.try_push(mediator.clone()))
+            .expect("mediator list not full");
 
         #[extrinsic_call]
         _(RawOrigin::Signed(mediator), 1u32, 0u8, 0u32);
@@ -64,9 +63,8 @@ mod benchmarks {
         );
 
         let mediator: T::AccountId = account("mediator", 0, 0);
-        MediatorList::<T>::try_mutate(|list| {
-            list.try_push(mediator.clone())
-        }).expect("mediator list not full");
+        MediatorList::<T>::try_mutate(|list| list.try_push(mediator.clone()))
+            .expect("mediator list not full");
 
         let _ = Pallet::<T>::mediator_ruling(
             RawOrigin::Signed(mediator).into(),
@@ -103,9 +101,8 @@ mod benchmarks {
     #[benchmark]
     fn remove_mediator() {
         let mediator: T::AccountId = account("mediator", 0, 0);
-        MediatorList::<T>::try_mutate(|list| {
-            list.try_push(mediator.clone())
-        }).expect("mediator list not full");
+        MediatorList::<T>::try_mutate(|list| list.try_push(mediator.clone()))
+            .expect("mediator list not full");
 
         #[extrinsic_call]
         _(RawOrigin::Root, mediator);

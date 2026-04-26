@@ -90,7 +90,7 @@ Run specific integration test categories.
 ./scripts/testing/run_integration_tests.sh all
 
 # Specific categories
-./scripts/testing/run_integration_tests.sh blockchain      # 16 pallets
+./scripts/testing/run_integration_tests.sh blockchain      # Core pallet coverage
 ./scripts/testing/run_integration_tests.sh cross-pallet    # Cross-pallet integration
 ./scripts/testing/run_integration_tests.sh governance      # Governance system
 ./scripts/testing/run_integration_tests.sh economic        # DALLA/bBZD
@@ -401,4 +401,4 @@ When adding new scripts:
 ---
 
 **Last Updated**: January 31, 2026  
-**BelizeChain Version**: stable2512
+**BelizeChain Version**: stable2603

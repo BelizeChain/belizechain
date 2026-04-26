@@ -1,7 +1,7 @@
 use crate::{self as pallet_belize_governance, *};
 use frame_support::{
     construct_runtime, parameter_types,
-    traits::{ConstU32, ConstU64, ConstU128, ConstU8, Everything, Hooks, Randomness},
+    traits::{ConstU128, ConstU32, ConstU64, ConstU8, Everything, Hooks, Randomness},
     PalletId,
 };
 use frame_system::EnsureRoot;
@@ -39,7 +39,11 @@ impl BehaviorFlagProvider<u64, u64> for MockBehaviorFlags {
         *account == 998
     }
     fn cooldown_end(account: &u64) -> Option<u64> {
-        if *account == 998 { Some(1_000_000) } else { None }
+        if *account == 998 {
+            Some(1_000_000)
+        } else {
+            None
+        }
     }
 }
 
@@ -60,15 +64,15 @@ impl pallet_belize_community::GovernanceParticipation<u64> for MockCommunityPart
     fn record_proposal_submission(_account: &u64) -> Result<(), &'static str> {
         Ok(()) // No-op in tests
     }
-    
+
     fn record_vote_cast(_account: &u64) -> Result<(), &'static str> {
         Ok(()) // No-op in tests
     }
-    
+
     fn record_proposal_approval(_account: &u64) -> Result<(), &'static str> {
         Ok(()) // No-op in tests
     }
-    
+
     fn record_council_activity(_account: &u64) -> Result<(), &'static str> {
         Ok(()) // No-op in tests
     }
@@ -249,11 +253,7 @@ pub fn run_to_block(n: u64) {
 }
 
 /// Declare an emergency and advance past the CONS-029 veto window so it becomes active.
-pub fn declare_and_activate_emergency(
-    emergency_type: u8,
-    description: &[u8],
-    duration_hours: u32,
-) {
+pub fn declare_and_activate_emergency(emergency_type: u8, description: &[u8], duration_hours: u32) {
     BelizeGovernance::declare_emergency(
         RuntimeOrigin::root(),
         emergency_type,
@@ -269,4 +269,3 @@ pub fn declare_and_activate_emergency(
 pub fn last_event() -> RuntimeEvent {
     System::events().pop().expect("Event expected").event
 }
-

@@ -45,14 +45,16 @@ fn register_ai_model_works() {
 fn register_ai_model_all_types_works() {
     new_test_ext().execute_with(|| {
         // Test all 8 model types
-        let types = [(0, ModelType::Economic),
+        let types = [
+            (0, ModelType::Economic),
             (1, ModelType::Tourism),
             (2, ModelType::Agriculture),
             (3, ModelType::Climate),
             (4, ModelType::Health),
             (5, ModelType::Education),
             (6, ModelType::Transportation),
-            (7, ModelType::General)];
+            (7, ModelType::General),
+        ];
 
         for (i, (type_index, expected_type)) in types.iter().enumerate() {
             assert_ok!(Consensus::register_ai_model(
@@ -138,7 +140,7 @@ fn join_consensus_validator_works() {
 
         // Verify stake is locked
         assert_eq!(Balances::free_balance(ALICE), 100_000_000); // Unchanged
-        // Note: Locks don't reduce free balance, only usable balance
+                                                                // Note: Locks don't reduce free balance, only usable balance
     });
 }
 
@@ -212,7 +214,7 @@ fn validate_ai_model_works() {
         // Validate model (AI Authority only)
         assert_ok!(Consensus::validate_ai_model(
             RuntimeOrigin::root(),
-            0, // model_id
+            0,    // model_id
             8500, // 85% accuracy
         ));
 
@@ -243,11 +245,7 @@ fn validate_ai_model_requires_authority() {
 
         // Regular user cannot validate
         assert_noop!(
-            Consensus::validate_ai_model(
-                RuntimeOrigin::signed(ALICE),
-                0,
-                8500,
-            ),
+            Consensus::validate_ai_model(RuntimeOrigin::signed(ALICE), 0, 8500,),
             sp_runtime::DispatchError::BadOrigin
         );
     });
@@ -312,10 +310,7 @@ fn start_consensus_round_works() {
 fn start_consensus_round_requires_authority() {
     new_test_ext().execute_with(|| {
         assert_noop!(
-            Consensus::start_consensus_round(
-                RuntimeOrigin::signed(ALICE),
-                10,
-            ),
+            Consensus::start_consensus_round(RuntimeOrigin::signed(ALICE), 10,),
             sp_runtime::DispatchError::BadOrigin
         );
     });
@@ -343,17 +338,10 @@ fn submit_ai_work_works() {
             1000,
             test_pq_signature(4627),
         ));
-        assert_ok!(Consensus::validate_ai_model(
-            RuntimeOrigin::root(),
-            0,
-            8500,
-        ));
+        assert_ok!(Consensus::validate_ai_model(RuntimeOrigin::root(), 0, 8500,));
 
         // Start consensus round
-        assert_ok!(Consensus::start_consensus_round(
-            RuntimeOrigin::root(),
-            10,
-        ));
+        assert_ok!(Consensus::start_consensus_round(RuntimeOrigin::root(), 10,));
 
         // Submit AI work
         let work_hash = [1u8; 32];
@@ -394,11 +382,7 @@ fn submit_ai_work_requires_active_round() {
             1000,
             test_pq_signature(4627),
         ));
-        assert_ok!(Consensus::validate_ai_model(
-            RuntimeOrigin::root(),
-            0,
-            8500,
-        ));
+        assert_ok!(Consensus::validate_ai_model(RuntimeOrigin::root(), 0, 8500,));
 
         // Try to submit without active round
         assert_noop!(
@@ -424,10 +408,7 @@ fn submit_ai_work_requires_active_model() {
             5_000_000,
             test_pq_signature(128),
         ));
-        assert_ok!(Consensus::start_consensus_round(
-            RuntimeOrigin::root(),
-            10,
-        ));
+        assert_ok!(Consensus::start_consensus_round(RuntimeOrigin::root(), 10,));
 
         // Register model but DON'T validate it
         assert_ok!(Consensus::register_ai_model(
@@ -464,11 +445,7 @@ fn submit_ai_work_requires_validator() {
             1000,
             test_pq_signature(4627),
         ));
-        assert_ok!(Consensus::validate_ai_model(
-            RuntimeOrigin::root(),
-            0,
-            8500,
-        ));
+        assert_ok!(Consensus::validate_ai_model(RuntimeOrigin::root(), 0, 8500,));
 
         // Register a different validator to start round
         assert_ok!(Consensus::join_consensus_validator(
@@ -476,10 +453,7 @@ fn submit_ai_work_requires_validator() {
             5_000_000,
             test_pq_signature(128),
         ));
-        assert_ok!(Consensus::start_consensus_round(
-            RuntimeOrigin::root(),
-            10,
-        ));
+        assert_ok!(Consensus::start_consensus_round(RuntimeOrigin::root(), 10,));
 
         // ALICE tries to submit without being a validator
         assert_noop!(
@@ -512,15 +486,8 @@ fn submit_ai_work_rejects_invalid_work_type() {
             1000,
             test_pq_signature(4627),
         ));
-        assert_ok!(Consensus::validate_ai_model(
-            RuntimeOrigin::root(),
-            0,
-            8500,
-        ));
-        assert_ok!(Consensus::start_consensus_round(
-            RuntimeOrigin::root(),
-            10,
-        ));
+        assert_ok!(Consensus::validate_ai_model(RuntimeOrigin::root(), 0, 8500,));
+        assert_ok!(Consensus::start_consensus_round(RuntimeOrigin::root(), 10,));
 
         // Invalid work type index
         assert_noop!(
@@ -762,7 +729,10 @@ fn finalize_consensus_round_works() {
 
         // Validator should have received reward
         let balance_after = Balances::free_balance(ALICE);
-        assert!(balance_after > balance_before, "Validator should receive consensus reward");
+        assert!(
+            balance_after > balance_before,
+            "Validator should receive consensus reward"
+        );
 
         // Global metrics updated
         let metrics = Consensus::global_ai_metrics();
@@ -774,7 +744,8 @@ fn finalize_consensus_round_works() {
                 round_id,
                 total_useful_work: round.total_useful_work,
                 participating_validators: 1,
-            }.into()
+            }
+            .into(),
         );
     });
 }
@@ -794,7 +765,9 @@ fn finalize_consensus_round_fails_without_active_round() {
 fn finalize_consensus_round_requires_authority() {
     new_test_ext().execute_with(|| {
         assert_ok!(Consensus::join_consensus_validator(
-            RuntimeOrigin::signed(ALICE), 5_000_000, test_pq_signature(128),
+            RuntimeOrigin::signed(ALICE),
+            5_000_000,
+            test_pq_signature(128),
         ));
         assert_ok!(Consensus::start_consensus_round(RuntimeOrigin::root(), 5));
         System::set_block_number(7);
@@ -817,7 +790,10 @@ fn register_model_id_overflow_fails() {
         NextModelId::<Test>::put(u32::MAX);
         assert_noop!(
             Consensus::register_ai_model(
-                RuntimeOrigin::signed(ALICE), 0, test_parameters_hash(1), 1000,
+                RuntimeOrigin::signed(ALICE),
+                0,
+                test_parameters_hash(1),
+                1000,
                 test_pq_signature(4627),
             ),
             Error::<Test>::IdOverflow
@@ -831,7 +807,9 @@ fn join_validator_id_overflow_fails() {
         NextValidatorId::<Test>::put(u32::MAX);
         assert_noop!(
             Consensus::join_consensus_validator(
-                RuntimeOrigin::signed(ALICE), 5_000_000, test_pq_signature(128),
+                RuntimeOrigin::signed(ALICE),
+                5_000_000,
+                test_pq_signature(128),
             ),
             Error::<Test>::IdOverflow
         );
@@ -842,7 +820,9 @@ fn join_validator_id_overflow_fails() {
 fn start_round_id_overflow_fails() {
     new_test_ext().execute_with(|| {
         assert_ok!(Consensus::join_consensus_validator(
-            RuntimeOrigin::signed(ALICE), 5_000_000, test_pq_signature(128),
+            RuntimeOrigin::signed(ALICE),
+            5_000_000,
+            test_pq_signature(128),
         ));
         NextRoundId::<Test>::put(u32::MAX);
         assert_noop!(
@@ -856,7 +836,9 @@ fn start_round_id_overflow_fails() {
 fn start_round_while_active_round_fails() {
     new_test_ext().execute_with(|| {
         assert_ok!(Consensus::join_consensus_validator(
-            RuntimeOrigin::signed(ALICE), 5_000_000, test_pq_signature(128),
+            RuntimeOrigin::signed(ALICE),
+            5_000_000,
+            test_pq_signature(128),
         ));
         assert_ok!(Consensus::start_consensus_round(RuntimeOrigin::root(), 10));
         // Try starting another round while one is in progress
@@ -874,7 +856,11 @@ fn submit_work_invalid_pq_signature_fails() {
         // Signature too long (> 5000 bytes, ML-DSA-87 BoundedVec limit)
         assert_noop!(
             Consensus::submit_ai_work(
-                RuntimeOrigin::signed(ALICE), 0, 0, [1u8; 32], 500,
+                RuntimeOrigin::signed(ALICE),
+                0,
+                0,
+                [1u8; 32],
+                500,
                 test_pq_signature(6000), // Exceeds 5000-byte limit
             ),
             Error::<Test>::InvalidPQSignature
@@ -886,17 +872,26 @@ fn submit_work_invalid_pq_signature_fails() {
 fn submit_work_nonexistent_model_fails() {
     new_test_ext().execute_with(|| {
         assert_ok!(Consensus::join_consensus_validator(
-            RuntimeOrigin::signed(ALICE), 5_000_000, test_pq_signature(128),
+            RuntimeOrigin::signed(ALICE),
+            5_000_000,
+            test_pq_signature(128),
         ));
         assert_ok!(Consensus::register_ai_model(
-            RuntimeOrigin::signed(ALICE), 0, test_parameters_hash(1), 1000,
+            RuntimeOrigin::signed(ALICE),
+            0,
+            test_parameters_hash(1),
+            1000,
             test_pq_signature(4627),
         ));
         assert_ok!(Consensus::validate_ai_model(RuntimeOrigin::root(), 0, 8500));
         assert_ok!(Consensus::start_consensus_round(RuntimeOrigin::root(), 10));
         assert_noop!(
             Consensus::submit_ai_work(
-                RuntimeOrigin::signed(ALICE), 999, 0, [1u8; 32], 500,
+                RuntimeOrigin::signed(ALICE),
+                999,
+                0,
+                [1u8; 32],
+                500,
                 test_pq_signature(128),
             ),
             Error::<Test>::ModelNotFound
@@ -912,7 +907,10 @@ fn submit_work_nonexistent_model_fails() {
 fn validate_model_below_threshold_stays_inactive() {
     new_test_ext().execute_with(|| {
         assert_ok!(Consensus::register_ai_model(
-            RuntimeOrigin::signed(ALICE), 0, test_parameters_hash(1), 1000,
+            RuntimeOrigin::signed(ALICE),
+            0,
+            test_parameters_hash(1),
+            1000,
             test_pq_signature(4627),
         ));
         // MinModelQualityScore = 50 in mock — 49 is below threshold
@@ -927,7 +925,10 @@ fn validate_model_below_threshold_stays_inactive() {
 fn validate_model_at_threshold_activates() {
     new_test_ext().execute_with(|| {
         assert_ok!(Consensus::register_ai_model(
-            RuntimeOrigin::signed(ALICE), 0, test_parameters_hash(1), 1000,
+            RuntimeOrigin::signed(ALICE),
+            0,
+            test_parameters_hash(1),
+            1000,
             test_pq_signature(4627),
         ));
         // Exactly at MinModelQualityScore boundary
@@ -948,14 +949,22 @@ fn submit_all_work_types_succeed() {
         // 6 work types: 0-5
         for wt in 0..5u8 {
             assert_ok!(Consensus::submit_ai_work(
-                RuntimeOrigin::signed(ALICE), 0, wt, [wt; 32], 500,
+                RuntimeOrigin::signed(ALICE),
+                0,
+                wt,
+                [wt; 32],
+                500,
                 test_pq_signature(128),
             ));
         }
         // Move to next block for rate limit then submit last one
         System::set_block_number(2);
         assert_ok!(Consensus::submit_ai_work(
-            RuntimeOrigin::signed(ALICE), 0, 5, [5u8; 32], 500,
+            RuntimeOrigin::signed(ALICE),
+            0,
+            5,
+            [5u8; 32],
+            500,
             test_pq_signature(128),
         ));
     });
@@ -967,7 +976,10 @@ fn fast_computation_bonus_applied() {
         setup_consensus_for_rate_limit();
         // computation_time < 1000 → bonus of 100 added to quality
         assert_ok!(Consensus::submit_ai_work(
-            RuntimeOrigin::signed(ALICE), 0, 0, [1u8; 32],
+            RuntimeOrigin::signed(ALICE),
+            0,
+            0,
+            [1u8; 32],
             999, // just under threshold
             test_pq_signature(128),
         ));
@@ -985,7 +997,10 @@ fn no_bonus_above_computation_threshold() {
         setup_consensus_for_rate_limit();
         // computation_time >= 1000 → no bonus
         assert_ok!(Consensus::submit_ai_work(
-            RuntimeOrigin::signed(ALICE), 0, 0, [1u8; 32],
+            RuntimeOrigin::signed(ALICE),
+            0,
+            0,
+            [1u8; 32],
             1000, // at threshold => no bonus
             test_pq_signature(128),
         ));
@@ -1003,7 +1018,10 @@ fn sustainability_contribution_zero_computation_time() {
         // CONS-015: computation_time == 0 is now rejected
         assert_noop!(
             Consensus::submit_ai_work(
-                RuntimeOrigin::signed(ALICE), 0, 0, [1u8; 32],
+                RuntimeOrigin::signed(ALICE),
+                0,
+                0,
+                [1u8; 32],
                 0,
                 test_pq_signature(128),
             ),
@@ -1023,7 +1041,10 @@ fn sustainability_contribution_high_computation_time() {
         // sustainability = min(100, 500*8500/5000) = min(100, 850) = 100
         // Still 100! Need very high time: 500*8500/X < 100 → X > 42500
         assert_ok!(Consensus::submit_ai_work(
-            RuntimeOrigin::signed(ALICE), 0, 0, [1u8; 32],
+            RuntimeOrigin::signed(ALICE),
+            0,
+            0,
+            [1u8; 32],
             50000,
             test_pq_signature(128),
         ));
@@ -1043,28 +1064,43 @@ fn multi_validator_round_proportional_rewards() {
     new_test_ext().execute_with(|| {
         // Register 3 validators
         assert_ok!(Consensus::join_consensus_validator(
-            RuntimeOrigin::signed(ALICE), 5_000_000, test_pq_signature(128),
+            RuntimeOrigin::signed(ALICE),
+            5_000_000,
+            test_pq_signature(128),
         ));
         assert_ok!(Consensus::join_consensus_validator(
-            RuntimeOrigin::signed(BOB), 5_000_000, test_pq_signature(128),
+            RuntimeOrigin::signed(BOB),
+            5_000_000,
+            test_pq_signature(128),
         ));
         assert_ok!(Consensus::join_consensus_validator(
-            RuntimeOrigin::signed(CHARLIE), 5_000_000, test_pq_signature(128),
+            RuntimeOrigin::signed(CHARLIE),
+            5_000_000,
+            test_pq_signature(128),
         ));
 
         // Each validator registers + validates their own model (ModelNotOwned check)
         assert_ok!(Consensus::register_ai_model(
-            RuntimeOrigin::signed(ALICE), 0, test_parameters_hash(1), 1000,
+            RuntimeOrigin::signed(ALICE),
+            0,
+            test_parameters_hash(1),
+            1000,
             test_pq_signature(4627),
         ));
         assert_ok!(Consensus::validate_ai_model(RuntimeOrigin::root(), 0, 8500));
         assert_ok!(Consensus::register_ai_model(
-            RuntimeOrigin::signed(BOB), 1, test_parameters_hash(2), 1000,
+            RuntimeOrigin::signed(BOB),
+            1,
+            test_parameters_hash(2),
+            1000,
             test_pq_signature(4627),
         ));
         assert_ok!(Consensus::validate_ai_model(RuntimeOrigin::root(), 1, 8500));
         assert_ok!(Consensus::register_ai_model(
-            RuntimeOrigin::signed(CHARLIE), 2, test_parameters_hash(3), 1000,
+            RuntimeOrigin::signed(CHARLIE),
+            2,
+            test_parameters_hash(3),
+            1000,
             test_pq_signature(4627),
         ));
         assert_ok!(Consensus::validate_ai_model(RuntimeOrigin::root(), 2, 8500));
@@ -1074,13 +1110,28 @@ fn multi_validator_round_proportional_rewards() {
 
         // All 3 submit work on their own models with different computation times
         assert_ok!(Consensus::submit_ai_work(
-            RuntimeOrigin::signed(ALICE), 0, 0, [1u8; 32], 500, test_pq_signature(128),
+            RuntimeOrigin::signed(ALICE),
+            0,
+            0,
+            [1u8; 32],
+            500,
+            test_pq_signature(128),
         ));
         assert_ok!(Consensus::submit_ai_work(
-            RuntimeOrigin::signed(BOB), 1, 1, [2u8; 32], 1500, test_pq_signature(128),
+            RuntimeOrigin::signed(BOB),
+            1,
+            1,
+            [2u8; 32],
+            1500,
+            test_pq_signature(128),
         ));
         assert_ok!(Consensus::submit_ai_work(
-            RuntimeOrigin::signed(CHARLIE), 2, 2, [3u8; 32], 2000, test_pq_signature(128),
+            RuntimeOrigin::signed(CHARLIE),
+            2,
+            2,
+            [3u8; 32],
+            2000,
+            test_pq_signature(128),
         ));
 
         let bal_a = Balances::free_balance(ALICE);
@@ -1099,7 +1150,12 @@ fn multi_validator_round_proportional_rewards() {
         // ALICE (fast computation, bonus=100) should have higher quality => bigger reward
         let reward_a = Balances::free_balance(ALICE) - bal_a;
         let reward_b = Balances::free_balance(BOB) - bal_b;
-        assert!(reward_a > reward_b, "Faster computation should earn more: {} vs {}", reward_a, reward_b);
+        assert!(
+            reward_a > reward_b,
+            "Faster computation should earn more: {} vs {}",
+            reward_a,
+            reward_b
+        );
     });
 }
 
@@ -1107,7 +1163,9 @@ fn multi_validator_round_proportional_rewards() {
 fn finalize_zero_submissions_round() {
     new_test_ext().execute_with(|| {
         assert_ok!(Consensus::join_consensus_validator(
-            RuntimeOrigin::signed(ALICE), 5_000_000, test_pq_signature(128),
+            RuntimeOrigin::signed(ALICE),
+            5_000_000,
+            test_pq_signature(128),
         ));
         assert_ok!(Consensus::start_consensus_round(RuntimeOrigin::root(), 5));
         let round_id = Consensus::current_consensus_round().unwrap();
@@ -1128,7 +1186,9 @@ fn finalize_zero_submissions_round() {
 fn double_finalize_fails() {
     new_test_ext().execute_with(|| {
         assert_ok!(Consensus::join_consensus_validator(
-            RuntimeOrigin::signed(ALICE), 5_000_000, test_pq_signature(128),
+            RuntimeOrigin::signed(ALICE),
+            5_000_000,
+            test_pq_signature(128),
         ));
         assert_ok!(Consensus::start_consensus_round(RuntimeOrigin::root(), 5));
         System::set_block_number(7);
@@ -1150,19 +1210,29 @@ fn rate_limit_per_account_isolation() {
     new_test_ext().execute_with(|| {
         // Setup with two validators
         assert_ok!(Consensus::join_consensus_validator(
-            RuntimeOrigin::signed(ALICE), 5_000_000, test_pq_signature(128),
+            RuntimeOrigin::signed(ALICE),
+            5_000_000,
+            test_pq_signature(128),
         ));
         assert_ok!(Consensus::join_consensus_validator(
-            RuntimeOrigin::signed(BOB), 5_000_000, test_pq_signature(128),
+            RuntimeOrigin::signed(BOB),
+            5_000_000,
+            test_pq_signature(128),
         ));
         assert_ok!(Consensus::register_ai_model(
-            RuntimeOrigin::signed(ALICE), 0, test_parameters_hash(1), 1000,
+            RuntimeOrigin::signed(ALICE),
+            0,
+            test_parameters_hash(1),
+            1000,
             test_pq_signature(4627),
         ));
         assert_ok!(Consensus::validate_ai_model(RuntimeOrigin::root(), 0, 8500));
         // BOB needs his own model (ModelNotOwned check)
         assert_ok!(Consensus::register_ai_model(
-            RuntimeOrigin::signed(BOB), 1, test_parameters_hash(2), 1000,
+            RuntimeOrigin::signed(BOB),
+            1,
+            test_parameters_hash(2),
+            1000,
             test_pq_signature(4627),
         ));
         assert_ok!(Consensus::validate_ai_model(RuntimeOrigin::root(), 1, 8500));
@@ -1171,21 +1241,33 @@ fn rate_limit_per_account_isolation() {
         // ALICE exhausts her rate limit (5 calls)
         for i in 0..5u8 {
             assert_ok!(Consensus::submit_ai_work(
-                RuntimeOrigin::signed(ALICE), 0, 0, [i; 32], 500,
+                RuntimeOrigin::signed(ALICE),
+                0,
+                0,
+                [i; 32],
+                500,
                 test_pq_signature(128),
             ));
         }
         // ALICE is rate-limited
         assert_noop!(
             Consensus::submit_ai_work(
-                RuntimeOrigin::signed(ALICE), 0, 0, [99u8; 32], 500,
+                RuntimeOrigin::signed(ALICE),
+                0,
+                0,
+                [99u8; 32],
+                500,
                 test_pq_signature(128),
             ),
             Error::<Test>::RateLimitExceeded
         );
         // BOB can still submit on his own model (separate counter)
         assert_ok!(Consensus::submit_ai_work(
-            RuntimeOrigin::signed(BOB), 1, 0, [10u8; 32], 500,
+            RuntimeOrigin::signed(BOB),
+            1,
+            0,
+            [10u8; 32],
+            500,
             test_pq_signature(128),
         ));
     });
@@ -1200,8 +1282,11 @@ fn multiple_models_per_account_tracked() {
     new_test_ext().execute_with(|| {
         for i in 0..5u8 {
             assert_ok!(Consensus::register_ai_model(
-                RuntimeOrigin::signed(ALICE), i % 8, test_parameters_hash(i),
-                1000, test_pq_signature(4627),
+                RuntimeOrigin::signed(ALICE),
+                i % 8,
+                test_parameters_hash(i),
+                1000,
+                test_pq_signature(4627),
             ));
         }
         let models = Consensus::model_by_account(ALICE);
@@ -1219,11 +1304,17 @@ fn multiple_models_per_account_tracked() {
 fn register_model_different_accounts() {
     new_test_ext().execute_with(|| {
         assert_ok!(Consensus::register_ai_model(
-            RuntimeOrigin::signed(ALICE), 0, test_parameters_hash(1), 1000,
+            RuntimeOrigin::signed(ALICE),
+            0,
+            test_parameters_hash(1),
+            1000,
             test_pq_signature(4627),
         ));
         assert_ok!(Consensus::register_ai_model(
-            RuntimeOrigin::signed(BOB), 1, test_parameters_hash(2), 2000,
+            RuntimeOrigin::signed(BOB),
+            1,
+            test_parameters_hash(2),
+            2000,
             test_pq_signature(4627),
         ));
         assert_eq!(Consensus::model_by_account(ALICE).len(), 1);
@@ -1241,13 +1332,19 @@ fn validator_selection_includes_all_active() {
     new_test_ext().execute_with(|| {
         // Register 3 validators
         assert_ok!(Consensus::join_consensus_validator(
-            RuntimeOrigin::signed(ALICE), 5_000_000, test_pq_signature(128),
+            RuntimeOrigin::signed(ALICE),
+            5_000_000,
+            test_pq_signature(128),
         ));
         assert_ok!(Consensus::join_consensus_validator(
-            RuntimeOrigin::signed(BOB), 5_000_000, test_pq_signature(128),
+            RuntimeOrigin::signed(BOB),
+            5_000_000,
+            test_pq_signature(128),
         ));
         assert_ok!(Consensus::join_consensus_validator(
-            RuntimeOrigin::signed(CHARLIE), 5_000_000, test_pq_signature(128),
+            RuntimeOrigin::signed(CHARLIE),
+            5_000_000,
+            test_pq_signature(128),
         ));
 
         assert_ok!(Consensus::start_consensus_round(RuntimeOrigin::root(), 10));
@@ -1263,7 +1360,9 @@ fn low_quality_validator_can_join_and_participate() {
     new_test_ext().execute_with(|| {
         // LOW_QUALITY account has quality=35, reputation=40
         assert_ok!(Consensus::join_consensus_validator(
-            RuntimeOrigin::signed(LOW_QUALITY), 1_000_000, test_pq_signature(128),
+            RuntimeOrigin::signed(LOW_QUALITY),
+            1_000_000,
+            test_pq_signature(128),
         ));
         let vid = Consensus::validator_by_account(LOW_QUALITY).unwrap();
         let val = Consensus::consensus_validators(vid).unwrap();
@@ -1277,7 +1376,9 @@ fn low_quality_validator_can_join_and_participate() {
 fn start_round_requires_authority() {
     new_test_ext().execute_with(|| {
         assert_ok!(Consensus::join_consensus_validator(
-            RuntimeOrigin::signed(ALICE), 5_000_000, test_pq_signature(128),
+            RuntimeOrigin::signed(ALICE),
+            5_000_000,
+            test_pq_signature(128),
         ));
         assert_noop!(
             Consensus::start_consensus_round(RuntimeOrigin::signed(ALICE), 5),
@@ -1295,7 +1396,10 @@ fn register_model_emits_event() {
     new_test_ext().execute_with(|| {
         System::set_block_number(1);
         assert_ok!(Consensus::register_ai_model(
-            RuntimeOrigin::signed(ALICE), 0, test_parameters_hash(1), 1000,
+            RuntimeOrigin::signed(ALICE),
+            0,
+            test_parameters_hash(1),
+            1000,
             test_pq_signature(4627),
         ));
         System::assert_has_event(
@@ -1303,7 +1407,8 @@ fn register_model_emits_event() {
                 model_id: 0,
                 trainer: ALICE,
                 model_type_index: 0,
-            }.into()
+            }
+            .into(),
         );
     });
 }
@@ -1313,14 +1418,17 @@ fn join_validator_emits_event() {
     new_test_ext().execute_with(|| {
         System::set_block_number(1);
         assert_ok!(Consensus::join_consensus_validator(
-            RuntimeOrigin::signed(ALICE), 5_000_000, test_pq_signature(128),
+            RuntimeOrigin::signed(ALICE),
+            5_000_000,
+            test_pq_signature(128),
         ));
         System::assert_has_event(
             Event::ValidatorJoined {
                 validator_id: 0,
                 validator: ALICE,
                 stake: 5_000_000,
-            }.into()
+            }
+            .into(),
         );
     });
 }
@@ -1330,14 +1438,17 @@ fn start_round_emits_event() {
     new_test_ext().execute_with(|| {
         System::set_block_number(1);
         assert_ok!(Consensus::join_consensus_validator(
-            RuntimeOrigin::signed(ALICE), 5_000_000, test_pq_signature(128),
+            RuntimeOrigin::signed(ALICE),
+            5_000_000,
+            test_pq_signature(128),
         ));
         assert_ok!(Consensus::start_consensus_round(RuntimeOrigin::root(), 10));
         System::assert_has_event(
             Event::ConsensusRoundStarted {
                 round_id: 0,
                 validators_count: 1,
-            }.into()
+            }
+            .into(),
         );
     });
 }
@@ -1348,7 +1459,11 @@ fn submit_work_emits_event() {
         setup_consensus_for_rate_limit();
         System::set_block_number(1);
         assert_ok!(Consensus::submit_ai_work(
-            RuntimeOrigin::signed(ALICE), 0, 0, [1u8; 32], 500,
+            RuntimeOrigin::signed(ALICE),
+            0,
+            0,
+            [1u8; 32],
+            500,
             test_pq_signature(128),
         ));
         let round_id = Consensus::current_consensus_round().unwrap();
@@ -1359,9 +1474,10 @@ fn submit_work_emits_event() {
                 validator_id: vid,
                 model_id: 0,
                 work_type_index: 0,
-                quality_score: 8600, // 8500 + 100 bonus (fast)
+                quality_score: 8600,              // 8500 + 100 bonus (fast)
                 sustainability_contribution: 100, // time=500 < 1000, sust capped at 100
-            }.into()
+            }
+            .into(),
         );
     });
 }
@@ -1371,7 +1487,10 @@ fn validate_model_emits_event() {
     new_test_ext().execute_with(|| {
         System::set_block_number(1);
         assert_ok!(Consensus::register_ai_model(
-            RuntimeOrigin::signed(ALICE), 0, test_parameters_hash(1), 1000,
+            RuntimeOrigin::signed(ALICE),
+            0,
+            test_parameters_hash(1),
+            1000,
             test_pq_signature(4627),
         ));
         assert_ok!(Consensus::validate_ai_model(RuntimeOrigin::root(), 0, 8500));
@@ -1379,7 +1498,8 @@ fn validate_model_emits_event() {
             Event::ModelQualityUpdated {
                 model_id: 0,
                 new_quality_score: 8500,
-            }.into()
+            }
+            .into(),
         );
     });
 }
@@ -1394,7 +1514,11 @@ fn sustainability_ema_multiple_submissions() {
         setup_consensus_for_rate_limit();
         // Submit with high sustainability (fast computation, time=1 → sust=100)
         assert_ok!(Consensus::submit_ai_work(
-            RuntimeOrigin::signed(ALICE), 0, 0, [1u8; 32], 1,
+            RuntimeOrigin::signed(ALICE),
+            0,
+            0,
+            [1u8; 32],
+            1,
             test_pq_signature(128),
         ));
         let vid = Consensus::validator_by_account(ALICE).unwrap();
@@ -1409,7 +1533,11 @@ fn sustainability_ema_multiple_submissions() {
         // Actually time=0 → quality=8500+100=8600. Wait, time=50000 >= 1000 → no bonus, quality=8500
         // sust = 500*8500/50000 = 85
         assert_ok!(Consensus::submit_ai_work(
-            RuntimeOrigin::signed(ALICE), 0, 1, [2u8; 32], 50000,
+            RuntimeOrigin::signed(ALICE),
+            0,
+            1,
+            [2u8; 32],
+            50000,
             test_pq_signature(128),
         ));
         let val2 = Consensus::consensus_validators(vid).unwrap();
@@ -1427,13 +1555,20 @@ fn eligible_rounds_and_uptime_tracked() {
     new_test_ext().execute_with(|| {
         // Register 2 validators
         assert_ok!(Consensus::join_consensus_validator(
-            RuntimeOrigin::signed(ALICE), 5_000_000, test_pq_signature(128),
+            RuntimeOrigin::signed(ALICE),
+            5_000_000,
+            test_pq_signature(128),
         ));
         assert_ok!(Consensus::join_consensus_validator(
-            RuntimeOrigin::signed(BOB), 5_000_000, test_pq_signature(128),
+            RuntimeOrigin::signed(BOB),
+            5_000_000,
+            test_pq_signature(128),
         ));
         assert_ok!(Consensus::register_ai_model(
-            RuntimeOrigin::signed(ALICE), 0, test_parameters_hash(1), 1000,
+            RuntimeOrigin::signed(ALICE),
+            0,
+            test_parameters_hash(1),
+            1000,
             test_pq_signature(4627),
         ));
         assert_ok!(Consensus::validate_ai_model(RuntimeOrigin::root(), 0, 8500));
@@ -1442,7 +1577,11 @@ fn eligible_rounds_and_uptime_tracked() {
         assert_ok!(Consensus::start_consensus_round(RuntimeOrigin::root(), 5));
         // Only ALICE submits
         assert_ok!(Consensus::submit_ai_work(
-            RuntimeOrigin::signed(ALICE), 0, 0, [1u8; 32], 500,
+            RuntimeOrigin::signed(ALICE),
+            0,
+            0,
+            [1u8; 32],
+            500,
             test_pq_signature(128),
         ));
         System::set_block_number(7);
@@ -1470,7 +1609,9 @@ fn eligible_rounds_and_uptime_tracked() {
 fn contribution_score_low_quality_account() {
     new_test_ext().execute_with(|| {
         assert_ok!(Consensus::join_consensus_validator(
-            RuntimeOrigin::signed(LOW_QUALITY), 1_000_000, test_pq_signature(128),
+            RuntimeOrigin::signed(LOW_QUALITY),
+            1_000_000,
+            test_pq_signature(128),
         ));
         // LOW_QUALITY: quality=35, reputation=40, stake=1_000_000
         // blended_quality = (40*60 + 35*40) / 100 = (2400+1400)/100 = 38
@@ -1487,7 +1628,9 @@ fn contribution_score_low_quality_account() {
 fn contribution_score_eve_account() {
     new_test_ext().execute_with(|| {
         assert_ok!(Consensus::join_consensus_validator(
-            RuntimeOrigin::signed(EVE), 5_000_000, test_pq_signature(128),
+            RuntimeOrigin::signed(EVE),
+            5_000_000,
+            test_pq_signature(128),
         ));
         // EVE: quality=65, reputation=70, stake=5_000_000
         // blended_quality = (70*60 + 65*40) / 100 = (4200+2600)/100 = 68
@@ -1509,11 +1652,17 @@ fn global_metrics_updated_across_operations() {
     new_test_ext().execute_with(|| {
         // Register 2 models
         assert_ok!(Consensus::register_ai_model(
-            RuntimeOrigin::signed(ALICE), 0, test_parameters_hash(1), 1000,
+            RuntimeOrigin::signed(ALICE),
+            0,
+            test_parameters_hash(1),
+            1000,
             test_pq_signature(4627),
         ));
         assert_ok!(Consensus::register_ai_model(
-            RuntimeOrigin::signed(BOB), 1, test_parameters_hash(2), 2000,
+            RuntimeOrigin::signed(BOB),
+            1,
+            test_parameters_hash(2),
+            2000,
             test_pq_signature(4627),
         ));
         let m1 = Consensus::global_ai_metrics();
@@ -1522,10 +1671,14 @@ fn global_metrics_updated_across_operations() {
 
         // Register 2 validators
         assert_ok!(Consensus::join_consensus_validator(
-            RuntimeOrigin::signed(ALICE), 5_000_000, test_pq_signature(128),
+            RuntimeOrigin::signed(ALICE),
+            5_000_000,
+            test_pq_signature(128),
         ));
         assert_ok!(Consensus::join_consensus_validator(
-            RuntimeOrigin::signed(BOB), 5_000_000, test_pq_signature(128),
+            RuntimeOrigin::signed(BOB),
+            5_000_000,
+            test_pq_signature(128),
         ));
         let m2 = Consensus::global_ai_metrics();
         assert_eq!(m2.active_validators, 2);
@@ -1536,7 +1689,11 @@ fn global_metrics_updated_across_operations() {
         // Start and finalize a round
         assert_ok!(Consensus::start_consensus_round(RuntimeOrigin::root(), 5));
         assert_ok!(Consensus::submit_ai_work(
-            RuntimeOrigin::signed(ALICE), 0, 0, [1u8; 32], 500,
+            RuntimeOrigin::signed(ALICE),
+            0,
+            0,
+            [1u8; 32],
+            500,
             test_pq_signature(128),
         ));
         System::set_block_number(7);
@@ -1556,10 +1713,15 @@ fn global_metrics_updated_across_operations() {
 fn consecutive_rounds_work() {
     new_test_ext().execute_with(|| {
         assert_ok!(Consensus::join_consensus_validator(
-            RuntimeOrigin::signed(ALICE), 5_000_000, test_pq_signature(128),
+            RuntimeOrigin::signed(ALICE),
+            5_000_000,
+            test_pq_signature(128),
         ));
         assert_ok!(Consensus::register_ai_model(
-            RuntimeOrigin::signed(ALICE), 0, test_parameters_hash(1), 1000,
+            RuntimeOrigin::signed(ALICE),
+            0,
+            test_parameters_hash(1),
+            1000,
             test_pq_signature(4627),
         ));
         assert_ok!(Consensus::validate_ai_model(RuntimeOrigin::root(), 0, 8500));
@@ -1567,7 +1729,11 @@ fn consecutive_rounds_work() {
         // Round 1
         assert_ok!(Consensus::start_consensus_round(RuntimeOrigin::root(), 5));
         assert_ok!(Consensus::submit_ai_work(
-            RuntimeOrigin::signed(ALICE), 0, 0, [1u8; 32], 500,
+            RuntimeOrigin::signed(ALICE),
+            0,
+            0,
+            [1u8; 32],
+            500,
             test_pq_signature(128),
         ));
         System::set_block_number(7);
@@ -1576,7 +1742,11 @@ fn consecutive_rounds_work() {
         // Round 2
         assert_ok!(Consensus::start_consensus_round(RuntimeOrigin::root(), 5));
         assert_ok!(Consensus::submit_ai_work(
-            RuntimeOrigin::signed(ALICE), 0, 1, [2u8; 32], 800,
+            RuntimeOrigin::signed(ALICE),
+            0,
+            1,
+            [2u8; 32],
+            800,
             test_pq_signature(128),
         ));
         System::set_block_number(13);
@@ -1603,7 +1773,9 @@ fn no_funds_account_cannot_stake_below_minimum() {
         // Even with enough balance, stake below MinConsensusStake is rejected
         assert_noop!(
             Consensus::join_consensus_validator(
-                RuntimeOrigin::signed(NO_FUNDS), 500_000, test_pq_signature(128),
+                RuntimeOrigin::signed(NO_FUNDS),
+                500_000,
+                test_pq_signature(128),
             ),
             Error::<Test>::InsufficientStake
         );
@@ -1615,7 +1787,11 @@ fn finalize_rewards_emits_distribution_event() {
     new_test_ext().execute_with(|| {
         setup_consensus_for_rate_limit();
         assert_ok!(Consensus::submit_ai_work(
-            RuntimeOrigin::signed(ALICE), 0, 0, [1u8; 32], 500,
+            RuntimeOrigin::signed(ALICE),
+            0,
+            0,
+            [1u8; 32],
+            500,
             test_pq_signature(128),
         ));
         // Round started at block 1, duration=10 → end=11
@@ -1626,7 +1802,8 @@ fn finalize_rewards_emits_distribution_event() {
             Event::ConsensusRewardsDistributed {
                 round_id: 0,
                 total_rewards: 100_000, // ConsensusReward
-            }.into()
+            }
+            .into(),
         );
     });
 }

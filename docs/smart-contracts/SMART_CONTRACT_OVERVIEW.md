@@ -260,7 +260,7 @@ pub fn redeem_voucher(
 
 ## Resources
 
-- **Testnet Faucet**: https://faucet.belizechain.org
+- **Testnet Faucet**: https://<current-public-testnet-faucet>
 - **Contract Explorer**: https://explorer.belizechain.org/contracts
 - **GitHub**: https://github.com/BelizeChain/gem
 - **Discord**: #smart-contracts channel

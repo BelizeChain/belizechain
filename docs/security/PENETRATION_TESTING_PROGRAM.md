@@ -104,7 +104,7 @@ This document defines the comprehensive penetration testing requirements for Bel
   - Indexed blockchain data (SubQuery)
   - Complex queries, analytics
   
-- **Faucet API:** `https://faucet.belizechain.org/api`
+- **Faucet API:** `https://<current-public-testnet-faucet>/api`
   - Testnet token distribution
   - Rate limiting, Captcha verification
 
@@ -1221,7 +1221,7 @@ From: BelizeChain Security Team
 This letter authorizes SR Labs to conduct penetration testing on BelizeChain infrastructure from [START DATE] to [END DATE].
 
 AUTHORIZED SCOPE:
-- Testnet nodes: testnet.belizechain.org
+- Testnet nodes: operator-published public testnet endpoints for the active engagement
 - Staging environment: staging.belizechain.org
 - All UI portals (staging): wallet-staging.belizechain.org, etc.
 

@@ -27,7 +27,7 @@ mod benchmarks {
     fn update_srs() {
         let caller: T::AccountId = whitelisted_caller();
         let target: T::AccountId = account("target", 0, 0);
-        
+
         // Advance block number past SrsUpdateCooldown so the extrinsic doesn't reject
         let cooldown = T::SrsUpdateCooldown::get();
         frame_system::Pallet::<T>::set_block_number(cooldown);
@@ -71,7 +71,11 @@ mod benchmarks {
         SocialResponsibilityScores::<T>::insert(&endorser, endorser_srs);
 
         #[extrinsic_call]
-        endorse_peer(RawOrigin::Signed(endorser.clone()), endorsee.clone(), skill_code);
+        endorse_peer(
+            RawOrigin::Signed(endorser.clone()),
+            endorsee.clone(),
+            skill_code,
+        );
 
         // Verify endorsement count increased
         assert!(PeerEndorsements::<T>::get(&endorsee) > 0);
@@ -96,14 +100,19 @@ mod benchmarks {
             anonymous_hash: None,
         };
         SocialResponsibilityScores::<T>::insert(&caller, initial_score);
-        
+
         let is_public: bool = true;
 
         #[extrinsic_call]
         set_srs_privacy(RawOrigin::Signed(caller.clone()), is_public);
 
         // Verify privacy setting was updated
-        assert_eq!(SocialResponsibilityScores::<T>::get(&caller).unwrap().public_display, is_public);
+        assert_eq!(
+            SocialResponsibilityScores::<T>::get(&caller)
+                .unwrap()
+                .public_display,
+            is_public
+        );
     }
 
     impl_benchmark_test_suite!(Pallet, crate::mock::new_test_ext(), crate::mock::Test);

@@ -10,7 +10,7 @@ Complete guide to developing and modifying BelizeChain's core blockchain.
 
 ### Substrate-based Stack
 
-BelizeChain uses **Polkadot SDK stable2512** (January 2026 release):
+BelizeChain uses **Polkadot SDK stable2603**:
 
 ```
 ┌─────────────────────────────────────┐
@@ -27,7 +27,7 @@ BelizeChain uses **Polkadot SDK stable2512** (January 2026 release):
                │
 ┌──────────────▼──────────────────────┐
 │   Runtime (WASM + Native)           │
-│   - 16 Custom Pallets               │
+│   - 18 Belize-specific pallets      │
 │   - 8 System Pallets                │
 │   - Consensus (BABE + GRANDPA)       │
 └─────────────────────────────────────┘
@@ -49,7 +49,7 @@ belizechain/
 │   │   └── lib.rs          # Runtime construction
 │   └── Cargo.toml
 │
-└── pallets/                 # Custom pallets (15 total)
+└── pallets/                 # Belize-specific pallets + shared support modules
     ├── economy/            # DALLA/bBZD economy
     ├── identity/           # BelizeID system
     ├── governance/         # Democracy & councils
@@ -64,7 +64,14 @@ belizechain/
     ├── quantum/            # Quantum orchestration
     ├── community/          # Community governance
     ├── bns/                # Belize Name Service
-    └── contracts/          # Wasm contract execution
+    ├── mesh/               # Meshtastic integration
+    ├── justice/            # Dispute resolution
+    ├── whistleblower/      # Protected reporting
+    ├── moderation/         # Community moderation
+    └── common/             # Shared helpers
+
+# Smart contracts are provided through `pallet-contracts` in the runtime,
+# not as a local `pallets/contracts/` folder.
 ```
 
 ---
@@ -74,7 +81,7 @@ belizechain/
 ### Start Development Node
 
 ```bash
-cd belizechain-belizechain/
+cd belizechain/
 
 # Build first (if not already built)
 cargo build --release
@@ -82,9 +89,8 @@ cargo build --release
 # Start node in development mode
 ./target/release/belizechain-node --dev --tmp
 
-# Output:
+# Output excerpt (timestamps and exact version string vary by build):
 # 2026-01-31 10:00:00 BelizeChain Node
-# 2026-01-31 10:00:00 ✨  version 4.0.0-stable2512
 # 2026-01-31 10:00:00 ❤️  by BelizeChain Team
 # 2026-01-31 10:00:00 📋 Chain specification: Development
 # 2026-01-31 10:00:00 🏷  Node name: fuzzy-donkey-1234

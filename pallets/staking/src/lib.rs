@@ -12,21 +12,16 @@ extern crate alloc;
 
 use frame_support::{
     pallet_prelude::*,
-    traits::{
-        Currency, ReservableCurrency, LockableCurrency, LockIdentifier,
-        Get, Randomness,
-    },
+    traits::{Currency, Get, LockIdentifier, LockableCurrency, Randomness, ReservableCurrency},
+    weights::{constants::RocksDbWeight, Weight},
     BoundedVec,
-    weights::{Weight, constants::RocksDbWeight},
 };
 use frame_system::pallet_prelude::*;
-use sp_runtime::{
-    traits::{
-        Zero, SaturatedConversion
-    },
-    Perbill, Debug,
-};
 use scale_info::TypeInfo;
+use sp_runtime::{
+    traits::{SaturatedConversion, Zero},
+    Debug, Perbill,
+};
 
 pub use pallet::*;
 
@@ -52,7 +47,8 @@ pub mod pallet {
     use sp_runtime::traits::Saturating;
 
     /// Balance type alias
-    pub type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+    pub type BalanceOf<T> =
+        <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
@@ -85,29 +81,31 @@ pub mod pallet {
     pub trait Config: frame_system::Config {
         /// The overarching event type
         /// The currency used for validator staking
-        type Currency: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId> + LockableCurrency<Self::AccountId>;
-        
+        type Currency: Currency<Self::AccountId>
+            + ReservableCurrency<Self::AccountId>
+            + LockableCurrency<Self::AccountId>;
+
         /// Oracle verification provider
         type OracleVerifier: OracleVerifier<Self::AccountId>;
-        
+
         /// Source of randomness for validator selection
         type Randomness: Randomness<Self::Hash, BlockNumberFor<Self>>;
-        
+
         /// Identity provider for validator KYC verification
         type Identity: StakingIdentityProvider<Self::AccountId>;
-        
+
         /// Maximum number of validators
         #[pallet::constant]
         type MaxValidators: Get<u32>;
-        
+
         /// Minimum staking amount for validators
         #[pallet::constant]
         type MinValidatorStake: Get<<Self::Currency as Currency<Self::AccountId>>::Balance>;
-        
+
         /// Base reward per epoch for validators
         #[pallet::constant]
         type BaseReward: Get<<Self::Currency as Currency<Self::AccountId>>::Balance>;
-        
+
         /// Number of blocks per PoUW epoch
         #[pallet::constant]
         type EpochDuration: Get<BlockNumberFor<Self>>;
@@ -120,7 +118,7 @@ pub mod pallet {
         /// Maximum total supply cap — minting is halted once total_issuance reaches this
         #[pallet::constant]
         type MaxSupply: Get<<Self::Currency as Currency<Self::AccountId>>::Balance>;
-        
+
         /// Weight information for extrinsics
         type WeightInfo: WeightInfo;
 
@@ -142,10 +140,10 @@ pub mod pallet {
     pub trait StakingIdentityProvider<AccountId> {
         /// Get KYC level for validator
         fn get_kyc_level(account: &AccountId) -> Option<u8>;
-        
+
         /// Check if validator meets minimum KYC requirement
         fn meets_validator_kyc(account: &AccountId) -> bool;
-        
+
         /// Check if account is sanctioned
         fn is_sanctioned(account: &AccountId) -> bool;
     }
@@ -254,7 +252,11 @@ pub mod pallet {
         _,
         Blake2_128Concat,
         T::AccountId,
-        ValidatorInfo<T::AccountId, <T::Currency as Currency<T::AccountId>>::Balance, BlockNumberFor<T>>,
+        ValidatorInfo<
+            T::AccountId,
+            <T::Currency as Currency<T::AccountId>>::Balance,
+            BlockNumberFor<T>,
+        >,
     >;
 
     #[pallet::storage]
@@ -275,12 +277,8 @@ pub mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn model_submissions)]
     /// Model delta submissions for current epoch
-    pub type ModelSubmissions<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        ModelDelta,
-    >;
+    pub type ModelSubmissions<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, ModelDelta>;
 
     #[pallet::storage]
     #[pallet::getter(fn epoch_rewards)]
@@ -331,13 +329,8 @@ pub mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn validator_quantum_stats)]
     /// Quantum statistics per validator for current epoch
-    pub type ValidatorQuantumStatsMap<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        ValidatorQuantumStats,
-        ValueQuery,
-    >;
+    pub type ValidatorQuantumStatsMap<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, ValidatorQuantumStats, ValueQuery>;
 
     // EpochQuantumJobs removed (E-7): write-only counter, never read on-chain.
 
@@ -382,39 +375,25 @@ pub mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn operator_domain_stats)]
     /// Domain-specific contribution statistics per operator
-    pub type OperatorDomainStatsMap<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        OperatorDomainBreakdown,
-        ValueQuery,
-    >;
+    pub type OperatorDomainStatsMap<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, OperatorDomainBreakdown, ValueQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn last_claimed_epoch)]
     /// Last epoch in which an operator claimed domain bonus rewards
-    pub type LastClaimedEpoch<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        u32,
-        ValueQuery,
-    >;
+    pub type LastClaimedEpoch<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, u32, ValueQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn epoch_domain_contributions)]
     /// Total contributions per domain in current epoch
-    pub type EpochDomainContributions<T: Config> = StorageValue<_, OperatorDomainBreakdown, ValueQuery>;
+    pub type EpochDomainContributions<T: Config> =
+        StorageValue<_, OperatorDomainBreakdown, ValueQuery>;
 
     #[pallet::storage]
     /// S6-2: Per-operator epoch contribution tracker (epoch_number, count)
-    pub type OperatorEpochContributions<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        (u32, u32),
-        ValueQuery,
-    >;
+    pub type OperatorEpochContributions<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, (u32, u32), ValueQuery>;
 
     // GenesisConfig removed for Substrate v42 compatibility
 
@@ -427,9 +406,7 @@ pub mod pallet {
             stake: <T::Currency as Currency<T::AccountId>>::Balance,
         },
         /// Validator left the active set
-        ValidatorLeft {
-            validator: T::AccountId,
-        },
+        ValidatorLeft { validator: T::AccountId },
         /// New federated learning task assigned
         FLTaskAssigned {
             task_id: u32,
@@ -453,10 +430,7 @@ pub mod pallet {
             reason: u8, // SlashReason as u8
         },
         /// Epoch completed
-        EpochCompleted {
-            epoch: u32,
-            participants: u32,
-        },
+        EpochCompleted { epoch: u32, participants: u32 },
         /// Quantum contribution recorded (Phase 2.2)
         QuantumContributionRecorded {
             job_id: BoundedVec<u8, ConstU32<64>>,
@@ -632,7 +606,7 @@ pub mod pallet {
                 T::Identity::meets_validator_kyc(&who),
                 Error::<T>::ValidatorKycInsufficient
             );
-            
+
             // Check sanctions list
             ensure!(
                 !T::Identity::is_sanctioned(&who),
@@ -640,13 +614,22 @@ pub mod pallet {
             );
 
             // Ensure minimum stake
-            ensure!(stake >= T::MinValidatorStake::get(), Error::<T>::InsufficientStake);
+            ensure!(
+                stake >= T::MinValidatorStake::get(),
+                Error::<T>::InsufficientStake
+            );
 
             // Check if validator already active
-            ensure!(!Validators::<T>::contains_key(&who), Error::<T>::ValidatorAlreadyActive);
+            ensure!(
+                !Validators::<T>::contains_key(&who),
+                Error::<T>::ValidatorAlreadyActive
+            );
 
             // C-1 FIX: Prevent rejoin while unbonding — stake is still locked
-            ensure!(!PendingUnbonds::<T>::contains_key(&who), Error::<T>::PendingUnbond);
+            ensure!(
+                !PendingUnbonds::<T>::contains_key(&who),
+                Error::<T>::PendingUnbond
+            );
 
             // Check maximum validators limit using tracked count; lazily backfill if zero
             let mut validator_count = ValidatorCount::<T>::get();
@@ -654,13 +637,18 @@ pub mod pallet {
                 // DOS-011 FIX: Bound backfill iteration by MaxValidators to prevent
                 // unbounded storage scan on first call.
                 let max_vals = T::MaxValidators::get() as usize;
-                let counted = Validators::<T>::iter_keys().take(max_vals).fold(0u32, |acc, _| acc.saturating_add(1));
+                let counted = Validators::<T>::iter_keys()
+                    .take(max_vals)
+                    .fold(0u32, |acc, _| acc.saturating_add(1));
                 if counted > 0 {
                     ValidatorCount::<T>::put(counted);
                     validator_count = counted;
                 }
             }
-            ensure!(validator_count < T::MaxValidators::get(), Error::<T>::MaxValidatorsReached);
+            ensure!(
+                validator_count < T::MaxValidators::get(),
+                Error::<T>::MaxValidatorsReached
+            );
 
             // Validate compute capacity
             ensure!(compute_capacity >= 50, Error::<T>::InvalidComputeCapacity);
@@ -687,16 +675,19 @@ pub mod pallet {
                 location,
                 compliance_score: 100, // Start with full compliance
                 last_fl_contribution: frame_system::Pallet::<T>::block_number(),
-                quality_score: 80, // Starting quality score
+                quality_score: 80,    // Starting quality score
                 timeliness_score: 90, // Starting timeliness score
-                honesty_score: 95, // Starting honesty score
+                honesty_score: 95,    // Starting honesty score
                 total_contributions: 0,
             };
 
             Validators::<T>::insert(&who, validator_info);
             ValidatorCount::<T>::put(validator_count.saturating_add(1));
 
-            Self::deposit_event(Event::ValidatorJoined { validator: who, stake });
+            Self::deposit_event(Event::ValidatorJoined {
+                validator: who,
+                stake,
+            });
 
             Ok(())
         }
@@ -715,11 +706,16 @@ pub mod pallet {
             let validator_info = Validators::<T>::get(&who).ok_or(Error::<T>::ValidatorNotFound)?;
 
             // Ensure not already unbonding
-            ensure!(!PendingUnbonds::<T>::contains_key(&who), Error::<T>::AlreadyUnbonding);
+            ensure!(
+                !PendingUnbonds::<T>::contains_key(&who),
+                Error::<T>::AlreadyUnbonding
+            );
 
             // Remove validator from active set and decrement count
             Validators::<T>::remove(&who);
-            ValidatorCount::<T>::mutate(|c| { *c = c.saturating_sub(1); });
+            ValidatorCount::<T>::mutate(|c| {
+                *c = c.saturating_sub(1);
+            });
 
             // Keep the lock in place during unbonding — record unlock time
             let current_block = frame_system::Pallet::<T>::block_number();
@@ -741,8 +737,8 @@ pub mod pallet {
         pub fn withdraw_unbonded(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            let (stake, unlock_at) = PendingUnbonds::<T>::get(&who)
-                .ok_or(Error::<T>::NoPendingUnbond)?;
+            let (stake, unlock_at) =
+                PendingUnbonds::<T>::get(&who).ok_or(Error::<T>::NoPendingUnbond)?;
 
             let current_block = frame_system::Pallet::<T>::block_number();
             ensure!(current_block >= unlock_at, Error::<T>::UnbondingNotReady);
@@ -771,8 +767,7 @@ pub mod pallet {
         ) -> DispatchResult {
             ensure_root(origin)?;
 
-            let reason = SlashReason::from_u8(reason_code)
-                .ok_or(Error::<T>::InvalidSlashReason)?;
+            let reason = SlashReason::from_u8(reason_code).ok_or(Error::<T>::InvalidSlashReason)?;
 
             ensure!(
                 Validators::<T>::contains_key(&validator),
@@ -821,14 +816,18 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
 
             // Ensure validator is active
-            let mut validator_info = Validators::<T>::get(&who).ok_or(Error::<T>::ValidatorNotFound)?;
+            let mut validator_info =
+                Validators::<T>::get(&who).ok_or(Error::<T>::ValidatorNotFound)?;
 
             // Ensure active FL task exists
             let active_task = ActiveFLTask::<T>::get().ok_or(Error::<T>::NoActiveFLTask)?;
             ensure!(active_task.task_id == task_id, Error::<T>::NoActiveFLTask);
 
             // Ensure not already submitted
-            ensure!(!ModelSubmissions::<T>::contains_key(&who), Error::<T>::ModelDeltaAlreadySubmitted);
+            ensure!(
+                !ModelSubmissions::<T>::contains_key(&who),
+                Error::<T>::ModelDeltaAlreadySubmitted
+            );
 
             // Check deadline
             let current_block = frame_system::Pallet::<T>::block_number();
@@ -854,9 +853,11 @@ pub mod pallet {
             use sp_runtime::traits::Hash;
             #[cfg(not(feature = "runtime-benchmarks"))]
             {
-                let expected_commitment = T::Hashing::hash_of(
-                    &(encrypted_delta.as_slice(), &who, current_block.saturated_into::<u32>()),
-                );
+                let expected_commitment = T::Hashing::hash_of(&(
+                    encrypted_delta.as_slice(),
+                    &who,
+                    current_block.saturated_into::<u32>(),
+                ));
                 ensure!(
                     computation_commitment == *expected_commitment.as_ref(),
                     Error::<T>::InvalidComputationCommitment
@@ -872,7 +873,8 @@ pub mod pallet {
 
             // Calculate scores based on submission quality and timeliness
             let quality_score = Self::evaluate_model_quality(&encrypted_delta);
-            let timeliness_score = Self::calculate_timeliness_score(current_block, active_task.deadline);
+            let timeliness_score =
+                Self::calculate_timeliness_score(current_block, active_task.deadline);
 
             // Create model delta submission
             let model_delta = ModelDelta {
@@ -889,7 +891,8 @@ pub mod pallet {
             // Update validator scores
             validator_info.quality_score = quality_score;
             validator_info.timeliness_score = timeliness_score;
-            validator_info.total_contributions = validator_info.total_contributions.saturating_add(1);
+            validator_info.total_contributions =
+                validator_info.total_contributions.saturating_add(1);
             validator_info.last_fl_contribution = current_block;
 
             Validators::<T>::insert(&who, validator_info);
@@ -899,7 +902,8 @@ pub mod pallet {
                 validator: who,
                 task_id,
                 quality_score,
-            });            Ok(())
+            });
+            Ok(())
         }
 
         /// Assign new federated learning task (only callable by governance/sudo)
@@ -937,10 +941,7 @@ pub mod pallet {
             // W-1 FIX: Use MaxValidators as bound (each validator has at most one submission).
             let _ = ModelSubmissions::<T>::clear(T::MaxValidators::get(), None);
 
-            Self::deposit_event(Event::FLTaskAssigned {
-                task_id,
-                deadline,
-            });
+            Self::deposit_event(Event::FLTaskAssigned { task_id, deadline });
 
             Ok(())
         }
@@ -954,15 +955,16 @@ pub mod pallet {
         // DOS-009 FIX: Operational dispatch — epoch progression must not be
         // blocked by transaction congestion.
         #[pallet::weight((T::WeightInfo::distribute_rewards(), DispatchClass::Operational))]
-    #[allow(clippy::type_complexity)]
-    pub fn distribute_rewards(origin: OriginFor<T>) -> DispatchResult {
+        #[allow(clippy::type_complexity)]
+        pub fn distribute_rewards(origin: OriginFor<T>) -> DispatchResult {
             // CONS-020: Allow permissionless triggering — anyone can advance the epoch.
             let _ = ensure_signed_or_root(origin)?;
 
             let current_epoch = Self::current_epoch();
             let base_reward = T::BaseReward::get();
-            
-            let mut total_distributed: <T::Currency as Currency<T::AccountId>>::Balance = Zero::zero();
+
+            let mut total_distributed: <T::Currency as Currency<T::AccountId>>::Balance =
+                Zero::zero();
             let mut participant_count = 0u32;
 
             // SECURITY: Supply-cap guard — stop minting once total issuance reaches MaxSupply (H-19)
@@ -986,7 +988,7 @@ pub mod pallet {
 
                     // Mint rewards to validator
                     let _ = T::Currency::deposit_creating(&validator_id, capped_reward);
-                    
+
                     total_distributed = total_distributed.saturating_add(capped_reward);
                     participant_count = participant_count.saturating_add(1);
                 }
@@ -1035,7 +1037,7 @@ pub mod pallet {
         ) -> DispatchResult {
             // Only Quantum pallet or root can record contributions
             let caller = ensure_signed_or_root(origin)?;
-            
+
             // If signed, verify caller is an authorized Oracle operator
             if let Some(who) = caller {
                 ensure!(
@@ -1045,20 +1047,25 @@ pub mod pallet {
             }
 
             // Ensure validator exists
-            ensure!(Validators::<T>::contains_key(&validator), Error::<T>::ValidatorNotFound);
+            ensure!(
+                Validators::<T>::contains_key(&validator),
+                Error::<T>::ValidatorNotFound
+            );
 
             // Ensure job not already recorded
-            ensure!(!QuantumContributions::<T>::contains_key(&job_id), Error::<T>::QuantumJobAlreadyRecorded);
+            ensure!(
+                !QuantumContributions::<T>::contains_key(&job_id),
+                Error::<T>::QuantumJobAlreadyRecorded
+            );
 
             // Validate accuracy score (0-100)
             ensure!(accuracy_score <= 100, Error::<T>::InvalidAccuracyScore);
 
             let current_block = frame_system::Pallet::<T>::block_number();
-            
+
             // Calculate computation score based on circuit complexity
             // Formula: (qubits × depth) / 100, capped at u32::MAX
-            let complexity: u64 = (num_qubits as u64)
-                .saturating_mul(circuit_depth as u64);
+            let complexity: u64 = (num_qubits as u64).saturating_mul(circuit_depth as u64);
             let computation_score: u32 = (complexity / 100).min(u32::MAX as u64) as u32;
 
             // Create quantum contribution record
@@ -1080,24 +1087,25 @@ pub mod pallet {
             // Update validator quantum stats
             ValidatorQuantumStatsMap::<T>::mutate(&validator, |stats| {
                 stats.jobs_executed = stats.jobs_executed.saturating_add(1);
-                
+
                 // Update rolling average accuracy
                 let total_accuracy = (stats.avg_accuracy as u32)
                     .saturating_mul(stats.jobs_executed.saturating_sub(1))
                     .saturating_add(accuracy_score as u32);
                 stats.avg_accuracy = (total_accuracy / stats.jobs_executed) as u8;
-                
+
                 // Update totals
                 stats.total_complexity = stats.total_complexity.saturating_add(complexity);
                 stats.total_qubits = stats.total_qubits.saturating_add(num_qubits as u64);
                 stats.total_shots = stats.total_shots.saturating_add(num_shots as u64);
-                
+
                 // Calculate quantum score (0-100)
                 // Formula: (job_count/100 × 40%) + (avg_accuracy × 35%) + (complexity/1000 × 25%)
                 let job_score = ((stats.jobs_executed.min(100) * 40) / 100) as u8;
                 let accuracy_contribution = ((stats.avg_accuracy as u32 * 35) / 100) as u8;
-                let complexity_contribution = ((stats.total_complexity.min(100_000) / 1000 * 25) / 100) as u8;
-                
+                let complexity_contribution =
+                    ((stats.total_complexity.min(100_000) / 1000 * 25) / 100) as u8;
+
                 stats.quantum_score = job_score
                     .saturating_add(accuracy_contribution)
                     .saturating_add(complexity_contribution)
@@ -1114,7 +1122,7 @@ pub mod pallet {
         }
 
         /// Force join a validator (testing/admin only - bypasses KYC checks)
-        /// 
+        ///
         /// WARNING: This extrinsic bypasses all KYC and sanction checks.
         /// Should ONLY be used for testing or emergency administrative actions.
         /// In production, always use `join_validators` which enforces proper compliance.
@@ -1131,10 +1139,16 @@ pub mod pallet {
             ensure_root(origin)?;
 
             // Ensure minimum stake (keep this check for safety)
-            ensure!(stake >= T::MinValidatorStake::get(), Error::<T>::InsufficientStake);
+            ensure!(
+                stake >= T::MinValidatorStake::get(),
+                Error::<T>::InsufficientStake
+            );
 
             // Check if validator already active
-            ensure!(!Validators::<T>::contains_key(&who), Error::<T>::ValidatorAlreadyActive);
+            ensure!(
+                !Validators::<T>::contains_key(&who),
+                Error::<T>::ValidatorAlreadyActive
+            );
 
             // Check maximum validators limit using tracked count; lazily backfill if zero
             let mut validator_count = ValidatorCount::<T>::get();
@@ -1142,13 +1156,18 @@ pub mod pallet {
                 // DOS-011 FIX: Bound backfill iteration by MaxValidators to prevent
                 // unbounded storage scan on first call.
                 let max_vals = T::MaxValidators::get() as usize;
-                let counted = Validators::<T>::iter_keys().take(max_vals).fold(0u32, |acc, _| acc.saturating_add(1));
+                let counted = Validators::<T>::iter_keys()
+                    .take(max_vals)
+                    .fold(0u32, |acc, _| acc.saturating_add(1));
                 if counted > 0 {
                     ValidatorCount::<T>::put(counted);
                     validator_count = counted;
                 }
             }
-            ensure!(validator_count < T::MaxValidators::get(), Error::<T>::MaxValidatorsReached);
+            ensure!(
+                validator_count < T::MaxValidators::get(),
+                Error::<T>::MaxValidatorsReached
+            );
 
             // Validate compute capacity
             ensure!(compute_capacity >= 50, Error::<T>::InvalidComputeCapacity);
@@ -1176,16 +1195,21 @@ pub mod pallet {
                 location,
                 compliance_score: 100,
                 last_fl_contribution: frame_system::Pallet::<T>::block_number(),
-                quality_score: 1,  // CONS-008: Start at minimum until real work is submitted
+                quality_score: 1, // CONS-008: Start at minimum until real work is submitted
                 timeliness_score: 50,
                 honesty_score: 50,
                 total_contributions: 0,
             };
 
             Validators::<T>::insert(&who, validator_info);
-            ValidatorCount::<T>::mutate(|c| { *c = c.saturating_add(1); });
+            ValidatorCount::<T>::mutate(|c| {
+                *c = c.saturating_add(1);
+            });
 
-            Self::deposit_event(Event::ValidatorJoined { validator: who, stake });
+            Self::deposit_event(Event::ValidatorJoined {
+                validator: who,
+                stake,
+            });
 
             Ok(())
         }
@@ -1203,7 +1227,7 @@ pub mod pallet {
         ) -> DispatchResult {
             // Only Oracle pallet or root can record contributions
             let caller = ensure_signed_or_root(origin)?;
-            
+
             // If signed, verify caller is an authorized Oracle operator
             if let Some(who) = caller {
                 ensure!(
@@ -1221,7 +1245,11 @@ pub mod pallet {
             // S6-2: Enforce per-epoch contribution cap to prevent gaming
             let current_epoch = Self::current_epoch();
             let (tracked_epoch, count) = OperatorEpochContributions::<T>::get(&operator);
-            let current_count = if tracked_epoch == current_epoch { count } else { 0 };
+            let current_count = if tracked_epoch == current_epoch {
+                count
+            } else {
+                0
+            };
             ensure!(
                 current_count < T::MaxDomainContributionsPerEpoch::get(),
                 Error::<T>::DomainContributionCapExceeded
@@ -1291,19 +1319,19 @@ pub mod pallet {
         /// Claim PoUW rewards with domain-specific bonus multipliers (Phase 3)
         #[pallet::call_index(8)]
         #[pallet::weight(T::WeightInfo::claim_pouw_with_domain_bonus())]
-        pub fn claim_pouw_with_domain_bonus(
-            origin: OriginFor<T>,
-        ) -> DispatchResult {
+        pub fn claim_pouw_with_domain_bonus(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
             // Ensure operator is a validator
-            let validator_info = Validators::<T>::get(&who)
-                .ok_or(Error::<T>::ValidatorNotFound)?;
+            let validator_info = Validators::<T>::get(&who).ok_or(Error::<T>::ValidatorNotFound)?;
 
             // Prevent repeated claims within the same epoch
             let current_epoch = Self::current_epoch();
             let last_claimed = LastClaimedEpoch::<T>::get(&who);
-            ensure!(last_claimed < current_epoch, Error::<T>::AlreadyClaimedThisEpoch);
+            ensure!(
+                last_claimed < current_epoch,
+                Error::<T>::AlreadyClaimedThisEpoch
+            );
 
             // Get domain statistics
             let domain_breakdown = OperatorDomainStatsMap::<T>::get(&who);
@@ -1314,18 +1342,19 @@ pub mod pallet {
                 || domain_breakdown.marine.contribution_count > 0
                 || domain_breakdown.education.contribution_count > 0
                 || domain_breakdown.tech.contribution_count > 0;
-            
+
             ensure!(has_contributions, Error::<T>::NoDomainContributions);
 
             // Calculate base PoUW reward (existing FL + Quantum)
-            let base_reward = Self::calculate_validator_reward(&validator_info, T::BaseReward::get());
+            let base_reward =
+                Self::calculate_validator_reward(&validator_info, T::BaseReward::get());
 
             // Calculate domain bonus using fixed-point arithmetic (10_000 = 1.0x)
             let domain_bonus = Self::calculate_domain_bonus(&who, &domain_breakdown);
 
             // SAFETY: Balance is u128-backed; converting Balance → u128 is lossless
             let base_reward_u128: u128 = base_reward.saturated_into();
-            
+
             // Apply domain bonus multiplier (fixed-point: 10_000 = 1.0x)
             let bonus_reward_u128 = base_reward_u128
                 .saturating_mul(domain_bonus)
@@ -1363,7 +1392,7 @@ pub mod pallet {
 
     impl<T: Config> Pallet<T> {
         /// Calculate domain-specific bonus multiplier (Phase 3)
-        /// 
+        ///
         /// Returns fixed-point multiplier where 10_000 = 1.0x
         /// Domain multipliers:
         /// - AgriTech: 1.5x (15_000) - Critical priority
@@ -1377,10 +1406,10 @@ pub mod pallet {
         ) -> u128 {
             // Domain multipliers (fixed-point: 10_000 = 1.0x)
             const AGRITECH_MULTIPLIER: u128 = 15_000; // 1.5x
-            const MARINE_MULTIPLIER: u128 = 14_000;   // 1.4x
+            const MARINE_MULTIPLIER: u128 = 14_000; // 1.4x
             const EDUCATION_MULTIPLIER: u128 = 13_000; // 1.3x
-            const TECH_MULTIPLIER: u128 = 11_000;     // 1.1x
-            const GENERAL_MULTIPLIER: u128 = 10_000;  // 1.0x
+            const TECH_MULTIPLIER: u128 = 11_000; // 1.1x
+            const GENERAL_MULTIPLIER: u128 = 10_000; // 1.0x
 
             // Calculate weighted bonus based on contribution counts and quality
             let mut total_weighted_score: u128 = 0;
@@ -1390,60 +1419,50 @@ pub mod pallet {
             if breakdown.agritech.contribution_count > 0 {
                 let weight = (breakdown.agritech.contribution_count as u128)
                     .saturating_mul(breakdown.agritech.avg_quality as u128);
-                total_weighted_score = total_weighted_score.saturating_add(
-                    weight.saturating_mul(AGRITECH_MULTIPLIER) / 100
-                );
-                total_contributions = total_contributions.saturating_add(
-                    breakdown.agritech.contribution_count as u128
-                );
+                total_weighted_score = total_weighted_score
+                    .saturating_add(weight.saturating_mul(AGRITECH_MULTIPLIER) / 100);
+                total_contributions = total_contributions
+                    .saturating_add(breakdown.agritech.contribution_count as u128);
             }
 
             // Marine contributions
             if breakdown.marine.contribution_count > 0 {
                 let weight = (breakdown.marine.contribution_count as u128)
                     .saturating_mul(breakdown.marine.avg_quality as u128);
-                total_weighted_score = total_weighted_score.saturating_add(
-                    weight.saturating_mul(MARINE_MULTIPLIER) / 100
-                );
-                total_contributions = total_contributions.saturating_add(
-                    breakdown.marine.contribution_count as u128
-                );
+                total_weighted_score = total_weighted_score
+                    .saturating_add(weight.saturating_mul(MARINE_MULTIPLIER) / 100);
+                total_contributions =
+                    total_contributions.saturating_add(breakdown.marine.contribution_count as u128);
             }
 
             // Education contributions
             if breakdown.education.contribution_count > 0 {
                 let weight = (breakdown.education.contribution_count as u128)
                     .saturating_mul(breakdown.education.avg_quality as u128);
-                total_weighted_score = total_weighted_score.saturating_add(
-                    weight.saturating_mul(EDUCATION_MULTIPLIER) / 100
-                );
-                total_contributions = total_contributions.saturating_add(
-                    breakdown.education.contribution_count as u128
-                );
+                total_weighted_score = total_weighted_score
+                    .saturating_add(weight.saturating_mul(EDUCATION_MULTIPLIER) / 100);
+                total_contributions = total_contributions
+                    .saturating_add(breakdown.education.contribution_count as u128);
             }
 
             // Tech contributions
             if breakdown.tech.contribution_count > 0 {
                 let weight = (breakdown.tech.contribution_count as u128)
                     .saturating_mul(breakdown.tech.avg_quality as u128);
-                total_weighted_score = total_weighted_score.saturating_add(
-                    weight.saturating_mul(TECH_MULTIPLIER) / 100
-                );
-                total_contributions = total_contributions.saturating_add(
-                    breakdown.tech.contribution_count as u128
-                );
+                total_weighted_score = total_weighted_score
+                    .saturating_add(weight.saturating_mul(TECH_MULTIPLIER) / 100);
+                total_contributions =
+                    total_contributions.saturating_add(breakdown.tech.contribution_count as u128);
             }
 
             // General contributions
             if breakdown.general.contribution_count > 0 {
                 let weight = (breakdown.general.contribution_count as u128)
                     .saturating_mul(breakdown.general.avg_quality as u128);
-                total_weighted_score = total_weighted_score.saturating_add(
-                    weight.saturating_mul(GENERAL_MULTIPLIER) / 100
-                );
-                total_contributions = total_contributions.saturating_add(
-                    breakdown.general.contribution_count as u128
-                );
+                total_weighted_score = total_weighted_score
+                    .saturating_add(weight.saturating_mul(GENERAL_MULTIPLIER) / 100);
+                total_contributions = total_contributions
+                    .saturating_add(breakdown.general.contribution_count as u128);
             }
 
             // Calculate average multiplier, capped at 1.3x (13_000) to limit gaming.
@@ -1475,10 +1494,10 @@ pub mod pallet {
 
             // ── Size scoring ────────────────────────────────────────────────
             let delta_size_score: u32 = match encrypted_delta.len() {
-                0..=31 => 10,       // Suspiciously small
-                32..=127 => 30,     // Minimal update
-                128..=511 => 60,    // Moderate update
-                _ => 80,            // Substantial (BoundedVec caps at 1024)
+                0..=31 => 10,    // Suspiciously small
+                32..=127 => 30,  // Minimal update
+                128..=511 => 60, // Moderate update
+                _ => 80,         // Substantial (BoundedVec caps at 1024)
             };
 
             // ── Shannon entropy (milli-bits / byte) ─────────────────────────
@@ -1528,7 +1547,7 @@ pub mod pallet {
             } else if entropy_per_byte_milli > 7_500 {
                 25 // > 7.5 bits/byte — random garbage, not real gradients
             } else {
-                0  // 3.0–7.5 bits/byte — plausible ML delta
+                0 // 3.0–7.5 bits/byte — plausible ML delta
             };
 
             delta_size_score.saturating_sub(entropy_penalty).min(100) as u8
@@ -1537,13 +1556,14 @@ pub mod pallet {
         /// Calculate timeliness score based on submission time
         fn calculate_timeliness_score(submission_block: BlockNumberFor<T>, deadline: u32) -> u8 {
             let deadline_block = BlockNumberFor::<T>::from(deadline);
-            
+
             if submission_block <= deadline_block {
                 let submission_u64: u64 = TryInto::<u64>::try_into(submission_block).unwrap_or(0);
                 let deadline_u64: u64 = TryInto::<u64>::try_into(deadline_block).unwrap_or(0);
                 let blocks_remaining_u64 = deadline_u64.saturating_sub(submission_u64);
-                let total_blocks: u64 = BlockNumberFor::<T>::from(deadline).saturated_into::<u32>() as u64;
-                
+                let total_blocks: u64 =
+                    BlockNumberFor::<T>::from(deadline).saturated_into::<u32>() as u64;
+
                 // W-4 FIX: Guard against div-by-zero when deadline == 0
                 if total_blocks == 0 {
                     return 100; // Immediate deadline — treat as on-time
@@ -1560,24 +1580,36 @@ pub mod pallet {
         /// New formula: FL Quality(25%) + FL Timeliness(20%) + FL Honesty(20%) + Quantum(30%) + Bonus(5%)
         #[allow(clippy::type_complexity)]
         fn calculate_validator_reward(
-            validator_info: &ValidatorInfo<T::AccountId, <T::Currency as Currency<T::AccountId>>::Balance, BlockNumberFor<T>>,
+            validator_info: &ValidatorInfo<
+                T::AccountId,
+                <T::Currency as Currency<T::AccountId>>::Balance,
+                BlockNumberFor<T>,
+            >,
             base_reward: <T::Currency as Currency<T::AccountId>>::Balance,
         ) -> <T::Currency as Currency<T::AccountId>>::Balance {
             // Updated PoUW weights (Phase 2.2)
-            let quality_weight = Perbill::from_percent(25);      // Reduced from 40%
-            let timeliness_weight = Perbill::from_percent(20);   // Reduced from 30%
-            let honesty_weight = Perbill::from_percent(20);      // Reduced from 30%
-            let quantum_weight = Perbill::from_percent(30);      // NEW: Quantum computing contribution
-            let bonus_weight = Perbill::from_percent(5);         // Stake/uptime bonus
+            let quality_weight = Perbill::from_percent(25); // Reduced from 40%
+            let timeliness_weight = Perbill::from_percent(20); // Reduced from 30%
+            let honesty_weight = Perbill::from_percent(20); // Reduced from 30%
+            let quantum_weight = Perbill::from_percent(30); // NEW: Quantum computing contribution
+            let bonus_weight = Perbill::from_percent(5); // Stake/uptime bonus
 
             // Calculate FL contribution rewards
-            let quality_reward = quality_weight * Perbill::from_percent(validator_info.quality_score as u32) * base_reward;
-            let timeliness_reward = timeliness_weight * Perbill::from_percent(validator_info.timeliness_score as u32) * base_reward;
-            let honesty_reward = honesty_weight * Perbill::from_percent(validator_info.honesty_score as u32) * base_reward;
+            let quality_reward = quality_weight
+                * Perbill::from_percent(validator_info.quality_score as u32)
+                * base_reward;
+            let timeliness_reward = timeliness_weight
+                * Perbill::from_percent(validator_info.timeliness_score as u32)
+                * base_reward;
+            let honesty_reward = honesty_weight
+                * Perbill::from_percent(validator_info.honesty_score as u32)
+                * base_reward;
 
             // Calculate quantum contribution reward
             let quantum_stats = ValidatorQuantumStatsMap::<T>::get(&validator_info.account);
-            let quantum_reward = quantum_weight * Perbill::from_percent(quantum_stats.quantum_score as u32) * base_reward;
+            let quantum_reward = quantum_weight
+                * Perbill::from_percent(quantum_stats.quantum_score as u32)
+                * base_reward;
 
             // CONS-032 FIX: Stake bonus is proportional to validator stake.
             // Uses Perbill::from_rational to scale bonus by the validator's
@@ -1592,7 +1624,7 @@ pub mod pallet {
             let stake_bonus = bonus_weight * stake_ratio * base_reward;
 
             // Combine all rewards
-            
+
             quality_reward
                 .saturating_add(timeliness_reward)
                 .saturating_add(honesty_reward)
@@ -1669,7 +1701,7 @@ pub mod pallet {
                     reason: reason.as_u8(),
                 });
             }
-            
+
             Ok(())
         }
     }
@@ -1714,8 +1746,7 @@ impl WeightInfo for () {
             .saturating_add(RocksDbWeight::get().writes(2))
     }
     fn assign_fl_task() -> Weight {
-        Weight::from_parts(5_000_000, 1536)
-        .saturating_add(RocksDbWeight::get().writes(2))
+        Weight::from_parts(5_000_000, 1536).saturating_add(RocksDbWeight::get().writes(2))
     }
     fn distribute_rewards() -> Weight {
         Weight::from_parts(20_000_000, 2560)
@@ -1724,22 +1755,22 @@ impl WeightInfo for () {
     }
     fn record_quantum_contribution() -> Weight {
         Weight::from_parts(12_000_000, 1024)
-            .saturating_add(RocksDbWeight::get().reads(2))  // Check validator + check job not recorded
-            .saturating_add(RocksDbWeight::get().writes(3))  // Store contribution + update stats + increment counter
+            .saturating_add(RocksDbWeight::get().reads(2)) // Check validator + check job not recorded
+            .saturating_add(RocksDbWeight::get().writes(3)) // Store contribution + update stats + increment counter
     }
     fn record_domain_contribution() -> Weight {
         Weight::from_parts(10_000_000, 1536)
-            .saturating_add(RocksDbWeight::get().reads(1))  // Read operator stats
-            .saturating_add(RocksDbWeight::get().writes(2))  // Update operator stats + epoch stats
+            .saturating_add(RocksDbWeight::get().reads(1)) // Read operator stats
+            .saturating_add(RocksDbWeight::get().writes(2)) // Update operator stats + epoch stats
     }
     fn claim_pouw_with_domain_bonus() -> Weight {
         Weight::from_parts(25_000_000, 2048)
-            .saturating_add(RocksDbWeight::get().reads(2))  // Read validator info + domain stats
-            .saturating_add(RocksDbWeight::get().writes(1))  // Mint rewards
+            .saturating_add(RocksDbWeight::get().reads(2)) // Read validator info + domain stats
+            .saturating_add(RocksDbWeight::get().writes(1)) // Mint rewards
     }
     fn report_validator_offense() -> Weight {
         Weight::from_parts(15_000_000, 1024)
-            .saturating_add(RocksDbWeight::get().reads(2))  // Read validator + slashing spans
-            .saturating_add(RocksDbWeight::get().writes(3))  // Update validator + slashing spans + balance
+            .saturating_add(RocksDbWeight::get().reads(2)) // Read validator + slashing spans
+            .saturating_add(RocksDbWeight::get().writes(3)) // Update validator + slashing spans + balance
     }
 }

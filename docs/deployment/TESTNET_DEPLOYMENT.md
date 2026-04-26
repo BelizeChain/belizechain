@@ -145,8 +145,8 @@ Validator Pool (21 initial)      RPC Nodes (Public)
 git clone https://github.com/BelizeChain/belizechain.git
 cd belizechain
 
-# Checkout testnet branch
-git checkout testnet
+# Use the current testnet-ready branch or the default `belizechain` branch
+git checkout belizechain
 
 # Build release binary (takes 20-40 minutes)
 cargo build --release
@@ -172,7 +172,7 @@ docker run -d \
     -p 30333:30333 \
     -v /data/belizechain:/data \
     belizechain/node:testnet \
-    --chain testnet \
+  --chain /data/belizechain/belizechain-testnet-raw.json \
     --base-path /data
 ```
 
@@ -198,17 +198,25 @@ belizechain-node --version
 ### Create Custom Chain Spec
 
 ```bash
-# Generate base chain spec
-belizechain-node build-spec --chain testnet > belizechain-testnet-plain.json
+# Generate base chain spec template
+belizechain-node build-spec \
+  --disable-default-bootnode \
+  --chain testnet-template > belizechain-testnet-plain.json
 
 # Edit genesis (see below)
 nano belizechain-testnet-plain.json
 
 # Convert to raw format
 belizechain-node build-spec \
+  --disable-default-bootnode \
     --chain belizechain-testnet-plain.json \
     --raw > belizechain-testnet-raw.json
+
+# Launch nodes with the resulting explicit spec file
+belizechain-node --chain belizechain-testnet-raw.json
 ```
+
+`--disable-default-bootnode` is required on both export steps so the CLI does not inject a localhost bootnode into a public-testnet spec.
 
 ### Genesis Configuration Example
 
@@ -218,10 +226,8 @@ belizechain-node build-spec \
   "id": "belizechain_testnet",
   "chainType": "Live",
   "bootNodes": [
-    "/dns/boot1.testnet.belizechain.org/tcp/30333/p2p/12D3KooW...",
-    "/dns/boot2.testnet.belizechain.org/tcp/30333/p2p/12D3KooW...",
-    "/dns/boot3.testnet.belizechain.org/tcp/30333/p2p/12D3KooW...",
-    "/dns/boot4.testnet.belizechain.org/tcp/30333/p2p/12D3KooW..."
+    "<bootnode-multiaddr-from-published-spec-1>",
+    "<bootnode-multiaddr-from-published-spec-2>"
   ],
   "telemetryEndpoints": [
     ["wss://telemetry.belizechain.org/submit/", 0]
@@ -412,8 +418,7 @@ ExecStart=/usr/local/bin/belizechain-node \
     --prometheus-port 9615 \
     --rpc-methods Safe \
     --no-telemetry \
-    --pruning 1000 \
-    --bootnodes /dns/boot1.testnet.belizechain.org/tcp/30333/p2p/12D3KooW...
+    --pruning 1000
 
 Restart=always
 RestartSec=10
@@ -491,8 +496,7 @@ ExecStart=/usr/local/bin/belizechain-node \
     --rpc-external \
     --ws-external \
     --ws-max-connections 1000 \
-    --pruning 256 \
-    --bootnodes /dns/boot1.testnet.belizechain.org/tcp/30333/p2p/12D3KooW...
+    --pruning 256
 
 Restart=always
 RestartSec=10
@@ -515,10 +519,10 @@ upstream belizechain_ws {
 
 server {
     listen 443 ssl http2;
-    server_name rpc.testnet.belizechain.org;
+  server_name <published-testnet-rpc-host>;
 
-    ssl_certificate /etc/letsencrypt/live/rpc.testnet.belizechain.org/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/rpc.testnet.belizechain.org/privkey.pem;
+  ssl_certificate /etc/letsencrypt/live/<published-testnet-rpc-host>/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/<published-testnet-rpc-host>/privkey.pem;
 
     # RPC HTTP
     location / {

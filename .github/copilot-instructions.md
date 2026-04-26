@@ -7,7 +7,9 @@
 - **Branch**: `belizechain` (default)
 
 ## Architecture
-- 16 custom pallets in `pallets/` (belizex, bns, community, compliance, consensus, economy, governance, identity, interoperability, justice, landledger, mesh, moderation, oracle, payroll, quantum, randomness, staking, whistleblower)
+- Core workspace: `node/`, `runtime/`, `pallets/`, `scripts/`, `tests/`, `docs/`
+- 18 Belize-specific pallets in `pallets/` plus shared `pallets/common`: belizex, bns, community, compliance, consensus, economy, governance, identity, interoperability, justice, landledger, mesh, moderation, oracle, payroll, quantum, staking, whistleblower
+- Runtime topology source of truth: `Cargo.toml` workspace members plus `runtime/src/lib.rs` `construct_runtime!`
 - Substrate runtime in `runtime/src/lib.rs`
 - Node binary in `node/src/`
 - Multi-stage Docker build: `paritytech/ci-linux:production` → `debian:bookworm-slim`
@@ -49,8 +51,14 @@ curl -H "Content-Type: application/json" -d '{"id":1,"jsonrpc":"2.0","method":"s
 ```
 
 ## Rules
-- Follow `belizechain_instructions.instructions.md` for all Rust/consensus code
+- Follow `.github/instructions/belizechain_instructions.instructions.md` for Rust/runtime/review work
+- Use the `BelizeChain` custom agent for multi-repo, review, or ops-heavy tasks
+- Use the `BelizeChain Review` prompt for findings-first PR or audit review workflows
 - No floating-point in consensus logic
 - All state transitions must be deterministic
 - Use `Result<T, Error>` — no `unwrap()` in production
+- Treat `Cargo.toml`, `runtime/src/lib.rs`, and active operations docs as authoritative when prose docs disagree
+- For docs and sibling rollout state, prefer `docs/operations/CEIBA_OPERATIONS_RUNBOOK.md`, `docs/deployment/PHASE2_CEIBA_SERVICES_PLAN.md`, and `gh` repo metadata over older summaries
+- Mark historical or generated architecture reports as snapshots when they no longer match the live branch
+- High-impact ops commands should include preflight checks, blast radius, and rollback context before execution
 - Keep deployment guidance aligned with current Ceiba self-hosted architecture

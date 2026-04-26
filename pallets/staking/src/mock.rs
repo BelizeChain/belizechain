@@ -30,11 +30,11 @@ impl StakingIdentityProvider<u64> for MockIdentity {
             Some(1) // Regular accounts have L1
         }
     }
-    
+
     fn meets_validator_kyc(account: &u64) -> bool {
         Self::get_kyc_level(account).unwrap_or(0) >= 2
     }
-    
+
     fn is_sanctioned(account: &u64) -> bool {
         *account == 666 // Test sanctioned account
     }

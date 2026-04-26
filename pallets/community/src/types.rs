@@ -1,7 +1,7 @@
 //! Type definitions for the community pallet
 
-use codec::{Encode, Decode, MaxEncodedLen};
-use frame_support::{BoundedVec, pallet_prelude::ConstU32};
+use codec::{Decode, Encode, MaxEncodedLen};
+use frame_support::{pallet_prelude::ConstU32, BoundedVec};
 use scale_info::TypeInfo;
 use sp_core::H256;
 
@@ -14,37 +14,37 @@ use sp_core::H256;
 pub struct SRSData<BlockNumber> {
     /// Current total score (0-10,000 scale)
     pub score: u32,
-    
+
     /// Score breakdown by category
-    pub governance_score: u32,      // 0-2,500 (25%)
-    pub education_score: u32,       // 0-1,500 (15%)
-    pub sustainability_score: u32,  // 0-1,500 (15%)
-    pub participation_score: u32,   // 0-2,500 (25%)
-    pub peer_endorsements: u32,     // 0-1,000 (10%)
-    pub honesty_rating: u32,        // 0-1,000 (10%)
-    
+    pub governance_score: u32, // 0-2,500 (25%)
+    pub education_score: u32,      // 0-1,500 (15%)
+    pub sustainability_score: u32, // 0-1,500 (15%)
+    pub participation_score: u32,  // 0-2,500 (25%)
+    pub peer_endorsements: u32,    // 0-1,000 (10%)
+    pub honesty_rating: u32,       // 0-1,000 (10%)
+
     /// Tracking metadata
     pub last_updated: BlockNumber,
     pub tier: SRSTier,
     pub total_contributions: u32,
-    
+
     /// Privacy settings
     pub public_display: bool,
     pub anonymous_hash: Option<H256>,
 }
 
 /// SRS tier classification
-#[derive(Encode, Decode, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, TypeInfo, MaxEncodedLen)]
-#[derive(Default)]
+#[derive(
+    Encode, Decode, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, TypeInfo, MaxEncodedLen, Default,
+)]
 pub enum SRSTier {
     #[default]
-    Bronze,      // 0-2,499
-    Silver,      // 2,500-4,999
-    Gold,        // 5,000-7,499
-    Platinum,    // 7,500-9,999
-    Diamond,     // 10,000
+    Bronze, // 0-2,499
+    Silver,   // 2,500-4,999
+    Gold,     // 5,000-7,499
+    Platinum, // 7,500-9,999
+    Diamond,  // 10,000
 }
-
 
 impl SRSTier {
     pub fn as_u8(&self) -> u8 {
@@ -78,12 +78,12 @@ pub enum ActivityType {
     VoteCast,
     ProposalApproved,
     CouncilMembership,
-    
+
     /// Community participation
     EducationModuleCompleted,
     GreenProjectContribution,
     ReferralCompleted,
-    
+
     /// Staking participation
     PoUWContribution(u32), // Value is PoUW score
     ValidatorActive,
@@ -103,7 +103,7 @@ impl ActivityType {
             ActivityType::ValidatorActive => 8,
         }
     }
-    
+
     pub fn from_u8(value: u8) -> Option<Self> {
         match value {
             0 => Some(ActivityType::ProposalSubmission),
@@ -136,14 +136,14 @@ pub struct ProposalStats {
 pub enum EndorsementType {
     /// General positive contribution
     GeneralContribution,
-    
+
     /// Excellence in specific areas
     GovernanceLeadership,
     CommunityService,
     EducationalImpact,
     EnvironmentalStewardship,
     TechnicalContribution,
-    
+
     /// Cultural and social
     CulturalPreservation,
     YouthMentorship,
@@ -162,7 +162,7 @@ impl EndorsementType {
             EndorsementType::YouthMentorship => 7,
         }
     }
-    
+
     pub fn from_u8(value: u8) -> Option<Self> {
         match value {
             0 => Some(EndorsementType::GeneralContribution),
@@ -187,7 +187,7 @@ impl EndorsementType {
 pub struct FeeExemptionData<BlockNumber, Balance> {
     /// Amount of fee exemption used this month
     pub used_this_month: Balance,
-    
+
     /// Block number when usage was last reset
     pub last_reset_block: BlockNumber,
 }
@@ -195,11 +195,11 @@ pub struct FeeExemptionData<BlockNumber, Balance> {
 /// Fee exemption tiers
 #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum FeeExemptionTier {
-    None,           // No exemption
-    Basic,          // 100 dBZD/month (Bronze)
-    Standard,       // 100 dBZD/month (Silver)
-    Premium,        // 100 dBZD/month (Gold)
-    Unlimited,      // Unlimited (Platinum+)
+    None,      // No exemption
+    Basic,     // 100 dBZD/month (Bronze)
+    Standard,  // 100 dBZD/month (Silver)
+    Premium,   // 100 dBZD/month (Gold)
+    Unlimited, // Unlimited (Platinum+)
 }
 
 // ================================
@@ -209,22 +209,22 @@ pub enum FeeExemptionTier {
 /// Community proposal status
 #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum ProposalStatus {
-    EthicsReview,   // Awaiting ethics council approval
-    Active,         // Open for voting
-    Approved,       // Passed and executed
-    Rejected,       // Failed to pass
-    Cancelled,      // Cancelled by proposer
+    EthicsReview, // Awaiting ethics council approval
+    Active,       // Open for voting
+    Approved,     // Passed and executed
+    Rejected,     // Failed to pass
+    Cancelled,    // Cancelled by proposer
 }
 
 /// Types of community proposals
 #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum CommunityProposalType {
-    LocalProject,           // Community builder grants
-    EducationModule,        // Learn-to-earn programs
-    GreenInitiative,        // Sustainability projects
-    CulturalPreservation,   // Garifuna/Creole/Maya heritage
-    DisasterRelief,         // Crisis protocol payouts
-    CommunityBounty,        // Task-based work
+    LocalProject,         // Community builder grants
+    EducationModule,      // Learn-to-earn programs
+    GreenInitiative,      // Sustainability projects
+    CulturalPreservation, // Garifuna/Creole/Maya heritage
+    DisasterRelief,       // Crisis protocol payouts
+    CommunityBounty,      // Task-based work
 }
 
 impl CommunityProposalType {
@@ -238,7 +238,7 @@ impl CommunityProposalType {
             CommunityProposalType::CommunityBounty => 5,
         }
     }
-    
+
     pub fn from_u8(value: u8) -> Option<Self> {
         match value {
             0 => Some(CommunityProposalType::LocalProject),
@@ -273,10 +273,10 @@ pub enum GreenProjectType {
 /// Proposal categories for ethics filtering
 #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum ProposalCategory {
-    AddictiveProducts,      // Gambling, alcohol, tobacco
-    SurveillanceTech,       // Privacy-invasive systems
-    ExploitativePractices,  // Predatory lending, pyramid schemes
-    EnvironmentalHarm,      // Projects damaging ecosystems
+    AddictiveProducts,     // Gambling, alcohol, tobacco
+    SurveillanceTech,      // Privacy-invasive systems
+    ExploitativePractices, // Predatory lending, pyramid schemes
+    EnvironmentalHarm,     // Projects damaging ecosystems
 }
 
 // ================================
@@ -330,9 +330,9 @@ pub struct EthicsConfig<AccountId> {
 impl<AccountId> Default for EthicsConfig<AccountId> {
     fn default() -> Self {
         Self {
-            min_honesty_rating: 5_000, // 50%
+            min_honesty_rating: 5_000,        // 50%
             council_review_threshold: 50_000, // 50,000 dBZD
-            min_council_votes: 2, // 2/3 majority
+            min_council_votes: 2,             // 2/3 majority
             council_members: BoundedVec::default(),
         }
     }

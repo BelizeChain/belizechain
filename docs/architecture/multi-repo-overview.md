@@ -10,13 +10,13 @@ BelizeChain uses a multi-repository architecture for independent development, de
 
 | Repository | Purpose | Language | Size | Status |
 |------------|---------|----------|------|--------|
-| **belizechain/belizechain** | Core blockchain (16 pallets, runtime) | Rust | ~500 MB | Production |
-| **belizechain/kinich-quantum** | Quantum computing integration | Python | ~50 MB | Production |
-| **belizechain/nawal-ai** | Federated learning AI | Python | ~120 MB | Production |
-| **belizechain/pakit-storage** | DAG storage system | Python | ~80 MB | Production |
-| **belizechain/gem** | ink! smart contracts platform | Rust | ~30 MB | Production |
-| **belizechain/ui** | Maya Wallet + Blue Hole Portal | TypeScript | ~200 MB | Production |
-| **belizechain/infra** | Infrastructure as Code | YAML/HCL | ~10 MB | Production |
+| **belizechain/belizechain** | Core blockchain (18 Belize-specific pallets + runtime) | Rust | ~500 MB | Active on Ceiba |
+| **belizechain/kinich-quantum** | Quantum computing integration | Python | ~50 MB | Phase 2 Ceiba rollout |
+| **belizechain/nawal-ai** | Federated learning AI | Python | ~120 MB | Phase 2 Ceiba rollout |
+| **belizechain/pakit-storage** | DAG storage system | Python | ~80 MB | Phase 2 Ceiba rollout |
+| **belizechain/gem** | ink! smart contracts platform | Rust | ~30 MB | Phase 2 Ceiba rollout |
+| **belizechain/ui** | Maya Wallet + Blue Hole Portal | TypeScript | ~200 MB | Phase 2 Ceiba rollout |
+| **belizechain/infra** | Infrastructure as Code | YAML/HCL | ~10 MB | Supports Ceiba rollout |
 
 ---
 
@@ -25,7 +25,7 @@ BelizeChain uses a multi-repository architecture for independent development, de
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    BelizeChain Core                      │
-│  Substrate Runtime + 16 Pallets (Rust)                  │
+│  Substrate Runtime + 18 Belize Pallets (Rust)           │
 │  ws://localhost:9944                                     │
 └──────┬────────┬────────┬────────┬────────┬─────────────┘
        │        │        │        │        │
@@ -53,10 +53,10 @@ BelizeChain uses a multi-repository architecture for independent development, de
 - **Pakit → Blockchain**: Register storage proofs (POST /landledger/register_document_proof)
 - **UI → All**: Query endpoints for dashboard data
 
-### Message Queue (Future)
+### Message Queue / Event Bus (Planned)
 - **RabbitMQ**: Event-driven communication
 - **Redis Pub/Sub**: Real-time updates
-- **Status**: Planned for Phase 2 (Q2 2026)
+- **Status**: Planned, but not yet the operational source of truth for Ceiba
 
 ### Meshtastic LoRa Mesh (Off-Grid)
 - **Protocol**: Meshtastic (LoRa 915 MHz + BLE)
@@ -72,45 +72,43 @@ BelizeChain uses a multi-repository architecture for independent development, de
 ## Deployment Topologies
 
 ### Development (Local)
+
+If sibling repos are cloned adjacent to this repo, a local layout may look like this:
+
 ```bash
 # Terminal 1: Blockchain
 ./target/release/belizechain-node --dev --tmp
 
 # Terminal 2: Nawal AI
-cd nawal && python -m nawal.orchestrator server
+cd ../nawal-ai && python -m nawal.orchestrator server
 
 # Terminal 3: Kinich Quantum  
-cd kinich && python -m kinich.core.quantum_node
+cd ../kinich-quantum && python -m kinich.core.quantum_node
 
 # Terminal 4: Pakit Storage
-cd pakit && python -m pakit.node
+cd ../pakit-storage && python -m pakit.node
 
 # Terminal 5: UI Portals
-cd ui && npm run dev:all
-
-# All-in-one script
-./scripts/start_dev.sh
+cd ../ui && npm run dev:all
 ```
 
 ### Production (Ceiba Self-Hosted)
 ```bash
-# Core node
-belizechain-node --dev --base-path /data/chain --port 30333 --rpc-port 9944 --prometheus-port 9615
+# Core node is currently operated via Docker Compose on Ceiba.
+cd /opt/belizechain
+docker compose ps ceiba-node
+docker logs --tail 100 ceiba-node
 
-# Sibling services managed via compose/host automation
-# - nawal-ai
-# - kinich-quantum
-# - pakit-storage
-# - gem
-# - ui (maya wallet + blue hole portal)
+# Sibling services follow the Phase 2 rollout plan:
+# docs/deployment/PHASE2_CEIBA_SERVICES_PLAN.md
 ```
 
 ### Host Allocation (Ceiba)
 - **Blockchain Node**: primary runtime process on Ceiba
-- **Nawal AI**: containerized service on Ceiba
-- **Kinich Quantum**: containerized service on Ceiba
-- **Pakit Storage**: containerized service on Ceiba
-- **UI**: self-hosted services behind reverse proxy on Ceiba
+- **Nawal AI**: planned during Phase 2 rollout
+- **Kinich Quantum**: planned during Phase 2 rollout
+- **Pakit Storage**: planned during Phase 2 rollout
+- **UI**: planned during Phase 2 rollout behind reverse proxy
 
 ---
 
@@ -149,18 +147,12 @@ UI ────→ Blockchain ←──── Nawal
 
 ---
 
-## Version Compatibility Matrix
+## Compatibility Policy
 
-| Core Runtime | Nawal | Kinich | Pakit | GEM | UI |
-|--------------|-------|--------|-------|-----|-----|
-| stable2512 | 2.1.0 | 1.8.0 | 3.0.0 | 1.2.0 | 2.5.0 |
-| stable2509 | 2.0.x | 1.7.x | 2.9.x | 1.1.x | 2.4.x |
-| stable2406 | 1.9.x | 1.6.x | 2.8.x | 1.0.x | 2.3.x |
-
-**Breaking Changes**:
-- Runtime upgrade requires Nawal/Kinich connector updates
-- Pakit API v3.0 breaks compatibility with v2.x clients
-- GEM contracts compiled with ink! 4.0 not backward compatible
+- The core runtime currently targets Polkadot SDK `stable2603`.
+- Exact sibling compatibility must be verified from each repo's active branch, PRs, workflow runs, or releases before rollout.
+- Do not treat this document as the source of truth for exact sibling version numbers.
+- Runtime upgrades may require connector updates in Nawal, Kinich, Pakit, UI, or GEM integration paths.
 
 ---
 
@@ -177,7 +169,7 @@ export KINICH_MOCK=true
 cargo test --workspace
 
 # 3. Integration testing
-./scripts/integration_test.sh --all-components
+# Run the core workspace tests plus the relevant test suites in each touched sibling repo.
 
 # 4. Submit PR to respective repository
 gh pr create --title "Add XYZ pallet"

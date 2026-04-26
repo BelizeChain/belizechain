@@ -11,12 +11,13 @@
 
 use super::*;
 use frame_benchmarking::v2::*;
-use frame_system::RawOrigin;
 use frame_support::traits::Currency;
 use frame_support::BoundedVec;
+use frame_system::RawOrigin;
 use sp_std::vec::Vec;
 
-type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+type BalanceOf<T> =
+    <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
 /// Create a funded account for benchmarks
 fn funded_account<T: Config>(name: &'static str, index: u32) -> T::AccountId {
@@ -181,7 +182,7 @@ mod benchmarks {
         register_domain(
             RawOrigin::Signed(caller),
             domain_name,
-            0u8,  // tier: Standard
+            0u8, // tier: Standard
         );
     }
 
@@ -197,7 +198,7 @@ mod benchmarks {
         set_resolution(
             RawOrigin::Signed(caller),
             domain_name,
-            None,           // wallet_address
+            None,            // wallet_address
             Some([2u8; 32]), // content_hash
             metadata,
         );
@@ -211,11 +212,7 @@ mod benchmarks {
         insert_domain::<T>(&owner, &domain_name);
 
         #[extrinsic_call]
-        transfer_domain(
-            RawOrigin::Signed(owner),
-            domain_name,
-            new_owner,
-        );
+        transfer_domain(RawOrigin::Signed(owner), domain_name, new_owner);
     }
 
     #[benchmark]
@@ -232,7 +229,7 @@ mod benchmarks {
             RawOrigin::Signed(seller),
             domain_name,
             price,
-            None,      // min_offer
+            None, // min_offer
             duration,
         );
     }
@@ -251,7 +248,7 @@ mod benchmarks {
         buy_domain(
             RawOrigin::Signed(buyer),
             domain_name,
-            price,  // offer_price
+            price, // offer_price
         );
     }
 
@@ -278,9 +275,9 @@ mod benchmarks {
         activate_hosting(
             RawOrigin::Signed(owner),
             domain_name,
-            1u8,         // tier: Basic
-            [3u8; 32],   // content_hash
-            false,       // auto_renew
+            1u8,       // tier: Basic
+            [3u8; 32], // content_hash
+            false,     // auto_renew
         );
     }
 
@@ -295,7 +292,7 @@ mod benchmarks {
         renew_hosting(
             RawOrigin::Signed(subscriber),
             domain_name,
-            3u32,  // months
+            3u32, // months
         );
     }
 
@@ -323,7 +320,7 @@ mod benchmarks {
             RawOrigin::Signed(owner),
             external_domain,
             bns_domain,
-            1u8,  // tier: Basic
+            1u8, // tier: Basic
         );
     }
 
@@ -353,9 +350,9 @@ mod benchmarks {
         update_hosting_content(
             RawOrigin::Signed(subscriber),
             domain_name,
-            [4u8; 32],    // new_content_hash
+            [4u8; 32], // new_content_hash
             description,
-            2048u64,      // size_bytes
+            2048u64, // size_bytes
         );
     }
 
@@ -372,13 +369,9 @@ mod benchmarks {
             RawOrigin::Signed(owner),
             parent_domain,
             subdomain,
-            None,  // delegate_to
+            None, // delegate_to
         );
     }
 
-    impl_benchmark_test_suite!(
-        Pallet,
-        crate::mock::new_test_ext(),
-        crate::mock::Test
-    );
+    impl_benchmark_test_suite!(Pallet, crate::mock::new_test_ext(), crate::mock::Test);
 }

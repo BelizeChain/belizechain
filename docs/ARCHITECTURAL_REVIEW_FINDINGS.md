@@ -769,7 +769,7 @@ If PoUW is a design goal (not just marketing), the consensus pallet should influ
 | E-03 | Replace all `EnsureRoot` origins with collective origins | P0 | 1 week | E-02 | AR-1 |
 | E-04 | Remove `pallet_sudo` | P0 | 1 week | E-02, E-03 | AR-4 |
 | E-05 | Replace insecure randomness | P0 | 2 weeks | None | AR-3 |
-| E-06 | Run production benchmarks (all 16 pallets) | P0 | 2 weeks | None | AR-9 |
+| E-06 | Run production benchmarks across all active BelizeChain pallets | P0 | 2 weeks | None | AR-9 |
 
 **Milestone**: Runtime passes security review for permissioned deployment
 

@@ -121,14 +121,12 @@ impl pallet_belize_compliance::Config for Test {
 
 // Build genesis storage according to the mock runtime.
 pub fn new_test_ext() -> sp_io::TestExternalities {
-    let mut t = frame_system::GenesisConfig::<Test>::default().build_storage().unwrap();
-    
+    let mut t = frame_system::GenesisConfig::<Test>::default()
+        .build_storage()
+        .unwrap();
+
     pallet_balances::GenesisConfig::<Test> {
-        balances: vec![
-            (1, 100_000),
-            (2, 100_000),
-            (3, 100_000),
-        ],
+        balances: vec![(1, 100_000), (2, 100_000), (3, 100_000)],
         ..Default::default()
     }
     .assimilate_storage(&mut t)

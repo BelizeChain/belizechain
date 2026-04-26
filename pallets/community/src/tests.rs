@@ -11,7 +11,6 @@ use types::*;
 #[test]
 fn test_initial_srs_creation() {
     new_test_ext().execute_with(|| {
-
         // Record first participation
         assert_ok!(Community::record_participation(
             RuntimeOrigin::signed(1),
@@ -31,7 +30,6 @@ fn test_initial_srs_creation() {
 #[test]
 fn test_srs_score_increases_with_participation() {
     new_test_ext().execute_with(|| {
-
         // Record first activity (vote doesn't affect honesty score)
         assert_ok!(Community::record_participation(
             RuntimeOrigin::signed(1),
@@ -49,14 +47,18 @@ fn test_srs_score_increases_with_participation() {
         let score2 = Community::srs_scores(1).unwrap().score;
 
         // Score should increase (50 points participation)
-        assert!(score2 > score1, "Score2 ({}) should be > Score1 ({})", score2, score1);
+        assert!(
+            score2 > score1,
+            "Score2 ({}) should be > Score1 ({})",
+            score2,
+            score1
+        );
     });
 }
 
 #[test]
 fn test_srs_tier_progression() {
     new_test_ext().execute_with(|| {
-
         // Start at Bronze
         assert_ok!(Community::record_participation(
             RuntimeOrigin::signed(1),
@@ -75,7 +77,11 @@ fn test_srs_tier_progression() {
         }
 
         let srs = Community::srs_scores(1).unwrap();
-        assert!(srs.score >= 2500, "Score should be >= 2500, got {}", srs.score);
+        assert!(
+            srs.score >= 2500,
+            "Score should be >= 2500, got {}",
+            srs.score
+        );
         assert!(
             srs.tier >= SRSTier::Silver,
             "Tier should be at least Silver, got {:?}",
@@ -87,7 +93,6 @@ fn test_srs_tier_progression() {
 #[test]
 fn test_governance_score_calculation() {
     new_test_ext().execute_with(|| {
-
         // Proposal submission = 100 points
         assert_ok!(Community::record_participation(
             RuntimeOrigin::signed(1),
@@ -113,7 +118,6 @@ fn test_governance_score_calculation() {
 #[test]
 fn test_participation_score_calculation() {
     new_test_ext().execute_with(|| {
-
         // Each participation = 50 points
         for _ in 0..10 {
             assert_ok!(Community::record_participation(
@@ -132,7 +136,6 @@ fn test_participation_score_calculation() {
 #[test]
 fn test_honesty_score_calculation() {
     new_test_ext().execute_with(|| {
-
         // Submit 5 proposals
         for _ in 0..5 {
             assert_ok!(Community::record_participation(
@@ -161,7 +164,6 @@ fn test_honesty_score_calculation() {
 #[test]
 fn test_honesty_score_neutral_start() {
     new_test_ext().execute_with(|| {
-
         // No proposals submitted
         assert_ok!(Community::record_participation(
             RuntimeOrigin::signed(1),
@@ -178,7 +180,6 @@ fn test_honesty_score_neutral_start() {
 #[test]
 fn test_srs_max_score_cap() {
     new_test_ext().execute_with(|| {
-
         // Add excessive participations
         for _ in 0..500 {
             assert_ok!(Community::record_participation(
@@ -216,7 +217,6 @@ fn test_record_participation_requires_verification() {
 #[test]
 fn test_record_participation_emits_event() {
     new_test_ext().execute_with(|| {
-
         assert_ok!(Community::record_participation(
             RuntimeOrigin::signed(1),
             1,
@@ -237,7 +237,6 @@ fn test_record_participation_emits_event() {
 #[test]
 fn test_participation_history_stored() {
     new_test_ext().execute_with(|| {
-
         assert_ok!(Community::record_participation(
             RuntimeOrigin::signed(1),
             1,
@@ -260,7 +259,6 @@ fn test_participation_history_stored() {
 #[test]
 fn test_proposal_stats_updated() {
     new_test_ext().execute_with(|| {
-
         assert_ok!(Community::record_participation(
             RuntimeOrigin::signed(1),
             1,
@@ -291,7 +289,6 @@ fn test_proposal_stats_updated() {
 #[test]
 fn test_update_srs_permissionless() {
     new_test_ext().execute_with(|| {
-
         // Account 1 records participation
         assert_ok!(Community::record_participation(
             RuntimeOrigin::signed(1),
@@ -320,7 +317,6 @@ fn test_update_srs_requires_verification() {
 #[test]
 fn test_update_srs_emits_event() {
     new_test_ext().execute_with(|| {
-
         assert_ok!(Community::record_participation(
             RuntimeOrigin::signed(1),
             1,
@@ -358,7 +354,6 @@ fn test_update_srs_emits_event() {
 #[test]
 fn test_endorse_peer_success() {
     new_test_ext().execute_with(|| {
-
         // Account 1 needs Silver tier to endorse
         for _ in 0..30 {
             assert_ok!(Community::record_participation(
@@ -383,7 +378,6 @@ fn test_endorse_peer_success() {
 #[test]
 fn test_endorse_peer_requires_silver_tier() {
     new_test_ext().execute_with(|| {
-
         // Account 1 is Bronze tier
         assert_ok!(Community::record_participation(
             RuntimeOrigin::signed(1),
@@ -406,7 +400,6 @@ fn test_endorse_peer_requires_silver_tier() {
 #[test]
 fn test_cannot_endorse_self() {
     new_test_ext().execute_with(|| {
-
         for _ in 0..30 {
             assert_ok!(Community::record_participation(
                 RuntimeOrigin::signed(1),
@@ -429,7 +422,6 @@ fn test_cannot_endorse_self() {
 #[test]
 fn test_endorsement_frequency_limit() {
     new_test_ext().execute_with(|| {
-
         for _ in 0..30 {
             assert_ok!(Community::record_participation(
                 RuntimeOrigin::signed(1),
@@ -460,7 +452,6 @@ fn test_endorsement_frequency_limit() {
 #[test]
 fn test_endorsement_updates_srs() {
     new_test_ext().execute_with(|| {
-
         for _ in 0..30 {
             assert_ok!(Community::record_participation(
                 RuntimeOrigin::signed(1),
@@ -487,7 +478,7 @@ fn test_endorsement_updates_srs() {
         // Score should increase
         let score_after = Community::srs_scores(2).unwrap().score;
         assert!(score_after > score_before);
-        
+
         // Endorsement score should be 10 (1 endorsement * 10 points)
         let srs = Community::srs_scores(2).unwrap();
         assert_eq!(srs.peer_endorsements, 10);
@@ -497,7 +488,6 @@ fn test_endorsement_updates_srs() {
 #[test]
 fn test_endorsement_emits_event() {
     new_test_ext().execute_with(|| {
-
         for _ in 0..30 {
             assert_ok!(Community::record_participation(
                 RuntimeOrigin::signed(1),
@@ -530,7 +520,6 @@ fn test_endorsement_emits_event() {
 #[test]
 fn test_set_srs_privacy_public() {
     new_test_ext().execute_with(|| {
-
         assert_ok!(Community::record_participation(
             RuntimeOrigin::signed(1),
             1,
@@ -562,7 +551,6 @@ fn test_set_srs_privacy_requires_verification() {
 #[test]
 fn test_privacy_toggle_clears_hash() {
     new_test_ext().execute_with(|| {
-
         assert_ok!(Community::record_participation(
             RuntimeOrigin::signed(1),
             1,
@@ -586,7 +574,6 @@ fn test_privacy_toggle_clears_hash() {
 #[test]
 fn test_community_rank_export() {
     new_test_ext().execute_with(|| {
-
         // Bronze tier = 100 rank
         assert_ok!(Community::record_participation(
             RuntimeOrigin::signed(1),
@@ -610,7 +597,6 @@ fn test_community_rank_export() {
 #[test]
 fn test_no_srs_returns_zero_rank() {
     new_test_ext().execute_with(|| {
-        
         // No participation recorded
         assert_eq!(Community::get_community_rank(&1), 0);
     });
@@ -632,7 +618,7 @@ fn test_bronze_tier_no_discount() {
 
         let original_fee = 100;
         let (discounted_fee, discount_pct) = Community::calculate_fee_discount(&1, original_fee);
-        
+
         assert_eq!(discounted_fee, 100); // No discount
         assert_eq!(discount_pct, 0);
     });
@@ -652,7 +638,7 @@ fn test_silver_tier_25_percent_discount() {
 
         let original_fee = 100;
         let (discounted_fee, discount_pct) = Community::calculate_fee_discount(&1, original_fee);
-        
+
         assert_eq!(discounted_fee, 75); // 25% discount
         assert_eq!(discount_pct, 25);
     });
@@ -672,7 +658,7 @@ fn test_gold_tier_50_percent_discount() {
 
         let original_fee = 200;
         let (discounted_fee, discount_pct) = Community::calculate_fee_discount(&1, original_fee);
-        
+
         assert_eq!(discounted_fee, 100); // 50% discount
         assert_eq!(discount_pct, 50);
     });
@@ -684,7 +670,7 @@ fn test_no_srs_no_discount() {
         // Account with no SRS record
         let original_fee = 100;
         let (discounted_fee, discount_pct) = Community::calculate_fee_discount(&1, original_fee);
-        
+
         assert_eq!(discounted_fee, 100); // No discount
         assert_eq!(discount_pct, 0);
     });
@@ -713,7 +699,7 @@ fn test_monthly_limit_enforcement() {
         // Second transaction: 50000 more would use 50000*0.25 = 12500 more, total = 22500 (within 100K)
         let within_limit = Community::check_fee_exemption_limit(&1, 12_500);
         assert!(within_limit);
-        
+
         // But 400K exemption would exceed 100K limit
         let within_limit = Community::check_fee_exemption_limit(&1, 95_000);
         assert!(!within_limit); // Should be false - 10000 + 95000 > 100000
@@ -741,7 +727,7 @@ fn test_fee_exemption_usage_tracking() {
 
         // Apply second exemption
         assert_ok!(Community::apply_fee_exemption(&1, 100, 75));
-        
+
         let fee_data = Community::fee_exemption_usage(1).unwrap();
         assert_eq!(fee_data.used_this_month, 50); // 25 + 25 = 50
     });
@@ -788,8 +774,9 @@ fn test_fee_calculator_trait_integration() {
 
         // Calculate effective fee
         let original_fee = 200;
-        let (effective_fee, discount_pct, within_limit) = Community::calculate_effective_fee(&1, original_fee);
-        
+        let (effective_fee, discount_pct, within_limit) =
+            Community::calculate_effective_fee(&1, original_fee);
+
         assert_eq!(effective_fee, 100); // 50% discount
         assert_eq!(discount_pct, 50);
         assert!(within_limit); // Within monthly limit
@@ -804,15 +791,15 @@ fn test_fee_calculator_trait_integration() {
 fn test_submit_community_proposal_success() {
     new_test_ext().execute_with(|| {
         System::set_block_number(1);
-        
+
         let proposer = 1u64;
         let beneficiary = 2u64;
         let amount = 10_000u64;
         let deposit = 1_000u64; // 10% of amount
-        
+
         // Set up proposer balance
         Balances::make_free_balance_be(&proposer, 100_000);
-        
+
         // Submit proposal
         assert_ok!(Community::submit_community_proposal(
             RuntimeOrigin::signed(proposer),
@@ -820,9 +807,12 @@ fn test_submit_community_proposal_success() {
             beneficiary,
             amount,
             b"Test Proposal".to_vec().try_into().unwrap(),
-            b"This is a test proposal for the community".to_vec().try_into().unwrap(),
+            b"This is a test proposal for the community"
+                .to_vec()
+                .try_into()
+                .unwrap(),
         ));
-        
+
         // Check proposal was created
         let proposal = Community::proposals(0).unwrap();
         assert_eq!(proposal.proposer, proposer);
@@ -830,10 +820,10 @@ fn test_submit_community_proposal_success() {
         assert_eq!(proposal.deposit, deposit);
         assert_eq!(proposal.status, ProposalStatus::Active);
         assert_eq!(proposal.voting_deadline, 100_801); // 1 + 100_800
-        
+
         // Check deposit was reserved
         assert_eq!(Balances::reserved_balance(proposer), deposit);
-        
+
         // Check proposal count incremented
         assert_eq!(Community::proposal_count(), 1);
     });
@@ -843,20 +833,20 @@ fn test_submit_community_proposal_success() {
 fn test_vote_community_proposal_with_srs_weight() {
     new_test_ext().execute_with(|| {
         System::set_block_number(1);
-        
+
         let proposer = 1u64;
         let voter = 2u64;
-        
+
         // Set up balances
         Balances::make_free_balance_be(&proposer, 100_000);
-        
+
         // Give voter SRS score
         assert_ok!(Community::record_participation(
             RuntimeOrigin::root(),
             voter,
             ActivityType::VoteCast.as_u8(),
         ));
-        
+
         // Submit proposal
         assert_ok!(Community::submit_community_proposal(
             RuntimeOrigin::signed(proposer),
@@ -866,24 +856,24 @@ fn test_vote_community_proposal_with_srs_weight() {
             b"Test".to_vec().try_into().unwrap(),
             b"Test description".to_vec().try_into().unwrap(),
         ));
-        
+
         // Get voter's SRS weight
         let srs_data = Community::get_srs(&voter).unwrap();
         let weight = srs_data.score;
-        
+
         // Vote on proposal
         assert_ok!(Community::vote_community_proposal(
             RuntimeOrigin::signed(voter),
             0,
             true,
         ));
-        
+
         // Check vote was recorded
         let proposal = Community::proposals(0).unwrap();
         assert_eq!(proposal.votes_for, weight);
         assert_eq!(proposal.votes_against, 0);
         assert_eq!(proposal.total_votes, 1);
-        
+
         // Check voter's vote record
         let vote = Community::proposal_votes(0, voter).unwrap();
         assert!(vote.approve);
@@ -895,13 +885,13 @@ fn test_vote_community_proposal_with_srs_weight() {
 fn test_vote_community_proposal_against() {
     new_test_ext().execute_with(|| {
         System::set_block_number(1);
-        
+
         let proposer = 1u64;
         let voter = 2u64;
-        
+
         // Set up balances
         Balances::make_free_balance_be(&proposer, 100_000);
-        
+
         // Submit proposal
         assert_ok!(Community::submit_community_proposal(
             RuntimeOrigin::signed(proposer),
@@ -911,14 +901,14 @@ fn test_vote_community_proposal_against() {
             b"Green".to_vec().try_into().unwrap(),
             b"Green project".to_vec().try_into().unwrap(),
         ));
-        
+
         // Vote against proposal
         assert_ok!(Community::vote_community_proposal(
             RuntimeOrigin::signed(voter),
             0,
             false,
         ));
-        
+
         // Check vote was recorded
         let proposal = Community::proposals(0).unwrap();
         assert_eq!(proposal.votes_for, 0);
@@ -931,13 +921,13 @@ fn test_vote_community_proposal_against() {
 fn test_cannot_vote_twice() {
     new_test_ext().execute_with(|| {
         System::set_block_number(1);
-        
+
         let proposer = 1u64;
         let voter = 2u64;
-        
+
         // Set up balances
         Balances::make_free_balance_be(&proposer, 100_000);
-        
+
         // Submit proposal
         assert_ok!(Community::submit_community_proposal(
             RuntimeOrigin::signed(proposer),
@@ -947,21 +937,17 @@ fn test_cannot_vote_twice() {
             b"Education".to_vec().try_into().unwrap(),
             b"Education program".to_vec().try_into().unwrap(),
         ));
-        
+
         // First vote succeeds
         assert_ok!(Community::vote_community_proposal(
             RuntimeOrigin::signed(voter),
             0,
             true,
         ));
-        
+
         // Second vote fails
         assert_noop!(
-            Community::vote_community_proposal(
-                RuntimeOrigin::signed(voter),
-                0,
-                false,
-            ),
+            Community::vote_community_proposal(RuntimeOrigin::signed(voter), 0, false,),
             Error::<Test>::AlreadyVoted
         );
     });
@@ -971,13 +957,13 @@ fn test_cannot_vote_twice() {
 fn test_cannot_vote_after_deadline() {
     new_test_ext().execute_with(|| {
         System::set_block_number(1);
-        
+
         let proposer = 1u64;
         let voter = 2u64;
-        
+
         // Set up balances
         Balances::make_free_balance_be(&proposer, 100_000);
-        
+
         // Submit proposal
         assert_ok!(Community::submit_community_proposal(
             RuntimeOrigin::signed(proposer),
@@ -987,17 +973,13 @@ fn test_cannot_vote_after_deadline() {
             b"Test".to_vec().try_into().unwrap(),
             b"Test".to_vec().try_into().unwrap(),
         ));
-        
+
         // Move past deadline (7 days = 100,800 blocks)
         System::set_block_number(100_802);
-        
+
         // Vote fails
         assert_noop!(
-            Community::vote_community_proposal(
-                RuntimeOrigin::signed(voter),
-                0,
-                true,
-            ),
+            Community::vote_community_proposal(RuntimeOrigin::signed(voter), 0, true,),
             Error::<Test>::VotingPeriodEnded
         );
     });
@@ -1007,15 +989,15 @@ fn test_cannot_vote_after_deadline() {
 fn test_finalize_approved_proposal() {
     new_test_ext().execute_with(|| {
         System::set_block_number(1);
-        
+
         let proposer = 1u64;
         let voter1 = 2u64;
         let voter2 = 3u64;
         let voter3 = 4u64;
-        
+
         // Set up balances
         Balances::make_free_balance_be(&proposer, 100_000);
-        
+
         // Submit proposal
         assert_ok!(Community::submit_community_proposal(
             RuntimeOrigin::signed(proposer),
@@ -1025,28 +1007,40 @@ fn test_finalize_approved_proposal() {
             b"Community Center".to_vec().try_into().unwrap(),
             b"Build a new community center".to_vec().try_into().unwrap(),
         ));
-        
+
         let deposit = 2_000u64;
         assert_eq!(Balances::reserved_balance(proposer), deposit);
-        
+
         // Three votes for
-        assert_ok!(Community::vote_community_proposal(RuntimeOrigin::signed(voter1), 0, true));
-        assert_ok!(Community::vote_community_proposal(RuntimeOrigin::signed(voter2), 0, true));
-        assert_ok!(Community::vote_community_proposal(RuntimeOrigin::signed(voter3), 0, true));
-        
+        assert_ok!(Community::vote_community_proposal(
+            RuntimeOrigin::signed(voter1),
+            0,
+            true
+        ));
+        assert_ok!(Community::vote_community_proposal(
+            RuntimeOrigin::signed(voter2),
+            0,
+            true
+        ));
+        assert_ok!(Community::vote_community_proposal(
+            RuntimeOrigin::signed(voter3),
+            0,
+            true
+        ));
+
         // Move past deadline
         System::set_block_number(100_802);
-        
+
         // Finalize proposal
         assert_ok!(Community::finalize_community_proposal(
             RuntimeOrigin::signed(proposer),
             0,
         ));
-        
+
         // Check proposal was approved
         let proposal = Community::proposals(0).unwrap();
         assert_eq!(proposal.status, ProposalStatus::Approved);
-        
+
         // Check deposit was returned
         assert_eq!(Balances::reserved_balance(proposer), 0);
     });
@@ -1056,14 +1050,14 @@ fn test_finalize_approved_proposal() {
 fn test_finalize_rejected_proposal() {
     new_test_ext().execute_with(|| {
         System::set_block_number(1);
-        
+
         let proposer = 1u64;
         let voter1 = 2u64;
         let voter2 = 3u64;
-        
+
         // Set up balances
         Balances::make_free_balance_be(&proposer, 100_000);
-        
+
         // Submit proposal
         assert_ok!(Community::submit_community_proposal(
             RuntimeOrigin::signed(proposer),
@@ -1073,31 +1067,43 @@ fn test_finalize_rejected_proposal() {
             b"Bad Proposal".to_vec().try_into().unwrap(),
             b"This will be rejected".to_vec().try_into().unwrap(),
         ));
-        
+
         let deposit = 1_500u64;
         let voter3 = 4u64;
-        
+
         // One vote for, two against
-        assert_ok!(Community::vote_community_proposal(RuntimeOrigin::signed(voter1), 0, true));
-        assert_ok!(Community::vote_community_proposal(RuntimeOrigin::signed(voter2), 0, false));
-        assert_ok!(Community::vote_community_proposal(RuntimeOrigin::signed(voter3), 0, false));
-        
+        assert_ok!(Community::vote_community_proposal(
+            RuntimeOrigin::signed(voter1),
+            0,
+            true
+        ));
+        assert_ok!(Community::vote_community_proposal(
+            RuntimeOrigin::signed(voter2),
+            0,
+            false
+        ));
+        assert_ok!(Community::vote_community_proposal(
+            RuntimeOrigin::signed(voter3),
+            0,
+            false
+        ));
+
         // Move past deadline
         System::set_block_number(100_802);
-        
+
         // Finalize proposal
         assert_ok!(Community::finalize_community_proposal(
             RuntimeOrigin::signed(proposer),
             0,
         ));
-        
+
         // Check proposal was rejected
         let proposal = Community::proposals(0).unwrap();
         assert_eq!(proposal.status, ProposalStatus::Rejected);
-        
+
         // Check deposit was slashed (not returned)
         assert_eq!(Balances::reserved_balance(proposer), 0);
-        
+
         // Free balance should be original minus deposit (deposit was reserved, then slashed)
         // 100,000 - 1,500 (reserved) = 98,500 free at submission
         // After slash, deposit is gone completely: 100,000 - 1,500 = 98,500 total remaining
@@ -1109,12 +1115,12 @@ fn test_finalize_rejected_proposal() {
 fn test_cannot_finalize_before_deadline() {
     new_test_ext().execute_with(|| {
         System::set_block_number(1);
-        
+
         let proposer = 1u64;
-        
+
         // Set up balances
         Balances::make_free_balance_be(&proposer, 100_000);
-        
+
         // Submit proposal
         assert_ok!(Community::submit_community_proposal(
             RuntimeOrigin::signed(proposer),
@@ -1124,13 +1130,10 @@ fn test_cannot_finalize_before_deadline() {
             b"Test".to_vec().try_into().unwrap(),
             b"Test".to_vec().try_into().unwrap(),
         ));
-        
+
         // Try to finalize immediately (before deadline)
         assert_noop!(
-            Community::finalize_community_proposal(
-                RuntimeOrigin::signed(proposer),
-                0,
-            ),
+            Community::finalize_community_proposal(RuntimeOrigin::signed(proposer), 0,),
             Error::<Test>::VotingPeriodEnded
         );
     });
@@ -1140,31 +1143,37 @@ fn test_cannot_finalize_before_deadline() {
 fn test_proposal_with_different_types() {
     new_test_ext().execute_with(|| {
         System::set_block_number(1);
-        
+
         let proposer = 1u64;
         Balances::make_free_balance_be(&proposer, 500_000);
-        
-        let proposal_types = [CommunityProposalType::LocalProject,
+
+        let proposal_types = [
+            CommunityProposalType::LocalProject,
             CommunityProposalType::EducationModule,
             CommunityProposalType::GreenInitiative,
             CommunityProposalType::CulturalPreservation,
             CommunityProposalType::DisasterRelief,
-            CommunityProposalType::CommunityBounty];
-        
+            CommunityProposalType::CommunityBounty,
+        ];
+
         for (i, proposal_type) in proposal_types.iter().enumerate() {
             assert_ok!(Community::submit_community_proposal(
                 RuntimeOrigin::signed(proposer),
                 proposal_type.as_u8(),
                 2u64,
                 5_000u64,
-                format!("Proposal {}", i).as_bytes().to_vec().try_into().unwrap(),
+                format!("Proposal {}", i)
+                    .as_bytes()
+                    .to_vec()
+                    .try_into()
+                    .unwrap(),
                 b"Test description".to_vec().try_into().unwrap(),
             ));
-            
+
             let proposal = Community::proposals(i as u32).unwrap();
             assert_eq!(proposal.proposal_type, *proposal_type);
         }
-        
+
         assert_eq!(Community::proposal_count(), 6);
     });
 }
@@ -1173,15 +1182,15 @@ fn test_proposal_with_different_types() {
 fn test_srs_weighted_voting_advantage() {
     new_test_ext().execute_with(|| {
         System::set_block_number(1);
-        
+
         let proposer = 1u64;
         let high_srs_voter = 2u64;
         let low_srs_voter1 = 3u64;
         let low_srs_voter2 = 4u64;
-        
+
         // Set up balances
         Balances::make_free_balance_be(&proposer, 100_000);
-        
+
         // Give high_srs_voter a high SRS (50 activities = Gold tier)
         for _ in 0..50 {
             assert_ok!(Community::record_participation(
@@ -1191,9 +1200,9 @@ fn test_srs_weighted_voting_advantage() {
             ));
             System::set_block_number(System::block_number() + 1);
         }
-        
+
         let high_srs = Community::get_srs(&high_srs_voter).unwrap();
-        
+
         // Submit proposal
         assert_ok!(Community::submit_community_proposal(
             RuntimeOrigin::signed(proposer),
@@ -1203,14 +1212,14 @@ fn test_srs_weighted_voting_advantage() {
             b"SRS Test".to_vec().try_into().unwrap(),
             b"Testing SRS weighting".to_vec().try_into().unwrap(),
         ));
-        
+
         // High SRS voter votes for
         assert_ok!(Community::vote_community_proposal(
             RuntimeOrigin::signed(high_srs_voter),
             0,
             true,
         ));
-        
+
         // Two low SRS voters vote against (weight of 1 each)
         assert_ok!(Community::vote_community_proposal(
             RuntimeOrigin::signed(low_srs_voter1),
@@ -1222,7 +1231,7 @@ fn test_srs_weighted_voting_advantage() {
             0,
             false,
         ));
-        
+
         // Check high SRS voter's single vote outweighs two low SRS votes
         let proposal = Community::proposals(0).unwrap();
         assert_eq!(proposal.votes_for, high_srs.score);
@@ -1235,10 +1244,10 @@ fn test_srs_weighted_voting_advantage() {
 fn test_tie_vote_rejects_proposal() {
     new_test_ext().execute_with(|| {
         System::set_block_number(1);
-        
+
         let proposer = 1u64;
         Balances::make_free_balance_be(&proposer, 100_000);
-        
+
         // Submit proposal
         assert_ok!(Community::submit_community_proposal(
             RuntimeOrigin::signed(proposer),
@@ -1248,23 +1257,42 @@ fn test_tie_vote_rejects_proposal() {
             b"Tie Test".to_vec().try_into().unwrap(),
             b"Testing tie scenario".to_vec().try_into().unwrap(),
         ));
-        
+
         // Two votes for, two against (equal weight)
-        assert_ok!(Community::vote_community_proposal(RuntimeOrigin::signed(2u64), 0, true));
-        assert_ok!(Community::vote_community_proposal(RuntimeOrigin::signed(3u64), 0, true));
-        assert_ok!(Community::vote_community_proposal(RuntimeOrigin::signed(4u64), 0, false));
-        assert_ok!(Community::vote_community_proposal(RuntimeOrigin::signed(5u64), 0, false));
-        
+        assert_ok!(Community::vote_community_proposal(
+            RuntimeOrigin::signed(2u64),
+            0,
+            true
+        ));
+        assert_ok!(Community::vote_community_proposal(
+            RuntimeOrigin::signed(3u64),
+            0,
+            true
+        ));
+        assert_ok!(Community::vote_community_proposal(
+            RuntimeOrigin::signed(4u64),
+            0,
+            false
+        ));
+        assert_ok!(Community::vote_community_proposal(
+            RuntimeOrigin::signed(5u64),
+            0,
+            false
+        ));
+
         let proposal = Community::proposals(0).unwrap();
         assert_eq!(proposal.votes_for, 2);
         assert_eq!(proposal.votes_against, 2);
-        
+
         // Move past deadline
         System::set_block_number(100_802);
-        
+
         // Finalize - tie should reject (not approved = votes_for > votes_against)
-        assert_ok!(Community::finalize_community_proposal(RuntimeOrigin::signed(proposer), 0));
-        
+        assert_ok!(Community::finalize_community_proposal(
+            RuntimeOrigin::signed(proposer),
+            0
+        ));
+
         let proposal = Community::proposals(0).unwrap();
         assert_eq!(proposal.status, ProposalStatus::Rejected);
     });
@@ -1278,17 +1306,17 @@ fn test_tie_vote_rejects_proposal() {
 fn test_sanction_account() {
     new_test_ext().execute_with(|| {
         System::set_block_number(1);
-        
+
         let account = 5u64;
         let reason = b"Fraudulent activity detected".to_vec().try_into().unwrap();
-        
+
         // Sanction account (requires root/governance)
         assert_ok!(Community::sanction_account(
             RuntimeOrigin::root(),
             account,
             reason,
         ));
-        
+
         // Check sanction was recorded
         let sanction = Community::is_sanctioned(account).unwrap();
         assert!(sanction.active);
@@ -1299,25 +1327,22 @@ fn test_sanction_account() {
 fn test_lift_sanction() {
     new_test_ext().execute_with(|| {
         System::set_block_number(1);
-        
+
         let account = 5u64;
         let reason = b"Temporary restriction".to_vec().try_into().unwrap();
-        
+
         // Sanction account
         assert_ok!(Community::sanction_account(
             RuntimeOrigin::root(),
             account,
             reason,
         ));
-        
+
         assert!(Community::is_sanctioned(account).is_some());
-        
+
         // Lift sanction
-        assert_ok!(Community::lift_sanction(
-            RuntimeOrigin::root(),
-            account,
-        ));
-        
+        assert_ok!(Community::lift_sanction(RuntimeOrigin::root(), account,));
+
         // Check sanction was removed
         assert!(Community::is_sanctioned(account).is_none());
     });
@@ -1327,19 +1352,19 @@ fn test_lift_sanction() {
 fn test_sanctioned_beneficiary_requires_ethics_review() {
     new_test_ext().execute_with(|| {
         System::set_block_number(1);
-        
+
         let proposer = 1u64;
         let beneficiary = 5u64;
-        
+
         Balances::make_free_balance_be(&proposer, 100_000);
-        
+
         // Sanction the beneficiary
         assert_ok!(Community::sanction_account(
             RuntimeOrigin::root(),
             beneficiary,
             b"Under investigation".to_vec().try_into().unwrap(),
         ));
-        
+
         // Submit proposal with sanctioned beneficiary
         assert_ok!(Community::submit_community_proposal(
             RuntimeOrigin::signed(proposer),
@@ -1349,7 +1374,7 @@ fn test_sanctioned_beneficiary_requires_ethics_review() {
             b"Test Proposal".to_vec().try_into().unwrap(),
             b"Should require ethics review".to_vec().try_into().unwrap(),
         ));
-        
+
         // Check proposal is in EthicsReview status
         let proposal = Community::proposals(0).unwrap();
         assert_eq!(proposal.status, ProposalStatus::EthicsReview);
@@ -1360,15 +1385,15 @@ fn test_sanctioned_beneficiary_requires_ethics_review() {
 fn test_ethics_council_vote() {
     new_test_ext().execute_with(|| {
         System::set_block_number(1);
-        
+
         let proposer = 1u64;
         let beneficiary = 5u64;
         let council_member_1 = 6u64;
         let council_member_2 = 7u64;
         let council_member_3 = 8u64;
-        
+
         Balances::make_free_balance_be(&proposer, 100_000);
-        
+
         // Set up ethics council
         let config = EthicsConfig {
             council_members: vec![council_member_1, council_member_2, council_member_3]
@@ -1378,14 +1403,14 @@ fn test_ethics_council_vote() {
             ..Default::default()
         };
         EthicsFilterConfig::<Test>::put(config);
-        
+
         // Sanction beneficiary to trigger ethics review
         assert_ok!(Community::sanction_account(
             RuntimeOrigin::root(),
             beneficiary,
             b"Test sanction".to_vec().try_into().unwrap(),
         ));
-        
+
         // Submit proposal (should go to ethics review)
         assert_ok!(Community::submit_community_proposal(
             RuntimeOrigin::signed(proposer),
@@ -1395,23 +1420,23 @@ fn test_ethics_council_vote() {
             b"Test".to_vec().try_into().unwrap(),
             b"Test".to_vec().try_into().unwrap(),
         ));
-        
+
         let proposal = Community::proposals(0).unwrap();
         assert_eq!(proposal.status, ProposalStatus::EthicsReview);
-        
+
         // Council members vote
         assert_ok!(Community::ethics_council_vote(
             RuntimeOrigin::signed(council_member_1),
             0,
             true,
         ));
-        
+
         assert_ok!(Community::ethics_council_vote(
             RuntimeOrigin::signed(council_member_2),
             0,
             true,
         ));
-        
+
         // Check proposal moved to Active after 2/3 approval
         let proposal = Community::proposals(0).unwrap();
         assert_eq!(proposal.status, ProposalStatus::Active);
@@ -1422,31 +1447,29 @@ fn test_ethics_council_vote() {
 fn test_ethics_council_rejection() {
     new_test_ext().execute_with(|| {
         System::set_block_number(1);
-        
+
         let proposer = 1u64;
         let beneficiary = 5u64;
         let council_member_1 = 6u64;
         let council_member_2 = 7u64;
-        
+
         Balances::make_free_balance_be(&proposer, 100_000);
-        
+
         // Set up ethics council
         let config = EthicsConfig {
-            council_members: vec![council_member_1, council_member_2]
-                .try_into()
-                .unwrap(),
+            council_members: vec![council_member_1, council_member_2].try_into().unwrap(),
             min_council_votes: 2,
             ..Default::default()
         };
         EthicsFilterConfig::<Test>::put(config);
-        
+
         // Sanction beneficiary
         assert_ok!(Community::sanction_account(
             RuntimeOrigin::root(),
             beneficiary,
             b"Test".to_vec().try_into().unwrap(),
         ));
-        
+
         // Submit proposal
         assert_ok!(Community::submit_community_proposal(
             RuntimeOrigin::signed(proposer),
@@ -1456,14 +1479,22 @@ fn test_ethics_council_rejection() {
             b"Test".to_vec().try_into().unwrap(),
             b"Test".to_vec().try_into().unwrap(),
         ));
-        
+
         let deposit = 1_000u64;
         assert_eq!(Balances::reserved_balance(proposer), deposit);
-        
+
         // Council rejects
-        assert_ok!(Community::ethics_council_vote(RuntimeOrigin::signed(council_member_1), 0, false));
-        assert_ok!(Community::ethics_council_vote(RuntimeOrigin::signed(council_member_2), 0, false));
-        
+        assert_ok!(Community::ethics_council_vote(
+            RuntimeOrigin::signed(council_member_1),
+            0,
+            false
+        ));
+        assert_ok!(Community::ethics_council_vote(
+            RuntimeOrigin::signed(council_member_2),
+            0,
+            false
+        ));
+
         // Check proposal rejected and deposit returned
         let proposal = Community::proposals(0).unwrap();
         assert_eq!(proposal.status, ProposalStatus::Rejected);
@@ -1475,27 +1506,27 @@ fn test_ethics_council_rejection() {
 fn test_cannot_vote_twice_in_ethics_council() {
     new_test_ext().execute_with(|| {
         System::set_block_number(1);
-        
+
         let proposer = 1u64;
         let beneficiary = 5u64;
         let council_member = 6u64;
-        
+
         Balances::make_free_balance_be(&proposer, 100_000);
-        
+
         // Set up ethics council
         let config = EthicsConfig {
             council_members: vec![council_member].try_into().unwrap(),
             ..Default::default()
         };
         EthicsFilterConfig::<Test>::put(config);
-        
+
         // Sanction beneficiary
         assert_ok!(Community::sanction_account(
             RuntimeOrigin::root(),
             beneficiary,
             b"Test".to_vec().try_into().unwrap(),
         ));
-        
+
         // Submit proposal
         assert_ok!(Community::submit_community_proposal(
             RuntimeOrigin::signed(proposer),
@@ -1505,10 +1536,14 @@ fn test_cannot_vote_twice_in_ethics_council() {
             b"Test".to_vec().try_into().unwrap(),
             b"Test".to_vec().try_into().unwrap(),
         ));
-        
+
         // First vote succeeds
-        assert_ok!(Community::ethics_council_vote(RuntimeOrigin::signed(council_member), 0, true));
-        
+        assert_ok!(Community::ethics_council_vote(
+            RuntimeOrigin::signed(council_member),
+            0,
+            true
+        ));
+
         // Second vote fails
         assert_noop!(
             Community::ethics_council_vote(RuntimeOrigin::signed(council_member), 0, false),
@@ -1521,28 +1556,28 @@ fn test_cannot_vote_twice_in_ethics_council() {
 fn test_non_council_member_cannot_vote() {
     new_test_ext().execute_with(|| {
         System::set_block_number(1);
-        
+
         let proposer = 1u64;
         let beneficiary = 5u64;
         let non_member = 9u64;
         let council_member = 6u64;
-        
+
         Balances::make_free_balance_be(&proposer, 100_000);
-        
+
         // Set up ethics council (only council_member is in council)
         let config = EthicsConfig {
             council_members: vec![council_member].try_into().unwrap(),
             ..Default::default()
         };
         EthicsFilterConfig::<Test>::put(config);
-        
+
         // Sanction beneficiary
         assert_ok!(Community::sanction_account(
             RuntimeOrigin::root(),
             beneficiary,
             b"Test".to_vec().try_into().unwrap(),
         ));
-        
+
         // Submit proposal
         assert_ok!(Community::submit_community_proposal(
             RuntimeOrigin::signed(proposer),
@@ -1552,7 +1587,7 @@ fn test_non_council_member_cannot_vote() {
             b"Test".to_vec().try_into().unwrap(),
             b"Test".to_vec().try_into().unwrap(),
         ));
-        
+
         // Non-council member cannot vote
         assert_noop!(
             Community::ethics_council_vote(RuntimeOrigin::signed(non_member), 0, true),
@@ -1565,12 +1600,12 @@ fn test_non_council_member_cannot_vote() {
 fn test_unverified_beneficiary_requires_ethics_review() {
     new_test_ext().execute_with(|| {
         System::set_block_number(1);
-        
+
         let proposer = 1u64;
         let unverified_beneficiary = 99u64; // Not in KYC verified range (1-10)
-        
+
         Balances::make_free_balance_be(&proposer, 100_000);
-        
+
         // Submit proposal with unverified beneficiary
         assert_noop!(
             Community::submit_community_proposal(
@@ -1626,8 +1661,14 @@ fn test_complete_education_module() {
 
         // Verify SRS increased
         let new_srs = Community::get_srs(&1).unwrap();
-        assert!(new_srs.score > initial_srs, "SRS should increase after education");
-        assert!(new_srs.education_score > 0, "Education score should be positive");
+        assert!(
+            new_srs.score > initial_srs,
+            "SRS should increase after education"
+        );
+        assert!(
+            new_srs.education_score > 0,
+            "Education score should be positive"
+        );
     });
 }
 
@@ -1754,8 +1795,14 @@ fn test_green_project_contribution() {
 
         // Verify SRS increased
         let new_srs = Community::get_srs(&1).unwrap();
-        assert!(new_srs.score > initial_srs, "SRS should increase after green contribution");
-        assert!(new_srs.sustainability_score > 0, "Sustainability score should be positive");
+        assert!(
+            new_srs.score > initial_srs,
+            "SRS should increase after green contribution"
+        );
+        assert!(
+            new_srs.sustainability_score > 0,
+            "Sustainability score should be positive"
+        );
     });
 }
 
@@ -1851,11 +1898,7 @@ fn test_inactive_project_cannot_receive_contributions() {
 
         // Try to contribute - should fail
         assert_noop!(
-            Community::contribute_to_green_project(
-                RuntimeOrigin::signed(1),
-                1,
-                1_000
-            ),
+            Community::contribute_to_green_project(RuntimeOrigin::signed(1), 1, 1_000),
             Error::<Test>::ProjectInactive
         );
     });
@@ -1868,8 +1911,9 @@ fn test_claim_referral_reward() {
         Community::record_participation(
             RuntimeOrigin::signed(2),
             2,
-            ActivityType::VoteCast.as_u8()
-        ).ok();
+            ActivityType::VoteCast.as_u8(),
+        )
+        .ok();
 
         // Account 1 claims referral for Account 2
         assert_ok!(Community::claim_referral_reward(
@@ -1894,8 +1938,9 @@ fn test_cannot_claim_referral_twice() {
         Community::record_participation(
             RuntimeOrigin::signed(2),
             2,
-            ActivityType::VoteCast.as_u8()
-        ).ok();
+            ActivityType::VoteCast.as_u8(),
+        )
+        .ok();
 
         // Claim once
         assert_ok!(Community::claim_referral_reward(
@@ -1905,10 +1950,7 @@ fn test_cannot_claim_referral_twice() {
 
         // Try to claim again - should fail
         assert_noop!(
-            Community::claim_referral_reward(
-                RuntimeOrigin::signed(1),
-                2
-            ),
+            Community::claim_referral_reward(RuntimeOrigin::signed(1), 2),
             Error::<Test>::ReferralAlreadyClaimed
         );
     });
@@ -1950,24 +1992,34 @@ fn test_referral_rewards_scale() {
             Community::record_participation(
                 RuntimeOrigin::signed(i),
                 i,
-                ActivityType::VoteCast.as_u8()
-            ).ok();
+                ActivityType::VoteCast.as_u8(),
+            )
+            .ok();
         }
 
         // Claim first referral (base: 1000)
-        assert_ok!(Community::claim_referral_reward(RuntimeOrigin::signed(1), 2));
+        assert_ok!(Community::claim_referral_reward(
+            RuntimeOrigin::signed(1),
+            2
+        ));
         let data1 = crate::ReferralData::<Test>::get(1);
         assert_eq!(data1.total_referrals, 1);
         assert_eq!(data1.total_rewards_earned, 1_000);
 
         // Claim second referral (base 1000 + 100 for 1st existing referral = 1100)
-        assert_ok!(Community::claim_referral_reward(RuntimeOrigin::signed(1), 3));
+        assert_ok!(Community::claim_referral_reward(
+            RuntimeOrigin::signed(1),
+            3
+        ));
         let data2 = crate::ReferralData::<Test>::get(1);
         assert_eq!(data2.total_referrals, 2);
         assert_eq!(data2.total_rewards_earned, 2_100); // 1000 + 1100
 
         // Claim third referral (base 1000 + 200 for 2 existing referrals = 1200)
-        assert_ok!(Community::claim_referral_reward(RuntimeOrigin::signed(1), 4));
+        assert_ok!(Community::claim_referral_reward(
+            RuntimeOrigin::signed(1),
+            4
+        ));
         let data3 = crate::ReferralData::<Test>::get(1);
         assert_eq!(data3.total_referrals, 3);
         assert_eq!(data3.total_rewards_earned, 3_300); // 1000 + 1100 + 1200
@@ -2035,12 +2087,24 @@ fn test_sustainability_score_calculation() {
         }
 
         // Contribute to 3 different projects
-        assert_ok!(Community::contribute_to_green_project(RuntimeOrigin::signed(1), 1, 10_000));
-        assert_ok!(Community::contribute_to_green_project(RuntimeOrigin::signed(1), 2, 5_000));
-        assert_ok!(Community::contribute_to_green_project(RuntimeOrigin::signed(1), 3, 5_000));
+        assert_ok!(Community::contribute_to_green_project(
+            RuntimeOrigin::signed(1),
+            1,
+            10_000
+        ));
+        assert_ok!(Community::contribute_to_green_project(
+            RuntimeOrigin::signed(1),
+            2,
+            5_000
+        ));
+        assert_ok!(Community::contribute_to_green_project(
+            RuntimeOrigin::signed(1),
+            3,
+            5_000
+        ));
 
         let srs = Community::get_srs(&1).unwrap();
-        
+
         // Amount score: 20,000 / 100 = 200
         // Diversity bonus: 3 projects * 100 = 300
         // Total: 500
@@ -2078,8 +2142,9 @@ fn test_integrated_srs_with_all_components() {
         Community::record_participation(
             RuntimeOrigin::signed(1),
             1,
-            ActivityType::VoteCast.as_u8()
-        ).ok();
+            ActivityType::VoteCast.as_u8(),
+        )
+        .ok();
         let baseline_srs = Community::get_srs(&1).unwrap().score;
 
         // Complete education module
@@ -2119,8 +2184,9 @@ fn test_community_rank_trait_bronze() {
         Community::record_participation(
             RuntimeOrigin::signed(1),
             1,
-            ActivityType::VoteCast.as_u8()
-        ).ok();
+            ActivityType::VoteCast.as_u8(),
+        )
+        .ok();
 
         // Test CommunityRank trait
         let rank = Community::get_community_rank(&1);
@@ -2139,8 +2205,9 @@ fn test_community_rank_trait_progression() {
             Community::record_participation(
                 RuntimeOrigin::signed(1),
                 1,
-                ActivityType::VoteCast.as_u8()
-            ).ok();
+                ActivityType::VoteCast.as_u8(),
+            )
+            .ok();
         }
 
         // Should be Silver
@@ -2159,11 +2226,12 @@ fn test_fee_calculator_trait_bronze_no_discount() {
         Community::record_participation(
             RuntimeOrigin::signed(1),
             1,
-            ActivityType::VoteCast.as_u8()
-        ).ok();
+            ActivityType::VoteCast.as_u8(),
+        )
+        .ok();
 
         let original_fee = 1000u64;
-        let (discounted_fee, discount_pct, within_limit) = 
+        let (discounted_fee, discount_pct, within_limit) =
             Community::calculate_effective_fee(&1, original_fee);
 
         assert_eq!(discounted_fee, original_fee); // No discount
@@ -2181,27 +2249,34 @@ fn test_fee_calculator_trait_silver_25_percent() {
             Community::record_participation(
                 RuntimeOrigin::signed(1),
                 1,
-                ActivityType::VoteCast.as_u8()
-            ).ok();
+                ActivityType::VoteCast.as_u8(),
+            )
+            .ok();
         }
         // record_participation already calls update_srs_internal
 
         let srs = Community::get_srs(&1).expect("SRS should exist");
         // Debug: print actual scores
         println!("SRS Score: {}, Tier: {:?}", srs.score, srs.tier);
-        println!("Gov: {}, Part: {}", srs.governance_score, srs.participation_score);
+        println!(
+            "Gov: {}, Part: {}",
+            srs.governance_score, srs.participation_score
+        );
 
         let original_fee = 1000u64;
-        
+
         // Direct storage check to debug
         let srs_from_storage = SocialResponsibilityScores::<Test>::get(1);
         println!("SRS from storage before fee calc: {:?}", srs_from_storage);
-        
-        let (discounted_fee, discount_pct, within_limit) = 
+
+        let (discounted_fee, discount_pct, within_limit) =
             <Community as FeeCalculator<u64, u64>>::calculate_effective_fee(&1, original_fee);
 
-        println!("Fee result: discounted={}, discount_pct={}, within={}", discounted_fee, discount_pct, within_limit);
-        
+        println!(
+            "Fee result: discounted={}, discount_pct={}, within={}",
+            discounted_fee, discount_pct, within_limit
+        );
+
         assert_eq!(discount_pct, 25, "Silver tier should give 25% discount");
         assert_eq!(discounted_fee, 750); // 25% off
         assert!(within_limit);
@@ -2220,7 +2295,7 @@ fn test_pouw_contributor_trait() {
 
         // Get PoUW score
         let pouw_score = Community::get_pouw_score(&1);
-        
+
         // Expected: (8000*40% + 9000*30% + 7000*30%) = 3200 + 2700 + 2100 = 8000
         assert_eq!(pouw_score, 8_000);
     });
@@ -2233,8 +2308,9 @@ fn test_pouw_contribution_updates_srs() {
         Community::record_participation(
             RuntimeOrigin::signed(1),
             1,
-            ActivityType::VoteCast.as_u8()
-        ).ok();
+            ActivityType::VoteCast.as_u8(),
+        )
+        .ok();
         let baseline = Community::get_srs(&1).unwrap().score;
 
         // Record PoUW contribution
@@ -2259,7 +2335,7 @@ fn test_pouw_multiple_contributions_averaged() {
         Community::record_pouw_contribution(&1, 10_000, 10_000, 10_000).ok(); // 10000
 
         let pouw_score = Community::get_pouw_score(&1);
-        
+
         // Average: (8000 + 6000 + 10000) / 3 = 8000
         assert_eq!(pouw_score, 8_000);
     });
@@ -2279,7 +2355,9 @@ fn test_governance_participation_proposal_submission() {
 
         // Verify participation recorded
         let history = ParticipationHistory::<Test>::get(1);
-        assert!(history.iter().any(|r| r.activity_type == ActivityType::ProposalSubmission));
+        assert!(history
+            .iter()
+            .any(|r| r.activity_type == ActivityType::ProposalSubmission));
 
         // Verify proposal stats updated
         let stats = UserProposals::<Test>::get(1);
@@ -2305,7 +2383,9 @@ fn test_governance_participation_vote_cast() {
 
         // Verify participation recorded
         let history = ParticipationHistory::<Test>::get(1);
-        assert!(history.iter().any(|r| r.activity_type == ActivityType::VoteCast));
+        assert!(history
+            .iter()
+            .any(|r| r.activity_type == ActivityType::VoteCast));
 
         // Verify SRS increased
         let after = Community::get_srs(&1).unwrap().score;
@@ -2327,7 +2407,9 @@ fn test_governance_participation_proposal_approval() {
 
         // Verify participation recorded
         let history = ParticipationHistory::<Test>::get(1);
-        assert!(history.iter().any(|r| r.activity_type == ActivityType::ProposalApproved));
+        assert!(history
+            .iter()
+            .any(|r| r.activity_type == ActivityType::ProposalApproved));
 
         // Verify proposal stats updated
         let stats = UserProposals::<Test>::get(1);
@@ -2353,7 +2435,9 @@ fn test_governance_participation_council_activity() {
 
         // Verify participation recorded
         let history = ParticipationHistory::<Test>::get(1);
-        assert!(history.iter().any(|r| r.activity_type == ActivityType::CouncilMembership));
+        assert!(history
+            .iter()
+            .any(|r| r.activity_type == ActivityType::CouncilMembership));
 
         // Verify SRS increased (council gets high points)
         let after = Community::get_srs(&1).unwrap().score;
@@ -2366,9 +2450,14 @@ fn test_governance_participation_council_activity() {
 fn test_cross_pallet_fee_calculator_integration() {
     new_test_ext().execute_with(|| {
         // Simulate economy pallet using FeeCalculator trait
-        
+
         // Bronze tier - no discount
-        Community::record_participation(RuntimeOrigin::signed(1), 1, ActivityType::VoteCast.as_u8()).ok();
+        Community::record_participation(
+            RuntimeOrigin::signed(1),
+            1,
+            ActivityType::VoteCast.as_u8(),
+        )
+        .ok();
         Community::update_srs(RuntimeOrigin::signed(1), 1).ok();
         let (fee1, _, _) = Community::calculate_effective_fee(&1, 10_000u64);
         assert_eq!(fee1, 10_000);
@@ -2377,19 +2466,29 @@ fn test_cross_pallet_fee_calculator_integration() {
         // Need enough participation to exceed 5000
         // Use ProposalSubmission (100 gov points each) + VoteCast
         for _ in 0..25 {
-            Community::record_participation(RuntimeOrigin::signed(1), 1, ActivityType::ProposalSubmission.as_u8()).ok();
+            Community::record_participation(
+                RuntimeOrigin::signed(1),
+                1,
+                ActivityType::ProposalSubmission.as_u8(),
+            )
+            .ok();
         }
         for _ in 0..30 {
-            Community::record_participation(RuntimeOrigin::signed(1), 1, ActivityType::VoteCast.as_u8()).ok();
+            Community::record_participation(
+                RuntimeOrigin::signed(1),
+                1,
+                ActivityType::VoteCast.as_u8(),
+            )
+            .ok();
         }
         // Total records: 1 + 25 + 30 = 56
         // Governance: 1*25 + 25*100 + 30*25 = 25 + 2500 + 750 = 3275 (capped at 2500) = 2500
         // Participation: 56 * 50 = 2800 (capped at 2500) = 2500
         // Honesty: 500
         // Total: 2500 + 2500 + 500 = 5500 (Gold!)
-        
+
         Community::update_srs(RuntimeOrigin::signed(1), 1).ok();
-        
+
         let (fee2, discount, _) = Community::calculate_effective_fee(&1, 10_000u64);
         assert_eq!(discount, 50);
         assert_eq!(fee2, 5_000); // 50% off
@@ -2400,15 +2499,15 @@ fn test_cross_pallet_fee_calculator_integration() {
 fn test_full_integration_all_traits() {
     new_test_ext().execute_with(|| {
         // Test account 1 participates across all dimensions
-        
+
         // 1. Governance participation (via GovernanceParticipation trait)
         Community::record_proposal_submission(&1).ok();
         Community::record_vote_cast(&1).ok();
         Community::record_proposal_approval(&1).ok();
-        
+
         // 2. PoUW contribution (via PoUWContributor trait)
         Community::record_pouw_contribution(&1, 9_000, 8_500, 9_500).ok();
-        
+
         // 3. Education (direct)
         let module = EducationModule {
             id: 1,
@@ -2423,9 +2522,10 @@ fn test_full_integration_all_traits() {
         Community::complete_education_module(
             RuntimeOrigin::signed(1),
             1,
-            b"proof".to_vec().try_into().unwrap()
-        ).ok();
-        
+            b"proof".to_vec().try_into().unwrap(),
+        )
+        .ok();
+
         // 4. Green project (direct)
         let project = GreenProject {
             id: 1,
@@ -2437,22 +2537,34 @@ fn test_full_integration_all_traits() {
         };
         GreenProjects::<Test>::insert(1, project);
         Community::contribute_to_green_project(RuntimeOrigin::signed(1), 1, 5_000).ok();
-        
+
         // Verify all components reflected in SRS
         let srs = Community::get_srs(&1).unwrap();
-        assert!(srs.governance_score > 0, "Governance score should be positive");
-        assert!(srs.education_score > 0, "Education score should be positive");
-        assert!(srs.sustainability_score > 0, "Sustainability score should be positive");
-        assert!(srs.participation_score > 0, "Participation score should be positive");
-        
+        assert!(
+            srs.governance_score > 0,
+            "Governance score should be positive"
+        );
+        assert!(
+            srs.education_score > 0,
+            "Education score should be positive"
+        );
+        assert!(
+            srs.sustainability_score > 0,
+            "Sustainability score should be positive"
+        );
+        assert!(
+            srs.participation_score > 0,
+            "Participation score should be positive"
+        );
+
         // Verify CommunityRank trait works
         let rank = Community::get_community_rank(&1);
         assert!(rank >= 100, "Should have some rank");
-        
+
         // Verify FeeCalculator trait works
         let (discounted_fee, _, _) = Community::calculate_effective_fee(&1, 1_000u64);
         assert!(discounted_fee <= 1_000, "Should have some discount");
-        
+
         // Verify PoUW score accessible
         let pouw = Community::get_pouw_score(&1);
         assert!(pouw > 0, "Should have PoUW score");
@@ -2481,7 +2593,7 @@ fn test_participation_history_full_limit() {
 fn test_cross_pallet_community_rank() {
     new_test_ext().execute_with(|| {
         // Test CommunityRank trait for governance integration
-        
+
         // No SRS initially
         let rank_none = <Community as CommunityRank<u64>>::get_community_rank(&1);
         assert_eq!(rank_none, 0);
@@ -2490,9 +2602,10 @@ fn test_cross_pallet_community_rank() {
         Community::record_participation(
             RuntimeOrigin::signed(1),
             1,
-            ActivityType::VoteCast.as_u8()
-        ).ok();
-        
+            ActivityType::VoteCast.as_u8(),
+        )
+        .ok();
+
         let rank_bronze = <Community as CommunityRank<u64>>::get_community_rank(&1);
         assert_eq!(rank_bronze, 100, "Bronze tier should give rank 100");
 
@@ -2505,10 +2618,11 @@ fn test_cross_pallet_community_rank() {
 fn test_fee_calculator_integration() {
     new_test_ext().execute_with(|| {
         // Test FeeCalculator trait for economy pallet integration
-        
+
         // User with no SRS
         let original_fee = 1000u64;
-        let (fee, discount, within_limit) = <Community as FeeCalculator<u64, u64>>::calculate_effective_fee(&1, original_fee);
+        let (fee, discount, within_limit) =
+            <Community as FeeCalculator<u64, u64>>::calculate_effective_fee(&1, original_fee);
         assert_eq!(fee, original_fee, "No discount without SRS");
         assert_eq!(discount, 0);
         assert!(within_limit);
@@ -2520,8 +2634,9 @@ fn test_fee_calculator_integration() {
             Community::record_participation(
                 RuntimeOrigin::signed(1),
                 1,
-                ActivityType::ProposalApproved.as_u8()
-            ).ok();
+                ActivityType::ProposalApproved.as_u8(),
+            )
+            .ok();
         }
 
         // Add PoUW contributions to boost score
@@ -2536,7 +2651,8 @@ fn test_fee_calculator_integration() {
         assert_eq!(srs.tier, SRSTier::Gold, "Should reach Gold tier");
 
         // Calculate fee with discount
-        let (discounted_fee, discount_pct, within) = <Community as FeeCalculator<u64, u64>>::calculate_effective_fee(&1, original_fee);
+        let (discounted_fee, discount_pct, within) =
+            <Community as FeeCalculator<u64, u64>>::calculate_effective_fee(&1, original_fee);
         assert_eq!(discount_pct, 50, "Gold tier gives 50% discount");
         assert_eq!(discounted_fee, 500, "Fee should be halved");
         assert!(within);
@@ -2547,23 +2663,22 @@ fn test_fee_calculator_integration() {
 fn test_pouw_contributor_integration() {
     new_test_ext().execute_with(|| {
         // Test PoUWContributor trait for staking pallet integration
-        
+
         // Record PoUW contribution
         let quality = 8_000; // 80%
         let timeliness = 9_000; // 90%
         let honesty = 7_000; // 70%
-        
-        assert_ok!(<Community as PoUWContributor<u64>>::record_pouw_contribution(
-            &1,
-            quality,
-            timeliness,
-            honesty
-        ));
+
+        assert_ok!(
+            <Community as PoUWContributor<u64>>::record_pouw_contribution(
+                &1, quality, timeliness, honesty
+            )
+        );
 
         // Verify participation recorded
         let history = ParticipationHistory::<Test>::get(1);
         assert_eq!(history.len(), 1);
-        
+
         // Check PoUW score calculation: (8000*40% + 9000*30% + 7000*30%) = 3200 + 2700 + 2100 = 8000
         let pouw_score = <Community as PoUWContributor<u64>>::get_pouw_score(&1);
         assert_eq!(pouw_score, 8_000);
@@ -2584,7 +2699,10 @@ fn test_pouw_average_calculation() {
         // Second: 6000*0.4 + 7000*0.3 + 8000*0.3 = 6900
         // Third: 9000*0.4 + 8000*0.3 + 9000*0.3 = 8700
         // Average: (8000 + 6900 + 8700) / 3 = 7866
-        assert!((7800..=7900).contains(&score), "Average should be around 7866");
+        assert!(
+            (7800..=7900).contains(&score),
+            "Average should be around 7866"
+        );
     });
 }
 
@@ -2605,7 +2723,7 @@ fn test_governance_proposal_submission_hook() {
         // Verify proposal stats updated
         let stats = UserProposals::<Test>::get(1);
         assert_eq!(stats.total, 1);
-        
+
         // Note: SRS update would be triggered by calling update_srs extrinsic separately
     });
 }
@@ -2660,7 +2778,7 @@ fn test_governance_council_activity_hook() {
 fn test_cross_pallet_srs_accumulation() {
     new_test_ext().execute_with(|| {
         // Simulate multi-pallet interaction
-        
+
         // Governance: Submit 2 proposals
         <Community as GovernanceParticipation<u64>>::record_proposal_submission(&1).ok();
         <Community as GovernanceParticipation<u64>>::record_proposal_submission(&1).ok();
@@ -2688,8 +2806,9 @@ fn test_fee_discount_with_exemption_limit() {
             Community::record_participation(
                 RuntimeOrigin::signed(1),
                 1,
-                ActivityType::ProposalApproved.as_u8()
-            ).ok();
+                ActivityType::ProposalApproved.as_u8(),
+            )
+            .ok();
         }
 
         // Add PoUW contributions to boost score to Gold
@@ -2701,12 +2820,15 @@ fn test_fee_discount_with_exemption_limit() {
         Community::update_srs(RuntimeOrigin::signed(1), 1).ok();
 
         // First fee - should get discount
-        let (fee1, discount1, within1) = <Community as FeeCalculator<u64, u64>>::calculate_effective_fee(&1, 1000);
+        let (fee1, discount1, within1) =
+            <Community as FeeCalculator<u64, u64>>::calculate_effective_fee(&1, 1000);
         assert_eq!(discount1, 50);
         assert!(within1);
 
         // Apply the fee discount
-        assert_ok!(<Community as FeeCalculator<u64, u64>>::apply_fee_discount(&1, 1000, fee1));
+        assert_ok!(<Community as FeeCalculator<u64, u64>>::apply_fee_discount(
+            &1, 1000, fee1
+        ));
 
         // Verify exemption tracked
         let fee_data = FeeExemptionUsage::<Test>::get(1).unwrap();
@@ -2718,7 +2840,7 @@ fn test_fee_discount_with_exemption_limit() {
 fn test_full_ecosystem_integration() {
     new_test_ext().execute_with(|| {
         // Simulate complete cross-pallet workflow
-        
+
         // 1. User starts with no SRS
         let rank_initial = <Community as CommunityRank<u64>>::get_community_rank(&1);
         assert_eq!(rank_initial, 0);
@@ -2750,10 +2872,14 @@ fn test_full_ecosystem_integration() {
 
         // 5. Check rank increased
         let rank_final = <Community as CommunityRank<u64>>::get_community_rank(&1);
-        assert!(rank_final > rank_initial, "Rank should increase with participation");
+        assert!(
+            rank_final > rank_initial,
+            "Rank should increase with participation"
+        );
 
         // 6. Check fee discount available
-        let (discounted_fee, discount, _) = <Community as FeeCalculator<u64, u64>>::calculate_effective_fee(&1, 1000);
+        let (discounted_fee, discount, _) =
+            <Community as FeeCalculator<u64, u64>>::calculate_effective_fee(&1, 1000);
         assert!(discount > 0, "Should have fee discount");
         assert!(discounted_fee < 1000, "Fee should be reduced");
 
@@ -2834,10 +2960,13 @@ fn proposal_count_overflow_rejected() {
             Community::submit_community_proposal(
                 RuntimeOrigin::signed(proposer),
                 CommunityProposalType::LocalProject.as_u8(),
-                2u64,     // beneficiary
-                10_000,   // amount
+                2u64,   // beneficiary
+                10_000, // amount
                 b"Overflow test".to_vec().try_into().unwrap(),
-                b"This should trigger overflow guard".to_vec().try_into().unwrap(),
+                b"This should trigger overflow guard"
+                    .to_vec()
+                    .try_into()
+                    .unwrap(),
             ),
             Error::<Test>::ProposalCounterOverflow
         );

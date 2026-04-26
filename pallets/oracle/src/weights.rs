@@ -1,7 +1,7 @@
 //! Weight information for pallet-belize-oracle
 
-use frame_support::weights::Weight;
 use frame_support::weights::constants::RocksDbWeight;
+use frame_support::weights::Weight;
 
 /// Weight functions needed for the Oracle pallet
 pub trait WeightInfo {
@@ -76,8 +76,8 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
     }
 
     fn update_exchange_rate() -> Weight {
-        Weight::from_parts(20_000_000, 512)
-            .saturating_add(RocksDbWeight::get().writes(1)) // Write manual exchange rate
+        Weight::from_parts(20_000_000, 512).saturating_add(RocksDbWeight::get().writes(1))
+        // Write manual exchange rate
     }
 
     fn register_iot_device() -> Weight {
@@ -106,19 +106,19 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 
     fn resolve_kyc_dispute() -> Weight {
         Weight::from_parts(20_000_000, 1024)
-            .saturating_add(RocksDbWeight::get().reads(1))  // Read dispute flag
+            .saturating_add(RocksDbWeight::get().reads(1)) // Read dispute flag
             .saturating_add(RocksDbWeight::get().writes(3)) // Clear flag, leading vote, pending prefix
     }
 
     fn submit_behavior_flag() -> Weight {
         Weight::from_parts(15_000_000, 1024)
-            .saturating_add(RocksDbWeight::get().reads(3))  // operators, pending votes, existing flag
+            .saturating_add(RocksDbWeight::get().reads(3)) // operators, pending votes, existing flag
             .saturating_add(RocksDbWeight::get().writes(2)) // pending flag vote, flag/cooldown on consensus
     }
 
     fn clear_behavior_flag() -> Weight {
         Weight::from_parts(10_000_000, 512)
-            .saturating_add(RocksDbWeight::get().reads(1))  // existing flag
+            .saturating_add(RocksDbWeight::get().reads(1)) // existing flag
             .saturating_add(RocksDbWeight::get().writes(2)) // flag, cooldown
     }
 }

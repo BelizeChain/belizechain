@@ -111,7 +111,7 @@ cargo contract instantiate --suri //Alice --args "1000000000000000" \
 ```javascript
 const { GemSDK } = require('@belizechain/gem-sdk');
 
-const sdk = new GemSDK('wss://testnet.belizechain.org');
+const sdk = new GemSDK('wss://<current-public-testnet-rpc>');
 await sdk.connect();
 
 // Deploy contract

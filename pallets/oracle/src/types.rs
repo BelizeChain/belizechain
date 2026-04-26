@@ -3,15 +3,12 @@
 //! Core data structures for the oracle system including price feeds,
 //! merchant verification, sanctions, and external data integration.
 
-use codec::{Encode, Decode, MaxEncodedLen};
+use codec::{Decode, Encode, MaxEncodedLen};
+use frame_support::{pallet_prelude::*, BoundedVec};
 use scale_info::TypeInfo;
-use frame_support::{
-    pallet_prelude::*,
-    BoundedVec,
-};
 
 #[cfg(feature = "std")]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Maximum length for data sources
 pub const MAX_SOURCE_LEN: u32 = 64;
@@ -211,8 +208,6 @@ pub struct SanctionInfo<BlockNumber> {
     pub expires_at: Option<BlockNumber>,
 }
 
-
-
 /// Oracle feed type identifier
 #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
@@ -259,20 +254,20 @@ impl KycLevel {
     /// Get transaction limits for KYC level (in DALLA, scaled by 1e12)
     pub fn transaction_limit(&self) -> u128 {
         match self {
-            KycLevel::None => 1_000 * 1_000_000_000_000,      // 1,000 DALLA
-            KycLevel::Basic => 10_000 * 1_000_000_000_000,    // 10,000 DALLA
+            KycLevel::None => 1_000 * 1_000_000_000_000, // 1,000 DALLA
+            KycLevel::Basic => 10_000 * 1_000_000_000_000, // 10,000 DALLA
             KycLevel::Enhanced => 100_000 * 1_000_000_000_000, // 100,000 DALLA
-            KycLevel::Full => u128::MAX,                       // Unlimited
+            KycLevel::Full => u128::MAX,                 // Unlimited
         }
     }
 
     /// Get daily limits for KYC level (in DALLA, scaled by 1e12)
     pub fn daily_limit(&self) -> u128 {
         match self {
-            KycLevel::None => 5_000 * 1_000_000_000_000,      // 5,000 DALLA/day
-            KycLevel::Basic => 25_000 * 1_000_000_000_000,    // 25,000 DALLA/day
+            KycLevel::None => 5_000 * 1_000_000_000_000, // 5,000 DALLA/day
+            KycLevel::Basic => 25_000 * 1_000_000_000_000, // 25,000 DALLA/day
             KycLevel::Enhanced => 250_000 * 1_000_000_000_000, // 250,000 DALLA/day
-            KycLevel::Full => u128::MAX,                       // Unlimited
+            KycLevel::Full => u128::MAX,                 // Unlimited
         }
     }
 }
@@ -368,15 +363,15 @@ impl ModelDomain {
             ModelDomain::Tech => 4,
         }
     }
-    
+
     /// Priority multiplier for PoUW rewards (Belize national priorities)
     pub fn reward_multiplier(&self) -> u8 {
         match self {
-            ModelDomain::AgriTech => 150,     // 1.5x (food security)
-            ModelDomain::Marine => 140,       // 1.4x (ecosystem protection)
-            ModelDomain::Education => 130,    // 1.3x (human capital)
-            ModelDomain::Tech => 110,         // 1.1x (economic growth)
-            ModelDomain::General => 100,      // 1.0x (baseline)
+            ModelDomain::AgriTech => 150,  // 1.5x (food security)
+            ModelDomain::Marine => 140,    // 1.4x (ecosystem protection)
+            ModelDomain::Education => 130, // 1.3x (human capital)
+            ModelDomain::Tech => 110,      // 1.1x (economic growth)
+            ModelDomain::General => 100,   // 1.0x (baseline)
         }
     }
 }
@@ -514,13 +509,12 @@ pub struct DataQualityMetrics {
 impl DataQualityMetrics {
     /// Calculate weighted quality score (0-1000)
     pub fn calculate_score(&self) -> u16 {
-        let weighted_sum = 
-            (self.accuracy as u16 * 30) +        // 30% weight
+        let weighted_sum = (self.accuracy as u16 * 30) +        // 30% weight
             (self.timeliness as u16 * 20) +      // 20% weight
             (self.completeness as u16 * 15) +    // 15% weight
             (self.consistency as u16 * 20) +     // 20% weight
-            (self.provenance as u16 * 15);       // 15% weight
-        weighted_sum / 10  // Scale to 0-1000
+            (self.provenance as u16 * 15); // 15% weight
+        weighted_sum / 10 // Scale to 0-1000
     }
 }
 
@@ -555,7 +549,7 @@ pub enum DataFeedType {
     LandRegistry,
     /// Identity verification
     IdentityVerification,
-    
+
     // NEW: IoT Data Feeds
     /// Drone imagery (aerial or underwater)
     DroneImagery(ModelDomain),
@@ -616,4 +610,3 @@ pub struct OracleOperatorStats<BlockNumber> {
     /// Total rewards earned (in DALLA, scaled by 1e12)
     pub total_rewards: u128,
 }
-

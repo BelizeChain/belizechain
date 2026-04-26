@@ -2,10 +2,11 @@
 
 use super::*;
 use frame_benchmarking::v2::*;
-use frame_system::RawOrigin;
 use frame_support::traits::Currency;
+use frame_system::RawOrigin;
 
-type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+type BalanceOf<T> =
+    <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
 #[benchmarks]
 mod benchmarks {
@@ -29,7 +30,12 @@ mod benchmarks {
             b"BENCH-DEP-001"[..].to_vec().try_into().expect("fits");
 
         #[extrinsic_call]
-        mint_bbzd(RawOrigin::Signed(caller), recipient, amount, deposit_reference);
+        mint_bbzd(
+            RawOrigin::Signed(caller),
+            recipient,
+            amount,
+            deposit_reference,
+        );
     }
 
     #[benchmark]

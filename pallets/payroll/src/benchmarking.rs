@@ -11,38 +11,29 @@
 
 use super::*;
 use frame_benchmarking::v2::*;
+use frame_support::traits::Currency;
 use frame_system::RawOrigin;
 use sp_runtime::traits::{Bounded, Saturating, Zero};
-use frame_support::traits::Currency;
 
 /// Helper: set up a verified employer via the `verify_employer` extrinsic (Root origin).
 fn setup_employer<T: Config>() -> T::AccountId {
     let employer: T::AccountId = account("employer", 0, 0);
     T::Currency::make_free_balance_be(&employer, BalanceOf::<T>::max_value() / 2u32.into());
     // verify_employer is gated by VerifierOrigin (= Root in runtime)
-    Pallet::<T>::verify_employer(
-        RawOrigin::Root.into(),
-        employer.clone(),
-        EmployerType::SME,
-    )
-    .expect("verify_employer should succeed");
+    Pallet::<T>::verify_employer(RawOrigin::Root.into(), employer.clone(), EmployerType::SME)
+        .expect("verify_employer should succeed");
     employer
 }
 
 /// Helper: directly insert an employee record into storage (bypasses KYC).
 ///
 /// Avoids the cross-pallet KYC dependency that `add_employee` requires.
-fn insert_employee<T: Config>(
-    employer: &T::AccountId,
-    seed: u32,
-) -> T::AccountId {
+fn insert_employee<T: Config>(employer: &T::AccountId, seed: u32) -> T::AccountId {
     let employee: T::AccountId = account("employee", seed, 0);
     T::Currency::make_free_balance_be(&employee, BalanceOf::<T>::max_value() / 4u32.into());
 
     let salary: BalanceOf<T> = T::MinimumPayment::get().saturating_mul(10u32.into());
-    let salary_commitment = Pallet::<T>::compute_salary_commitment(
-        &salary, employer, &employee,
-    );
+    let salary_commitment = Pallet::<T>::compute_salary_commitment(&salary, employer, &employee);
 
     let record = Employee {
         account: employee.clone(),
@@ -90,7 +81,7 @@ mod benchmarks {
             employee,
             salary,
             WorkerType::FullTime,
-            0u32,            // department_id = unassigned
+            0u32, // department_id = unassigned
             metadata_hash,
         );
     }
@@ -161,12 +152,8 @@ mod benchmarks {
         insert_employee::<T>(&employer, 0);
 
         // Pre-create a schedule
-        Pallet::<T>::create_schedule(
-            RawOrigin::Signed(employer.clone()).into(),
-            50_400u32,
-            0u32,
-        )
-        .expect("create_schedule should succeed");
+        Pallet::<T>::create_schedule(RawOrigin::Signed(employer.clone()).into(), 50_400u32, 0u32)
+            .expect("create_schedule should succeed");
 
         let schedule_id = 0u32; // First schedule ID
 
@@ -174,14 +161,10 @@ mod benchmarks {
         update_schedule(
             RawOrigin::Signed(employer),
             schedule_id,
-            100_800u32,  // new interval: ~bi-weekly
-            true,        // keep active
+            100_800u32, // new interval: ~bi-weekly
+            true,       // keep active
         );
     }
 
-    impl_benchmark_test_suite!(
-        Pallet,
-        crate::mock::new_test_ext(),
-        crate::mock::Test,
-    );
+    impl_benchmark_test_suite!(Pallet, crate::mock::new_test_ext(), crate::mock::Test,);
 }

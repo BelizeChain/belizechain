@@ -394,7 +394,7 @@ cargo contract build --release
 cargo contract instantiate \
     --suri //Alice \
     --constructor new \
-    --url wss://testnet.belizechain.org
+    --url wss://<current-public-testnet-rpc>
 ```
 
 ## Advanced Patterns

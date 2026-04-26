@@ -1,0 +1,20 @@
+# BelizeChain Reserved Nodes Inventory Template (P2P-FIX-003)
+#
+# Copy this file to `reserved-nodes.generated.txt` once the validator set and
+# public P2P addresses are finalized for the active network.
+#
+# SECURITY CRITICAL: Do not enable `--reserved-only` until every active
+# validator multiaddr is present. Source control intentionally avoids shipping a
+# fabricated allowlist.
+#
+# FORMAT: One multiaddr per line (lines starting with # are ignored)
+# Example: /dns4/validator01.example.org/tcp/30333/p2p/12D3KooW...
+#          /ip4/203.0.113.10/tcp/30333/p2p/12D3KooW...
+#
+# Suggested workflow:
+# 1. Extract each validator PeerId:
+#      ./belizechain-node key inspect-node-key --file /path/to/node-key
+# 2. Confirm each validator's public DNS name or IP and P2P port.
+# 3. Write one multiaddr per active validator below.
+# 4. Save the finalized list as `reserved-nodes.generated.txt` and rerun
+#    `./scripts/deploy/deploy_testnet.sh`.

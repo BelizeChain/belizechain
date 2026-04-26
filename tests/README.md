@@ -3,14 +3,14 @@
 ## Overview
 
 Integration tests validate that all BelizeChain pallets and systems work together as one cohesive blockchain:
-- **Blockchain Core**: 16 custom pallets + system pallets
+- **Blockchain Core**: Belize-specific pallets + system pallets + runtime-level contracts support
 - **Cross-Pallet Interactions**: Economy+Compliance, Identity+Governance, Staking+Oracle
 - **Economic System**: DALLA, bBZD, multi-sig treasury, cashback mechanics
 - **End-to-End Workflows**: Citizen onboarding, business payments, government operations
 
 ## Test Categories
 
-### 1. **Blockchain Core Pallet Tests** (16 pallets)
+### 1. **Blockchain Core Pallet Tests**
 - **Economy**: DALLA/bBZD minting, transfers, multi-sig treasury, account types
 - **Identity**: BelizeID registration, KYC verification, SSN/Passport integration
 - **Governance**: Proposals, voting, council elections, treasury spending, JaguarMode
@@ -25,6 +25,10 @@ Integration tests validate that all BelizeChain pallets and systems work togethe
 - **Quantum**: Quantum workload integration, PQW rewards
 - **Community**: Community governance, local initiatives, participation tracking
 - **BNS**: Domain registration (.bz), marketplace, IPFS hosting
+- **Mesh**: Meshtastic integration, emergency broadcasts, off-grid workflows
+- **Justice**: Dispute resolution, mediation, and validator slash review flows
+- **Whistleblower**: Protected reporting and escrowed reward handling
+- **Moderation**: Community flagging, auto-queue, and moderator rulings
 - **Contracts**: Wasm smart contract execution (ink! platform)
 
 ### 2. **Cross-Pallet Integration Tests**
@@ -142,8 +146,8 @@ tests/
 
 ### Prerequisites
 ```bash
-# Start BelizeChain testnet node
-./target/release/belizechain-node --chain=testnet --tmp --alice
+# Start BelizeChain local rehearsal node
+./target/release/belizechain-node --chain=local --tmp --alice
 
 # In another terminal, run tests
 cd tests
@@ -215,10 +219,10 @@ pytest -m "governance" -v
 
 ### Testnet Configuration
 - **Network**: BelizeChain Testnet
-- **Chain Spec**: `testnet-spec.json`
+- **Chain Spec**: `local` for automated local runs, or an operator-provided raw spec for public-testnet rehearsals
 - **Genesis Accounts**: Alice (sudo), Bob, Charlie, Dave, Eve, Ferdie
 - **Initial Balances**: 1,000,000 DALLA per test account
-- **RPC Endpoint**: `ws://127.0.0.1:9944` (local) or `wss://testnet.belizechain.org:443` (remote)
+- **RPC Endpoint**: `ws://127.0.0.1:9944` (local) or the current operator-provided public-testnet RPC URL
 
 ### Test Data
 - **Test Accounts**: 6 pre-funded accounts (Alice through Ferdie)
@@ -256,7 +260,7 @@ jobs:
 ## Debugging Failed Tests
 
 ### Common Issues
-1. **Node Not Running**: Ensure `./target/release/belizechain-node --chain=testnet --tmp --alice` is running
+1. **Node Not Running**: Ensure `./target/release/belizechain-node --chain=local --tmp --alice` is running
 2. **Connection Refused**: Check RPC endpoint in `conftest.py` matches node
 3. **Insufficient Balance**: Test accounts may need funding via faucet
 4. **KYC Not Set**: Some tests require accounts to have KYC level set

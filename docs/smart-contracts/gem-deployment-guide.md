@@ -2,6 +2,8 @@
 
 Step-by-step guide to building, testing, and deploying ink! smart contracts on BelizeChain.
 
+Replace the public-testnet RPC, explorer, and faucet placeholders below with the current operator-published endpoints for the active network before using the commands verbatim.
+
 ## Prerequisites
 
 ### System Requirements
@@ -209,7 +211,7 @@ test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 ```bash
 cargo contract upload \
     --suri //Alice \
-    --url wss://testnet.belizechain.org \
+    --url wss://<current-public-testnet-rpc> \
     --skip-confirm
 
 # Output:
@@ -228,7 +230,7 @@ cargo contract instantiate \
     --suri //Alice \
     --constructor new \
     --args 1000000000000000000 \
-    --url wss://testnet.belizechain.org \
+    --url wss://<current-public-testnet-rpc> \
     --skip-confirm
 
 # Output:
@@ -256,8 +258,8 @@ const { Keyring } = require('@polkadot/api');
 const fs = require('fs');
 
 async function deploy() {
-    // Connect to BelizeChain testnet
-    const sdk = new GemSDK('wss://testnet.belizechain.org');
+    // Connect to the active BelizeChain public testnet
+    const sdk = new GemSDK('wss://<current-public-testnet-rpc>');
     await sdk.connect();
 
     // Load contract artifacts
@@ -312,7 +314,7 @@ node deploy.js
 1. **Open Contracts UI**: [https://contracts-ui.substrate.io/](https://contracts-ui.substrate.io/)
 2. **Connect to BelizeChain**:
    - Click "Add New Network"
-   - RPC URL: `wss://testnet.belizechain.org`
+    - RPC URL: `wss://<current-public-testnet-rpc>`
    - Save
 3. **Upload Contract**:
    - Click "Upload New Contract"
@@ -333,7 +335,7 @@ node deploy.js
 cargo contract call \
     --contract 5GHkm9...Xy2pQ \
     --message total_supply \
-    --url wss://testnet.belizechain.org \
+    --url wss://<current-public-testnet-rpc> \
     --dry-run
 
 # Output:
@@ -377,7 +379,7 @@ cargo contract call \
     --contract 5GHkm9...Xy2pQ \
     --message transfer \
     --args 5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY 100000000000000 \
-    --url wss://testnet.belizechain.org \
+    --url wss://<current-public-testnet-rpc> \
     --suri //Alice \
     --dry-run
 
@@ -402,7 +404,7 @@ cargo contract call \
 
 | Network | RPC URL | Explorer | Faucet |
 |---------|---------|----------|--------|
-| **Testnet** | `wss://testnet.belizechain.org` | [explorer.belizechain.org/testnet](https://explorer.belizechain.org/testnet) | [faucet.belizechain.org](https://faucet.belizechain.org) |
+| **Testnet** | `wss://<current-public-testnet-rpc>` | `https://<current-public-testnet-explorer>` | `https://<current-public-testnet-faucet>` |
 | **Local Dev** | `ws://localhost:9944` | N/A | Use `//Alice` account |
 
 ## Troubleshooting
@@ -422,7 +424,7 @@ cargo install cargo-contract --locked --force
 ### Deployment Errors
 
 **Error**: `InsufficientBalance`
-- Get testnet tokens: [faucet.belizechain.org](https://faucet.belizechain.org)
+- Get operator-published testnet tokens: `https://<current-public-testnet-faucet>`
 - Min 1000 DALLA needed for deployment
 
 **Error**: `ContractTrapped`
@@ -492,9 +494,9 @@ git push origin <release-tag>
 
 ## Next Steps
 
-- **Test on Testnet**: Deploy to `testnet.belizechain.org`
+- **Test on Testnet**: Deploy to the operator-published public testnet endpoint
 - **Integrate with Maya Wallet**: Add contract to wallet UI
-- **Submit to Explorer**: Register contract on [explorer.belizechain.org](https://explorer.belizechain.org)
+- **Submit to Explorer**: Register the contract with the operator-published explorer URL
 - **Apply for Audit**: [security@belizechain.org](mailto:security@belizechain.org)
 - **Mainnet Deployment**: After audit approval
 

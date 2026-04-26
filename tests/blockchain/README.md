@@ -46,7 +46,7 @@ pytest tests/integration/blockchain/test_pallets.py::test_economy_token_transfer
 ## Prerequisites
 ```bash
 # Start BelizeChain node
-./target/release/belizechain-node --chain=testnet --tmp --alice
+./target/release/belizechain-node --chain=local --tmp --alice
 ```
 
 ## Test Files (To Be Created)

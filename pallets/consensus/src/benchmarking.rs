@@ -146,10 +146,7 @@ mod benchmarks {
     #[benchmark]
     fn finalize_consensus_round() {
         // Start a round first
-        let _ = Pallet::<T>::start_consensus_round(
-            RawOrigin::Root.into(),
-            1u32.into(),
-        );
+        let _ = Pallet::<T>::start_consensus_round(RawOrigin::Root.into(), 1u32.into());
 
         #[extrinsic_call]
         _(RawOrigin::Root);

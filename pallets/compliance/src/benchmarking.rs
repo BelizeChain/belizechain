@@ -23,12 +23,7 @@ mod benchmarks {
         let target: T::AccountId = account("target", 0, 0);
 
         // First verify the account
-        let _ = Pallet::<T>::verify_account(
-            RawOrigin::Root.into(),
-            target.clone(),
-            3u8,
-            1u8,
-        );
+        let _ = Pallet::<T>::verify_account(RawOrigin::Root.into(), target.clone(), 3u8, 1u8);
 
         let new_risk_level: u8 = 2;
 
@@ -41,12 +36,7 @@ mod benchmarks {
         let target: T::AccountId = account("target", 0, 0);
 
         // First verify the account
-        let _ = Pallet::<T>::verify_account(
-            RawOrigin::Root.into(),
-            target.clone(),
-            3u8,
-            1u8,
-        );
+        let _ = Pallet::<T>::verify_account(RawOrigin::Root.into(), target.clone(), 3u8, 1u8);
 
         #[extrinsic_call]
         _(RawOrigin::Root, target);
@@ -57,12 +47,7 @@ mod benchmarks {
         let target: T::AccountId = account("target", 0, 0);
 
         // First verify the account
-        let _ = Pallet::<T>::verify_account(
-            RawOrigin::Root.into(),
-            target.clone(),
-            3u8,
-            1u8,
-        );
+        let _ = Pallet::<T>::verify_account(RawOrigin::Root.into(), target.clone(), 3u8, 1u8);
 
         let reason: Vec<u8> = b"Suspicious activity detected".to_vec();
 
@@ -75,12 +60,7 @@ mod benchmarks {
         let target: T::AccountId = account("target", 0, 0);
 
         // First verify the account
-        let _ = Pallet::<T>::verify_account(
-            RawOrigin::Root.into(),
-            target.clone(),
-            3u8,
-            1u8,
-        );
+        let _ = Pallet::<T>::verify_account(RawOrigin::Root.into(), target.clone(), 3u8, 1u8);
 
         let activity_type: u8 = 1;
         let description: Vec<u8> = b"Unusual transaction patterns".to_vec();
@@ -125,12 +105,7 @@ mod benchmarks {
         let target: T::AccountId = account("target", 0, 0);
 
         // First verify the account
-        let _ = Pallet::<T>::verify_account(
-            RawOrigin::Root.into(),
-            target.clone(),
-            1u8,
-            1u8,
-        );
+        let _ = Pallet::<T>::verify_account(RawOrigin::Root.into(), target.clone(), 1u8, 1u8);
 
         #[extrinsic_call]
         sync_verification_from_identity(RawOrigin::Signed(target));

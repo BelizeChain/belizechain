@@ -4,7 +4,7 @@
 use crate as pallet_belize_interoperability;
 use frame_support::{
     parameter_types,
-    traits::{ConstU32, ConstU64, ConstU128, Everything},
+    traits::{ConstU128, ConstU32, ConstU64, Everything},
 };
 use sp_core::H256;
 use sp_runtime::{
@@ -217,6 +217,6 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
 pub fn run_to_block(n: u64) {
     while System::block_number() < n {
         System::set_block_number(System::block_number() + 1);
-        Timestamp::set_timestamp(((System::block_number() * 6000)));
+        Timestamp::set_timestamp((System::block_number() * 6000));
     }
 }

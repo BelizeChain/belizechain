@@ -9,8 +9,8 @@
 
 use super::*;
 use frame_benchmarking::v2::*;
-use frame_system::RawOrigin;
 use frame_support::traits::Currency;
+use frame_system::RawOrigin;
 use sp_std::vec;
 
 const SEED: u32 = 0;
@@ -21,17 +21,10 @@ fn setup_validator<T: Config>(idx: u32) -> T::AccountId {
     let stake = T::MinValidatorStake::get();
     T::Currency::make_free_balance_be(&who, stake + stake);
     // Use force_join_validator to bypass KYC
-    let location: BoundedVec<u8, ConstU32<64>> = vec![b'B', b'Z']
-        .try_into()
-        .expect("location fits");
-    Pallet::<T>::force_join_validator(
-        RawOrigin::Root.into(),
-        who.clone(),
-        stake,
-        100u32,
-        location,
-    )
-    .expect("force_join_validator should succeed");
+    let location: BoundedVec<u8, ConstU32<64>> =
+        vec![b'B', b'Z'].try_into().expect("location fits");
+    Pallet::<T>::force_join_validator(RawOrigin::Root.into(), who.clone(), stake, 100u32, location)
+        .expect("force_join_validator should succeed");
     who
 }
 
@@ -50,9 +43,8 @@ mod benchmarks {
         let who: T::AccountId = account("validator", 0, SEED);
         let stake = T::MinValidatorStake::get();
         T::Currency::make_free_balance_be(&who, stake + stake);
-        let location: BoundedVec<u8, ConstU32<64>> = vec![b'B', b'Z']
-            .try_into()
-            .expect("location fits");
+        let location: BoundedVec<u8, ConstU32<64>> =
+            vec![b'B', b'Z'].try_into().expect("location fits");
 
         // Use force_join_validator (Root) to generate a weight for join_validators.
         // In production the actual join_validators call has KYC overhead, so this
@@ -83,7 +75,10 @@ mod benchmarks {
             .expect("leave should succeed");
 
         // Set unlock_at to 0 so the unbond is immediately withdrawable
-        PendingUnbonds::<T>::insert(&who, (T::MinValidatorStake::get(), BlockNumberFor::<T>::from(0u32)));
+        PendingUnbonds::<T>::insert(
+            &who,
+            (T::MinValidatorStake::get(), BlockNumberFor::<T>::from(0u32)),
+        );
 
         #[extrinsic_call]
         withdraw_unbonded(RawOrigin::Signed(who));
@@ -108,16 +103,13 @@ mod benchmarks {
         )
         .expect("assign_fl_task should succeed");
 
-        let encrypted_delta: BoundedVec<u8, ConstU32<1024>> = vec![0u8; 64]
-            .try_into()
-            .expect("delta fits");
+        let encrypted_delta: BoundedVec<u8, ConstU32<1024>> =
+            vec![0u8; 64].try_into().expect("delta fits");
         // C-3 FIX: Compute correct commitment = H(delta || who || block_number)
         // so the benchmark exercises the real validation path.
         let current_block: u32 = frame_system::Pallet::<T>::block_number().saturated_into();
         use sp_runtime::traits::Hash;
-        let expected = T::Hashing::hash_of(
-            &(encrypted_delta.as_slice(), &who, current_block),
-        );
+        let expected = T::Hashing::hash_of(&(encrypted_delta.as_slice(), &who, current_block));
         let mut computation_commitment = [0u8; 32];
         computation_commitment.copy_from_slice(expected.as_ref());
         let computation_log = [3u8; 32];
@@ -195,8 +187,8 @@ mod benchmarks {
         record_domain_contribution(
             RawOrigin::Root,
             operator,
-            1u8,   // domain
-            90u8,  // quality_score
+            1u8,     // domain
+            90u8,    // quality_score
             1000u32, // volume_kb
         );
     }

@@ -31,8 +31,8 @@
 
 ### Prerequisites
 ```bash
-# Start BelizeChain testnet node
-./target/release/belizechain-node --chain=testnet --tmp --alice
+# Start BelizeChain local rehearsal node
+./target/release/belizechain-node --chain=local --tmp --alice
 
 # In another terminal, run tests
 cd tests

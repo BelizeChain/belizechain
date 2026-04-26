@@ -115,14 +115,14 @@ cargo contract instantiate \
   --constructor new \
   --args "1000000 MyToken MTK" \
   --suri //Alice \
-  --url wss://rpc.testnet.belizechain.org
+    --url wss://<current-testnet-rpc-url>
 
 # Step 6: Verify deployment
 cargo contract call \
   --contract 5GrwvaEF... \
   --message total_supply \
   --suri //Alice \
-  --url wss://rpc.testnet.belizechain.org
+    --url wss://<current-testnet-rpc-url>
 ```
 
 #### 4. Asset Bridge (Ethereum ↔ BelizeChain)

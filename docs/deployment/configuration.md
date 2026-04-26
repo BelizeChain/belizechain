@@ -623,12 +623,12 @@ cache_size = 8192
 
 ```bash
 # Generate chain spec
-belizechain-node build-spec --chain mainnet > custom-spec.json
+belizechain-node build-spec --disable-default-bootnode --chain mainnet > custom-spec.json
 
 # Edit custom-spec.json (change bootnodes, genesis, etc.)
 
 # Convert to raw format
-belizechain-node build-spec --chain custom-spec.json --raw > custom-spec-raw.json
+belizechain-node build-spec --disable-default-bootnode --chain custom-spec.json --raw > custom-spec-raw.json
 
 # Use custom spec
 belizechain-node --chain custom-spec-raw.json

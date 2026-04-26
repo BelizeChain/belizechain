@@ -10,8 +10,8 @@
 
 use super::*;
 use frame_benchmarking::v2::*;
-use frame_system::RawOrigin;
 use frame_support::traits::Currency;
+use frame_system::RawOrigin;
 
 const SEED: u32 = 0;
 
@@ -35,7 +35,7 @@ fn setup_trading_pair_with_liquidity<T: Config>(base: u8, quote: u8) {
         base_asset: AssetId::from(base),
         quote_asset: AssetId::from(quote),
         base_reserve: 1_000_000_000_000_000u128,  // 1M
-        quote_reserve: 1_000_000_000_000_000u128,  // 1M
+        quote_reserve: 1_000_000_000_000_000u128, // 1M
         total_lp_tokens: 1_000_000_000_000_000u128,
         fee_rate: 30,
         active: true,
@@ -94,8 +94,8 @@ mod benchmarks {
         #[extrinsic_call]
         execute_trade(
             RawOrigin::Signed(caller),
-            0u8,  // base: DALLA
-            1u8,  // quote: BBZD
+            0u8, // base: DALLA
+            1u8, // quote: BBZD
             trade_amount.saturated_into(),
             0u128, // min_amount_out
             false, // is_tourism_trade
@@ -128,12 +128,12 @@ mod benchmarks {
         #[extrinsic_call]
         place_limit_order(
             RawOrigin::Signed(caller),
-            0u8,  // base: DALLA
-            1u8,  // quote: BBZD
-            0u8,  // order_type: 0 = Buy
+            0u8, // base: DALLA
+            1u8, // quote: BBZD
+            0u8, // order_type: 0 = Buy
             order_amount,
             1_000_000_000_000u128, // price
-            1000u32.into(), // expires_in_blocks
+            1000u32.into(),        // expires_in_blocks
         );
     }
 

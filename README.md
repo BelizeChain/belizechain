@@ -12,14 +12,14 @@
 ### 🇧🇿 Sovereign Blockchain Infrastructure for the Nation of Belize 🇧🇿
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-stable2512-orange.svg?logo=rust)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/rust-stable2603-orange.svg?logo=rust)](https://www.rust-lang.org/)
 [![Substrate](https://img.shields.io/badge/substrate-3.0-purple.svg)](https://substrate.io/)
-[![Polkadot SDK](https://img.shields.io/badge/polkadot_sdk-stable2512-E6007A.svg)](https://github.com/paritytech/polkadot-sdk)
+[![Polkadot SDK](https://img.shields.io/badge/polkadot_sdk-stable2603-E6007A.svg)](https://github.com/paritytech/polkadot-sdk)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/)
 [![Coverage](https://img.shields.io/badge/coverage-gated-informational.svg)](.tarpaulin.toml)
 [![Testnet](https://img.shields.io/badge/testnet-ready-blue.svg)](https://testnet.belizechain.org)
 
-**Enterprise-grade blockchain runtime** powering Belize's sovereign digital infrastructure with 16 custom pallets, dual-currency system (DALLA + bBZD), built-in compliance, and WebAssembly smart contracts.
+**Enterprise-grade blockchain runtime** powering Belize's sovereign digital infrastructure with 18 Belize-specific pallets, a dual-currency system (DALLA + bBZD), built-in compliance, and WebAssembly smart contracts.
 
 [**Quick Start**](#-quick-start) • [**Documentation**](docs/) • [**Testnet**](#-testnet-access) • [**Contributing**](#-contributing)
 
@@ -36,7 +36,7 @@ BelizeChain is a **Substrate blockchain in active development** for Belize's nat
 <td width="50%">
 
 ### Core Features
-- 🏛️ **16 Custom Pallets**: Complete governance, finance, compliance, and mesh networking stack
+- 🏛️ **18 Belize-Specific Pallets**: Complete governance, finance, compliance, justice, moderation, and mesh networking stack
 - 💰 **Dual Currency System**: DALLA (native) + bBZD (BZD-pegged stablecoin)
 - ⚖️ **Regulatory Compliance**: Built-in KYC/AML, FSC oversight, sanctions enforcement
 - 🗳️ **Democratic Governance**: District councils, on-chain voting, emergency powers
@@ -47,7 +47,7 @@ BelizeChain is a **Substrate blockchain in active development** for Belize's nat
 <td width="50%">
 
 ### Technical Stack
-- 🦀 **Rust**: Substrate framework (Polkadot SDK stable2512)
+- 🦀 **Rust**: Substrate framework (Polkadot SDK stable2603)
 - 🌐 **Consensus**: Proof of Useful Work (PoUW)
 - 🔗 **Interoperability**: Ethereum & Polkadot bridges
 - 📊 **Performance**: ~2,000 TPS, 6-second block time
@@ -70,9 +70,9 @@ BelizeChain is a **Substrate blockchain in active development** for Belize's nat
 | **UI Suite** | Maya Wallet + Blue Hole Portal | [ui](https://github.com/BelizeChain/ui) |
 | **Infrastructure** | Ceiba Docker Compose and host automation manifests | [infra](https://github.com/BelizeChain/infra) |
 
-## 💎 The 16 Custom Pallets
+## 💎 The 18 Belize-Specific Pallets
 
-BelizeChain implements **16 sovereign pallets** covering the complete national infrastructure stack:
+BelizeChain implements **18 Belize-specific pallets** covering the complete national infrastructure stack. The current source of truth is `Cargo.toml` plus `runtime/src/lib.rs`.
 
 <details>
 <summary><b>💰 Financial & Economic (3 pallets)</b></summary>
@@ -101,7 +101,7 @@ BelizeChain implements **16 sovereign pallets** covering the complete national i
 </details>
 
 <details>
-<summary><b>🔗 Infrastructure & Interoperability (4 pallets)</b></summary>
+<summary><b>🔗 Infrastructure & Interoperability (5 pallets)</b></summary>
 
 - **Staking** (`pallets/staking/`) - PoUW validator staking, rewards distribution, federated learning integration
 - **Consensus** (`pallets/consensus/`) - Proof of Useful Work, block production, quality scoring
@@ -112,11 +112,20 @@ BelizeChain implements **16 sovereign pallets** covering the complete national i
 </details>
 
 <details>
-<summary><b>📜 Registries & Services (3 pallets)</b></summary>
+<summary><b>📜 Registries & Services (2 pallets + contracts)</b></summary>
 
 - **LandLedger** (`pallets/landledger/`) - Property registry, land titles, document storage proofs
 - **BNS** (`pallets/bns/`) - .bz domain registry, IPFS hosting, domain marketplace
 - **Contracts** (via `pallet-contracts`) - WebAssembly smart contracts, ink! 4.0, PSP22/PSP34 tokens
+
+</details>
+
+<details>
+<summary><b>⚖️ Justice, Safety & Moderation (3 pallets)</b></summary>
+
+- **Justice** (`pallets/justice/`) - Dispute resolution, mediation, escrowed slashing review, rehabilitation tracking
+- **Whistleblower** (`pallets/whistleblower/`) - Pseudonymous abuse and exploit reporting with escrowed rewards
+- **Moderation** (`pallets/moderation/`) - Community moderation, flagging thresholds, and Nawal AI auto-queue integration
 
 </details>
 
@@ -153,7 +162,7 @@ graph LR
 
 Ensure you have the following installed:
 
-- **Rust** (stable2512 toolchain) - [Install via rustup](https://rustup.rs/)
+- **Rust** (toolchain compatible with Polkadot SDK stable2603) - [Install via rustup](https://rustup.rs/)
 - **Substrate dependencies** - [Installation Guide](https://docs.substrate.io/install/)
 - **Python 3.13+** (for integration tests) - [Download](https://www.python.org/)
 - **Git** - [Download](https://git-scm.com/)
@@ -186,12 +195,12 @@ BelizeChain enforces **coverage-gated CI** via cargo-tarpaulin across all pallet
 # Complete test suite (Rust + Python) - automated
 ./scripts/run_all_tests.sh
 
-# Rust unit tests only (all 16 pallets)
+# Rust unit tests only (all BelizeChain pallets)
 cargo test --workspace --release
 
 # Python integration tests by category
 ./scripts/testing/run_integration_tests.sh all          # All tests
-./scripts/testing/run_integration_tests.sh blockchain   # 16 pallets
+./scripts/testing/run_integration_tests.sh blockchain   # Core pallet coverage
 ./scripts/testing/run_integration_tests.sh cross-pallet # Cross-pallet integration
 ./scripts/testing/run_integration_tests.sh governance   # Governance system
 ./scripts/testing/run_integration_tests.sh economic     # DALLA/bBZD
@@ -209,38 +218,38 @@ cargo clippy --fix --allow-dirty --workspace  # Auto-fix warnings
 
 ## 📚 Documentation
 
-Comprehensive technical documentation (**717KB, 53 files**) available in [`docs/`](docs/):
+Project documentation is available in [`docs/`](docs/). For live topology and operations, prefer `Cargo.toml`, `runtime/src/lib.rs`, and `docs/operations/CEIBA_OPERATIONS_RUNBOOK.md` over older prose summaries.
 
 <table>
 <tr>
 <td width="50%">
 
 ### 🚀 Getting Started
-- [5-Minute Quick Start](docs/getting-started/QUICK_START.md)
-- [Installation Guide](docs/getting-started/INSTALLATION.md)
-- [Architecture Overview](docs/architecture/ARCHITECTURE_OVERVIEW.md)
+- [Getting Started Overview](docs/getting-started/README.md)
+- [Installation Guide](docs/deployment/installation.md)
+- [Multi-Repo Overview](docs/architecture/multi-repo-overview.md)
 - [Tutorials](docs/tutorials/README.md)
 
 ### 💡 Core Concepts
-- [Pallet Reference](docs/technical-reference/PALLET_REFERENCE.md)
-- [Tokenomics (DALLA/bBZD)](docs/economics/TOKENOMICS.md)
-- [Governance System](docs/governance/GOVERNANCE_OVERVIEW.md)
-- [Smart Contracts (ink!)](docs/smart-contracts/SMART_CONTRACTS.md)
+- [Technical Reference](docs/technical-reference/README.md)
+- [Tokenomics (DALLA/bBZD)](docs/economics/tokenomics.md)
+- [Governance System](docs/governance/OVERVIEW.md)
+- [Smart Contract Overview](docs/smart-contracts/SMART_CONTRACT_OVERVIEW.md)
 
 </td>
 <td width="50%">
 
 ### 🛠️ Operations
-- [Validator Guide](docs/validators/VALIDATOR_GUIDE.md)
-- [Node Operation](docs/operations/NODE_OPERATION.md)
-- [Troubleshooting](docs/operations/TROUBLESHOOTING.md)
+- [Validator Setup](docs/validators/validator-setup.md)
+- [Ceiba Operations Runbook](docs/operations/CEIBA_OPERATIONS_RUNBOOK.md)
+- [Troubleshooting](docs/operations/troubleshooting.md)
 - [Security Best Practices](docs/security/SECURITY_OVERVIEW.md)
 
 ### 👨‍💻 Development
 - [Developer Workflow](docs/developer-guides/DEVELOPMENT_GUIDE.md)
 - [Testing Guide](tests/README.md)
 - [Scripts Reference](scripts/README.md)
-- [API Reference](docs/technical-reference/API_REFERENCE.md)
+- [API Reference](docs/technical-reference/api-reference.md)
 
 </td>
 </tr>
@@ -250,15 +259,16 @@ Comprehensive technical documentation (**717KB, 53 files**) available in [`docs/
 
 ## 🔒 Security & Audits
 
-BelizeChain undergoes **rigorous security audits** before every release:
+Audit artifacts are stored in [`audit_results/`](audit_results/). Review the current reports before claiming a clean release state.
 
-### Audit Results
+### Current Audit Artifacts
 
 | Tool | Target | Status | Reports |
 |------|--------|--------|---------|
-| **cargo-audit** | Rust dependencies | ✅ **0 vulnerabilities** | [audit_results/cargo_audit_stable2512.txt](audit_results/cargo_audit_stable2512.txt) |
-| **bandit** | Python code | ✅ **0 HIGH/MEDIUM** | [audit_results/bandit_stable2512.txt](audit_results/bandit_stable2512.txt) |
-| **safety** | Python dependencies | ✅ **0 vulnerabilities** | [audit_results/safety_readable.txt](audit_results/safety_readable.txt) |
+| **cargo-audit** | Rust dependencies | Review required: current artifact contains at least one advisory in transitive network dependencies | [audit_results/cargo_audit_20260213.txt](audit_results/cargo_audit_20260213.txt) |
+| **bandit** | Python and sibling-service audit surfaces | Findings present in the readable report; review before release decisions | [audit_results/bandit_readable.txt](audit_results/bandit_readable.txt) |
+| **Consolidated audit** | Cross-repo snapshot | Current summary artifact | [audit_results/FINAL_CONSOLIDATED_AUDIT_2026.md](audit_results/FINAL_CONSOLIDATED_AUDIT_2026.md) |
+| **safety** | Python dependencies | Review required: current artifact reports 6 vulnerabilities in the scanned environment | [audit_results/safety_readable.txt](audit_results/safety_readable.txt) |
 
 ### Run Security Audit
 

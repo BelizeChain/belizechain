@@ -12,21 +12,18 @@
 use frame_support::{
     pallet_prelude::*,
     traits::{
-        Currency, ReservableCurrency, LockableCurrency, Get, Randomness,
-        ExistenceRequirement,
+        Currency, ExistenceRequirement, Get, LockableCurrency, Randomness, ReservableCurrency,
     },
-    weights::{Weight, constants::RocksDbWeight},
+    weights::{constants::RocksDbWeight, Weight},
     PalletId,
 };
 use frame_system::pallet_prelude::*;
 use sp_runtime::{
-    traits::{
-        Saturating, SaturatedConversion, IntegerSquareRoot, AccountIdConversion,
-    },
-    FixedU128, FixedPointNumber,
+    traits::{AccountIdConversion, IntegerSquareRoot, SaturatedConversion, Saturating},
+    FixedPointNumber, FixedU128,
 };
 
-use codec::{Encode, Decode, MaxEncodedLen};
+use codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_core::U256;
 use sp_std::vec::Vec;
@@ -53,16 +50,15 @@ pub trait KycCheck<AccountId> {
 pub trait BelizeXOracleProvider<AccountId> {
     /// Get real-time exchange rate for a crypto trading pair (returns rate * 10^6 for precision)
     fn get_crypto_exchange_rate(base_asset: u8, quote_asset: u8) -> Option<u128>;
-    
+
     /// Verify if account is a registered tourism merchant (eligible for fee discounts)
     fn is_tourism_merchant(account: &AccountId) -> bool;
-    
+
     /// Get trading volume tier for an account (0-3, higher tier = lower fees)
     fn get_trading_volume_tier(account: &AccountId) -> u8;
 }
 
 // test modules are not included in this workspace configuration
-
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -76,7 +72,9 @@ pub mod pallet {
     pub trait Config: frame_system::Config {
         /// The overarching event type
         /// The currency used for DEX operations
-        type Currency: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId> + LockableCurrency<Self::AccountId>;
+        type Currency: Currency<Self::AccountId>
+            + ReservableCurrency<Self::AccountId>
+            + LockableCurrency<Self::AccountId>;
 
         /// X-10 NOTE: Randomness source reserved for future LP token generation.
         /// Currently unused — required by Config trait for forward compatibility.
@@ -85,8 +83,8 @@ pub mod pallet {
         /// Tourism origin for fee reductions
         type TourismOrigin: EnsureOrigin<Self::RuntimeOrigin>;
 
-    /// Governance origin for listing new trading pairs
-    type PairListingOrigin: EnsureOrigin<Self::RuntimeOrigin>;
+        /// Governance origin for listing new trading pairs
+        type PairListingOrigin: EnsureOrigin<Self::RuntimeOrigin>;
 
         /// Treasury account for DEX fees
         type Treasury: Get<Self::AccountId>;
@@ -155,7 +153,9 @@ pub mod pallet {
     }
 
     /// Asset identifiers in BelizeChain
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, Ord, PartialOrd)]
+    #[derive(
+        Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, Ord, PartialOrd,
+    )]
     #[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
     pub enum AssetId {
         /// Native DALLA token
@@ -269,22 +269,13 @@ pub mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn trading_pairs)]
     /// Trading pairs available on BelizeX
-    pub type TradingPairs<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        (u8, u8),
-        TradingPair,
-    >;
+    pub type TradingPairs<T: Config> = StorageMap<_, Blake2_128Concat, (u8, u8), TradingPair>;
 
     #[pallet::storage]
     #[pallet::getter(fn liquidity_providers)]
     /// Liquidity provider information
-    pub type LiquidityProviders<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        LiquidityProvider<T::AccountId>,
-    >;
+    pub type LiquidityProviders<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, LiquidityProvider<T::AccountId>>;
 
     #[pallet::storage]
     #[pallet::getter(fn order_book)]
@@ -304,26 +295,16 @@ pub mod pallet {
     /// AUDIT FIX: Per-account open order counter to enforce MaxOrdersPerAccount.
     #[pallet::storage]
     #[pallet::getter(fn account_order_count)]
-    pub type AccountOrderCount<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        u32,
-        ValueQuery,
-    >;
+    pub type AccountOrderCount<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, u32, ValueQuery>;
 
     // DailyVolume removed (E-7): write-only accumulator, never read on-chain.
 
     #[pallet::storage]
     #[pallet::getter(fn tourism_traders)]
     /// Tourism-verified traders with benefits
-    pub type TourismTraders<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        bool,
-        ValueQuery,
-    >;
+    pub type TourismTraders<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, bool, ValueQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn global_paused)]
@@ -387,7 +368,10 @@ pub mod pallet {
                     fee_rate: 30, // 0.3%
                     active: true,
                 };
-                TradingPairs::<T>::insert((AssetId::DALLA.as_u8(), AssetId::BBZD.as_u8()), dalla_bbzd_pair);
+                TradingPairs::<T>::insert(
+                    (AssetId::DALLA.as_u8(), AssetId::BBZD.as_u8()),
+                    dalla_bbzd_pair,
+                );
 
                 let tourism_bbzd_pair = TradingPair {
                     base_asset: AssetId::TourismDALLA,
@@ -398,7 +382,10 @@ pub mod pallet {
                     fee_rate: 15, // 0.15% for tourism
                     active: true,
                 };
-                TradingPairs::<T>::insert((AssetId::TourismDALLA.as_u8(), AssetId::BBZD.as_u8()), tourism_bbzd_pair);
+                TradingPairs::<T>::insert(
+                    (AssetId::TourismDALLA.as_u8(), AssetId::BBZD.as_u8()),
+                    tourism_bbzd_pair,
+                );
 
                 // Default WUSDC/BBZD pair for USDC→bBZD swaps
                 let wusdc_bbzd_pair = TradingPair {
@@ -410,7 +397,10 @@ pub mod pallet {
                     fee_rate: 30, // 0.3%
                     active: true,
                 };
-                TradingPairs::<T>::insert((AssetId::WUSDC.as_u8(), AssetId::BBZD.as_u8()), wusdc_bbzd_pair);
+                TradingPairs::<T>::insert(
+                    (AssetId::WUSDC.as_u8(), AssetId::BBZD.as_u8()),
+                    wusdc_bbzd_pair,
+                );
             }
 
             // Enable or disable dev auto-seed via genesis
@@ -451,21 +441,19 @@ pub mod pallet {
                 TradingPairs::<T>::insert(pair_key, &pair);
 
                 let treasury = T::Treasury::get();
-                LiquidityProviders::<T>::mutate(&treasury, |maybe_provider| {
-                    match maybe_provider {
-                        Some(provider) => {
-                            provider.total_value_locked = provider
-                                .total_value_locked
-                                .saturating_add(base_amount.saturating_add(quote_amount));
-                        },
-                        None => {
-                            *maybe_provider = Some(LiquidityProvider {
-                                provider: treasury.clone(),
-                                total_value_locked: base_amount.saturating_add(quote_amount),
-                                rewards_earned: 0,
-                                is_tourism_provider: false,
-                            });
-                        }
+                LiquidityProviders::<T>::mutate(&treasury, |maybe_provider| match maybe_provider {
+                    Some(provider) => {
+                        provider.total_value_locked = provider
+                            .total_value_locked
+                            .saturating_add(base_amount.saturating_add(quote_amount));
+                    }
+                    None => {
+                        *maybe_provider = Some(LiquidityProvider {
+                            provider: treasury.clone(),
+                            total_value_locked: base_amount.saturating_add(quote_amount),
+                            rewards_earned: 0,
+                            is_tourism_provider: false,
+                        });
                     }
                 });
 
@@ -482,7 +470,9 @@ pub mod pallet {
             DevSeedDone::<T>::put(true);
             // DOS-008 FIX: Return actual consumed weight instead of zero.
             // Operations: TradingPairs read+write, LiquidityProviders mutate, DevSeedDone write, event deposit.
-            T::DbWeight::get().reads(2).saturating_add(T::DbWeight::get().writes(3))
+            T::DbWeight::get()
+                .reads(2)
+                .saturating_add(T::DbWeight::get().writes(3))
                 .saturating_add(Weight::from_parts(10_000_000, 1024))
         }
     }
@@ -492,7 +482,7 @@ pub mod pallet {
     pub enum Event<T: Config> {
         /// Trading pair created
         TradingPairCreated {
-            base_asset: u8, // AssetId as u8
+            base_asset: u8,  // AssetId as u8
             quote_asset: u8, // AssetId as u8
         },
         /// Liquidity added to pair
@@ -512,9 +502,7 @@ pub mod pallet {
             max_allowed_bps: u32,
         },
         /// Oracle rate unavailable or stale for guarded pairs
-        OracleRateUnavailable {
-            pair: (u8, u8),
-        },
+        OracleRateUnavailable { pair: (u8, u8) },
         /// Liquidity removed from pair
         LiquidityRemoved {
             provider: T::AccountId,
@@ -553,9 +541,7 @@ pub mod pallet {
             creator: T::AccountId,
         },
         /// Tourism trader verified
-        TourismTraderVerified {
-            trader: T::AccountId,
-        },
+        TourismTraderVerified { trader: T::AccountId },
         /// Global DEX paused
         DexPaused,
         /// Global DEX resumed
@@ -619,15 +605,18 @@ pub mod pallet {
         #[pallet::weight(T::WeightInfo::create_pair())]
         pub fn create_trading_pair(
             origin: OriginFor<T>,
-            base_asset: u8, // AssetId as u8
+            base_asset: u8,  // AssetId as u8
             quote_asset: u8, // AssetId as u8
             fee_rate: u32,
         ) -> DispatchResult {
             // Only governance may list new pairs
             T::PairListingOrigin::ensure_origin(origin)?;
 
-            let pair_key: (u8,u8) = (base_asset, quote_asset);
-            ensure!(!TradingPairs::<T>::contains_key(pair_key), Error::<T>::PairAlreadyExists);
+            let pair_key: (u8, u8) = (base_asset, quote_asset);
+            ensure!(
+                !TradingPairs::<T>::contains_key(pair_key),
+                Error::<T>::PairAlreadyExists
+            );
 
             let trading_pair = TradingPair {
                 base_asset: AssetId::from(base_asset),
@@ -641,8 +630,11 @@ pub mod pallet {
 
             TradingPairs::<T>::insert(pair_key, trading_pair);
 
-                Self::deposit_event(Event::TradingPairCreated { base_asset, quote_asset });
-                Ok(())
+            Self::deposit_event(Event::TradingPairCreated {
+                base_asset,
+                quote_asset,
+            });
+            Ok(())
         }
 
         /// Add liquidity to trading pair
@@ -650,7 +642,7 @@ pub mod pallet {
         #[pallet::weight(T::WeightInfo::add_liquidity())]
         pub fn add_liquidity(
             origin: OriginFor<T>,
-            base_asset: u8, // AssetId as u8
+            base_asset: u8,  // AssetId as u8
             quote_asset: u8, // AssetId as u8
             base_amount: <T::Currency as Currency<T::AccountId>>::Balance,
             quote_amount: <T::Currency as Currency<T::AccountId>>::Balance,
@@ -664,9 +656,8 @@ pub mod pallet {
             // Check global pause
             ensure!(!GlobalPaused::<T>::get(), Error::<T>::Paused);
 
-            let pair_key: (u8,u8) = (base_asset, quote_asset);
-            let mut pair = Self::trading_pairs(pair_key)
-                .ok_or(Error::<T>::PairNotFound)?;
+            let pair_key: (u8, u8) = (base_asset, quote_asset);
+            let mut pair = Self::trading_pairs(pair_key).ok_or(Error::<T>::PairNotFound)?;
 
             ensure!(pair.active, Error::<T>::PairNotActive);
 
@@ -692,7 +683,8 @@ pub mod pallet {
                     .checked_mul(U256::from(quote_amount_u128))
                     .ok_or(Error::<T>::ArithmeticOverflow)?;
                 let lp_u256 = product.integer_sqrt();
-                let lp: u128 = lp_u256.try_into()
+                let lp: u128 = lp_u256
+                    .try_into()
                     .map_err(|_| Error::<T>::ArithmeticOverflow)?;
                 lp
             } else {
@@ -714,9 +706,12 @@ pub mod pallet {
                     .map_err(|_| Error::<T>::ArithmeticOverflow)?;
                 lp_from_base.min(lp_from_quote)
             };
-            
+
             let min_lp_tokens_u128: u128 = min_lp_tokens;
-            ensure!(lp_tokens >= min_lp_tokens_u128, Error::<T>::SlippageExceeded);
+            ensure!(
+                lp_tokens >= min_lp_tokens_u128,
+                Error::<T>::SlippageExceeded
+            );
 
             // Transfer funds to the DEX pool escrow account
             let pool = Self::pool_account();
@@ -740,21 +735,19 @@ pub mod pallet {
             });
 
             // Update liquidity provider info
-            LiquidityProviders::<T>::mutate(&who, |maybe_provider| {
-                match maybe_provider {
-                    Some(provider) => {
-                        provider.total_value_locked = provider
-                            .total_value_locked
-                            .saturating_add(base_amount_u128.saturating_add(quote_amount_u128));
-                    },
-                    None => {
-                        *maybe_provider = Some(LiquidityProvider {
-                            provider: who.clone(),
-                            total_value_locked: base_amount_u128.saturating_add(quote_amount_u128),
-                            rewards_earned: 0,
-                            is_tourism_provider: Self::tourism_traders(&who),
-                        });
-                    }
+            LiquidityProviders::<T>::mutate(&who, |maybe_provider| match maybe_provider {
+                Some(provider) => {
+                    provider.total_value_locked = provider
+                        .total_value_locked
+                        .saturating_add(base_amount_u128.saturating_add(quote_amount_u128));
+                }
+                None => {
+                    *maybe_provider = Some(LiquidityProvider {
+                        provider: who.clone(),
+                        total_value_locked: base_amount_u128.saturating_add(quote_amount_u128),
+                        rewards_earned: 0,
+                        is_tourism_provider: Self::tourism_traders(&who),
+                    });
                 }
             });
 
@@ -764,7 +757,8 @@ pub mod pallet {
                 base_amount: base_amount_u128,
                 quote_amount: quote_amount_u128,
                 lp_tokens,
-            });            Ok(())
+            });
+            Ok(())
         }
 
         /// Execute market trade
@@ -772,7 +766,7 @@ pub mod pallet {
         #[pallet::weight(T::WeightInfo::execute_trade())]
         pub fn execute_trade(
             origin: OriginFor<T>,
-            base_asset: u8, // AssetId as u8
+            base_asset: u8,  // AssetId as u8
             quote_asset: u8, // AssetId as u8
             amount_in: <T::Currency as Currency<T::AccountId>>::Balance,
             min_amount_out: u128,
@@ -786,9 +780,8 @@ pub mod pallet {
             // Check global pause
             ensure!(!GlobalPaused::<T>::get(), Error::<T>::Paused);
 
-            let pair_key: (u8,u8) = (base_asset, quote_asset);
-            let mut pair = Self::trading_pairs(pair_key)
-                .ok_or(Error::<T>::PairNotFound)?;
+            let pair_key: (u8, u8) = (base_asset, quote_asset);
+            let mut pair = Self::trading_pairs(pair_key).ok_or(Error::<T>::PairNotFound)?;
 
             ensure!(pair.active, Error::<T>::PairNotActive);
 
@@ -799,30 +792,31 @@ pub mod pallet {
 
             // SAFETY(saturated_into): Balance → u128 is lossless; substrate balances fit within u128.
             let amount_in_u128: u128 = amount_in.saturated_into();
-            
+
             // Calculate dynamic fee with Oracle-enhanced volume tiers and tourism verification
             let is_verified_tourism = Self::is_verified_tourism_merchant(&who);
-            let effective_fee_rate = Self::get_effective_fee_rate(&who, is_verified_tourism && is_tourism_trade);
-            
+            let effective_fee_rate =
+                Self::get_effective_fee_rate(&who, is_verified_tourism && is_tourism_trade);
+
             let fee = amount_in_u128.saturating_mul(effective_fee_rate as u128) / 10_000;
-            let treasury_fee_rate = core::cmp::min(T::ProtocolFeeToTreasuryBps::get(), effective_fee_rate);
+            let treasury_fee_rate =
+                core::cmp::min(T::ProtocolFeeToTreasuryBps::get(), effective_fee_rate);
             let treasury_fee = amount_in_u128.saturating_mul(treasury_fee_rate as u128) / 10_000;
             let lp_fee = fee.saturating_sub(treasury_fee);
             // Amount used in swap formula (after total fee)
             let amount_after_fee = amount_in_u128.saturating_sub(fee);
 
             // Calculate output amount using constant product formula
-            let amount_out = Self::get_amount_out(
-                amount_after_fee,
-                pair.base_reserve,
-                pair.quote_reserve,
-            )?;
+            let amount_out =
+                Self::get_amount_out(amount_after_fee, pair.base_reserve, pair.quote_reserve)?;
 
             // Oracle-based slippage guard for WUSDC/BBZD trades only
             // Compare implied rate vs Oracle-verified USD/BZD rate (both scaled by 1e6 precision)
             if base_asset == AssetId::WUSDC.as_u8() && quote_asset == AssetId::BBZD.as_u8() {
                 // Require a fresh Oracle rate; if missing/stale, reject
-                if let Some(oracle_rate) = T::Oracle::get_crypto_exchange_rate(base_asset, quote_asset) {
+                if let Some(oracle_rate) =
+                    T::Oracle::get_crypto_exchange_rate(base_asset, quote_asset)
+                {
                     let implied_rate = amount_out.saturating_mul(1_000_000) / amount_in_u128;
                     if oracle_rate > 0 {
                         let diff = implied_rate.abs_diff(oracle_rate);
@@ -841,7 +835,9 @@ pub mod pallet {
                     }
                 } else {
                     // No Oracle rate available (likely stale or not set) → reject trade
-                    Self::deposit_event(Event::OracleRateUnavailable { pair: (base_asset, quote_asset) });
+                    Self::deposit_event(Event::OracleRateUnavailable {
+                        pair: (base_asset, quote_asset),
+                    });
                     return Err(Error::<T>::OracleRateUnavailable.into());
                 }
             }
@@ -870,7 +866,8 @@ pub mod pallet {
             )?;
 
             // Update reserves: LP fee is retained in pool
-            pair.base_reserve = pair.base_reserve
+            pair.base_reserve = pair
+                .base_reserve
                 .saturating_add(amount_after_fee)
                 .saturating_add(lp_fee);
             pair.quote_reserve = pair.quote_reserve.saturating_sub(amount_out);
@@ -880,8 +877,8 @@ pub mod pallet {
             // Transfer treasury portion of fee from pool to treasury
             let treasury = T::Treasury::get();
             T::Currency::transfer(
-                &pool, 
-                &treasury, 
+                &pool,
+                &treasury,
                 // SAFETY(saturated_into): u128 → Balance; treasury fee ≤ amount_in which originated as Balance.
                 treasury_fee.saturated_into(),
                 ExistenceRequirement::AllowDeath,
@@ -909,13 +906,14 @@ pub mod pallet {
             T::TourismOrigin::ensure_origin(origin)?;
 
             // AUDIT FIX (CW-1): Cannot register a sanctioned account as tourism trader
-            ensure!(!T::Kyc::is_sanctioned(&trader), Error::<T>::AccountSanctioned);
+            ensure!(
+                !T::Kyc::is_sanctioned(&trader),
+                Error::<T>::AccountSanctioned
+            );
 
             TourismTraders::<T>::insert(&trader, true);
 
-            Self::deposit_event(Event::TourismTraderVerified {
-                trader,
-            });
+            Self::deposit_event(Event::TourismTraderVerified { trader });
 
             Ok(())
         }
@@ -925,9 +923,9 @@ pub mod pallet {
         #[pallet::weight(T::WeightInfo::place_order())]
         pub fn place_limit_order(
             origin: OriginFor<T>,
-            base_asset: u8, // AssetId as u8
+            base_asset: u8,  // AssetId as u8
             quote_asset: u8, // AssetId as u8
-            order_type: u8, // OrderType as u8
+            order_type: u8,  // OrderType as u8
             amount: u128,
             price: u128,
             expires_in_blocks: BlockNumberFor<T>,
@@ -943,14 +941,20 @@ pub mod pallet {
             let base_asset_id = AssetId::from(base_asset);
             let quote_asset_id = AssetId::from(quote_asset);
             let order_type_enum = OrderType::from(order_type);
-            let pair_key: (u8,u8) = (base_asset, quote_asset);
-            ensure!(TradingPairs::<T>::contains_key(pair_key), Error::<T>::PairNotFound);
+            let pair_key: (u8, u8) = (base_asset, quote_asset);
+            ensure!(
+                TradingPairs::<T>::contains_key(pair_key),
+                Error::<T>::PairNotFound
+            );
 
             ensure!(price > 0, Error::<T>::InvalidPrice);
 
             // AUDIT FIX: Enforce per-account order limit
             let current_count = AccountOrderCount::<T>::get(&who);
-            ensure!(current_count < T::MaxOrdersPerAccount::get(), Error::<T>::TooManyOrders);
+            ensure!(
+                current_count < T::MaxOrdersPerAccount::get(),
+                Error::<T>::TooManyOrders
+            );
 
             let order_id = Self::next_order_id();
             ensure!(order_id < u32::MAX, Error::<T>::OrderIdOverflow);
@@ -963,7 +967,10 @@ pub mod pallet {
             // at the maximum possible block.
             let expires_at: BlockNumberFor<T> = expires_u64.saturated_into();
 
-            let is_tourism_order = matches!(order_type_enum, OrderType::TourismBuy | OrderType::TourismSell);
+            let is_tourism_order = matches!(
+                order_type_enum,
+                OrderType::TourismBuy | OrderType::TourismSell
+            );
             if is_tourism_order {
                 ensure!(Self::tourism_traders(&who), Error::<T>::Unauthorized);
             }
@@ -1040,16 +1047,19 @@ pub mod pallet {
                 // H-3 FIX: Use get_effective_fee_rate() with .max(10) floor,
                 // matching execute_trade fee logic (volume tiers + tourism + min floor)
                 let is_verified_tourism = Self::is_verified_tourism_merchant(&who);
-                let effective_fee_rate = Self::get_effective_fee_rate(&who, is_verified_tourism && is_tourism_trade);
+                let effective_fee_rate =
+                    Self::get_effective_fee_rate(&who, is_verified_tourism && is_tourism_trade);
                 let fee = amount.saturating_mul(effective_fee_rate as u128) / 10_000;
-                let treasury_fee_rate = core::cmp::min(T::ProtocolFeeToTreasuryBps::get(), effective_fee_rate);
+                let treasury_fee_rate =
+                    core::cmp::min(T::ProtocolFeeToTreasuryBps::get(), effective_fee_rate);
                 let treasury_fee = amount.saturating_mul(treasury_fee_rate as u128) / 10_000;
                 let lp_fee = fee.saturating_sub(treasury_fee);
 
                 let amount_after_fee = amount.saturating_sub(fee);
 
                 // For direction: assume (a,b) means a is base_in, b is quote_out
-                let amount_out = Self::get_amount_out(amount_after_fee, pair.base_reserve, pair.quote_reserve)?;
+                let amount_out =
+                    Self::get_amount_out(amount_after_fee, pair.base_reserve, pair.quote_reserve)?;
 
                 // H-4 FIX: Oracle guard for WUSDC->BBZD hop — use hard-reject
                 // matching execute_trade logic (reject if Oracle unavailable)
@@ -1081,7 +1091,8 @@ pub mod pallet {
                 }
 
                 // Update reserves for this hop
-                pair.base_reserve = pair.base_reserve
+                pair.base_reserve = pair
+                    .base_reserve
                     .saturating_add(amount_after_fee)
                     .saturating_add(lp_fee);
                 pair.quote_reserve = pair.quote_reserve.saturating_sub(amount_out);
@@ -1116,7 +1127,7 @@ pub mod pallet {
             }
 
             // Emit final event with last pair of path for reference
-            let last_pair = (path[path.len()-2], path[path.len()-1]);
+            let last_pair = (path[path.len() - 2], path[path.len() - 1]);
             Self::deposit_event(Event::TradeExecuted {
                 trader: who,
                 pair: last_pair,
@@ -1166,7 +1177,11 @@ pub mod pallet {
                 pair.active = active;
                 Ok(())
             })?;
-            Self::deposit_event(Event::PairStatusUpdated { base_asset, quote_asset, active });
+            Self::deposit_event(Event::PairStatusUpdated {
+                base_asset,
+                quote_asset,
+                active,
+            });
             Ok(())
         }
 
@@ -1195,8 +1210,7 @@ pub mod pallet {
             ensure!(lp_tokens > 0, Error::<T>::BelowMinimumAmount);
 
             let pair_key: (u8, u8) = (base_asset, quote_asset);
-            let mut pair = Self::trading_pairs(pair_key)
-                .ok_or(Error::<T>::PairNotFound)?;
+            let mut pair = Self::trading_pairs(pair_key).ok_or(Error::<T>::PairNotFound)?;
 
             ensure!(pair.active, Error::<T>::PairNotActive);
 
@@ -1223,18 +1237,16 @@ pub mod pallet {
 
             // Slippage protection
             ensure!(base_amount >= min_base_amount, Error::<T>::SlippageExceeded);
-            ensure!(quote_amount >= min_quote_amount, Error::<T>::SlippageExceeded);
+            ensure!(
+                quote_amount >= min_quote_amount,
+                Error::<T>::SlippageExceeded
+            );
 
             // Transfer funds from pool back to provider
             let pool = Self::pool_account();
             let total_return: <T::Currency as Currency<T::AccountId>>::Balance =
                 base_amount.saturating_add(quote_amount).saturated_into();
-            T::Currency::transfer(
-                &pool,
-                &who,
-                total_return,
-                ExistenceRequirement::AllowDeath,
-            )?;
+            T::Currency::transfer(&pool, &who, total_return, ExistenceRequirement::AllowDeath)?;
 
             // Update pair reserves and total LP tokens
             pair.base_reserve = pair.base_reserve.saturating_sub(base_amount);
@@ -1273,10 +1285,7 @@ pub mod pallet {
         /// orderbook and emits `OrderCancelled`.
         #[pallet::call_index(10)]
         #[pallet::weight(T::WeightInfo::cancel_order())]
-        pub fn cancel_order(
-            origin: OriginFor<T>,
-            order_id: u32,
-        ) -> DispatchResult {
+        pub fn cancel_order(origin: OriginFor<T>, order_id: u32) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
             // AUDIT FIX (CW-1): Sanctions + KYC check for order cancellation
@@ -1285,8 +1294,7 @@ pub mod pallet {
             // Check global pause
             ensure!(!GlobalPaused::<T>::get(), Error::<T>::Paused);
 
-            let order = OrderBook::<T>::get(order_id)
-                .ok_or(Error::<T>::OrderNotFound)?;
+            let order = OrderBook::<T>::get(order_id).ok_or(Error::<T>::OrderNotFound)?;
 
             // Only the creator may cancel their own order
             ensure!(order.creator == who, Error::<T>::Unauthorized);
@@ -1317,7 +1325,10 @@ pub mod pallet {
             reserve_out: u128,
         ) -> Result<u128, DispatchError> {
             ensure!(amount_in > 0, Error::<T>::BelowMinimumAmount);
-            ensure!(reserve_in > 0 && reserve_out > 0, Error::<T>::InsufficientLiquidity);
+            ensure!(
+                reserve_in > 0 && reserve_out > 0,
+                Error::<T>::InsufficientLiquidity
+            );
 
             let numerator = U256::from(amount_in)
                 .checked_mul(U256::from(reserve_out))
@@ -1331,14 +1342,17 @@ pub mod pallet {
 
         /// Get current price for a trading pair
         pub fn get_price(base_asset: &AssetId, quote_asset: &AssetId) -> Option<FixedU128> {
-            let pair_key: (u8,u8) = (base_asset.as_u8(), quote_asset.as_u8());
+            let pair_key: (u8, u8) = (base_asset.as_u8(), quote_asset.as_u8());
             let pair = Self::trading_pairs(pair_key)?;
-            
+
             if pair.base_reserve == 0 {
                 return None;
             }
-            
-            Some(FixedU128::from_rational(pair.quote_reserve, pair.base_reserve))
+
+            Some(FixedU128::from_rational(
+                pair.quote_reserve,
+                pair.base_reserve,
+            ))
         }
 
         /// Get Oracle-verified exchange rate for crypto pairs (with on-chain fallback)
@@ -1347,7 +1361,7 @@ pub mod pallet {
             if let Some(rate) = T::Oracle::get_crypto_exchange_rate(base_asset, quote_asset) {
                 return Some(rate);
             }
-            
+
             // Fallback to on-chain AMM pricing
             let pair_key: (u8, u8) = (base_asset, quote_asset);
             if let Some(pair) = Self::trading_pairs(pair_key) {
@@ -1356,7 +1370,7 @@ pub mod pallet {
                     return Some(pair.quote_reserve.saturating_mul(1_000_000) / pair.base_reserve);
                 }
             }
-            
+
             None
         }
 
@@ -1366,7 +1380,7 @@ pub mod pallet {
             if T::Oracle::is_tourism_merchant(account) {
                 return true;
             }
-            
+
             // Fallback to on-chain registration
             Self::tourism_traders(account)
         }
@@ -1380,18 +1394,18 @@ pub mod pallet {
         /// Get effective trading fee with volume tier discount
         pub fn get_effective_fee_rate(account: &T::AccountId, is_tourism: bool) -> u32 {
             let base_fee = T::TradingFeeRate::get(); // e.g., 30 bps (0.3%)
-            
+
             // Apply volume tier discount (0-3 tiers, each tier = 2 bps discount)
             let volume_tier = T::Oracle::get_trading_volume_tier(account);
             let volume_discount = volume_tier.min(3).saturating_mul(2); // Max 6 bps discount
-            
+
             // Apply tourism discount if eligible
             let tourism_discount = if is_tourism {
                 T::TourismDiscountRate::get() // e.g., 5 bps (0.05%)
             } else {
                 0
             };
-            
+
             // Total fee = base - volume_discount - tourism_discount (min 10 bps floor)
             base_fee
                 .saturating_sub(volume_discount as u32)
@@ -1399,23 +1413,26 @@ pub mod pallet {
                 .max(10)
         }
 
-                /// Public helper: get pair reserves and LP supply as u128
-                pub fn get_pair_reserves_u128(base_asset: u8, quote_asset: u8) -> Option<(u128, u128, u128)> {
-                    let pair_key = (base_asset, quote_asset);
-                    let pair = Self::trading_pairs(pair_key)?;
-                    Some((pair.base_reserve, pair.quote_reserve, pair.total_lp_tokens))
-                }
+        /// Public helper: get pair reserves and LP supply as u128
+        pub fn get_pair_reserves_u128(
+            base_asset: u8,
+            quote_asset: u8,
+        ) -> Option<(u128, u128, u128)> {
+            let pair_key = (base_asset, quote_asset);
+            let pair = Self::trading_pairs(pair_key)?;
+            Some((pair.base_reserve, pair.quote_reserve, pair.total_lp_tokens))
+        }
 
-                /// Public helper: implied price scaled by 1e6 (quote/base)
-                pub fn get_implied_price_scaled_1e6(base_asset: u8, quote_asset: u8) -> Option<u128> {
-                    let base = AssetId::from(base_asset);
-                    let quote = AssetId::from(quote_asset);
-                    let price = Self::get_price(&base, &quote)?;
-                    // Convert FixedU128 to scaled u128 with 1e6 precision
-                    // price = quote/base; scaled = floor(price * 1e6)
-                    let scaled = price.saturating_mul_int(1_000_000u128);
-                    Some(scaled)
-                }
+        /// Public helper: implied price scaled by 1e6 (quote/base)
+        pub fn get_implied_price_scaled_1e6(base_asset: u8, quote_asset: u8) -> Option<u128> {
+            let base = AssetId::from(base_asset);
+            let quote = AssetId::from(quote_asset);
+            let price = Self::get_price(&base, &quote)?;
+            // Convert FixedU128 to scaled u128 with 1e6 precision
+            // price = quote/base; scaled = floor(price * 1e6)
+            let scaled = price.saturating_mul_int(1_000_000u128);
+            Some(scaled)
+        }
     }
 }
 
@@ -1450,8 +1467,7 @@ impl WeightInfo for () {
             .saturating_add(RocksDbWeight::get().writes(2))
     }
     fn register_tourism_trader() -> Weight {
-        Weight::from_parts(10_000_000, 1536)
-            .saturating_add(RocksDbWeight::get().writes(1))
+        Weight::from_parts(10_000_000, 1536).saturating_add(RocksDbWeight::get().writes(1))
     }
     fn place_order() -> Weight {
         Weight::from_parts(20_000_000, 2560)
@@ -1464,12 +1480,10 @@ impl WeightInfo for () {
             .saturating_add(RocksDbWeight::get().writes(1))
     }
     fn pause() -> Weight {
-        Weight::from_parts(5_000_000, 512)
-            .saturating_add(RocksDbWeight::get().writes(1))
+        Weight::from_parts(5_000_000, 512).saturating_add(RocksDbWeight::get().writes(1))
     }
     fn resume() -> Weight {
-        Weight::from_parts(5_000_000, 512)
-            .saturating_add(RocksDbWeight::get().writes(1))
+        Weight::from_parts(5_000_000, 512).saturating_add(RocksDbWeight::get().writes(1))
     }
     fn set_pair_status() -> Weight {
         Weight::from_parts(10_000_000, 2560)

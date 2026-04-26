@@ -25,7 +25,7 @@
 //!    - Delegate system for proxy voting
 //!
 //! 2. **Foundation Board** (Phase 4)
-//!    - 7 specialized roles: Founder, Technical Steward, FSC Rep, BTB Delegate, 
+//!    - 7 specialized roles: Founder, Technical Steward, FSC Rep, BTB Delegate,
 //!      Citizen Delegate, Security Auditor, Culture & Ethics Advisor
 //!    - Term-based appointments (1-2 years for rotating seats)
 //!    - Multi-signature authority for critical operations
@@ -189,21 +189,16 @@
 //! - [Substrate FRAME](https://docs.substrate.io/reference/frame-pallets/)
 //! - [OpenGov Design](https://wiki.polkadot.network/docs/learn-opengov)
 
+use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::{
     dispatch::DispatchResult,
     pallet_prelude::*,
-    traits::{
-        Currency, ReservableCurrency, Get, Randomness,
-        EnsureOrigin, ExistenceRequirement,
-    },
     sp_runtime::traits::AccountIdConversion,
+    traits::{Currency, EnsureOrigin, ExistenceRequirement, Get, Randomness, ReservableCurrency},
 };
-use sp_runtime::{
-    traits::Saturating,
-};
-use sp_io::hashing::blake2_256;
-use codec::{Encode, Decode, MaxEncodedLen};
 use scale_info::TypeInfo;
+use sp_io::hashing::blake2_256;
+use sp_runtime::traits::Saturating;
 
 // Import GovernanceParticipation trait from Community pallet (Phase 6)
 pub use pallet_belize_community::GovernanceParticipation;
@@ -279,7 +274,7 @@ pub enum ParticipationTier {
     /// - Cannot create proposals
     /// - Cannot run for council positions
     Observer,
-    
+
     /// Contributor tier - Standard KYC verification
     ///
     /// **Capabilities**:
@@ -293,7 +288,7 @@ pub enum ParticipationTier {
     /// - Cannot serve on foundation board
     /// - Cannot be elected to council
     Contributor,
-    
+
     /// Validator tier - Enhanced/Government KYC verification
     ///
     /// **Capabilities**:
@@ -332,9 +327,9 @@ impl ParticipationTier {
     /// ```
     pub fn from_verification_level(level: u8) -> Self {
         match level {
-            0 => Self::Observer, // None - restricted
-            1 => Self::Observer, // Basic
-            2 => Self::Contributor, // Standard
+            0 => Self::Observer,      // None - restricted
+            1 => Self::Observer,      // Basic
+            2 => Self::Contributor,   // Standard
             3..=4 => Self::Validator, // Enhanced/Government
             _ => Self::Observer,
         }
@@ -385,7 +380,7 @@ pub enum Department {
     ///
     /// **On-Chain Prefix**: `gov.finance`
     Finance,
-    
+
     /// Ministry of Education - Educational system and student services
     ///
     /// **Responsibilities**:
@@ -397,7 +392,7 @@ pub enum Department {
     ///
     /// **On-Chain Prefix**: `gov.education`
     Education,
-    
+
     /// Ministry of Health - Healthcare services and medical infrastructure
     ///
     /// **Responsibilities**:
@@ -409,7 +404,7 @@ pub enum Department {
     ///
     /// **On-Chain Prefix**: `gov.health`
     Health,
-    
+
     /// Ministry of Public Works - Infrastructure and construction
     ///
     /// **Responsibilities**:
@@ -421,7 +416,7 @@ pub enum Department {
     ///
     /// **On-Chain Prefix**: `gov.works`
     Works,
-    
+
     /// Ministry of Justice - Legal system and compliance
     ///
     /// **Responsibilities**:
@@ -433,7 +428,7 @@ pub enum Department {
     ///
     /// **On-Chain Prefix**: `gov.justice`
     Justice,
-    
+
     /// Belize Tourism Board - Tourism promotion and development
     ///
     /// **Responsibilities**:
@@ -445,7 +440,7 @@ pub enum Department {
     ///
     /// **On-Chain Prefix**: `gov.tourism`
     Tourism,
-    
+
     /// Ministry of Agriculture - Food security and rural development
     ///
     /// **Responsibilities**:
@@ -457,7 +452,7 @@ pub enum Department {
     ///
     /// **On-Chain Prefix**: `gov.agriculture`
     Agriculture,
-    
+
     /// Ministry of Defense - National security and border protection
     ///
     /// **Responsibilities**:
@@ -485,7 +480,7 @@ impl Department {
             Self::Defense => "Defense",
         }
     }
-    
+
     /// Get department prefix for on-chain entity (e.g., gov.finance)
     pub fn prefix(&self) -> &'static str {
         match self {
@@ -574,7 +569,7 @@ pub enum BoardRole {
     /// **Appointment**: Root origin (permanent)
     /// **Max Count**: 1
     Founder,
-    
+
     /// Technical Steward - Infrastructure maintenance and development
     ///
     /// **Responsibilities**:
@@ -586,7 +581,7 @@ pub enum BoardRole {
     /// **Appointment**: Founder or Council (renewable terms)
     /// **Max Count**: 2
     TechnicalSteward,
-    
+
     /// FSC Representative - Regulatory compliance and financial oversight
     ///
     /// **Responsibilities**:
@@ -599,7 +594,7 @@ pub enum BoardRole {
     /// **Appointment**: FSC or Root origin (permanent)
     /// **Max Count**: 1
     FSCRepresentative,
-    
+
     /// BTB Delegate - Tourism and economic development
     ///
     /// **Responsibilities**:
@@ -611,7 +606,7 @@ pub enum BoardRole {
     /// **Appointment**: BTB or Council (permanent)
     /// **Max Count**: 1
     BTBDelegate,
-    
+
     /// Citizen Delegate - Democratic representation of token holders
     ///
     /// **Responsibilities**:
@@ -625,7 +620,7 @@ pub enum BoardRole {
     ///
     /// **Special**: This is the only rotating board role
     CitizenDelegate,
-    
+
     /// Security Auditor - Code security and smart contract integrity
     ///
     /// **Responsibilities**:
@@ -637,7 +632,7 @@ pub enum BoardRole {
     /// **Appointment**: Council or existing auditors (renewable terms)
     /// **Max Count**: 2
     SecurityAuditor,
-    
+
     /// Culture & Ethics Advisor - Cultural relevance and ethical AI
     ///
     /// **Responsibilities**:
@@ -718,12 +713,12 @@ impl BelizeDistrict {
     /// Get number of council seats allocated per district (proportional to population)
     pub fn seat_allocation(&self) -> u32 {
         match self {
-            Self::Belize => 3,      // Largest population
-            Self::Cayo => 2,        // Second largest
-            Self::Corozal => 1,     // Smaller population
-            Self::OrangeWalk => 2,  // Medium population
-            Self::StannCreek => 2,  // Medium population (tourism)
-            Self::Toledo => 2,      // Smallest but needs representation
+            Self::Belize => 3,     // Largest population
+            Self::Cayo => 2,       // Second largest
+            Self::Corozal => 1,    // Smaller population
+            Self::OrangeWalk => 2, // Medium population
+            Self::StannCreek => 2, // Medium population (tourism)
+            Self::Toledo => 2,     // Smallest but needs representation
         }
     }
 
@@ -793,11 +788,11 @@ pub const SUPERMAJORITY_THRESHOLD: u32 = 66;
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
-    use sp_std::prelude::*;
-    use frame_system::pallet_prelude::{BlockNumberFor, OriginFor};
-    use frame_system::{ensure_signed, ensure_root};
-    use sp_runtime::{SaturatedConversion, traits::Zero};
     use frame_support::ensure;
+    use frame_system::pallet_prelude::{BlockNumberFor, OriginFor};
+    use frame_system::{ensure_root, ensure_signed};
+    use sp_runtime::{traits::Zero, SaturatedConversion};
+    use sp_std::prelude::*;
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
@@ -807,34 +802,34 @@ pub mod pallet {
         /// The overarching event type
         /// The currency used for governance operations
         type Currency: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
-        
+
         /// Source of randomness for council selection
         type Randomness: Randomness<Self::Hash, BlockNumberFor<Self>>;
-        
+
         /// Council origin for administrative functions
         type CouncilOrigin: EnsureOrigin<Self::RuntimeOrigin>;
-        
+
         /// Community origin for community proposals
         type CommunityOrigin: EnsureOrigin<Self::RuntimeOrigin>;
-        
+
         /// Compliance provider for KYC/AML checks
         type ComplianceProvider: ComplianceCheck<Self::AccountId>;
-        
+
         /// Community participation tracker (Phase 6 integration)
         type CommunityParticipation: GovernanceParticipation<Self::AccountId>;
-        
+
         /// Minimum deposit for proposals
         #[pallet::constant]
         type MinimumDeposit: Get<<Self::Currency as Currency<Self::AccountId>>::Balance>;
-        
+
         /// Voting period duration in blocks
         #[pallet::constant]
         type VotingPeriod: Get<BlockNumberFor<Self>>;
-        
+
         /// Launch period before voting starts
         #[pallet::constant]
         type LaunchPeriod: Get<BlockNumberFor<Self>>;
-        
+
         /// Weight information for extrinsics
         type WeightInfo: WeightInfo;
 
@@ -972,7 +967,8 @@ pub mod pallet {
     }
 
     /// Type alias for balance amounts
-    pub type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+    pub type BalanceOf<T> =
+        <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
     /// Council member information
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
@@ -1093,7 +1089,7 @@ pub mod pallet {
         /// - Constitutional rights and rules
         /// - System-wide governance reforms
         Constitutional,
-        
+
         /// Economic policy changes - Financial and treasury management
         ///
         /// **Requirements**:
@@ -1107,7 +1103,7 @@ pub mod pallet {
         /// - Tax and revenue strategies
         /// - Financial incentive programs
         Economic,
-        
+
         /// Council membership and governance structure changes
         ///
         /// **Requirements**:
@@ -1121,7 +1117,7 @@ pub mod pallet {
         /// - Modify member responsibilities
         /// - Update governance roles
         Council,
-        
+
         /// Technical upgrades - Runtime and infrastructure changes
         ///
         /// **Requirements**:
@@ -1135,7 +1131,7 @@ pub mod pallet {
         /// - Infrastructure improvements
         /// - Protocol modifications
         Technical,
-        
+
         /// Emergency measures - Urgent national security actions
         ///
         /// **Requirements**:
@@ -1149,7 +1145,7 @@ pub mod pallet {
         /// - Natural disaster response
         /// - System vulnerability patches
         Emergency,
-        
+
         /// International agreements - Cross-border and diplomatic
         ///
         /// **Requirements**:
@@ -1163,7 +1159,7 @@ pub mod pallet {
         /// - Trade policies
         /// - Diplomatic initiatives
         International,
-        
+
         /// Community-driven initiatives and programs
         ///
         /// **Requirements**:
@@ -1177,7 +1173,7 @@ pub mod pallet {
         /// - Cultural events
         /// - Public feedback collection
         Community,
-        
+
         /// District-specific local proposals - NEW
         ///
         /// **Requirements**:
@@ -1291,28 +1287,26 @@ pub mod pallet {
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum ProposalAction<AccountId, Balance> {
         /// Transfer funds from treasury
-        TreasurySpend { 
-            recipient: AccountId, 
+        TreasurySpend {
+            recipient: AccountId,
             amount: Balance,
         },
         /// Upgrade the runtime code
-        RuntimeUpgrade { 
+        RuntimeUpgrade {
             code_hash: BoundedVec<u8, ConstU32<32>>,
         },
         /// Change governance parameter
-        ParameterChange { 
-            parameter: GovernanceParameter, 
+        ParameterChange {
+            parameter: GovernanceParameter,
             new_value: u32,
         },
         /// Execute department-specific action
-        DepartmentAction { 
-            department: Department, 
+        DepartmentAction {
+            department: Department,
             call_data: BoundedVec<u8, ConstU32<1024>>,
         },
         /// Execute emergency action
-        EmergencyAction { 
-            action_type: EmergencyActionType,
-        },
+        EmergencyAction { action_type: EmergencyActionType },
     }
 
     /// Governance parameters that can be changed via proposals (Phase 5)
@@ -1641,7 +1635,7 @@ pub mod pallet {
         ///
         /// **Numeric Value**: 1
         Low,
-        
+
         /// Normal priority - Standard governance proposals
         ///
         /// **Characteristics**:
@@ -1652,7 +1646,7 @@ pub mod pallet {
         ///
         /// **Numeric Value**: 2
         Normal,
-        
+
         /// High priority - Important economic or technical changes
         ///
         /// **Characteristics**:
@@ -1663,7 +1657,7 @@ pub mod pallet {
         ///
         /// **Numeric Value**: 3
         High,
-        
+
         /// Critical priority - Emergency measures and security fixes
         ///
         /// **Characteristics**:
@@ -1694,7 +1688,7 @@ pub mod pallet {
         /// ```rust,ignore
         /// let critical = ProposalPriority::Critical;
         /// assert_eq!(critical.to_value(), 4);
-        /// 
+        ///
         /// let normal = ProposalPriority::Normal;
         /// assert!(critical.to_value() > normal.to_value());
         /// ```
@@ -1709,8 +1703,8 @@ pub mod pallet {
     }
 
     /// Emergency type classification for Jaguar Mode
-    /// 
-    /// Named after Belize's national animal, the Jaguar (Panthera onca), 
+    ///
+    /// Named after Belize's national animal, the Jaguar (Panthera onca),
     /// representing swift, decisive action during national crises.
     #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     pub enum EmergencyType {
@@ -1743,7 +1737,7 @@ pub mod pallet {
     }
 
     /// Jaguar Mode emergency status
-    /// 
+    ///
     /// Tracks active national emergencies with detailed metadata for
     /// crisis response coordination.
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
@@ -1822,7 +1816,7 @@ pub mod pallet {
         u32, // Proposal/Referendum ID
         Blake2_128Concat,
         T::AccountId, // Voter
-        [u8; 32], // blake2_256(vote_choice || salt)
+        [u8; 32],     // blake2_256(vote_choice || salt)
         OptionQuery,
     >;
 
@@ -1862,7 +1856,8 @@ pub mod pallet {
     #[pallet::getter(fn emergency_status)]
     /// Jaguar Mode: Emergency governance status for national crises
     /// Named after Belize's swift and powerful national animal
-    pub type JaguarMode<T: Config> = StorageValue<_, EmergencyStatus<BlockNumberFor<T>>, OptionQuery>;
+    pub type JaguarMode<T: Config> =
+        StorageValue<_, EmergencyStatus<BlockNumberFor<T>>, OptionQuery>;
 
     #[pallet::storage]
     /// Council members who have vetoed the current pending emergency (CONS-029)
@@ -1870,30 +1865,20 @@ pub mod pallet {
         _,
         Blake2_128Concat,
         T::AccountId,
-        BlockNumberFor<T>,  // block at which the veto was cast
+        BlockNumberFor<T>, // block at which the veto was cast
     >;
 
     #[pallet::storage]
     #[pallet::getter(fn department_managers)]
     /// Department managers (multisig addresses that control each department)
-    pub type DepartmentManagers<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        Department,
-        T::AccountId,
-        OptionQuery,
-    >;
+    pub type DepartmentManagers<T: Config> =
+        StorageMap<_, Blake2_128Concat, Department, T::AccountId, OptionQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn department_proposal_count)]
     /// Count of proposals submitted per department
-    pub type DepartmentProposalCount<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        Department,
-        u32,
-        ValueQuery,
-    >;
+    pub type DepartmentProposalCount<T: Config> =
+        StorageMap<_, Blake2_128Concat, Department, u32, ValueQuery>;
 
     #[pallet::storage]
     /// Track which departments have approved cross-department proposals
@@ -1911,13 +1896,8 @@ pub mod pallet {
 
     #[pallet::storage]
     /// Board composition tracking by role
-    pub type BoardComposition<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        BoardRole,
-        u32,
-        ValueQuery,
-    >;
+    pub type BoardComposition<T: Config> =
+        StorageMap<_, Blake2_128Concat, BoardRole, u32, ValueQuery>;
 
     #[pallet::storage]
     /// Term expiry queue for automatic rotation
@@ -1931,13 +1911,8 @@ pub mod pallet {
 
     #[pallet::storage]
     /// Last block at which an account submitted a proposal (used for cooldown enforcement).
-    pub type AccountLastProposal<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        BlockNumberFor<T>,
-        ValueQuery,
-    >;
+    pub type AccountLastProposal<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, BlockNumberFor<T>, ValueQuery>;
 
     #[pallet::storage]
     /// Earliest block at which an approved proposal may be executed (enactment delay).
@@ -1969,27 +1944,18 @@ pub mod pallet {
     /// percentage (100 = full weight, 50 = half weight).  Large holders who
     /// fail the quarterly participation check are reduced to 50 until next
     /// quarterly reset.
-    pub type EffectiveVotingMultiplier<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        u8,
-        ValueQuery,
-    >;
+    pub type EffectiveVotingMultiplier<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, u8, ValueQuery>;
 
     #[pallet::storage]
     /// Block number of the last quarterly participation check.
-    pub type LastParticipationCheckBlock<T: Config> = StorageValue<_, BlockNumberFor<T>, ValueQuery>;
+    pub type LastParticipationCheckBlock<T: Config> =
+        StorageValue<_, BlockNumberFor<T>, ValueQuery>;
 
     #[pallet::storage]
     /// Delegate election nominees (account -> vote count)
-    pub type DelegateNominees<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        u32,
-        ValueQuery,
-    >;
+    pub type DelegateNominees<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, u32, ValueQuery>;
 
     #[pallet::storage]
     /// Delegate election voters (to prevent double voting)
@@ -2005,23 +1971,14 @@ pub mod pallet {
 
     #[pallet::storage]
     /// Current delegate election round
-    pub type CurrentElection<T: Config> = StorageValue<
-        _,
-        BlockNumberFor<T>,
-        OptionQuery,
-    >;
+    pub type CurrentElection<T: Config> = StorageValue<_, BlockNumberFor<T>, OptionQuery>;
 
     // ===== PHASE 5: EXECUTION LAYER STORAGE =====
 
     #[pallet::storage]
     /// Current governance parameter values
-    pub type GovernanceParameters<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        GovernanceParameter,
-        u32,
-        ValueQuery,
-    >;
+    pub type GovernanceParameters<T: Config> =
+        StorageMap<_, Blake2_128Concat, GovernanceParameter, u32, ValueQuery>;
 
     #[pallet::storage]
     /// Department treasury sub-account balances (tracked separately from main treasury)
@@ -2038,7 +1995,7 @@ pub mod pallet {
     pub type ExecutedProposals<T: Config> = StorageMap<
         _,
         Blake2_128Concat,
-        u32, // proposal_id
+        u32,               // proposal_id
         BlockNumberFor<T>, // executed_at block
         OptionQuery,
     >;
@@ -2055,13 +2012,8 @@ pub mod pallet {
 
     #[pallet::storage]
     /// Active district elections (district -> election info)
-    pub type DistrictElections<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        BelizeDistrict,
-        Election<BlockNumberFor<T>>,
-        OptionQuery,
-    >;
+    pub type DistrictElections<T: Config> =
+        StorageMap<_, Blake2_128Concat, BelizeDistrict, Election<BlockNumberFor<T>>, OptionQuery>;
 
     #[pallet::storage]
     /// Election candidates (election_id -> candidate account -> candidate info)
@@ -2117,7 +2069,7 @@ pub mod pallet {
     pub type DelegationReceivers<T: Config> = StorageMap<
         _,
         Blake2_128Concat,
-        T::AccountId, // Delegate
+        T::AccountId,                            // Delegate
         BoundedVec<T::AccountId, ConstU32<100>>, // Max 100 delegators per delegate
         ValueQuery,
     >;
@@ -2158,11 +2110,8 @@ pub mod pallet {
 
     #[pallet::storage]
     /// Total governance rewards distributed
-    pub type TotalRewardsDistributed<T: Config> = StorageValue<
-        _,
-        <T::Currency as Currency<T::AccountId>>::Balance,
-        ValueQuery,
-    >;
+    pub type TotalRewardsDistributed<T: Config> =
+        StorageValue<_, <T::Currency as Currency<T::AccountId>>::Balance, ValueQuery>;
 
     // ===== REFERENDUM SYSTEM STORAGE =====
 
@@ -2193,7 +2142,7 @@ pub mod pallet {
         u32, // Referendum ID
         Blake2_128Concat,
         T::AccountId, // Voter
-        u8, // Option index voted for
+        u8,           // Option index voted for
         OptionQuery,
     >;
 
@@ -2238,9 +2187,7 @@ pub mod pallet {
     #[pallet::storage]
     /// S5-4: Rolling treasury spend tracker.
     /// Stores (period_index, cumulative_spent) to enforce MaxTreasurySpendPerPeriod.
-    pub type TreasurySpendTracker<T: Config> = StorageValue<
-        _, (u32, BalanceOf<T>), ValueQuery
-    >;
+    pub type TreasurySpendTracker<T: Config> = StorageValue<_, (u32, BalanceOf<T>), ValueQuery>;
 
     #[pallet::storage]
     /// AR-8: Per-department on-chain policy store.
@@ -2308,7 +2255,7 @@ pub mod pallet {
         )>,
         /// Democracy launch period (2 days)
         pub democracy_launch_period: BlockNumberFor<T>,
-        /// Democracy voting period (7 days) 
+        /// Democracy voting period (7 days)
         pub democracy_voting_period: BlockNumberFor<T>,
         /// Minimum proposal deposit
         pub democracy_minimum_deposit: <T::Currency as Currency<T::AccountId>>::Balance,
@@ -2320,7 +2267,7 @@ pub mod pallet {
                 council_members: vec![],
                 democracy_launch_period: BlockNumberFor::<T>::from(28800u32), // 2 days
                 democracy_voting_period: BlockNumberFor::<T>::from(VOTING_PERIOD), // 7 days
-                democracy_minimum_deposit: 1000u32.into(), // 1000 DALLA
+                democracy_minimum_deposit: 1000u32.into(),                    // 1000 DALLA
             }
         }
     }
@@ -2330,7 +2277,7 @@ pub mod pallet {
         fn build(&self) {
             for (member, community_rank, pouw_contribution) in &self.council_members {
                 let voting_weight = community_rank + pouw_contribution;
-                
+
                 // Calculate 2-year term (default for genesis members)
                 let term_blocks = BlockNumberFor::<T>::from(BLOCKS_PER_YEAR * 2);
                 let term_end_zero: u64 = 0;
@@ -2338,7 +2285,7 @@ pub mod pallet {
                 let term_end_u64 = term_end_zero.saturating_add(term_blocks_u64);
                 // SAFETY: value derived from u32 block number arithmetic in u64; fits in BlockNumberFor<T> (runtime uses u32 block numbers)
                 let term_end: BlockNumberFor<T> = term_end_u64.saturated_into();
-                
+
                 let council_member = CouncilMember {
                     account: member.clone(),
                     role: BoardRole::Founder, // Genesis members default to Founder role
@@ -2368,7 +2315,8 @@ pub mod pallet {
             GovernanceParameters::<T>::insert(GovernanceParameter::MinimumDeposit, 1000u32); // 1000 DALLA
             GovernanceParameters::<T>::insert(GovernanceParameter::SupermajorityThreshold, 66u32); // 66%
             GovernanceParameters::<T>::insert(GovernanceParameter::CouncilSize, 15u32); // Max 15 members
-            GovernanceParameters::<T>::insert(GovernanceParameter::EmergencyTimeout, 86400u32); // 1 day
+            GovernanceParameters::<T>::insert(GovernanceParameter::EmergencyTimeout, 86400u32);
+            // 1 day
         }
     }
 
@@ -2403,9 +2351,8 @@ pub mod pallet {
             // Runs once per quarter.  Bounded to MAX_CHECKS_PER_QUARTER accounts so
             // on-block work stays O(1).  Remaining accounts carry over to next quarter.
             let n_u64: u64 = TryInto::<u64>::try_into(n).unwrap_or(0);
-            let last_check_u64: u64 = TryInto::<u64>::try_into(
-                LastParticipationCheckBlock::<T>::get()
-            ).unwrap_or(0);
+            let last_check_u64: u64 =
+                TryInto::<u64>::try_into(LastParticipationCheckBlock::<T>::get()).unwrap_or(0);
             const BLOCKS_PER_QUARTER: u64 = 1_296_000;
             if n_u64.saturating_sub(last_check_u64) >= BLOCKS_PER_QUARTER {
                 LastParticipationCheckBlock::<T>::put(n);
@@ -2500,7 +2447,10 @@ pub mod pallet {
                         let _ = queue.try_push(account);
                     }
                 });
-                Self::deposit_event(Event::TermExpiryOverflow { block: n, remaining });
+                Self::deposit_event(Event::TermExpiryOverflow {
+                    block: n,
+                    remaining,
+                });
                 weight = weight.saturating_add(T::DbWeight::get().writes(1));
             }
 
@@ -2515,8 +2465,8 @@ pub mod pallet {
         ProposalSubmitted {
             proposal_id: u32,
             proposer: T::AccountId,
-            proposal_type_index: u8,  // Index into ProposalType enum
-            threshold_index: u8,      // Index into VotingThreshold enum
+            proposal_type_index: u8, // Index into ProposalType enum
+            threshold_index: u8,     // Index into VotingThreshold enum
         },
         /// Vote cast on proposal.
         ///
@@ -2526,20 +2476,20 @@ pub mod pallet {
         VoteCast {
             proposal_id: u32,
             voter: T::AccountId,
-            vote_index: u8,          // Index into VoteChoice enum
+            vote_index: u8, // Index into VoteChoice enum
             weight: u32,
         },
         /// Proposal approved
         ProposalApproved {
             proposal_id: u32,
-            ayes: u32,               // Simplified tally
+            ayes: u32, // Simplified tally
             nays: u32,
             abstentions: u32,
         },
         /// Proposal rejected
         ProposalRejected {
             proposal_id: u32,
-            ayes: u32,               // Simplified tally
+            ayes: u32, // Simplified tally
             nays: u32,
             abstentions: u32,
         },
@@ -2607,7 +2557,6 @@ pub mod pallet {
         // DelegateElectionCompleted removed (E-7): orphaned, never emitted.
 
         // ===== PHASE 5: EXECUTION LAYER EVENTS =====
-
         /// Proposal has been executed
         ProposalExecuted {
             proposal_id: u32,
@@ -2633,9 +2582,7 @@ pub mod pallet {
             weight: u32,
         },
         /// Governance-approved runtime upgrade code was verified and applied (AR-14)
-        RuntimeUpgradeApplied {
-            code_hash: [u8; 32],
-        },
+        RuntimeUpgradeApplied { code_hash: [u8; 32] },
         /// Governance parameter changed
         ParameterChanged {
             parameter_index: u8, // Index of GovernanceParameter variant
@@ -2660,7 +2607,6 @@ pub mod pallet {
         },
 
         // ===== PHASE 6: COUNCIL ELECTION SYSTEM EVENTS =====
-
         /// District election started
         DistrictElectionStarted {
             election_id: BlockNumberFor<T>,
@@ -2698,7 +2644,6 @@ pub mod pallet {
         },
 
         // ===== PHASE 7: ADVANCED FEATURES EVENTS =====
-
         /// Vote delegation created
         VoteDelegationCreated {
             delegator: T::AccountId,
@@ -2748,7 +2693,6 @@ pub mod pallet {
         EmergencyFinalizedAfterVetoWindow,
 
         // ===== REFERENDUM SYSTEM EVENTS =====
-
         /// Referendum created
         /// district_index: Optional (0=Belize, 1=Cayo, 2=Corozal, 3=OrangeWalk, 4=StannCreek, 5=Toledo)
         ReferendumCreated {
@@ -2782,7 +2726,6 @@ pub mod pallet {
         // ReferendumCancelled removed (E-7): orphaned, never emitted.
 
         // ===== TREASURY MANAGEMENT EVENTS =====
-
         /// District budget allocated for fiscal year
         /// district_index: 0=Belize, 1=Cayo, 2=Corozal, 3=OrangeWalk, 4=StannCreek, 5=Toledo
         DistrictBudgetAllocated {
@@ -2857,11 +2800,8 @@ pub mod pallet {
         },
 
         // ===== PHASE 1: ETHICAL SAFEGUARDS EVENTS =====
-
         /// A council member's term expired and they were automatically removed.
-        CouncilTermAutoExpired {
-            account: T::AccountId,
-        },
+        CouncilTermAutoExpired { account: T::AccountId },
         /// More than 10 terms expired in one block; remainder re-queued to next block.
         TermExpiryOverflow {
             block: BlockNumberFor<T>,
@@ -2881,12 +2821,9 @@ pub mod pallet {
         },
         /// Quarterly participation check completed.  `checked_count` is the number
         /// of large-holder accounts that were evaluated.
-        QuarterlyParticipationReset {
-            checked_count: u32,
-        },
+        QuarterlyParticipationReset { checked_count: u32 },
 
         // ── Phase 4C: Exit right event ────────────────────────────────────────
-
         /// Account generated a chain-signed exit proof of their on-chain state.
         /// The `proof_hash` is `blake2_256(account ++ free_balance ++ current_block)`.
         /// The proof can be independently verified off-chain to demonstrate
@@ -2898,7 +2835,6 @@ pub mod pallet {
         },
 
         // ===== PHASE 6A: CONSTITUTIONAL DUAL-HOUSE RATIFICATION EVENTS =====
-
         /// A house member cast a ratification vote for a Constitutional proposal.
         /// `house`: 0 = TechnicalCouncil, 1 = GovernanceCouncil.
         ConstitutionalRatificationCast {
@@ -2910,21 +2846,14 @@ pub mod pallet {
         },
 
         /// Both houses have ratified; the Constitutional proposal is now executable.
-        ConstitutionalRatificationComplete {
-            proposal_id: u32,
-        },
+        ConstitutionalRatificationComplete { proposal_id: u32 },
 
         // ===== PHASE 6B: CONSTITUTIONAL PARAMETER LOCK EVENTS =====
-
         /// A chain parameter was constitutionally locked.
-        ParameterLocked {
-            key: BoundedVec<u8, ConstU32<32>>,
-        },
+        ParameterLocked { key: BoundedVec<u8, ConstU32<32>> },
 
         /// A constitutional lock on a chain parameter was lifted.
-        ParameterUnlocked {
-            key: BoundedVec<u8, ConstU32<32>>,
-        },
+        ParameterUnlocked { key: BoundedVec<u8, ConstU32<32>> },
     }
 
     #[pallet::error]
@@ -2994,7 +2923,6 @@ pub mod pallet {
         InvalidTermDuration,
 
         // ===== PHASE 5: EXECUTION LAYER ERRORS =====
-
         /// Proposal not approved yet
         ProposalNotApproved,
         /// Proposal already executed
@@ -3019,7 +2947,6 @@ pub mod pallet {
         InvalidActionType,
 
         // ===== PHASE 6: COUNCIL ELECTION SYSTEM ERRORS =====
-
         /// Election not found for this district
         ElectionNotFound,
         /// Election is not in registration phase
@@ -3052,7 +2979,6 @@ pub mod pallet {
         InsufficientCandidates,
 
         // ===== PHASE 7: ADVANCED FEATURES ERRORS =====
-
         /// Cannot delegate to self
         CannotDelegateToSelf,
         /// Delegation already exists
@@ -3083,7 +3009,6 @@ pub mod pallet {
         InvalidPriority,
 
         // ===== JAGUAR MODE: EMERGENCY GOVERNANCE ERRORS =====
-
         /// Emergency already active - cannot declare new emergency
         EmergencyAlreadyActive,
         /// No active emergency - cannot end emergency
@@ -3092,7 +3017,6 @@ pub mod pallet {
         DescriptionTooLong,
 
         // ===== REFERENDUM SYSTEM ERRORS =====
-
         /// Referendum not found
         ReferendumNotFound,
         /// Referendum voting period has ended
@@ -3119,7 +3043,6 @@ pub mod pallet {
         ReferendumAlreadyFinalized,
 
         // ===== TREASURY MANAGEMENT ERRORS =====
-
         /// District budget not found
         DistrictBudgetNotFound,
         /// District budget already exists for fiscal year
@@ -3187,7 +3110,6 @@ pub mod pallet {
         InvalidCallData,
 
         // ===== PHASE 1: ETHICAL SAFEGUARDS ERRORS =====
-
         /// Account must wait `ProposalCooldown` blocks before submitting another proposal.
         ProposalCooldownActive,
         /// An approved proposal cannot be executed before its enactment delay has elapsed.
@@ -3196,14 +3118,12 @@ pub mod pallet {
         ConsecutiveTermLimitReached,
 
         // ===== PHASE 5A: BEHAVIOR FLAG CIRCUIT BREAKER ERRORS =====
-
         /// Account is in a behavior-flag cooldown period and may not submit proposals or vote.
         /// The cooldown was triggered by oracle consensus detecting an anti-social pattern
         /// (compulsive activity, reward-loop exploitation, or bot-like behavior).
         BehaviorCooldownActive,
 
         // ===== PHASE 6A: CONSTITUTIONAL DUAL-HOUSE RATIFICATION ERRORS =====
-
         /// Constitutional proposal requires dual-house ratification before it can be executed.
         /// Call `ratify_constitutional_proposal` from each house (Technical + Governance).
         ConstitutionalRatificationRequired,
@@ -3217,7 +3137,6 @@ pub mod pallet {
         ProposalNotYetApproved,
 
         // ===== PHASE 6B: CONSTITUTIONAL PARAMETER LOCK ERRORS =====
-
         /// This chain parameter has been constitutionally locked and cannot be updated.
         /// Unlock it via a dual-house-ratified Constitutional proposal first.
         ParameterConstitutionallyLocked,
@@ -3245,9 +3164,9 @@ pub mod pallet {
         /// - `origin`: Signed origin of the proposal author (requires Contributor tier or higher)
         /// - `title`: Proposal title (max 256 bytes, UTF-8 recommended)
         /// - `description`: Detailed proposal description (max 1024 bytes)
-        /// - `proposal_type_index`: Type index (0=Constitutional, 1=Economic, 2=Council, 
+        /// - `proposal_type_index`: Type index (0=Constitutional, 1=Economic, 2=Council,
         ///   3=Technical, 4=Emergency, 5=International, 6=Community)
-        /// - `threshold_index`: Voting threshold (0=SimpleMajority 51%, 1=Supermajority 66%, 
+        /// - `threshold_index`: Voting threshold (0=SimpleMajority 51%, 1=Supermajority 66%,
         ///   2=Unanimous 100%)
         /// - `is_emergency`: If true, reduces launch period to 1 hour and voting to 3 hours
         ///
@@ -3345,7 +3264,7 @@ pub mod pallet {
                     5 => BelizeDistrict::Toledo,
                     _ => return Err(Error::<T>::InvalidDistrict.into()),
                 };
-                
+
                 // DistrictLocal proposals MUST specify a district
                 if proposal_type == ProposalType::DistrictLocal {
                     Some(dist)
@@ -3362,17 +3281,17 @@ pub mod pallet {
             };
 
             let deposit = T::MinimumDeposit::get();
-            
+
             // Reserve deposit
             T::Currency::reserve(&who, deposit)?;
 
             let current_block = frame_system::Pallet::<T>::block_number();
-            let launch_period = if is_emergency { 
+            let launch_period = if is_emergency {
                 BlockNumberFor::<T>::from(3600u32) // 1 hour for emergency
-            } else { 
-                T::LaunchPeriod::get() 
+            } else {
+                T::LaunchPeriod::get()
             };
-            
+
             let current_u64: u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0);
             let launch_u64: u64 = TryInto::<u64>::try_into(launch_period).unwrap_or(0);
             let voting_start_u64 = current_u64.saturating_add(launch_u64);
@@ -3391,8 +3310,12 @@ pub mod pallet {
 
             let proposal_id = Self::next_proposal_id();
 
-            let bounded_title: BoundedVec<u8, ConstU32<256>> = title.try_into().map_err(|_| Error::<T>::InvalidProposalType)?;
-            let bounded_description: BoundedVec<u8, ConstU32<1024>> = description.try_into().map_err(|_| Error::<T>::InvalidProposalType)?;
+            let bounded_title: BoundedVec<u8, ConstU32<256>> = title
+                .try_into()
+                .map_err(|_| Error::<T>::InvalidProposalType)?;
+            let bounded_description: BoundedVec<u8, ConstU32<1024>> = description
+                .try_into()
+                .map_err(|_| Error::<T>::InvalidProposalType)?;
 
             let proposal = Proposal {
                 id: proposal_id,
@@ -3417,7 +3340,7 @@ pub mod pallet {
                 district,
                 requires_cross_approval: false,
                 cross_approved_by: BoundedVec::default(),
-                action: None, // Phase 5: No action defined yet
+                action: None,      // Phase 5: No action defined yet
                 executed_at: None, // Phase 5: Not executed
             };
 
@@ -3467,7 +3390,7 @@ pub mod pallet {
         /// - `origin`: Signed origin of the voter (requires Contributor tier or higher)
         /// - `proposal_id`: ID of the proposal to vote on
         /// - `vote_choice_index`: Vote direction (0=Aye/Yes, 1=Nay/No, 2=Abstain)
-        /// - `conviction`: Voting power multiplier (0=1x no lock, 1=2x 7-day lock, 
+        /// - `conviction`: Voting power multiplier (0=1x no lock, 1=2x 7-day lock,
         ///   2=3x 30-day lock, 3=6x 90-day lock)
         ///
         /// ## Voting Weight Formula
@@ -3507,7 +3430,7 @@ pub mod pallet {
         ///     0,  // Aye (Yes)
         ///     2,  // 3x conviction with 30-day lock
         /// );
-        /// 
+        ///
         /// // Voter earns 10 DALLA participation reward
         /// // Voting weight = (rank + pouw) * 3
         /// ```
@@ -3545,11 +3468,20 @@ pub mod pallet {
             let current_block = frame_system::Pallet::<T>::block_number();
 
             // Check voting period
-            ensure!(current_block >= proposal.voting_start, Error::<T>::VotingPeriodNotStarted);
-            ensure!(current_block <= proposal.voting_end, Error::<T>::VotingPeriodEnded);
+            ensure!(
+                current_block >= proposal.voting_start,
+                Error::<T>::VotingPeriodNotStarted
+            );
+            ensure!(
+                current_block <= proposal.voting_end,
+                Error::<T>::VotingPeriodEnded
+            );
 
             // Check if already voted
-            ensure!(!Votes::<T>::contains_key(proposal_id, &who), Error::<T>::AlreadyVoted);
+            ensure!(
+                !Votes::<T>::contains_key(proposal_id, &who),
+                Error::<T>::AlreadyVoted
+            );
 
             // Calculate voting weight (community rank + PoUW contribution + stake QV)
             let community_rank = Self::community_ranks(&who);
@@ -3569,8 +3501,7 @@ pub mod pallet {
             } else {
                 stake_units
             };
-            let stake_weight: u32 = raw_stake_weight
-                .min(T::MaxVotingUnits::get() as u128) as u32;
+            let stake_weight: u32 = raw_stake_weight.min(T::MaxVotingUnits::get() as u128) as u32;
 
             let base_weight = community_rank
                 .saturating_add(pouw_contribution)
@@ -3589,10 +3520,12 @@ pub mod pallet {
             // Defaults to 100 (full weight).  Large holders who missed last quarter's
             // participation threshold have this set to 50 until the next quarterly reset.
             let multiplier = EffectiveVotingMultiplier::<T>::get(&who);
-            let effective_mult = if multiplier == 0 { 100u32 } else { multiplier as u32 };
-            let final_weight = conviction_weight
-                .saturating_mul(effective_mult)
-                / 100;
+            let effective_mult = if multiplier == 0 {
+                100u32
+            } else {
+                multiplier as u32
+            };
+            let final_weight = conviction_weight.saturating_mul(effective_mult) / 100;
 
             // Track participation for the quarterly audit (Phase 2B).
             // Increment the "voted" counter; "eligible" is incremented in create_proposal
@@ -3619,12 +3552,22 @@ pub mod pallet {
 
             // Update proposal tally
             match vote_choice {
-                VoteChoice::Aye => proposal.vote_tally.ayes = proposal.vote_tally.ayes.saturating_add(final_weight),
-                VoteChoice::Nay => proposal.vote_tally.nays = proposal.vote_tally.nays.saturating_add(final_weight),
-                VoteChoice::Abstain => proposal.vote_tally.abstentions = proposal.vote_tally.abstentions.saturating_add(final_weight),
+                VoteChoice::Aye => {
+                    proposal.vote_tally.ayes = proposal.vote_tally.ayes.saturating_add(final_weight)
+                }
+                VoteChoice::Nay => {
+                    proposal.vote_tally.nays = proposal.vote_tally.nays.saturating_add(final_weight)
+                }
+                VoteChoice::Abstain => {
+                    proposal.vote_tally.abstentions =
+                        proposal.vote_tally.abstentions.saturating_add(final_weight)
+                }
             }
 
-            proposal.vote_tally.total_weight = proposal.vote_tally.total_weight.saturating_add(final_weight);
+            proposal.vote_tally.total_weight = proposal
+                .vote_tally
+                .total_weight
+                .saturating_add(final_weight);
 
             // Update proposal status if needed
             proposal.status = ProposalStatus::Voting;
@@ -3653,17 +3596,17 @@ pub mod pallet {
         // DOS-009 FIX: Operational dispatch — governance finalization must not be
         // blocked during congestion.
         #[pallet::weight((T::WeightInfo::finalize_proposal(), DispatchClass::Operational))]
-        pub fn finalize_proposal(
-            origin: OriginFor<T>,
-            proposal_id: u32,
-        ) -> DispatchResult {
+        pub fn finalize_proposal(origin: OriginFor<T>, proposal_id: u32) -> DispatchResult {
             let _who = ensure_signed(origin)?;
 
             let mut proposal = Self::proposals(proposal_id).ok_or(Error::<T>::ProposalNotFound)?;
             let current_block = frame_system::Pallet::<T>::block_number();
 
             // Ensure voting period has ended
-            ensure!(current_block > proposal.voting_end, Error::<T>::VotingPeriodEnded);
+            ensure!(
+                current_block > proposal.voting_end,
+                Error::<T>::VotingPeriodEnded
+            );
 
             // Calculate result based on threshold
             let required_percentage = match proposal.threshold {
@@ -3673,7 +3616,10 @@ pub mod pallet {
                 VotingThreshold::Custom(pct) => pct as u32,
             };
 
-            let total_decisive_votes = proposal.vote_tally.ayes.saturating_add(proposal.vote_tally.nays);
+            let total_decisive_votes = proposal
+                .vote_tally
+                .ayes
+                .saturating_add(proposal.vote_tally.nays);
             let approval_percentage = if total_decisive_votes > 0 {
                 proposal.vote_tally.ayes.saturating_mul(100) / total_decisive_votes
             } else {
@@ -3693,17 +3639,25 @@ pub mod pallet {
                 };
                 // CONS-030: Enforce minimum timelocks per action type
                 let action_timelock = match &proposal.action {
-                    Some(ProposalAction::RuntimeUpgrade { .. }) => T::RuntimeUpgradeMinTimelock::get(),
-                    Some(ProposalAction::ParameterChange { .. }) => T::ParameterChangeMinTimelock::get(),
+                    Some(ProposalAction::RuntimeUpgrade { .. }) => {
+                        T::RuntimeUpgradeMinTimelock::get()
+                    }
+                    Some(ProposalAction::ParameterChange { .. }) => {
+                        T::ParameterChangeMinTimelock::get()
+                    }
                     _ => Zero::zero(),
                 };
                 let enact_delay = enact_delay.max(action_timelock);
                 let current_u64_enact: u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0);
                 let delay_u64: u64 = TryInto::<u64>::try_into(enact_delay).unwrap_or(0);
                 // SAFETY: derived from u32 block number arithmetic in u64; fits BlockNumberFor<T>
-                let execute_at: BlockNumberFor<T> = current_u64_enact.saturating_add(delay_u64).saturated_into();
+                let execute_at: BlockNumberFor<T> =
+                    current_u64_enact.saturating_add(delay_u64).saturated_into();
                 ProposalEnactmentBlock::<T>::insert(proposal_id, execute_at);
-                Self::deposit_event(Event::ProposalEnqueued { proposal_id, execute_at });
+                Self::deposit_event(Event::ProposalEnqueued {
+                    proposal_id,
+                    execute_at,
+                });
                 Self::deposit_event(Event::ProposalApproved {
                     proposal_id,
                     ayes: proposal.vote_tally.ayes,
@@ -3745,7 +3699,9 @@ pub mod pallet {
             // Update council member if applicable
             if let Some(mut member) = Self::council_members(&account) {
                 member.community_rank = new_rank;
-                member.voting_weight = member.community_rank.saturating_add(member.pouw_contribution);
+                member.voting_weight = member
+                    .community_rank
+                    .saturating_add(member.pouw_contribution);
                 CouncilMembers::<T>::insert(&account, member);
             }
 
@@ -3775,7 +3731,9 @@ pub mod pallet {
             // Update council member if applicable
             if let Some(mut member) = Self::council_members(&account) {
                 member.pouw_contribution = new_contribution;
-                member.voting_weight = member.community_rank.saturating_add(member.pouw_contribution);
+                member.voting_weight = member
+                    .community_rank
+                    .saturating_add(member.pouw_contribution);
                 CouncilMembers::<T>::insert(&account, member);
             }
 
@@ -3808,13 +3766,8 @@ pub mod pallet {
 
             // P0-18 FIX: Require JaguarMode to be active — the self-declared
             // `proposal.is_emergency` flag alone is no longer sufficient.
-            let is_emergency_active = JaguarMode::<T>::get()
-                .map(|e| e.active)
-                .unwrap_or(false);
-            ensure!(
-                is_emergency_active,
-                Error::<T>::NotInEmergencyMode
-            );
+            let is_emergency_active = JaguarMode::<T>::get().map(|e| e.active).unwrap_or(false);
+            ensure!(is_emergency_active, Error::<T>::NotInEmergencyMode);
 
             proposal.status = ProposalStatus::Approved;
             Proposals::<T>::insert(proposal_id, proposal.clone());
@@ -3830,7 +3783,8 @@ pub mod pallet {
             let current_block = frame_system::Pallet::<T>::block_number();
             let current_u64: u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0);
             let delay_u64: u64 = TryInto::<u64>::try_into(enact_delay).unwrap_or(0);
-            let execute_at: BlockNumberFor<T> = current_u64.saturating_add(delay_u64).saturated_into();
+            let execute_at: BlockNumberFor<T> =
+                current_u64.saturating_add(delay_u64).saturated_into();
             ProposalEnactmentBlock::<T>::insert(proposal_id, execute_at);
 
             Self::deposit_event(Event::CouncilOverrideExecuted {
@@ -3907,8 +3861,8 @@ pub mod pallet {
             };
 
             // Verify caller is the department manager
-            let manager = DepartmentManagers::<T>::get(department)
-                .ok_or(Error::<T>::DepartmentNotFound)?;
+            let manager =
+                DepartmentManagers::<T>::get(department).ok_or(Error::<T>::DepartmentNotFound)?;
             ensure!(who == manager, Error::<T>::NotDepartmentManager);
 
             // Convert proposal type and threshold
@@ -3935,20 +3889,24 @@ pub mod pallet {
 
             let current_block = frame_system::Pallet::<T>::block_number();
             let current_u64: u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0);
-            let launch_period_u64: u64 = TryInto::<u64>::try_into(T::LaunchPeriod::get()).unwrap_or(0);
+            let launch_period_u64: u64 =
+                TryInto::<u64>::try_into(T::LaunchPeriod::get()).unwrap_or(0);
             let voting_start_u64 = current_u64.saturating_add(launch_period_u64);
             // SAFETY: value derived from u32 block number arithmetic in u64; fits in BlockNumberFor<T> (runtime uses u32 block numbers)
             let voting_start: BlockNumberFor<T> = voting_start_u64.saturated_into();
-            let voting_period_u64: u64 = TryInto::<u64>::try_into(T::VotingPeriod::get()).unwrap_or(0);
+            let voting_period_u64: u64 =
+                TryInto::<u64>::try_into(T::VotingPeriod::get()).unwrap_or(0);
             let voting_end_u64 = voting_start_u64.saturating_add(voting_period_u64);
             // SAFETY: value derived from u32 block number arithmetic in u64; fits in BlockNumberFor<T> (runtime uses u32 block numbers)
             let voting_end: BlockNumberFor<T> = voting_end_u64.saturated_into();
 
             let proposal_id = Self::next_proposal_id();
 
-            let bounded_title: BoundedVec<u8, ConstU32<256>> = title.try_into()
+            let bounded_title: BoundedVec<u8, ConstU32<256>> = title
+                .try_into()
                 .map_err(|_| Error::<T>::InvalidProposalType)?;
-            let bounded_description: BoundedVec<u8, ConstU32<1024>> = description.try_into()
+            let bounded_description: BoundedVec<u8, ConstU32<1024>> = description
+                .try_into()
                 .map_err(|_| Error::<T>::InvalidProposalType)?;
 
             let proposal = Proposal {
@@ -3974,13 +3932,13 @@ pub mod pallet {
                 district: None, // Department proposals are not district-specific
                 requires_cross_approval,
                 cross_approved_by: BoundedVec::default(),
-                action: None, // Phase 5: No action defined yet
+                action: None,      // Phase 5: No action defined yet
                 executed_at: None, // Phase 5: Not executed
             };
 
             Proposals::<T>::insert(proposal_id, proposal);
             NextProposalId::<T>::put(proposal_id.saturating_add(1));
-            
+
             // Increment department proposal count
             let count = DepartmentProposalCount::<T>::get(department);
             DepartmentProposalCount::<T>::insert(department, count.saturating_add(1));
@@ -4021,13 +3979,12 @@ pub mod pallet {
             };
 
             // Verify caller is the department manager
-            let manager = DepartmentManagers::<T>::get(department)
-                .ok_or(Error::<T>::DepartmentNotFound)?;
+            let manager =
+                DepartmentManagers::<T>::get(department).ok_or(Error::<T>::DepartmentNotFound)?;
             ensure!(who == manager, Error::<T>::NotDepartmentManager);
 
             // Get proposal and verify it requires cross approval
-            let mut proposal = Self::proposals(proposal_id)
-                .ok_or(Error::<T>::ProposalNotFound)?;
+            let mut proposal = Self::proposals(proposal_id).ok_or(Error::<T>::ProposalNotFound)?;
             ensure!(
                 proposal.requires_cross_approval,
                 Error::<T>::CrossApprovalNotRequired
@@ -4041,9 +3998,11 @@ pub mod pallet {
 
             // Mark approval
             CrossDepartmentApprovals::<T>::insert(proposal_id, department, true);
-            
+
             // Add to approved list
-            proposal.cross_approved_by.try_push(department)
+            proposal
+                .cross_approved_by
+                .try_push(department)
                 .map_err(|_| Error::<T>::TooManyCrossApprovals)?;
             Proposals::<T>::insert(proposal_id, proposal);
 
@@ -4134,13 +4093,14 @@ pub mod pallet {
 
             // Add to council
             CouncilMembers::<T>::insert(&account, member);
-            
+
             // Update board composition
             BoardComposition::<T>::insert(role, current_count + 1);
 
             // Add to term expiry queue
             TermExpiryQueue::<T>::try_mutate(term_end, |members| {
-                members.try_push(account.clone())
+                members
+                    .try_push(account.clone())
                     .map_err(|_| Error::<T>::CouncilSizeLimits)
             })?;
 
@@ -4165,8 +4125,7 @@ pub mod pallet {
             T::CouncilOrigin::ensure_origin(origin)?;
 
             // Get member info
-            let member = CouncilMembers::<T>::get(&account)
-                .ok_or(Error::<T>::MemberNotFound)?;
+            let member = CouncilMembers::<T>::get(&account).ok_or(Error::<T>::MemberNotFound)?;
 
             // Remove from council
             CouncilMembers::<T>::remove(&account);
@@ -4182,9 +4141,8 @@ pub mod pallet {
                 members.retain(|m| m != &account);
             });
 
-            let bounded_reason: BoundedVec<u8, ConstU32<128>> = reason
-                .try_into()
-                .unwrap_or_default();
+            let bounded_reason: BoundedVec<u8, ConstU32<128>> =
+                reason.try_into().unwrap_or_default();
 
             // Convert role to index for event
             let role_index = match member.role {
@@ -4207,23 +4165,23 @@ pub mod pallet {
         }
 
         /// 🐆 Activate Jaguar Mode - Declare National Emergency
-        /// 
+        ///
         /// Named after Belize's national animal, the Jaguar (Panthera onca),
         /// representing swift, decisive action during national crises.
-        /// 
+        ///
         /// **Requires**: Root or Foundation Board authority
         /// **Use Cases**: Hurricanes, health crises, economic emergencies, security threats
-        /// 
+        ///
         /// # Parameters
         /// - `emergency_type`: Type of emergency (Hurricane, HealthCrisis, etc.)
         /// - `description`: Human-readable description (max 256 bytes)
         /// - `duration_hours`: How long emergency lasts (converted to blocks)
-        /// 
+        ///
         /// # Effects
         /// - Activates fast-track governance procedures
         /// - Enables emergency fund disbursement
         /// - Alerts all council members and stakeholders
-        /// 
+        ///
         /// # Example
         /// ```ignore
         /// declare_emergency(
@@ -4238,7 +4196,7 @@ pub mod pallet {
             .saturating_add(T::DbWeight::get().writes(1)))]
         pub fn declare_emergency(
             origin: OriginFor<T>,
-            emergency_type_index: u8,  // 0=Hurricane, 1=HealthCrisis, 2=EconomicCrisis, 3=SecurityThreat, 4=InfrastructureFailure, 5=Other
+            emergency_type_index: u8, // 0=Hurricane, 1=HealthCrisis, 2=EconomicCrisis, 3=SecurityThreat, 4=InfrastructureFailure, 5=Other
             description: Vec<u8>,
             duration_hours: u32,
         ) -> DispatchResult {
@@ -4316,11 +4274,11 @@ pub mod pallet {
         }
 
         /// 🐆 Deactivate Jaguar Mode - End National Emergency
-        /// 
+        ///
         /// Manually ends an active emergency before its expiry time.
-        /// 
+        ///
         /// **Requires**: Root or Foundation Board authority
-        /// 
+        ///
         /// # Effects
         /// - Deactivates emergency governance procedures
         /// - Resumes normal governance operations
@@ -4329,19 +4287,19 @@ pub mod pallet {
         #[pallet::weight(Weight::from_parts(10_000_000, 512)
             .saturating_add(T::DbWeight::get().reads(1))
             .saturating_add(T::DbWeight::get().writes(1)))]
-        pub fn end_emergency(
-            origin: OriginFor<T>,
-        ) -> DispatchResult {
+        pub fn end_emergency(origin: OriginFor<T>) -> DispatchResult {
             // Requires root or board authority
             T::CouncilOrigin::try_origin(origin)
                 .map(|_| ())
                 .or_else(ensure_root)?;
 
             // Check if emergency is active or pending
-            let emergency = JaguarMode::<T>::get()
-                .ok_or(Error::<T>::NoActiveEmergency)?;
-            
-            ensure!(emergency.active || emergency.is_pending, Error::<T>::NoActiveEmergency);
+            let emergency = JaguarMode::<T>::get().ok_or(Error::<T>::NoActiveEmergency)?;
+
+            ensure!(
+                emergency.active || emergency.is_pending,
+                Error::<T>::NoActiveEmergency
+            );
 
             // Clear emergency status and any veto records
             JaguarMode::<T>::kill();
@@ -4364,9 +4322,7 @@ pub mod pallet {
         #[pallet::weight((Weight::from_parts(25_000_000, 4096)
             .saturating_add(T::DbWeight::get().reads(204))
             .saturating_add(T::DbWeight::get().writes(202)), DispatchClass::Operational))]
-        pub fn veto_emergency(
-            origin: OriginFor<T>,
-        ) -> DispatchResult {
+        pub fn veto_emergency(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
             // Must be a council member
@@ -4376,8 +4332,7 @@ pub mod pallet {
             );
 
             // Must have a pending emergency
-            let emergency = JaguarMode::<T>::get()
-                .ok_or(Error::<T>::NoPendingEmergency)?;
+            let emergency = JaguarMode::<T>::get().ok_or(Error::<T>::NoPendingEmergency)?;
             ensure!(emergency.is_pending, Error::<T>::NoPendingEmergency);
 
             // Must not have already vetoed
@@ -4426,8 +4381,7 @@ pub mod pallet {
             );
 
             // Ensure election is active
-            let _election_id = CurrentElection::<T>::get()
-                .ok_or(Error::<T>::NoActiveElection)?;
+            let _election_id = CurrentElection::<T>::get().ok_or(Error::<T>::NoActiveElection)?;
 
             // Add nominee (initialize vote count to 0)
             if !DelegateNominees::<T>::contains_key(&nominee) {
@@ -4445,10 +4399,7 @@ pub mod pallet {
         /// Vote for a delegate candidate
         #[pallet::call_index(12)]
         #[pallet::weight(Weight::from_parts(10_000_000, 512))]
-        pub fn vote_for_delegate(
-            origin: OriginFor<T>,
-            nominee: T::AccountId,
-        ) -> DispatchResult {
+        pub fn vote_for_delegate(origin: OriginFor<T>, nominee: T::AccountId) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
             // Check compliance
@@ -4458,8 +4409,7 @@ pub mod pallet {
             );
 
             // Ensure election is active
-            let election_id = CurrentElection::<T>::get()
-                .ok_or(Error::<T>::NoActiveElection)?;
+            let election_id = CurrentElection::<T>::get().ok_or(Error::<T>::NoActiveElection)?;
 
             // Check if already voted
             ensure!(
@@ -4478,7 +4428,7 @@ pub mod pallet {
 
             // Record vote
             DelegateVoters::<T>::insert(election_id, &who, &nominee);
-            
+
             // Increment nominee vote count
             DelegateNominees::<T>::mutate(&nominee, |count| {
                 *count = count.saturating_add(weight);
@@ -4542,9 +4492,11 @@ pub mod pallet {
             );
 
             // Convert title and description to bounded vecs
-            let bounded_title: BoundedVec<u8, ConstU32<256>> = title.try_into()
+            let bounded_title: BoundedVec<u8, ConstU32<256>> = title
+                .try_into()
                 .map_err(|_| Error::<T>::ReferendumTitleTooLong)?;
-            let bounded_description: BoundedVec<u8, ConstU32<1024>> = description.try_into()
+            let bounded_description: BoundedVec<u8, ConstU32<1024>> = description
+                .try_into()
                 .map_err(|_| Error::<T>::ReferendumDescriptionTooLong)?;
 
             // Convert options
@@ -4576,7 +4528,7 @@ pub mod pallet {
             let current_block = frame_system::Pallet::<T>::block_number();
             let duration = BlockNumberFor::<T>::from(duration_blocks);
             let voting_start = current_block;
-            
+
             let current_u64: u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0);
             let duration_u64: u64 = TryInto::<u64>::try_into(duration).unwrap_or(0);
             let voting_end_u64 = current_u64.saturating_add(duration_u64);
@@ -4659,16 +4611,25 @@ pub mod pallet {
             );
 
             // Get referendum
-            let mut referendum = Referendums::<T>::get(referendum_id)
-                .ok_or(Error::<T>::ReferendumNotFound)?;
+            let mut referendum =
+                Referendums::<T>::get(referendum_id).ok_or(Error::<T>::ReferendumNotFound)?;
 
             // Check referendum is active
-            ensure!(referendum.status == ReferendumStatus::Active, Error::<T>::ReferendumNotFinalized);
+            ensure!(
+                referendum.status == ReferendumStatus::Active,
+                Error::<T>::ReferendumNotFinalized
+            );
 
             // Check voting period
             let current_block = frame_system::Pallet::<T>::block_number();
-            ensure!(current_block >= referendum.voting_start, Error::<T>::ReferendumVotingNotStarted);
-            ensure!(current_block <= referendum.voting_end, Error::<T>::ReferendumVotingEnded);
+            ensure!(
+                current_block >= referendum.voting_start,
+                Error::<T>::ReferendumVotingNotStarted
+            );
+            ensure!(
+                current_block <= referendum.voting_end,
+                Error::<T>::ReferendumVotingEnded
+            );
 
             // Check not already voted
             ensure!(
@@ -4677,7 +4638,10 @@ pub mod pallet {
             );
 
             // Validate option index
-            ensure!((option_index as usize) < referendum.options.len(), Error::<T>::InvalidOptionIndex);
+            ensure!(
+                (option_index as usize) < referendum.options.len(),
+                Error::<T>::InvalidOptionIndex
+            );
 
             // Calculate voting weight
             let community_rank = CommunityRanks::<T>::get(&who);
@@ -4691,8 +4655,8 @@ pub mod pallet {
             ReferendumVotes::<T>::insert(referendum_id, &who, option_index);
 
             // Update vote counts
-            referendum.vote_counts[option_index as usize] = referendum.vote_counts[option_index as usize]
-                .saturating_add(weight);
+            referendum.vote_counts[option_index as usize] =
+                referendum.vote_counts[option_index as usize].saturating_add(weight);
             referendum.total_votes = referendum.total_votes.saturating_add(weight);
 
             // Update referendum
@@ -4721,22 +4685,25 @@ pub mod pallet {
         #[pallet::weight(Weight::from_parts(25_000_000, 1024)
             .saturating_add(T::DbWeight::get().reads(2))
             .saturating_add(T::DbWeight::get().writes(1)))]
-        pub fn finalize_referendum(
-            origin: OriginFor<T>,
-            referendum_id: u32,
-        ) -> DispatchResult {
+        pub fn finalize_referendum(origin: OriginFor<T>, referendum_id: u32) -> DispatchResult {
             let _who = ensure_signed(origin)?;
 
             // Get referendum
-            let mut referendum = Referendums::<T>::get(referendum_id)
-                .ok_or(Error::<T>::ReferendumNotFound)?;
+            let mut referendum =
+                Referendums::<T>::get(referendum_id).ok_or(Error::<T>::ReferendumNotFound)?;
 
             // Check not already finalized
-            ensure!(referendum.status == ReferendumStatus::Active, Error::<T>::ReferendumAlreadyFinalized);
+            ensure!(
+                referendum.status == ReferendumStatus::Active,
+                Error::<T>::ReferendumAlreadyFinalized
+            );
 
             // Check voting period ended
             let current_block = frame_system::Pallet::<T>::block_number();
-            ensure!(current_block > referendum.voting_end, Error::<T>::VotingPeriodNotEnded);
+            ensure!(
+                current_block > referendum.voting_end,
+                Error::<T>::VotingPeriodNotEnded
+            );
 
             // Calculate participation percentage (capped at 100 to prevent u8 wrap)
             let eligible_voters = ReferendumEligibleVoters::<T>::get(referendum_id);
@@ -4850,7 +4817,7 @@ pub mod pallet {
         ///     Origin::signed(council_member), // Must be council member
         ///     42, // proposal_id
         /// );
-        /// 
+        ///
         /// // If action was TreasuryTransfer { recipient: alice, amount: 50_000 DALLA }
         /// // -> Alice receives 50,000 DALLA from governance treasury
         /// // -> Proposal marked as executed
@@ -4860,27 +4827,18 @@ pub mod pallet {
         #[pallet::weight(Weight::from_parts(50_000_000, 2560)
             .saturating_add(T::DbWeight::get().reads(5))
             .saturating_add(T::DbWeight::get().writes(3)))]
-        pub fn execute_proposal(
-            origin: OriginFor<T>,
-            proposal_id: u32,
-        ) -> DispatchResult {
+        pub fn execute_proposal(origin: OriginFor<T>, proposal_id: u32) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
             // Only council members can execute approved proposals
-            ensure!(
-                Self::is_council_member(&who),
-                Error::<T>::NotCouncilMember
-            );
+            ensure!(Self::is_council_member(&who), Error::<T>::NotCouncilMember);
 
             // Get proposal
-            let mut proposal = Proposals::<T>::get(proposal_id)
-                .ok_or(Error::<T>::ProposalNotFound)?;
+            let mut proposal =
+                Proposals::<T>::get(proposal_id).ok_or(Error::<T>::ProposalNotFound)?;
 
             // Check if already executed FIRST (before checking approval)
-            ensure!(
-                proposal.executed_at.is_none(),
-                Error::<T>::AlreadyExecuted
-            );
+            ensure!(proposal.executed_at.is_none(), Error::<T>::AlreadyExecuted);
 
             // Double-check via storage
             ensure!(
@@ -4906,15 +4864,11 @@ pub mod pallet {
             // ratified via `ratify_constitutional_proposal` before execution proceeds.
             if proposal.proposal_type == ProposalType::Constitutional {
                 let (tech, gov) = ConstitutionalRatifications::<T>::get(proposal_id);
-                ensure!(
-                    tech && gov,
-                    Error::<T>::ConstitutionalRatificationRequired
-                );
+                ensure!(tech && gov, Error::<T>::ConstitutionalRatificationRequired);
             }
 
             // Get action or fail
-            let action = proposal.action.clone()
-                .ok_or(Error::<T>::NoActionDefined)?;
+            let action = proposal.action.clone().ok_or(Error::<T>::NoActionDefined)?;
 
             // Execute the action based on type
             Self::execute_action(&action, proposal_id)?;
@@ -4923,7 +4877,7 @@ pub mod pallet {
             let current_block = frame_system::Pallet::<T>::block_number();
             proposal.status = ProposalStatus::Executed;
             proposal.executed_at = Some(current_block);
-            
+
             // Update storage
             Proposals::<T>::insert(proposal_id, proposal);
             ExecutedProposals::<T>::insert(proposal_id, current_block);
@@ -5046,8 +5000,8 @@ pub mod pallet {
             };
 
             // Get election
-            let mut election = DistrictElections::<T>::get(district)
-                .ok_or(Error::<T>::ElectionNotFound)?;
+            let mut election =
+                DistrictElections::<T>::get(district).ok_or(Error::<T>::ElectionNotFound)?;
 
             // Verify registration phase
             ensure!(
@@ -5076,7 +5030,8 @@ pub mod pallet {
             );
 
             // Convert platform to BoundedVec
-            let bounded_platform: BoundedVec<u8, ConstU32<512>> = platform.try_into()
+            let bounded_platform: BoundedVec<u8, ConstU32<512>> = platform
+                .try_into()
                 .map_err(|_| Error::<T>::PlatformTooLong)?;
 
             // Create candidate
@@ -5137,12 +5092,14 @@ pub mod pallet {
             };
 
             // Get election
-            let mut election = DistrictElections::<T>::get(district)
-                .ok_or(Error::<T>::ElectionNotFound)?;
+            let mut election =
+                DistrictElections::<T>::get(district).ok_or(Error::<T>::ElectionNotFound)?;
 
             // Transition to voting if needed
             let current_block = frame_system::Pallet::<T>::block_number();
-            if election.status == ElectionStatus::Registration && current_block >= election.voting_start {
+            if election.status == ElectionStatus::Registration
+                && current_block >= election.voting_start
+            {
                 election.status = ElectionStatus::Voting;
             }
 
@@ -5214,8 +5171,8 @@ pub mod pallet {
             };
 
             // Get election
-            let mut election = DistrictElections::<T>::get(district)
-                .ok_or(Error::<T>::ElectionNotFound)?;
+            let mut election =
+                DistrictElections::<T>::get(district).ok_or(Error::<T>::ElectionNotFound)?;
 
             // Verify voting period ended
             let current_block = frame_system::Pallet::<T>::block_number();
@@ -5232,25 +5189,24 @@ pub mod pallet {
 
             // Get all candidates for this election (bounded by MaxCandidatesPerElection)
             let max_candidates = T::MaxCandidatesPerElection::get() as usize;
-            let mut candidates: Vec<(T::AccountId, u32)> = ElectionCandidates::<T>::iter_prefix(election.id)
-                .take(max_candidates)
-                .map(|(account, info)| (account, info.votes))
-                .collect();
+            let mut candidates: Vec<(T::AccountId, u32)> =
+                ElectionCandidates::<T>::iter_prefix(election.id)
+                    .take(max_candidates)
+                    .map(|(account, info)| (account, info.votes))
+                    .collect();
 
             // Sort by votes (descending)
             candidates.sort_by(|a, b| b.1.cmp(&a.1));
 
             // Take top N candidates based on seat count
-            let winners: Vec<T::AccountId> = candidates.iter()
+            let winners: Vec<T::AccountId> = candidates
+                .iter()
                 .take(election.seats as usize)
                 .map(|(account, _)| account.clone())
                 .collect();
 
             // Verify we have winners
-            ensure!(
-                !winners.is_empty(),
-                Error::<T>::InsufficientCandidates
-            );
+            ensure!(!winners.is_empty(), Error::<T>::InsufficientCandidates);
 
             // Calculate term end (2 years from now)
             let term_blocks: BlockNumberFor<T> = (BLOCKS_PER_YEAR * 2).into();
@@ -5262,7 +5218,7 @@ pub mod pallet {
 
             // Assign council seats to winners
             let mut district_members: Vec<T::AccountId> = Vec::new();
-            
+
             for winner in winners.iter() {
                 // Get candidate info for vote count
                 if let Some(candidate_info) = ElectionCandidates::<T>::get(election.id, winner) {
@@ -5295,8 +5251,8 @@ pub mod pallet {
             }
 
             // Update district representation
-            let bounded_members: BoundedVec<T::AccountId, ConstU32<5>> = district_members.try_into()
-                .unwrap_or_default();
+            let bounded_members: BoundedVec<T::AccountId, ConstU32<5>> =
+                district_members.try_into().unwrap_or_default();
             DistrictRepresentation::<T>::insert(district, bounded_members.clone());
 
             // Mark election as finalized
@@ -5373,7 +5329,7 @@ pub mod pallet {
         ///     expert_account.clone(), // Trusted delegate
         ///     Some(six_months), // Custom expiry
         /// );
-        /// 
+        ///
         /// // Alice's voting power now added to expert_account's weight
         /// // Alice can still revoke at any time
         /// ```
@@ -5435,7 +5391,8 @@ pub mod pallet {
             VoteDelegations::<T>::insert(&delegator, delegation);
 
             // Add to receiver list
-            receivers.try_push(delegator.clone())
+            receivers
+                .try_push(delegator.clone())
                 .map_err(|_| Error::<T>::TooManyDelegators)?;
             DelegationReceivers::<T>::insert(&delegate, receivers);
 
@@ -5457,8 +5414,8 @@ pub mod pallet {
             let delegator = ensure_signed(origin)?;
 
             // Get existing delegation
-            let delegation = VoteDelegations::<T>::get(&delegator)
-                .ok_or(Error::<T>::NoDelegationFound)?;
+            let delegation =
+                VoteDelegations::<T>::get(&delegator).ok_or(Error::<T>::NoDelegationFound)?;
 
             let delegate = delegation.delegate.clone();
 
@@ -5492,8 +5449,8 @@ pub mod pallet {
             let proposer = ensure_signed(origin)?;
 
             // Get proposal
-            let mut proposal = Proposals::<T>::get(proposal_id)
-                .ok_or(Error::<T>::ProposalNotFound)?;
+            let mut proposal =
+                Proposals::<T>::get(proposal_id).ok_or(Error::<T>::ProposalNotFound)?;
 
             // Verify proposer is author
             ensure!(proposal.proposer == proposer, Error::<T>::NotProposalAuthor);
@@ -5552,10 +5509,7 @@ pub mod pallet {
         #[pallet::weight(Weight::from_parts(85_000_000, 4096)
             .saturating_add(T::DbWeight::get().reads(53))
             .saturating_add(T::DbWeight::get().writes(2)))]
-        pub fn claim_participation_reward(
-            origin: OriginFor<T>,
-            reward_type: u8,
-        ) -> DispatchResult {
+        pub fn claim_participation_reward(origin: OriginFor<T>, reward_type: u8) -> DispatchResult {
             let claimer = ensure_signed(origin)?;
 
             // Determine reward amount based on type
@@ -5567,8 +5521,8 @@ pub mod pallet {
                     // Vote reward - check if voted on any proposal (bounded scan)
                     let next_id = NextProposalId::<T>::get();
                     let max_check = next_id.min(50);
-                    let has_voted = (0..max_check)
-                        .any(|pid| Votes::<T>::contains_key(pid, &claimer));
+                    let has_voted =
+                        (0..max_check).any(|pid| Votes::<T>::contains_key(pid, &claimer));
                     ensure!(has_voted, Error::<T>::NoRewardAvailable);
                     // SAFETY(saturated_into): constant 10_000_000_000_000 fits in BalanceOf<T> (u128 on standard runtimes)
                     10_000_000_000_000u128.saturated_into() // 10 DALLA (12 decimals)
@@ -5606,7 +5560,7 @@ pub mod pallet {
             // 2. Treasury proposals (approved by council)
             // 3. Initial endowment at genesis
             let treasury_account = Self::account_id();
-            
+
             // Ensure treasury has sufficient balance
             let treasury_balance = T::Currency::free_balance(&treasury_account);
             ensure!(
@@ -5624,7 +5578,7 @@ pub mod pallet {
 
             // Record claim (H-26: per reward_type)
             RewardsClaimed::<T>::insert(&claimer, reward_type, reward_amount);
-            
+
             let total_distributed = TotalRewardsDistributed::<T>::get();
             TotalRewardsDistributed::<T>::put(total_distributed.saturating_add(reward_amount));
 
@@ -5669,13 +5623,14 @@ pub mod pallet {
 
             // Get or create queue for this priority
             let mut queue = ProposalQueue::<T>::get(priority_enum);
-            
+
             // Check if queue is full
             ensure!(queue.len() < 50, Error::<T>::PriorityQueueFull);
 
             // Add to queue if not already present
             if !queue.contains(&proposal_id) {
-                queue.try_push(proposal_id)
+                queue
+                    .try_push(proposal_id)
                     .map_err(|_| Error::<T>::PriorityQueueFull)?;
                 ProposalQueue::<T>::insert(priority_enum, queue);
             }
@@ -5714,8 +5669,8 @@ pub mod pallet {
             ensure_root(origin)?;
 
             // Validate district index and convert
-            let district = BelizeDistrict::from_index(district_index)
-                .ok_or(Error::<T>::InvalidDistrict)?;
+            let district =
+                BelizeDistrict::from_index(district_index).ok_or(Error::<T>::InvalidDistrict)?;
 
             // Validate fiscal year period
             ensure!(fiscal_year_blocks > 0, Error::<T>::InvalidFiscalYearPeriod);
@@ -5786,7 +5741,10 @@ pub mod pallet {
             );
 
             // Validate description length
-            ensure!(description.len() <= 512, Error::<T>::TreasuryDescriptionTooLong);
+            ensure!(
+                description.len() <= 512,
+                Error::<T>::TreasuryDescriptionTooLong
+            );
             let bounded_description = BoundedVec::try_from(description)
                 .map_err(|_| Error::<T>::TreasuryDescriptionTooLong)?;
 
@@ -5801,12 +5759,14 @@ pub mod pallet {
             // Converting amount to u128 for comparison (assuming 12 decimals)
             // SAFETY(saturated_into): BalanceOf<T> → u128 is lossless on standard runtimes (Balance is u128)
             let amount_value: u128 = amount.saturated_into();
-            let threshold = if amount_value < 10_000_000_000_000 { // < 10K DALLA
-                1u8  // Single approval
-            } else if amount_value < 100_000_000_000_000 { // < 100K DALLA
-                3u8  // 3-of-7
+            let threshold = if amount_value < 10_000_000_000_000 {
+                // < 10K DALLA
+                1u8 // Single approval
+            } else if amount_value < 100_000_000_000_000 {
+                // < 100K DALLA
+                3u8 // 3-of-7
             } else {
-                4u8  // 4-of-7 for large amounts
+                4u8 // 4-of-7 for large amounts
             };
 
             let current_block = <frame_system::Pallet<T>>::block_number();
@@ -5854,10 +5814,7 @@ pub mod pallet {
         #[pallet::weight(Weight::from_parts(20_000_000, 1024)
             .saturating_add(T::DbWeight::get().reads(2))
             .saturating_add(T::DbWeight::get().writes(1)))]
-        pub fn approve_treasury_spend(
-            origin: OriginFor<T>,
-            proposal_id: u32,
-        ) -> DispatchResult {
+        pub fn approve_treasury_spend(origin: OriginFor<T>, proposal_id: u32) -> DispatchResult {
             let approver = ensure_signed(origin)?;
 
             // Only council members can approve treasury spends
@@ -5871,11 +5828,17 @@ pub mod pallet {
                 .ok_or(Error::<T>::TreasuryProposalNotFound)?;
 
             // Check not executed
-            ensure!(!proposal.executed, Error::<T>::TreasuryProposalAlreadyExecuted);
+            ensure!(
+                !proposal.executed,
+                Error::<T>::TreasuryProposalAlreadyExecuted
+            );
 
             // Check not expired
             let current_block = <frame_system::Pallet<T>>::block_number();
-            ensure!(current_block <= proposal.expires_at, Error::<T>::TreasuryProposalExpired);
+            ensure!(
+                current_block <= proposal.expires_at,
+                Error::<T>::TreasuryProposalExpired
+            );
 
             // Check not already approved by this account
             ensure!(
@@ -5884,7 +5847,9 @@ pub mod pallet {
             );
 
             // Add approval
-            proposal.approvals.try_push(approver.clone())
+            proposal
+                .approvals
+                .try_push(approver.clone())
                 .map_err(|_| Error::<T>::TooManyApprovals)?;
 
             let approvals_count = proposal.approvals.len() as u8;
@@ -5915,10 +5880,7 @@ pub mod pallet {
         #[pallet::weight(Weight::from_parts(40_000_000, 2048)
             .saturating_add(T::DbWeight::get().reads(4))
             .saturating_add(T::DbWeight::get().writes(3)))]
-        pub fn execute_treasury_proposal(
-            origin: OriginFor<T>,
-            proposal_id: u32,
-        ) -> DispatchResult {
+        pub fn execute_treasury_proposal(origin: OriginFor<T>, proposal_id: u32) -> DispatchResult {
             let _executor = ensure_signed(origin)?;
 
             // Get proposal
@@ -5926,11 +5888,17 @@ pub mod pallet {
                 .ok_or(Error::<T>::TreasuryProposalNotFound)?;
 
             // Check not executed
-            ensure!(!proposal.executed, Error::<T>::TreasuryProposalAlreadyExecuted);
+            ensure!(
+                !proposal.executed,
+                Error::<T>::TreasuryProposalAlreadyExecuted
+            );
 
             // Check not expired
             let current_block = <frame_system::Pallet<T>>::block_number();
-            ensure!(current_block <= proposal.expires_at, Error::<T>::TreasuryProposalExpired);
+            ensure!(
+                current_block <= proposal.expires_at,
+                Error::<T>::TreasuryProposalExpired
+            );
 
             // Check approval threshold met
             let approvals_count = proposal.approvals.len() as u8;
@@ -5952,7 +5920,9 @@ pub mod pallet {
 
                 // Update budget
                 budget.spent += proposal.amount;
-                budget.proposals_funded.try_push(proposal_id)
+                budget
+                    .proposals_funded
+                    .try_push(proposal_id)
                     .map_err(|_| Error::<T>::TooManyProposals)?;
 
                 DistrictBudgets::<T>::insert(district, budget.clone());
@@ -5966,7 +5936,10 @@ pub mod pallet {
             } else {
                 // Deduct from national treasury
                 let reserves = NationalTreasuryReserve::<T>::get();
-                ensure!(reserves >= proposal.amount, Error::<T>::InsufficientNationalTreasury);
+                ensure!(
+                    reserves >= proposal.amount,
+                    Error::<T>::InsufficientNationalTreasury
+                );
                 NationalTreasuryReserve::<T>::put(reserves - proposal.amount);
             }
 
@@ -6017,17 +5990,20 @@ pub mod pallet {
 
             // Validate district indices
             // Validate and convert district indices
-            ensure!(from_district_index != to_district_index, Error::<T>::InvalidDistrict);
-            
+            ensure!(
+                from_district_index != to_district_index,
+                Error::<T>::InvalidDistrict
+            );
+
             let from_district = BelizeDistrict::from_index(from_district_index)
                 .ok_or(Error::<T>::InvalidDistrict)?;
-            let to_district = BelizeDistrict::from_index(to_district_index)
-                .ok_or(Error::<T>::InvalidDistrict)?;
+            let to_district =
+                BelizeDistrict::from_index(to_district_index).ok_or(Error::<T>::InvalidDistrict)?;
 
             // Validate reason length
             ensure!(reason.len() <= 256, Error::<T>::DescriptionTooLong);
-            let bounded_reason = BoundedVec::try_from(reason)
-                .map_err(|_| Error::<T>::DescriptionTooLong)?;
+            let bounded_reason =
+                BoundedVec::try_from(reason).map_err(|_| Error::<T>::DescriptionTooLong)?;
 
             // Get source budget
             let mut from_budget = DistrictBudgets::<T>::get(from_district)
@@ -6038,19 +6014,18 @@ pub mod pallet {
             ensure!(available >= amount, Error::<T>::TransferExceedsSourceBudget);
 
             // Get or create destination budget
-            let mut to_budget = DistrictBudgets::<T>::get(to_district)
-                .unwrap_or_else(|| {
-                    let current_block = <frame_system::Pallet<T>>::block_number();
-                    DistrictBudget {
-                        district: to_district,
-                        allocated: Zero::zero(),
-                        spent: Zero::zero(),
-                        proposals_funded: BoundedVec::default(),
-                        fiscal_year_start: current_block,
-                        fiscal_year_end: current_block + BLOCKS_PER_YEAR.into(),
-                        is_active: true,
-                    }
-                });
+            let mut to_budget = DistrictBudgets::<T>::get(to_district).unwrap_or_else(|| {
+                let current_block = <frame_system::Pallet<T>>::block_number();
+                DistrictBudget {
+                    district: to_district,
+                    allocated: Zero::zero(),
+                    spent: Zero::zero(),
+                    proposals_funded: BoundedVec::default(),
+                    fiscal_year_start: current_block,
+                    fiscal_year_end: current_block + BLOCKS_PER_YEAR.into(),
+                    is_active: true,
+                }
+            });
 
             // Transfer funds
             from_budget.allocated = from_budget.allocated.saturating_sub(amount);
@@ -6072,15 +6047,15 @@ pub mod pallet {
         // ===== Emergency Governance Procedures =====
 
         /// Execute fast-track emergency proposal during JaguarMode
-        /// 
+        ///
         /// Enables immediate execution of emergency proposals when:
         /// - JaguarMode is active
         /// - Proposal has achieved super-majority (66%+)
         /// - Proposal has emergency priority
-        /// 
+        ///
         /// # Arguments
         /// * `proposal_id` - ID of the emergency proposal to execute
-        /// 
+        ///
         /// # Weight
         /// - Reads: 3 (JaguarMode, Proposals, CouncilMembers iteration)
         /// - Writes: 1 (Proposals update)
@@ -6094,24 +6069,19 @@ pub mod pallet {
         ) -> DispatchResult {
             // Only Root or Council can execute emergency proposals
             if ensure_root(origin.clone()).is_err() {
-                T::CouncilOrigin::ensure_origin(origin)
-                    .map_err(|_| Error::<T>::Unauthorized)?;
+                T::CouncilOrigin::ensure_origin(origin).map_err(|_| Error::<T>::Unauthorized)?;
             }
 
             // Verify JaguarMode is active
-            let emergency_status = JaguarMode::<T>::get()
-                .ok_or(Error::<T>::NotInEmergencyMode)?;
+            let emergency_status = JaguarMode::<T>::get().ok_or(Error::<T>::NotInEmergencyMode)?;
             ensure!(emergency_status.active, Error::<T>::NotInEmergencyMode);
 
             // Get proposal
-            let mut proposal = Proposals::<T>::get(proposal_id)
-                .ok_or(Error::<T>::ProposalNotFound)?;
-            
+            let mut proposal =
+                Proposals::<T>::get(proposal_id).ok_or(Error::<T>::ProposalNotFound)?;
+
             // Verify proposal has emergency flag
-            ensure!(
-                proposal.is_emergency,
-                Error::<T>::NotEmergencyProposal
-            );
+            ensure!(proposal.is_emergency, Error::<T>::NotEmergencyProposal);
 
             // Verify proposal is still in voting period
             let current_block = frame_system::Pallet::<T>::block_number();
@@ -6124,7 +6094,7 @@ pub mod pallet {
             // Use vote_tally to check approval
             let total_votes = proposal.vote_tally.ayes + proposal.vote_tally.nays;
             ensure!(total_votes > 0, Error::<T>::InsufficientSuperMajority);
-            
+
             let approval_percentage = (proposal.vote_tally.ayes * 100) / total_votes;
 
             // Ensure super-majority achieved (66%+)
@@ -6157,13 +6127,13 @@ pub mod pallet {
         }
 
         /// Fast-track emergency referendum during JaguarMode
-        /// 
+        ///
         /// Reduces voting period to 3 hours (10,800 blocks) for critical decisions.
         /// Requires Root or FSC authority.
-        /// 
+        ///
         /// # Arguments
         /// * `referendum_id` - ID of the referendum to fast-track
-        /// 
+        ///
         /// # Weight
         /// - Reads: 2 (JaguarMode, Referendums)
         /// - Writes: 1 (Referendums update)
@@ -6171,24 +6141,19 @@ pub mod pallet {
         #[pallet::weight(Weight::from_parts(20_000_000, 1024)
             .saturating_add(T::DbWeight::get().reads(2))
             .saturating_add(T::DbWeight::get().writes(1)))]
-        pub fn fast_track_referendum(
-            origin: OriginFor<T>,
-            referendum_id: u32,
-        ) -> DispatchResult {
+        pub fn fast_track_referendum(origin: OriginFor<T>, referendum_id: u32) -> DispatchResult {
             // Only Root or Council can fast-track
             if ensure_root(origin.clone()).is_err() {
-                T::CouncilOrigin::ensure_origin(origin)
-                    .map_err(|_| Error::<T>::Unauthorized)?;
+                T::CouncilOrigin::ensure_origin(origin).map_err(|_| Error::<T>::Unauthorized)?;
             }
 
             // Verify JaguarMode is active
-            let emergency_status = JaguarMode::<T>::get()
-                .ok_or(Error::<T>::NotInEmergencyMode)?;
+            let emergency_status = JaguarMode::<T>::get().ok_or(Error::<T>::NotInEmergencyMode)?;
             ensure!(emergency_status.active, Error::<T>::NotInEmergencyMode);
 
             // Get referendum
-            let mut referendum = Referendums::<T>::get(referendum_id)
-                .ok_or(Error::<T>::ReferendumNotFound)?;
+            let mut referendum =
+                Referendums::<T>::get(referendum_id).ok_or(Error::<T>::ReferendumNotFound)?;
 
             // Verify still active (not already passed/failed/cancelled)
             ensure!(
@@ -6197,7 +6162,7 @@ pub mod pallet {
             );
 
             let current_block = frame_system::Pallet::<T>::block_number();
-            
+
             // Set fast-track deadline (3 hours = 10,800 blocks)
             let fast_track_deadline = current_block + 10_800u32.into();
             let original_deadline = referendum.voting_end;
@@ -6217,15 +6182,15 @@ pub mod pallet {
         }
 
         /// Override proposal result during national emergency
-        /// 
+        ///
         /// Allows Root to forcibly execute or reject proposals during crisis situations.
         /// Requires detailed justification. Should only be used in extreme circumstances.
-        /// 
+        ///
         /// # Arguments
         /// * `proposal_id` - ID of the proposal to override
         /// * `execute` - true to force execution, false to force rejection
         /// * `justification` - Reason for emergency override
-        /// 
+        ///
         /// # Weight
         /// - Reads: 2 (JaguarMode, Proposals)
         /// - Writes: 1 (Proposals update)
@@ -6243,8 +6208,7 @@ pub mod pallet {
             ensure_root(origin)?;
 
             // Verify JaguarMode is active
-            let emergency_status = JaguarMode::<T>::get()
-                .ok_or(Error::<T>::NotInEmergencyMode)?;
+            let emergency_status = JaguarMode::<T>::get().ok_or(Error::<T>::NotInEmergencyMode)?;
             ensure!(emergency_status.active, Error::<T>::NotInEmergencyMode);
 
             // Validate justification
@@ -6253,8 +6217,8 @@ pub mod pallet {
                 .map_err(|_| Error::<T>::TreasuryDescriptionTooLong)?;
 
             // Get proposal
-            let mut proposal = Proposals::<T>::get(proposal_id)
-                .ok_or(Error::<T>::ProposalNotFound)?;
+            let mut proposal =
+                Proposals::<T>::get(proposal_id).ok_or(Error::<T>::ProposalNotFound)?;
 
             let current_block = frame_system::Pallet::<T>::block_number();
 
@@ -6265,7 +6229,7 @@ pub mod pallet {
             } else {
                 proposal.status = ProposalStatus::Rejected;
             }
-            
+
             Proposals::<T>::insert(proposal_id, proposal.clone());
 
             // Emit event
@@ -6327,8 +6291,8 @@ pub mod pallet {
             Ok(())
         }
 
-    // ── AR-13: Commit-Reveal Voting ──────────────────────────────────────
-    // These extrinsics are part of the main #[pallet::call] block above.
+        // ── AR-13: Commit-Reveal Voting ──────────────────────────────────────
+        // These extrinsics are part of the main #[pallet::call] block above.
 
         /// Commit a blinded vote for a proposal (phase 1 of commit-reveal).
         ///
@@ -6357,15 +6321,23 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            let proposal = Self::proposals(proposal_id)
-                .ok_or(Error::<T>::ProposalNotFound)?;
+            let proposal = Self::proposals(proposal_id).ok_or(Error::<T>::ProposalNotFound)?;
             let current_block = frame_system::Pallet::<T>::block_number();
 
-            ensure!(current_block >= proposal.voting_start, Error::<T>::VotingPeriodNotStarted);
-            ensure!(current_block <= proposal.voting_end, Error::<T>::VotingPeriodEnded);
+            ensure!(
+                current_block >= proposal.voting_start,
+                Error::<T>::VotingPeriodNotStarted
+            );
+            ensure!(
+                current_block <= proposal.voting_end,
+                Error::<T>::VotingPeriodEnded
+            );
 
             // Guard: prevent committing if already revealed
-            ensure!(!Votes::<T>::contains_key(proposal_id, &who), Error::<T>::AlreadyVoted);
+            ensure!(
+                !Votes::<T>::contains_key(proposal_id, &who),
+                Error::<T>::AlreadyVoted
+            );
             // Guard: one commitment per account per proposal
             ensure!(
                 !VoteCommitments::<T>::contains_key(proposal_id, &who),
@@ -6374,7 +6346,10 @@ pub mod pallet {
 
             VoteCommitments::<T>::insert(proposal_id, &who, commitment);
 
-            Self::deposit_event(Event::VoteCommitted { proposal_id, voter: who });
+            Self::deposit_event(Event::VoteCommitted {
+                proposal_id,
+                voter: who,
+            });
             Ok(())
         }
 
@@ -6421,10 +6396,16 @@ pub mod pallet {
             preimage[0] = vote_choice_index;
             preimage[1..].copy_from_slice(&salt);
             let computed = blake2_256(&preimage);
-            ensure!(computed == stored_commitment, Error::<T>::CommitmentHashMismatch);
+            ensure!(
+                computed == stored_commitment,
+                Error::<T>::CommitmentHashMismatch
+            );
 
             // Guard against double-reveal
-            ensure!(!Votes::<T>::contains_key(proposal_id, &who), Error::<T>::VoteAlreadyRevealedViaCommit);
+            ensure!(
+                !Votes::<T>::contains_key(proposal_id, &who),
+                Error::<T>::VoteAlreadyRevealedViaCommit
+            );
 
             // Resolve vote choice
             let vote_choice = match vote_choice_index {
@@ -6434,17 +6415,21 @@ pub mod pallet {
                 _ => return Err(Error::<T>::InvalidThreshold.into()),
             };
 
-            let mut proposal = Self::proposals(proposal_id)
-                .ok_or(Error::<T>::ProposalNotFound)?;
+            let mut proposal = Self::proposals(proposal_id).ok_or(Error::<T>::ProposalNotFound)?;
             let current_block = frame_system::Pallet::<T>::block_number();
 
             // G-1 FIX: Bound reveal window — reveals accepted only while voting is
             // open OR within one VotingPeriod after voting_end (reveal window).
             // This prevents tally mutation after finalization.
-            ensure!(current_block >= proposal.voting_start, Error::<T>::VotingPeriodNotStarted);
-            let reveal_deadline = proposal.voting_end
-                .saturating_add(T::VotingPeriod::get());
-            ensure!(current_block <= reveal_deadline, Error::<T>::VotingPeriodEnded);
+            ensure!(
+                current_block >= proposal.voting_start,
+                Error::<T>::VotingPeriodNotStarted
+            );
+            let reveal_deadline = proposal.voting_end.saturating_add(T::VotingPeriod::get());
+            ensure!(
+                current_block <= reveal_deadline,
+                Error::<T>::VotingPeriodEnded
+            );
             // Reject reveals on already-finalized proposals (accept Pending
             // or Voting — a reveal IS a vote and may be the first one cast)
             ensure!(
@@ -6470,8 +6455,7 @@ pub mod pallet {
             } else {
                 stake_units
             };
-            let stake_weight: u32 = raw_stake_weight
-                .min(T::MaxVotingUnits::get() as u128) as u32;
+            let stake_weight: u32 = raw_stake_weight.min(T::MaxVotingUnits::get() as u128) as u32;
 
             let base_weight = community_rank
                 .saturating_add(pouw_contribution)
@@ -6481,10 +6465,12 @@ pub mod pallet {
             let conviction_weight = base_weight.saturating_mul(conviction_multiplier);
 
             let multiplier = EffectiveVotingMultiplier::<T>::get(&who);
-            let effective_mult = if multiplier == 0 { 100u32 } else { multiplier as u32 };
-            let final_weight = conviction_weight
-                .saturating_mul(effective_mult)
-                / 100;
+            let effective_mult = if multiplier == 0 {
+                100u32
+            } else {
+                multiplier as u32
+            };
+            let final_weight = conviction_weight.saturating_mul(effective_mult) / 100;
 
             // Record vote in Votes storage
             let vote = Vote {
@@ -6497,18 +6483,21 @@ pub mod pallet {
 
             // Update tally
             match vote_choice {
-                VoteChoice::Aye =>
-                    proposal.vote_tally.ayes =
-                        proposal.vote_tally.ayes.saturating_add(final_weight),
-                VoteChoice::Nay =>
-                    proposal.vote_tally.nays =
-                        proposal.vote_tally.nays.saturating_add(final_weight),
-                VoteChoice::Abstain =>
+                VoteChoice::Aye => {
+                    proposal.vote_tally.ayes = proposal.vote_tally.ayes.saturating_add(final_weight)
+                }
+                VoteChoice::Nay => {
+                    proposal.vote_tally.nays = proposal.vote_tally.nays.saturating_add(final_weight)
+                }
+                VoteChoice::Abstain => {
                     proposal.vote_tally.abstentions =
-                        proposal.vote_tally.abstentions.saturating_add(final_weight),
+                        proposal.vote_tally.abstentions.saturating_add(final_weight)
+                }
             }
-            proposal.vote_tally.total_weight =
-                proposal.vote_tally.total_weight.saturating_add(final_weight);
+            proposal.vote_tally.total_weight = proposal
+                .vote_tally
+                .total_weight
+                .saturating_add(final_weight);
             proposal.status = ProposalStatus::Voting;
             Proposals::<T>::insert(proposal_id, proposal);
 
@@ -6563,18 +6552,18 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo {
             ensure_root(origin)?;
 
-            let approved_hash = PendingRuntimeUpgrade::<T>::get()
-                .ok_or(Error::<T>::RuntimeUpgradeNotPending)?;
+            let approved_hash =
+                PendingRuntimeUpgrade::<T>::get().ok_or(Error::<T>::RuntimeUpgradeNotPending)?;
 
             // Verify code against governance-approved hash
             let code_hash = blake2_256(&code);
-            ensure!(code_hash == approved_hash, Error::<T>::RuntimeCodeHashMismatch);
+            ensure!(
+                code_hash == approved_hash,
+                Error::<T>::RuntimeCodeHashMismatch
+            );
 
             // Apply the upgrade. `set_code` takes a root origin internally.
-            frame_system::Pallet::<T>::set_code(
-                frame_system::RawOrigin::Root.into(),
-                code,
-            )?;
+            frame_system::Pallet::<T>::set_code(frame_system::RawOrigin::Root.into(), code)?;
 
             // Clear pending upgrade to prevent replay.
             PendingRuntimeUpgrade::<T>::kill();
@@ -6657,8 +6646,7 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            let proposal = Proposals::<T>::get(proposal_id)
-                .ok_or(Error::<T>::ProposalNotFound)?;
+            let proposal = Proposals::<T>::get(proposal_id).ok_or(Error::<T>::ProposalNotFound)?;
 
             // Only Constitutional proposals go through dual-house ratification.
             ensure!(
@@ -6728,14 +6716,12 @@ pub mod pallet {
         #[pallet::weight(Weight::from_parts(15_000_000, 512)
             .saturating_add(T::DbWeight::get().reads(1))
             .saturating_add(T::DbWeight::get().writes(1)))]
-        pub fn lock_chain_parameter(
-            origin: OriginFor<T>,
-            key: Vec<u8>,
-        ) -> DispatchResult {
+        pub fn lock_chain_parameter(origin: OriginFor<T>, key: Vec<u8>) -> DispatchResult {
             T::ConstitutionalAdminOrigin::ensure_origin(origin)?;
 
-            let bounded_key: BoundedVec<u8, ConstU32<32>> =
-                key.try_into().map_err(|_| Error::<T>::ParameterKeyTooLong)?;
+            let bounded_key: BoundedVec<u8, ConstU32<32>> = key
+                .try_into()
+                .map_err(|_| Error::<T>::ParameterKeyTooLong)?;
 
             ensure!(
                 !LockedParameters::<T>::get(&bounded_key),
@@ -6758,14 +6744,12 @@ pub mod pallet {
         #[pallet::weight(Weight::from_parts(15_000_000, 512)
             .saturating_add(T::DbWeight::get().reads(1))
             .saturating_add(T::DbWeight::get().writes(1)))]
-        pub fn unlock_chain_parameter(
-            origin: OriginFor<T>,
-            key: Vec<u8>,
-        ) -> DispatchResult {
+        pub fn unlock_chain_parameter(origin: OriginFor<T>, key: Vec<u8>) -> DispatchResult {
             T::ConstitutionalAdminOrigin::ensure_origin(origin)?;
 
-            let bounded_key: BoundedVec<u8, ConstU32<32>> =
-                key.try_into().map_err(|_| Error::<T>::ParameterKeyTooLong)?;
+            let bounded_key: BoundedVec<u8, ConstU32<32>> = key
+                .try_into()
+                .map_err(|_| Error::<T>::ParameterKeyTooLong)?;
 
             ensure!(
                 LockedParameters::<T>::get(&bounded_key),
@@ -6873,7 +6857,10 @@ pub mod pallet {
         }
 
         /// Check if account has voted in election
-        pub fn has_voted_in_election(election_id: BlockNumberFor<T>, account: &T::AccountId) -> bool {
+        pub fn has_voted_in_election(
+            election_id: BlockNumberFor<T>,
+            account: &T::AccountId,
+        ) -> bool {
             DelegateVoters::<T>::contains_key(election_id, account)
         }
 
@@ -6891,10 +6878,16 @@ pub mod pallet {
                 ProposalAction::RuntimeUpgrade { code_hash } => {
                     Self::execute_runtime_upgrade(code_hash, proposal_id)?;
                 }
-                ProposalAction::ParameterChange { parameter, new_value } => {
+                ProposalAction::ParameterChange {
+                    parameter,
+                    new_value,
+                } => {
                     Self::execute_parameter_change(*parameter, *new_value)?;
                 }
-                ProposalAction::DepartmentAction { department, call_data } => {
+                ProposalAction::DepartmentAction {
+                    department,
+                    call_data,
+                } => {
                     Self::execute_department_action(*department, call_data, proposal_id)?;
                 }
                 ProposalAction::EmergencyAction { action_type } => {
@@ -6928,9 +6921,10 @@ pub mod pallet {
                 effective_spent.saturating_add(amount) <= T::MaxTreasurySpendPerPeriod::get(),
                 Error::<T>::TreasurySpendCapExceeded
             );
-            TreasurySpendTracker::<T>::put(
-                (current_period, effective_spent.saturating_add(amount))
-            );
+            TreasurySpendTracker::<T>::put((
+                current_period,
+                effective_spent.saturating_add(amount),
+            ));
 
             // Get treasury account (we'll use pallet's account for now)
             let treasury_account = Self::account_id();
@@ -6954,7 +6948,7 @@ pub mod pallet {
                 proposal_id,
                 recipient: recipient.clone(),
                 amount,
-                district_index: None,  // Helper function doesn't track district
+                district_index: None, // Helper function doesn't track district
             });
 
             Ok(())
@@ -6966,10 +6960,7 @@ pub mod pallet {
             proposal_id: u32,
         ) -> DispatchResult {
             // Verify code hash length
-            ensure!(
-                code_hash.len() == 32,
-                Error::<T>::RuntimeCodeTooLarge
-            );
+            ensure!(code_hash.len() == 32, Error::<T>::RuntimeCodeTooLarge);
 
             // Convert to fixed-size array
             let mut hash_array = [0u8; 32];
@@ -6995,22 +6986,40 @@ pub mod pallet {
             // Validate parameter value ranges
             match parameter {
                 GovernanceParameter::VotingPeriod => {
-                    ensure!((3600..=604800).contains(&new_value), Error::<T>::InvalidParameterValue);
+                    ensure!(
+                        (3600..=604800).contains(&new_value),
+                        Error::<T>::InvalidParameterValue
+                    );
                 }
                 GovernanceParameter::LaunchPeriod => {
-                    ensure!((1800..=86400).contains(&new_value), Error::<T>::InvalidParameterValue);
+                    ensure!(
+                        (1800..=86400).contains(&new_value),
+                        Error::<T>::InvalidParameterValue
+                    );
                 }
                 GovernanceParameter::MinimumDeposit => {
-                    ensure!((100..=1000000).contains(&new_value), Error::<T>::InvalidParameterValue);
+                    ensure!(
+                        (100..=1000000).contains(&new_value),
+                        Error::<T>::InvalidParameterValue
+                    );
                 }
                 GovernanceParameter::SupermajorityThreshold => {
-                    ensure!((51..=100).contains(&new_value), Error::<T>::InvalidParameterValue);
+                    ensure!(
+                        (51..=100).contains(&new_value),
+                        Error::<T>::InvalidParameterValue
+                    );
                 }
                 GovernanceParameter::CouncilSize => {
-                    ensure!((5..=50).contains(&new_value), Error::<T>::InvalidParameterValue);
+                    ensure!(
+                        (5..=50).contains(&new_value),
+                        Error::<T>::InvalidParameterValue
+                    );
                 }
                 GovernanceParameter::EmergencyTimeout => {
-                    ensure!((3600..=604800).contains(&new_value), Error::<T>::InvalidParameterValue);
+                    ensure!(
+                        (3600..=604800).contains(&new_value),
+                        Error::<T>::InvalidParameterValue
+                    );
                 }
             }
 
@@ -7046,8 +7055,9 @@ pub mod pallet {
 
             // Decode SCALE-encoded DepartmentCall from call_data bytes.
             // An unrecognised byte sequence returns InvalidCallData — no panic.
-            let action = DepartmentCall::<T::AccountId, BalanceOf<T>>::decode(&mut call_data.as_slice())
-                .map_err(|_| Error::<T>::InvalidCallData)?;
+            let action =
+                DepartmentCall::<T::AccountId, BalanceOf<T>>::decode(&mut call_data.as_slice())
+                    .map_err(|_| Error::<T>::InvalidCallData)?;
 
             match action {
                 DepartmentCall::SpendBudget { recipient, amount } => {
@@ -7055,12 +7065,12 @@ pub mod pallet {
                     // Re-uses the same path as execute_treasury_spend.
                     Self::execute_treasury_spend(&recipient, amount, proposal_id)?;
                 }
-                DepartmentCall::UpdatePolicy { policy_key, policy_value } => {
+                DepartmentCall::UpdatePolicy {
+                    policy_key,
+                    policy_value,
+                } => {
                     // Store a bounded policy key→value entry on-chain.
-                    DepartmentPolicies::<T>::insert(
-                        (department, &policy_key),
-                        policy_value,
-                    );
+                    DepartmentPolicies::<T>::insert((department, &policy_key), policy_value);
                 }
                 DepartmentCall::NoOp => {
                     // Explicit no-operation: emit event only.
@@ -7089,8 +7099,10 @@ pub mod pallet {
                     let emergency = EmergencyStatus {
                         active: false,
                         emergency_type: EmergencyType::Other,
-                        description: BoundedVec::try_from(b"Emergency activated via proposal".to_vec())
-                            .unwrap_or_default(),
+                        description: BoundedVec::try_from(
+                            b"Emergency activated via proposal".to_vec(),
+                        )
+                        .unwrap_or_default(),
                         declared_at: current_block,
                         expires_at: None,
                         declared_by: None,
@@ -7103,10 +7115,10 @@ pub mod pallet {
                 EmergencyActionType::DeactivateEmergency => {
                     JaguarMode::<T>::kill();
                 }
-                EmergencyActionType::FreezeAccount |
-                EmergencyActionType::UnfreezeAccount |
-                EmergencyActionType::HaltGovernance |
-                EmergencyActionType::ResumeGovernance => {
+                EmergencyActionType::FreezeAccount
+                | EmergencyActionType::UnfreezeAccount
+                | EmergencyActionType::HaltGovernance
+                | EmergencyActionType::ResumeGovernance => {
                     // These would require additional storage and logic
                     // For now, just emit event
                 }
@@ -7213,14 +7225,16 @@ pub mod pallet {
         // ===== PHASE 6: ELECTION SYSTEM HELPER FUNCTIONS =====
 
         /// Get district election info
-        pub fn get_district_election(district: BelizeDistrict) -> Option<Election<BlockNumberFor<T>>> {
+        pub fn get_district_election(
+            district: BelizeDistrict,
+        ) -> Option<Election<BlockNumberFor<T>>> {
             DistrictElections::<T>::get(district)
         }
 
         /// Get election candidate info
         pub fn get_election_candidate(
             election_id: BlockNumberFor<T>,
-            candidate: T::AccountId
+            candidate: T::AccountId,
         ) -> Option<ElectionCandidate<T::AccountId, BlockNumberFor<T>>> {
             ElectionCandidates::<T>::get(election_id, candidate)
         }
@@ -7228,7 +7242,7 @@ pub mod pallet {
         /// Check if account has voted in election
         pub fn has_voted_in_district_election(
             election_id: BlockNumberFor<T>,
-            voter: &T::AccountId
+            voter: &T::AccountId,
         ) -> bool {
             ElectionVotes::<T>::contains_key(election_id, voter)
         }
@@ -7263,7 +7277,9 @@ pub mod pallet {
         // ===== PHASE 7: ADVANCED FEATURES HELPER METHODS =====
 
         /// Get delegation info for an account
-        pub fn get_delegation_info(delegator: &T::AccountId) -> Option<VoteDelegation<T::AccountId, BlockNumberFor<T>>> {
+        pub fn get_delegation_info(
+            delegator: &T::AccountId,
+        ) -> Option<VoteDelegation<T::AccountId, BlockNumberFor<T>>> {
             VoteDelegations::<T>::get(delegator)
         }
 
@@ -7284,7 +7300,9 @@ pub mod pallet {
         }
 
         /// Get proposal amendment if exists
-        pub fn get_proposal_amendment(proposal_id: u32) -> Option<ProposalAmendment<BlockNumberFor<T>>> {
+        pub fn get_proposal_amendment(
+            proposal_id: u32,
+        ) -> Option<ProposalAmendment<BlockNumberFor<T>>> {
             ProposalAmendments::<T>::get(proposal_id)
         }
 
@@ -7361,36 +7379,28 @@ pub trait WeightInfo {
 
 impl WeightInfo for () {
     fn submit_proposal() -> Weight {
-        Weight::from_parts(15_000_000, 512)
-            .saturating_add(Weight::from_parts(0, 2500))
+        Weight::from_parts(15_000_000, 512).saturating_add(Weight::from_parts(0, 2500))
     }
     fn cast_vote() -> Weight {
-        Weight::from_parts(10_000_000, 512)
-            .saturating_add(Weight::from_parts(0, 1500))
+        Weight::from_parts(10_000_000, 512).saturating_add(Weight::from_parts(0, 1500))
     }
     fn finalize_proposal() -> Weight {
-        Weight::from_parts(12_000_000, 512)
-            .saturating_add(Weight::from_parts(0, 2000))
+        Weight::from_parts(12_000_000, 512).saturating_add(Weight::from_parts(0, 2000))
     }
     fn update_community_rank() -> Weight {
-        Weight::from_parts(5_000_000, 512)
-            .saturating_add(Weight::from_parts(0, 500))
+        Weight::from_parts(5_000_000, 512).saturating_add(Weight::from_parts(0, 500))
     }
     fn update_pouw_contribution() -> Weight {
-        Weight::from_parts(5_000_000, 512)
-            .saturating_add(Weight::from_parts(0, 500))
+        Weight::from_parts(5_000_000, 512).saturating_add(Weight::from_parts(0, 500))
     }
     fn council_override() -> Weight {
-        Weight::from_parts(8_000_000, 512)
-            .saturating_add(Weight::from_parts(0, 1000))
+        Weight::from_parts(8_000_000, 512).saturating_add(Weight::from_parts(0, 1000))
     }
     fn update_chain_parameter() -> Weight {
-        Weight::from_parts(10_000_000, 512)
-            .saturating_add(Weight::from_parts(0, 500))
+        Weight::from_parts(10_000_000, 512).saturating_add(Weight::from_parts(0, 500))
     }
     fn expire_council_member() -> Weight {
-        Weight::from_parts(10_000_000, 512)
-            .saturating_add(Weight::from_parts(0, 1000))
+        Weight::from_parts(10_000_000, 512).saturating_add(Weight::from_parts(0, 1000))
     }
 }
 

@@ -16,7 +16,7 @@ BelizeChain provides multiple APIs for interacting with the blockchain:
 
 **Connection Details**:
 - **Mainnet**: `wss://mainnet.belizechain.org`
-- **Testnet**: `wss://testnet.belizechain.org`
+- **Testnet**: Use the current operator-provided RPC URL or your own node
 - **Local Dev**: `ws://localhost:9944`
 
 ---

@@ -1,6 +1,6 @@
 # BelizeChain Node
 
-The sovereign blockchain node implementation for Belize, built on Substrate framework with Polkadot SDK stable2512.
+The sovereign blockchain node implementation for Belize, built on Substrate framework with Polkadot SDK stable2603.
 
 ## 📦 Overview
 
@@ -8,7 +8,7 @@ This package implements the BelizeChain node binary, which runs the blockchain n
 - P2P networking for block propagation and consensus
 - RPC endpoints for client applications (Maya Wallet, Blue Hole Portal)
 - Consensus mechanism (BABE + GRANDPA)
-- Runtime integration with all 16 custom pallets
+- Runtime integration with all 18 Belize-specific pallets plus runtime-level contracts support
 
 ## 🏗️ Architecture
 
@@ -88,19 +88,30 @@ This package implements the BelizeChain node binary, which runs the blockchain n
 |----------|-------------|------|------------|------------|
 | `dev` | Development (Alice) | ✅ | 1 (Alice) | 3s |
 | `local` | Local testnet | ✅ | 2 (Alice, Bob) | 6s |
+| `testnet-template` | Public testnet template for `build-spec` only | ✅ | 3 placeholder validators | 6s |
+| `staging` | Pre-mainnet rehearsal template | ❌ | 3 placeholder validators | 6s |
 | `belize` | Mainnet | ❌ | 30+ | 6s |
+
+Real public testnets should be launched from an explicit generated JSON/raw spec file, not a built-in `testnet` alias.
 
 ### Custom Chain Spec
 ```bash
-# Export existing chain spec to JSON
-./target/release/belizechain-node build-spec --chain dev > custom-spec.json
+# Export a public testnet template to JSON
+./target/release/belizechain-node build-spec \
+  --disable-default-bootnode \
+  --chain testnet-template > belizechain-testnet-plain.json
 
-# Edit custom-spec.json as needed, then build raw spec
-./target/release/belizechain-node build-spec --chain custom-spec.json --raw > custom-raw.json
+# Edit belizechain-testnet-plain.json as needed, then build raw spec
+./target/release/belizechain-node build-spec \
+  --disable-default-bootnode \
+  --chain belizechain-testnet-plain.json \
+  --raw > belizechain-testnet-raw.json
 
 # Run node with custom spec
-./target/release/belizechain-node --chain custom-raw.json
+./target/release/belizechain-node --chain belizechain-testnet-raw.json
 ```
+
+Use `--disable-default-bootnode` on both export steps so the CLI does not inject a localhost bootnode into public-testnet artifacts.
 
 ## 🔌 RPC Endpoints
 

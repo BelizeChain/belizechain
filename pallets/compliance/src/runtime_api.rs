@@ -13,8 +13,6 @@
 //! [`ComplianceAuditEntry`] and [`SuspiciousActivityEntry`] are flat, concrete structs
 //! (no generic params) so they cross the host-runtime boundary cleanly.
 
-#![cfg_attr(not(feature = "std"), no_std)]
-
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_std::vec::Vec;

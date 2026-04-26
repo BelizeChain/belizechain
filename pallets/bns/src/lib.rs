@@ -30,22 +30,16 @@ pub use pallet::*;
 pub use types::*;
 pub use weights::*;
 
+use alloc::vec::Vec;
+use codec::Encode;
 use frame_support::{
     pallet_prelude::*,
-    traits::{
-        Currency, ReservableCurrency, ExistenceRequirement,
-        Get, Time, ConstU32,
-    },
-    PalletId, BoundedVec,
     sp_runtime::traits::AccountIdConversion,
+    traits::{ConstU32, Currency, ExistenceRequirement, Get, ReservableCurrency, Time},
+    BoundedVec, PalletId,
 };
 use frame_system::pallet_prelude::*;
-use sp_runtime::{
-    traits::Saturating,
-    SaturatedConversion,
-};
-use codec::Encode;
-use alloc::vec::Vec;
+use sp_runtime::{traits::Saturating, SaturatedConversion};
 
 // ===== CONSTANTS =====
 
@@ -116,7 +110,7 @@ pub mod pallet {
     pub type DomainRegistry<T: Config> = StorageMap<
         _,
         Blake2_128Concat,
-        BoundedVec<u8, T::MaxDomainLength>,  // domain name
+        BoundedVec<u8, T::MaxDomainLength>, // domain name
         DomainRecord<T::AccountId, BlockNumberFor<T>>,
     >;
 
@@ -169,7 +163,7 @@ pub mod pallet {
     pub type ExternalDomains<T: Config> = StorageMap<
         _,
         Blake2_128Concat,
-        BoundedVec<u8, ConstU32<128>>,  // Allow longer external domains
+        BoundedVec<u8, ConstU32<128>>, // Allow longer external domains
         ExternalDomainInfo<T::AccountId, BlockNumberFor<T>, T::MaxDomainLength>,
     >;
 
@@ -189,7 +183,7 @@ pub mod pallet {
     pub type SSLCertificates<T: Config> = StorageMap<
         _,
         Blake2_128Concat,
-        BoundedVec<u8, T::MaxDomainLength>,  // domain name
+        BoundedVec<u8, T::MaxDomainLength>, // domain name
         SSLCertInfo<BlockNumberFor<T>>,
     >;
 
@@ -221,9 +215,11 @@ pub mod pallet {
     #[pallet::getter(fn content_history)]
     pub type ContentHistory<T: Config> = StorageDoubleMap<
         _,
-        Blake2_128Concat, BoundedVec<u8, T::MaxDomainLength>,  // domain
-        Blake2_128Concat, u32,                                  // version number
-        ContentVersion<BlockNumberFor<T>>,                     // version data
+        Blake2_128Concat,
+        BoundedVec<u8, T::MaxDomainLength>, // domain
+        Blake2_128Concat,
+        u32,                               // version number
+        ContentVersion<BlockNumberFor<T>>, // version data
         OptionQuery,
     >;
 
@@ -235,7 +231,7 @@ pub mod pallet {
         Blake2_128Concat,
         BoundedVec<u8, T::MaxDomainLength>,
         u32,
-        ValueQuery,  // Defaults to 0
+        ValueQuery, // Defaults to 0
     >;
 
     // ==================== EVENTS ====================
@@ -289,10 +285,7 @@ pub mod pallet {
             blocks_extended: BlockNumberFor<T>,
         },
         /// Hosting fee collected [payer, amount]
-        HostingFeeCollected {
-            payer: T::AccountId,
-            amount: u128,
-        },
+        HostingFeeCollected { payer: T::AccountId, amount: u128 },
         /// External domain registered [domain, owner, tier: 0=Free, 1=Basic, 2=Pro, 3=Enterprise]
         ExternalDomainRegistered {
             domain: BoundedVec<u8, ConstU32<128>>,
@@ -407,7 +400,7 @@ pub mod pallet {
         pub fn register_domain(
             origin: OriginFor<T>,
             domain_name: Vec<u8>,
-            tier: u8,  // 0=Standard, 1=Premium, 2=Government, 3=Verified
+            tier: u8, // 0=Standard, 1=Premium, 2=Government, 3=Verified
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
@@ -475,7 +468,8 @@ pub mod pallet {
             // Store domain
             // AUDIT FIX (C-BNS-1): Validate AccountDomains capacity BEFORE
             // writing DomainRegistry to avoid partial-write on BoundedVec overflow.
-            owned_domains.try_push(domain.clone())
+            owned_domains
+                .try_push(domain.clone())
                 .map_err(|_| Error::<T>::MaxDomainsReached)?;
             AccountDomains::<T>::insert(&who, owned_domains);
 
@@ -508,12 +502,13 @@ pub mod pallet {
             let domain = Self::validate_domain_name(domain_name)?;
 
             // Verify ownership
-            let domain_record = DomainRegistry::<T>::get(&domain)
-                .ok_or(Error::<T>::DomainNotFound)?;
+            let domain_record =
+                DomainRegistry::<T>::get(&domain).ok_or(Error::<T>::DomainNotFound)?;
             ensure!(domain_record.owner == who, Error::<T>::NotDomainOwner);
 
             // Create/update resolution records
-            let metadata_bounded: BoundedVec<u8, ConstU32<256>> = metadata.try_into()
+            let metadata_bounded: BoundedVec<u8, ConstU32<256>> = metadata
+                .try_into()
                 .map_err(|_| Error::<T>::InvalidMetadata)?;
 
             let resolution = ResolutionRecords {
@@ -526,10 +521,7 @@ pub mod pallet {
 
             DomainResolution::<T>::insert(&domain, resolution);
 
-            Self::deposit_event(Event::ResolutionUpdated {
-                domain,
-                owner: who,
-            });
+            Self::deposit_event(Event::ResolutionUpdated { domain, owner: who });
 
             Ok(())
         }
@@ -546,8 +538,8 @@ pub mod pallet {
             let domain = Self::validate_domain_name(domain_name)?;
 
             // Verify ownership
-            let mut domain_record = DomainRegistry::<T>::get(&domain)
-                .ok_or(Error::<T>::DomainNotFound)?;
+            let mut domain_record =
+                DomainRegistry::<T>::get(&domain).ok_or(Error::<T>::DomainNotFound)?;
             ensure!(domain_record.owner == who, Error::<T>::NotDomainOwner);
 
             // H-04 FIX: KYC/sanctions check on transfer recipient
@@ -571,7 +563,8 @@ pub mod pallet {
 
             // AUDIT FIX (C-BNS-1): Pre-validate new_owner capacity before any mutation
             let mut new_domains = AccountDomains::<T>::get(&new_owner);
-            new_domains.try_push(domain.clone())
+            new_domains
+                .try_push(domain.clone())
                 .map_err(|_| Error::<T>::MaxDomainsReached)?;
 
             // Update domain record
@@ -608,8 +601,8 @@ pub mod pallet {
             let domain = Self::validate_domain_name(domain_name)?;
 
             // Verify ownership
-            let domain_record = DomainRegistry::<T>::get(&domain)
-                .ok_or(Error::<T>::DomainNotFound)?;
+            let domain_record =
+                DomainRegistry::<T>::get(&domain).ok_or(Error::<T>::DomainNotFound)?;
             ensure!(domain_record.owner == who, Error::<T>::NotDomainOwner);
 
             // Check if already listed
@@ -654,8 +647,7 @@ pub mod pallet {
             let domain = Self::validate_domain_name(domain_name)?;
 
             // Get listing
-            let listing = DomainListings::<T>::get(&domain)
-                .ok_or(Error::<T>::NotListedForSale)?;
+            let listing = DomainListings::<T>::get(&domain).ok_or(Error::<T>::NotListedForSale)?;
 
             // H-01 FIX: KYC/sanctions check on buyer
             ensure!(
@@ -678,7 +670,10 @@ pub mod pallet {
 
             // Check listing not expired
             let current_block = frame_system::Pallet::<T>::block_number();
-            ensure!(current_block <= listing.expires_at, Error::<T>::HostingExpired);
+            ensure!(
+                current_block <= listing.expires_at,
+                Error::<T>::HostingExpired
+            );
 
             // Calculate marketplace fee (5%)
             let marketplace_fee = offer_price
@@ -715,8 +710,8 @@ pub mod pallet {
             )?;
 
             // Update domain ownership
-            let mut domain_record = DomainRegistry::<T>::get(&domain)
-                .ok_or(Error::<T>::DomainNotFound)?;
+            let mut domain_record =
+                DomainRegistry::<T>::get(&domain).ok_or(Error::<T>::DomainNotFound)?;
 
             // CRIT-2 FIX: Verify seller still owns the domain
             ensure!(
@@ -735,7 +730,8 @@ pub mod pallet {
             AccountDomains::<T>::insert(&old_owner, old_domains);
 
             let mut buyer_domains = AccountDomains::<T>::get(&buyer);
-            buyer_domains.try_push(domain.clone())
+            buyer_domains
+                .try_push(domain.clone())
                 .map_err(|_| Error::<T>::MaxDomainsReached)?;
             AccountDomains::<T>::insert(&buyer, buyer_domains);
 
@@ -759,16 +755,12 @@ pub mod pallet {
         /// Remove domain listing from marketplace
         #[pallet::call_index(5)]
         #[pallet::weight(T::WeightInfo::unlist_domain())]
-        pub fn unlist_domain(
-            origin: OriginFor<T>,
-            domain_name: Vec<u8>,
-        ) -> DispatchResult {
+        pub fn unlist_domain(origin: OriginFor<T>, domain_name: Vec<u8>) -> DispatchResult {
             let who = ensure_signed(origin)?;
             let domain = Self::validate_domain_name(domain_name)?;
 
             // Get listing
-            let listing = DomainListings::<T>::get(&domain)
-                .ok_or(Error::<T>::NotListedForSale)?;
+            let listing = DomainListings::<T>::get(&domain).ok_or(Error::<T>::NotListedForSale)?;
 
             // Verify seller
             ensure!(listing.seller == who, Error::<T>::NotDomainOwner);
@@ -785,7 +777,7 @@ pub mod pallet {
         pub fn activate_hosting(
             origin: OriginFor<T>,
             domain_name: Vec<u8>,
-            tier: u8,  // 0=Free, 1=Basic, 2=Pro, 3=Enterprise
+            tier: u8, // 0=Free, 1=Basic, 2=Pro, 3=Enterprise
             content_hash: [u8; 32],
             auto_renew: bool,
         ) -> DispatchResult {
@@ -802,8 +794,8 @@ pub mod pallet {
             };
 
             // Verify domain ownership
-            let domain_record = DomainRegistry::<T>::get(&domain)
-                .ok_or(Error::<T>::DomainNotFound)?;
+            let domain_record =
+                DomainRegistry::<T>::get(&domain).ok_or(Error::<T>::DomainNotFound)?;
             ensure!(domain_record.owner == who, Error::<T>::NotDomainOwner);
 
             // Check if hosting already active
@@ -860,14 +852,15 @@ pub mod pallet {
             let domain = Self::validate_domain_name(domain_name)?;
 
             // Get hosting info
-            let mut hosting_info = HostedWebsites::<T>::get(&domain)
-                .ok_or(Error::<T>::HostingNotActive)?;
+            let mut hosting_info =
+                HostedWebsites::<T>::get(&domain).ok_or(Error::<T>::HostingNotActive)?;
 
             // Verify subscriber
             ensure!(hosting_info.subscriber == who, Error::<T>::NotDomainOwner);
 
             // Calculate renewal fee
-            let total_fee = hosting_info.monthly_fee
+            let total_fee = hosting_info
+                .monthly_fee
                 .checked_mul(months as u128)
                 .ok_or(Error::<T>::ArithmeticOverflow)?;
 
@@ -906,16 +899,13 @@ pub mod pallet {
         /// Deactivate web hosting
         #[pallet::call_index(8)]
         #[pallet::weight(T::WeightInfo::deactivate_hosting())]
-        pub fn deactivate_hosting(
-            origin: OriginFor<T>,
-            domain_name: Vec<u8>,
-        ) -> DispatchResult {
+        pub fn deactivate_hosting(origin: OriginFor<T>, domain_name: Vec<u8>) -> DispatchResult {
             let who = ensure_signed(origin)?;
             let domain = Self::validate_domain_name(domain_name)?;
 
             // Get hosting info
-            let hosting_info = HostedWebsites::<T>::get(&domain)
-                .ok_or(Error::<T>::HostingNotActive)?;
+            let hosting_info =
+                HostedWebsites::<T>::get(&domain).ok_or(Error::<T>::HostingNotActive)?;
 
             // Verify subscriber
             ensure!(hosting_info.subscriber == who, Error::<T>::NotDomainOwner);
@@ -940,15 +930,18 @@ pub mod pallet {
             let domain = Self::validate_domain_name(domain_name)?;
 
             // Get hosting info
-            let mut hosting_info = HostedWebsites::<T>::get(&domain)
-                .ok_or(Error::<T>::HostingNotActive)?;
+            let mut hosting_info =
+                HostedWebsites::<T>::get(&domain).ok_or(Error::<T>::HostingNotActive)?;
 
             // Verify subscriber
             ensure!(hosting_info.subscriber == who, Error::<T>::NotDomainOwner);
 
             // Check not expired
             let current_block = frame_system::Pallet::<T>::block_number();
-            ensure!(current_block <= hosting_info.expires_at, Error::<T>::HostingExpired);
+            ensure!(
+                current_block <= hosting_info.expires_at,
+                Error::<T>::HostingExpired
+            );
 
             // Save current version to history
             let current_version = CurrentContentVersion::<T>::get(&domain);
@@ -964,7 +957,9 @@ pub mod pallet {
             let old_version = ContentVersion {
                 content_hash: hosting_info.content_hash,
                 uploaded_at: current_block,
-                description: description.clone().try_into()
+                description: description
+                    .clone()
+                    .try_into()
                     .map_err(|_| Error::<T>::DomainTooLong)?,
                 size_bytes,
             };
@@ -1000,20 +995,21 @@ pub mod pallet {
             origin: OriginFor<T>,
             external_domain: Vec<u8>,
             linked_bns_domain: Vec<u8>,
-            tier: u8,  // 0=Free, 1=Basic, 2=Pro, 3=Enterprise
+            tier: u8, // 0=Free, 1=Basic, 2=Pro, 3=Enterprise
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
             // Validate external domain format
-            let external_bounded: BoundedVec<u8, ConstU32<128>> = external_domain.try_into()
+            let external_bounded: BoundedVec<u8, ConstU32<128>> = external_domain
+                .try_into()
                 .map_err(|_| Error::<T>::DomainTooLong)?;
 
             // Validate linked BNS domain
             let bns_domain = Self::validate_domain_name(linked_bns_domain)?;
 
             // Verify BNS domain ownership
-            let domain_record = DomainRegistry::<T>::get(&bns_domain)
-                .ok_or(Error::<T>::DomainNotFound)?;
+            let domain_record =
+                DomainRegistry::<T>::get(&bns_domain).ok_or(Error::<T>::DomainNotFound)?;
             ensure!(domain_record.owner == who, Error::<T>::NotDomainOwner);
 
             // Check if external domain already registered
@@ -1087,12 +1083,13 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            let external_bounded: BoundedVec<u8, ConstU32<128>> = external_domain.try_into()
+            let external_bounded: BoundedVec<u8, ConstU32<128>> = external_domain
+                .try_into()
                 .map_err(|_| Error::<T>::DomainTooLong)?;
 
             // Get external domain info
-            let external_info = ExternalDomains::<T>::get(&external_bounded)
-                .ok_or(Error::<T>::DomainNotFound)?;
+            let external_info =
+                ExternalDomains::<T>::get(&external_bounded).ok_or(Error::<T>::DomainNotFound)?;
 
             // Verify ownership
             ensure!(external_info.owner == who, Error::<T>::NotDomainOwner);
@@ -1136,15 +1133,13 @@ pub mod pallet {
             let parent_bounded = Self::validate_domain_name(parent_domain.clone())?;
 
             // Verify parent domain ownership
-            let parent_record = DomainRegistry::<T>::get(&parent_bounded)
-                .ok_or(Error::<T>::DomainNotFound)?;
+            let parent_record =
+                DomainRegistry::<T>::get(&parent_bounded).ok_or(Error::<T>::DomainNotFound)?;
             ensure!(parent_record.owner == who, Error::<T>::NotDomainOwner);
 
             // Validate subdomain part (before combining)
             for &byte in &subdomain {
-                let is_valid = byte.is_ascii_lowercase()
-                    || byte.is_ascii_digit()
-                    || byte == b'-';
+                let is_valid = byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-';
                 ensure!(is_valid, Error::<T>::InvalidDomainCharacters);
             }
             ensure!(!subdomain.is_empty(), Error::<T>::DomainTooShort);
@@ -1172,8 +1167,8 @@ pub mod pallet {
                 owner: subdomain_owner.clone(),
                 original_owner: subdomain_owner.clone(),
                 registered_at: frame_system::Pallet::<T>::block_number(),
-                purchase_price: 0,  // Subdomains are free for parent domain owners
-                tier: parent_record.tier,  // Inherit parent tier
+                purchase_price: 0, // Subdomains are free for parent domain owners
+                tier: parent_record.tier, // Inherit parent tier
                 locked_until: None,
                 transfer_count: 0,
             };
@@ -1182,7 +1177,8 @@ pub mod pallet {
 
             // Add to subdomain owner's domains
             let mut owned_domains = AccountDomains::<T>::get(&subdomain_owner);
-            owned_domains.try_push(full_domain_bounded.clone())
+            owned_domains
+                .try_push(full_domain_bounded.clone())
                 .map_err(|_| Error::<T>::MaxDomainsReached)?;
             AccountDomains::<T>::insert(&subdomain_owner, owned_domains);
 
@@ -1211,19 +1207,22 @@ pub mod pallet {
             let domain = Self::validate_domain_name(domain_name)?;
 
             // Get hosting info
-            let mut hosting_info = HostedWebsites::<T>::get(&domain)
-                .ok_or(Error::<T>::HostingNotActive)?;
+            let mut hosting_info =
+                HostedWebsites::<T>::get(&domain).ok_or(Error::<T>::HostingNotActive)?;
 
             // Verify subscriber
             ensure!(hosting_info.subscriber == who, Error::<T>::NotDomainOwner);
 
             // Check not expired
             let current_block = frame_system::Pallet::<T>::block_number();
-            ensure!(current_block <= hosting_info.expires_at, Error::<T>::HostingExpired);
+            ensure!(
+                current_block <= hosting_info.expires_at,
+                Error::<T>::HostingExpired
+            );
 
             // Get target version from history
-            let target_content = ContentHistory::<T>::get(&domain, target_version)
-                .ok_or(Error::<T>::InvalidTier)?; // Reuse error for "invalid version"
+            let target_content =
+                ContentHistory::<T>::get(&domain, target_version).ok_or(Error::<T>::InvalidTier)?; // Reuse error for "invalid version"
 
             // Verify version exists and is not current
             let current_version = CurrentContentVersion::<T>::get(&domain);
@@ -1233,7 +1232,9 @@ pub mod pallet {
             let rollback_version = ContentVersion {
                 content_hash: hosting_info.content_hash,
                 uploaded_at: current_block,
-                description: b"Rollback savepoint".to_vec().try_into()
+                description: b"Rollback savepoint"
+                    .to_vec()
+                    .try_into()
                     .map_err(|_| Error::<T>::DomainTooLong)?,
                 size_bytes: target_content.size_bytes,
             };
@@ -1285,8 +1286,8 @@ pub mod pallet {
             let domain = Self::validate_domain_name(domain_name)?;
 
             // Verify domain ownership
-            let domain_record = DomainRegistry::<T>::get(&domain)
-                .ok_or(Error::<T>::DomainNotFound)?;
+            let domain_record =
+                DomainRegistry::<T>::get(&domain).ok_or(Error::<T>::DomainNotFound)?;
             ensure!(domain_record.owner == who, Error::<T>::NotDomainOwner);
 
             // Create SSL certificate info
@@ -1295,10 +1296,10 @@ pub mod pallet {
                 cert_hash,
                 issued_at: current_block,
                 expires_at,
-                serial_number: serial_number.try_into()
+                serial_number: serial_number
+                    .try_into()
                     .map_err(|_| Error::<T>::DomainTooLong)?,
-                issuer: issuer.try_into()
-                    .map_err(|_| Error::<T>::DomainTooLong)?,
+                issuer: issuer.try_into().map_err(|_| Error::<T>::DomainTooLong)?,
             };
 
             SSLCertificates::<T>::insert(&domain, ssl_info);
@@ -1317,19 +1318,15 @@ pub mod pallet {
 
     impl<T: Config> Pallet<T> {
         /// Validate domain name format
-        fn validate_domain_name(domain: Vec<u8>) -> Result<BoundedVec<u8, T::MaxDomainLength>, DispatchError> {
+        fn validate_domain_name(
+            domain: Vec<u8>,
+        ) -> Result<BoundedVec<u8, T::MaxDomainLength>, DispatchError> {
             let min_len = T::MinDomainLength::get() as usize;
             let max_len = T::MaxDomainLength::get() as usize;
-            
+
             // Check length
-            ensure!(
-                domain.len() >= min_len,
-                Error::<T>::DomainTooShort
-            );
-            ensure!(
-                domain.len() <= max_len,
-                Error::<T>::DomainTooLong
-            );
+            ensure!(domain.len() >= min_len, Error::<T>::DomainTooShort);
+            ensure!(domain.len() <= max_len, Error::<T>::DomainTooLong);
 
             // Check valid characters (lowercase alphanumeric + hyphen)
             for &byte in &domain {
@@ -1340,7 +1337,8 @@ pub mod pallet {
                 ensure!(is_valid, Error::<T>::InvalidDomainCharacters);
             }
 
-            domain.try_into()
+            domain
+                .try_into()
                 .map_err(|_| Error::<T>::DomainTooLong.into())
         }
 
@@ -1350,21 +1348,22 @@ pub mod pallet {
             tier: &DomainTier,
         ) -> Result<u128, DispatchError> {
             let base_price = match tier {
-                DomainTier::Standard => 100_000_000_000_000,    // 100 DALLA
-                DomainTier::Premium => 500_000_000_000_000,     // 500 DALLA
-                DomainTier::Government => 50_000_000_000_000,   // 50 DALLA (subsidized)
-                DomainTier::Verified => 1_000_000_000_000_000,  // 1000 DALLA
+                DomainTier::Standard => 100_000_000_000_000, // 100 DALLA
+                DomainTier::Premium => 500_000_000_000_000,  // 500 DALLA
+                DomainTier::Government => 50_000_000_000_000, // 50 DALLA (subsidized)
+                DomainTier::Verified => 1_000_000_000_000_000, // 1000 DALLA
             };
 
             // Length-based multiplier
             let multiplier = match domain.len() {
-                1..=2 => 10,  // Ultra-premium
-                3 => 5,       // Premium
-                4 => 2,       // Semi-premium
-                _ => 1,       // Standard
+                1..=2 => 10, // Ultra-premium
+                3 => 5,      // Premium
+                4 => 2,      // Semi-premium
+                _ => 1,      // Standard
             };
 
-            base_price.checked_mul(&multiplier)
+            base_price
+                .checked_mul(&multiplier)
                 .ok_or(Error::<T>::ArithmeticOverflow.into())
         }
 
@@ -1389,8 +1388,8 @@ pub mod pallet {
         fn calculate_hosting_fee(tier: &HostingTier) -> u128 {
             match tier {
                 HostingTier::Free => 0,
-                HostingTier::Basic => 10_000_000_000_000,      // 10 DALLA/month
-                HostingTier::Pro => 50_000_000_000_000,        // 50 DALLA/month
+                HostingTier::Basic => 10_000_000_000_000, // 10 DALLA/month
+                HostingTier::Pro => 50_000_000_000_000,   // 50 DALLA/month
                 HostingTier::Enterprise => 200_000_000_000_000, // 200 DALLA/month
             }
         }
@@ -1431,7 +1430,7 @@ pub mod pallet {
             domain: &BoundedVec<u8, ConstU32<128>>,
         ) -> [u8; 32] {
             use sp_runtime::traits::Hash;
-            
+
             let mut data = Vec::new();
             data.extend_from_slice(&account.encode());
             data.extend_from_slice(&domain.encode());
@@ -1440,7 +1439,7 @@ pub mod pallet {
             data.extend_from_slice(&frame_system::Pallet::<T>::parent_hash().encode());
             // Add extrinsic count for additional entropy from current block execution state
             data.extend_from_slice(&frame_system::Pallet::<T>::extrinsic_count().encode());
-            
+
             let hash = <T as frame_system::Config>::Hashing::hash(&data);
             let mut token = [0u8; 32];
             token.copy_from_slice(hash.as_ref());
@@ -1453,4 +1452,3 @@ pub mod pallet {
         }
     }
 }
-

@@ -96,25 +96,19 @@
 //! - `MeshIdentityProvider` - KYC verification for mesh node registration
 //! - `Time` - Timestamps for alerts and relay proofs
 
+use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::{
     dispatch::DispatchResult,
     pallet_prelude::*,
-    traits::{
-        Currency, ReservableCurrency,
-        Get, UnixTime,
-    },
-    PalletId,
     sp_runtime::traits::AccountIdConversion,
+    traits::{Currency, Get, ReservableCurrency, UnixTime},
+    PalletId,
 };
 use frame_system::pallet_prelude::*;
-use sp_runtime::{
-    traits::SaturatedConversion,
-    Saturating,
-};
-use sp_std::vec::Vec;
-use codec::{Encode, Decode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_core::H256;
+use sp_runtime::{traits::SaturatedConversion, Saturating};
+use sp_std::vec::Vec;
 
 pub mod types;
 pub use types::*;
@@ -151,30 +145,58 @@ pub trait WeightInfo {
 
 /// Default weight implementation
 impl WeightInfo for () {
-    fn register_node() -> Weight { Weight::from_parts(50_000_000, 512) }
-    fn deregister_node() -> Weight { Weight::from_parts(30_000_000, 512) }
-    fn update_node_location() -> Weight { Weight::from_parts(20_000_000, 512) }
-    fn node_heartbeat() -> Weight { Weight::from_parts(15_000_000, 512) }
-    fn submit_mesh_transaction() -> Weight { Weight::from_parts(80_000_000, 512) }
-    fn submit_relay_proof() -> Weight { Weight::from_parts(40_000_000, 512) }
-    fn issue_emergency_alert() -> Weight { Weight::from_parts(60_000_000, 512) }
-    fn resolve_emergency_alert() -> Weight { Weight::from_parts(30_000_000, 512) }
-    fn confirm_emergency_alert() -> Weight { Weight::from_parts(25_000_000, 512) }
-    fn relay_block_header() -> Weight { Weight::from_parts(70_000_000, 512) }
-    fn claim_relay_rewards() -> Weight { Weight::from_parts(50_000_000, 512) }
-    fn update_mesh_config() -> Weight { Weight::from_parts(20_000_000, 512) }
-    fn fund_relay_rewards() -> Weight { Weight::from_parts(30_000_000, 512) }
-    fn confirm_relay_proof() -> Weight { Weight::from_parts(40_000_000, 512) }
+    fn register_node() -> Weight {
+        Weight::from_parts(50_000_000, 512)
+    }
+    fn deregister_node() -> Weight {
+        Weight::from_parts(30_000_000, 512)
+    }
+    fn update_node_location() -> Weight {
+        Weight::from_parts(20_000_000, 512)
+    }
+    fn node_heartbeat() -> Weight {
+        Weight::from_parts(15_000_000, 512)
+    }
+    fn submit_mesh_transaction() -> Weight {
+        Weight::from_parts(80_000_000, 512)
+    }
+    fn submit_relay_proof() -> Weight {
+        Weight::from_parts(40_000_000, 512)
+    }
+    fn issue_emergency_alert() -> Weight {
+        Weight::from_parts(60_000_000, 512)
+    }
+    fn resolve_emergency_alert() -> Weight {
+        Weight::from_parts(30_000_000, 512)
+    }
+    fn confirm_emergency_alert() -> Weight {
+        Weight::from_parts(25_000_000, 512)
+    }
+    fn relay_block_header() -> Weight {
+        Weight::from_parts(70_000_000, 512)
+    }
+    fn claim_relay_rewards() -> Weight {
+        Weight::from_parts(50_000_000, 512)
+    }
+    fn update_mesh_config() -> Weight {
+        Weight::from_parts(20_000_000, 512)
+    }
+    fn fund_relay_rewards() -> Weight {
+        Weight::from_parts(30_000_000, 512)
+    }
+    fn confirm_relay_proof() -> Weight {
+        Weight::from_parts(40_000_000, 512)
+    }
 }
 
 /// Trait for Identity integration - KYC verification for mesh node registration
 pub trait MeshIdentityProvider<AccountId> {
     /// Get KYC level (0=none, 1=basic, 2=verified, 3=full)
     fn get_kyc_level(account: &AccountId) -> u8;
-    
+
     /// Check if account is authorized to issue emergency alerts (NEMO, government)
     fn is_emergency_authority(account: &AccountId) -> bool;
-    
+
     /// Check if account is a registered validator
     fn is_validator(account: &AccountId) -> bool;
 }
@@ -183,7 +205,7 @@ pub trait MeshIdentityProvider<AccountId> {
 pub trait MeshTransactionBridge<AccountId> {
     /// Check if a mesh transaction has been submitted and is pending
     fn is_mesh_tx_pending(tx_hash: &H256) -> bool;
-    
+
     /// Get the total mesh transactions processed
     fn total_mesh_transactions() -> u64;
 }
@@ -192,7 +214,7 @@ pub trait MeshTransactionBridge<AccountId> {
 pub trait EmergencyAlertProvider<AccountId, BlockNumber> {
     /// Get active alerts for a district
     fn active_alerts_for_district(district: &BelizeDistrict) -> u32;
-    
+
     /// Check if there's an active catastrophic alert
     fn has_catastrophic_alert() -> bool;
 }
@@ -249,7 +271,9 @@ pub mod pallet {
 
         /// Relay reward per emergency alert relayed
         #[pallet::constant]
-        type RelayRewardPerEmergencyAlert: Get<<Self::Currency as Currency<Self::AccountId>>::Balance>;
+        type RelayRewardPerEmergencyAlert: Get<
+            <Self::Currency as Currency<Self::AccountId>>::Balance,
+        >;
 
         /// Minimum deposit to register a mesh node (anti-spam)
         #[pallet::constant]
@@ -276,8 +300,7 @@ pub mod pallet {
         fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
             MeshTxThisBlock::<T>::kill();
             // Phase-5 FIX: kill() is a DB write; account for ref_time + proof_size
-            Weight::from_parts(5_000_000, 64)
-                .saturating_add(T::DbWeight::get().writes(1))
+            Weight::from_parts(5_000_000, 64).saturating_add(T::DbWeight::get().writes(1))
         }
     }
 
@@ -351,13 +374,8 @@ pub mod pallet {
 
     /// O(1) counter: active (non-resolved) alerts per district (H-40)
     #[pallet::storage]
-    pub type ActiveAlertCountPerDistrict<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        BelizeDistrict,
-        u32,
-        ValueQuery,
-    >;
+    pub type ActiveAlertCountPerDistrict<T: Config> =
+        StorageMap<_, Blake2_128Concat, BelizeDistrict, u32, ValueQuery>;
 
     /// O(1) flag: true when at least one unresolved Catastrophic alert exists (H-40)
     #[pallet::storage]
@@ -407,7 +425,17 @@ pub mod pallet {
     pub type MeshConfig<T: Config> = StorageValue<_, MeshNetworkConfig, ValueQuery>;
 
     /// Meshtastic network configuration parameters
-    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+    #[derive(
+        Encode,
+        Decode,
+        codec::DecodeWithMemTracking,
+        Clone,
+        PartialEq,
+        Eq,
+        Debug,
+        TypeInfo,
+        MaxEncodedLen,
+    )]
     pub struct MeshNetworkConfig {
         /// Maximum allowed hops for mesh messages
         pub max_hops: u8,
@@ -440,7 +468,18 @@ pub mod pallet {
     }
 
     /// Meshtastic LoRa channel presets
-    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, Default)]
+    #[derive(
+        Encode,
+        Decode,
+        codec::DecodeWithMemTracking,
+        Clone,
+        PartialEq,
+        Eq,
+        Debug,
+        TypeInfo,
+        MaxEncodedLen,
+        Default,
+    )]
     pub enum ChannelPreset {
         /// Long range, fast data rate (default for BelizeChain)
         #[default]
@@ -667,22 +706,34 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
 
             // Verify node ID not already registered
-            ensure!(!MeshNodes::<T>::contains_key(node_id), Error::<T>::NodeAlreadyRegistered);
+            ensure!(
+                !MeshNodes::<T>::contains_key(node_id),
+                Error::<T>::NodeAlreadyRegistered
+            );
 
             // Check KYC level
             let config = MeshConfig::<T>::get();
             let kyc_level = T::Identity::get_kyc_level(&who);
-            ensure!(kyc_level >= config.min_kyc_for_registration, Error::<T>::InsufficientKycLevel);
+            ensure!(
+                kyc_level >= config.min_kyc_for_registration,
+                Error::<T>::InsufficientKycLevel
+            );
 
             // Gateway nodes need higher KYC
             let is_gateway = matches!(role, MeshNodeRole::Gateway);
             if is_gateway {
-                ensure!(kyc_level >= config.min_kyc_for_gateway, Error::<T>::InsufficientKycForGateway);
+                ensure!(
+                    kyc_level >= config.min_kyc_for_gateway,
+                    Error::<T>::InsufficientKycForGateway
+                );
             }
 
             // ValidatorRelay requires being a registered validator
             if matches!(role, MeshNodeRole::ValidatorRelay) {
-                ensure!(T::Identity::is_validator(&who), Error::<T>::ValidatorNotFound);
+                ensure!(
+                    T::Identity::is_validator(&who),
+                    Error::<T>::ValidatorNotFound
+                );
             }
 
             // Reserve registration deposit
@@ -695,7 +746,10 @@ pub mod pallet {
 
             // Check global node limit
             let mut stats = NetworkStats::<T>::get();
-            ensure!(stats.total_nodes < T::MaxMeshNodes::get(), Error::<T>::MaxMeshNodesReached);
+            ensure!(
+                stats.total_nodes < T::MaxMeshNodes::get(),
+                Error::<T>::MaxMeshNodesReached
+            );
 
             let current_block = <frame_system::Pallet<T>>::block_number();
 
@@ -729,7 +783,7 @@ pub mod pallet {
                 MeshNodeRole::Router | MeshNodeRole::RouterClient => stats.router_count += 1,
                 MeshNodeRole::ValidatorRelay => stats.validator_relay_count += 1,
                 MeshNodeRole::EmergencyBeacon => stats.emergency_beacon_count += 1,
-                _ => {},
+                _ => {}
             }
 
             MeshNodes::<T>::insert(node_id, node);
@@ -750,10 +804,7 @@ pub mod pallet {
         /// Deregister a mesh node and reclaim the registration deposit.
         #[pallet::call_index(1)]
         #[pallet::weight(T::WeightInfo::deregister_node())]
-        pub fn deregister_node(
-            origin: OriginFor<T>,
-            node_id: MeshtasticNodeId,
-        ) -> DispatchResult {
+        pub fn deregister_node(origin: OriginFor<T>, node_id: MeshtasticNodeId) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
             let node = MeshNodes::<T>::get(node_id).ok_or(Error::<T>::NodeNotFound)?;
@@ -772,14 +823,14 @@ pub mod pallet {
             match &node.role {
                 MeshNodeRole::Router | MeshNodeRole::RouterClient => {
                     stats.router_count = stats.router_count.saturating_sub(1);
-                },
+                }
                 MeshNodeRole::ValidatorRelay => {
                     stats.validator_relay_count = stats.validator_relay_count.saturating_sub(1);
-                },
+                }
                 MeshNodeRole::EmergencyBeacon => {
                     stats.emergency_beacon_count = stats.emergency_beacon_count.saturating_sub(1);
-                },
-                _ => {},
+                }
+                _ => {}
             }
 
             // AUDIT FIX (C3): Decrement active_nodes if the node was active
@@ -796,7 +847,10 @@ pub mod pallet {
             MeshNodes::<T>::remove(node_id);
             NetworkStats::<T>::put(stats);
 
-            Self::deposit_event(Event::NodeDeregistered { owner: who, node_id });
+            Self::deposit_event(Event::NodeDeregistered {
+                owner: who,
+                node_id,
+            });
 
             Ok(())
         }
@@ -822,8 +876,8 @@ pub mod pallet {
                 // Using 1e7 scale: lat 158000000-185000000, lon -892000000 to -875000000
                 // We allow broader range for flexibility
                 ensure!(
-                    (-900_000_000..=900_000_000).contains(&latitude) &&
-                    (-1_800_000_000..=1_800_000_000).contains(&longitude),
+                    (-900_000_000..=900_000_000).contains(&latitude)
+                        && (-1_800_000_000..=1_800_000_000).contains(&longitude),
                     Error::<T>::InvalidCoordinates
                 );
 
@@ -847,10 +901,7 @@ pub mod pallet {
         /// Nodes that don't heartbeat within `HeartbeatTimeout` blocks are marked inactive.
         #[pallet::call_index(3)]
         #[pallet::weight(T::WeightInfo::node_heartbeat())]
-        pub fn node_heartbeat(
-            origin: OriginFor<T>,
-            node_id: MeshtasticNodeId,
-        ) -> DispatchResult {
+        pub fn node_heartbeat(origin: OriginFor<T>, node_id: MeshtasticNodeId) -> DispatchResult {
             let who = ensure_signed(origin)?;
             let current_block = <frame_system::Pallet<T>>::block_number();
 
@@ -904,7 +955,10 @@ pub mod pallet {
 
             // M57 FIX: Basic mesh transaction signature validation
             // Signature hash must be non-zero (zero hash indicates unsigned/invalid tx)
-            ensure!(signature_hash != H256::zero(), Error::<T>::InvalidMeshSignature);
+            ensure!(
+                signature_hash != H256::zero(),
+                Error::<T>::InvalidMeshSignature
+            );
 
             // Verify gateway node exists and caller owns it
             let gateway = MeshNodes::<T>::get(gateway_node_id).ok_or(Error::<T>::NodeNotFound)?;
@@ -918,20 +972,24 @@ pub mod pallet {
 
             // Per-block rate limit (DoS protection)
             let tx_count = MeshTxThisBlock::<T>::get();
-            ensure!(tx_count < T::MaxMeshTxPerBlock::get(), Error::<T>::MeshTxRateLimitExceeded);
+            ensure!(
+                tx_count < T::MaxMeshTxPerBlock::get(),
+                Error::<T>::MeshTxRateLimitExceeded
+            );
 
             // Deduplication
             ensure!(
-                !PendingMeshTransactions::<T>::contains_key(tx_hash) &&
-                !ProcessedMeshTransactions::<T>::contains_key(tx_hash),
+                !PendingMeshTransactions::<T>::contains_key(tx_hash)
+                    && !ProcessedMeshTransactions::<T>::contains_key(tx_hash),
                 Error::<T>::DuplicateMeshTransaction
             );
 
             let current_block = <frame_system::Pallet<T>>::block_number();
 
             // Bound the relay path
-            let bounded_relay_path: BoundedVec<MeshtasticNodeId, ConstU32<8>> =
-                relay_path.try_into().map_err(|_| Error::<T>::ExcessiveHopCount)?;
+            let bounded_relay_path: BoundedVec<MeshtasticNodeId, ConstU32<8>> = relay_path
+                .try_into()
+                .map_err(|_| Error::<T>::ExcessiveHopCount)?;
 
             let mesh_tx = MeshTransaction {
                 version: 1,
@@ -1021,7 +1079,9 @@ pub mod pallet {
 
             // Store relay proof
             RelayProofs::<T>::try_mutate(node_id, |proofs| -> DispatchResult {
-                proofs.try_push(proof).map_err(|_| Error::<T>::RelayProofLimitExceeded)?;
+                proofs
+                    .try_push(proof)
+                    .map_err(|_| Error::<T>::RelayProofLimitExceeded)?;
                 Ok(())
             })?;
 
@@ -1074,7 +1134,7 @@ pub mod pallet {
                 Ok(_) => {
                     // Root/governance origin - use pallet account
                     MESH_PALLET_ID.into_account_truncating()
-                },
+                }
                 Err(origin) => {
                     let signer = ensure_signed(origin)?;
                     ensure!(
@@ -1082,11 +1142,14 @@ pub mod pallet {
                         Error::<T>::NotEmergencyAuthority
                     );
                     signer
-                },
+                }
             };
 
             let config = MeshConfig::<T>::get();
-            ensure!(config.emergency_system_active, Error::<T>::EmergencySystemDisabled);
+            ensure!(
+                config.emergency_system_active,
+                Error::<T>::EmergencySystemDisabled
+            );
 
             let current_block = <frame_system::Pallet<T>>::block_number();
             let alert_id = NextAlertId::<T>::get();
@@ -1144,10 +1207,7 @@ pub mod pallet {
         /// Resolve an active emergency alert.
         #[pallet::call_index(7)]
         #[pallet::weight(T::WeightInfo::resolve_emergency_alert())]
-        pub fn resolve_emergency_alert(
-            origin: OriginFor<T>,
-            alert_id: u32,
-        ) -> DispatchResult {
+        pub fn resolve_emergency_alert(origin: OriginFor<T>, alert_id: u32) -> DispatchResult {
             let who = match T::EmergencyOrigin::try_origin(origin.clone()) {
                 Ok(_) => MESH_PALLET_ID.into_account_truncating(),
                 Err(origin) => {
@@ -1157,7 +1217,7 @@ pub mod pallet {
                         Error::<T>::NotEmergencyAuthority
                     );
                     signer
-                },
+                }
             };
 
             EmergencyAlerts::<T>::try_mutate(alert_id, |maybe_alert| -> DispatchResult {
@@ -1166,7 +1226,9 @@ pub mod pallet {
                 alert.resolved = true;
 
                 // O(1) counter maintenance (H-40)
-                ActiveAlertCountPerDistrict::<T>::mutate(&alert.district, |c| *c = c.saturating_sub(1));
+                ActiveAlertCountPerDistrict::<T>::mutate(&alert.district, |c| {
+                    *c = c.saturating_sub(1)
+                });
                 if alert.severity >= AlertSeverity::Catastrophic {
                     CatastrophicAlertCount::<T>::mutate(|c| *c = c.saturating_sub(1));
                 }
@@ -1254,7 +1316,10 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
 
             let config = MeshConfig::<T>::get();
-            ensure!(config.validator_relay_active, Error::<T>::RelayMiningDisabled);
+            ensure!(
+                config.validator_relay_active,
+                Error::<T>::RelayMiningDisabled
+            );
 
             // Verify node is a validator relay
             let node = MeshNodes::<T>::get(relayer_node_id).ok_or(Error::<T>::NodeNotFound)?;
@@ -1299,9 +1364,7 @@ pub mod pallet {
         /// Claim accumulated relay mining rewards.
         #[pallet::call_index(10)]
         #[pallet::weight(T::WeightInfo::claim_relay_rewards())]
-        pub fn claim_relay_rewards(
-            origin: OriginFor<T>,
-        ) -> DispatchResult {
+        pub fn claim_relay_rewards(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
             let reward = RelayRewards::<T>::get(&who);
@@ -1319,9 +1382,9 @@ pub mod pallet {
             // Update total rewards in stats
             NetworkStats::<T>::mutate(|stats| {
                 // SAFETY(saturated_into): Balance → u128 is lossless; substrate balances are at most u128.
-                stats.total_relay_rewards = stats.total_relay_rewards.saturating_add(
-                    reward.saturated_into::<u128>()
-                );
+                stats.total_relay_rewards = stats
+                    .total_relay_rewards
+                    .saturating_add(reward.saturated_into::<u128>());
             });
 
             // Clear relay proofs for all owned nodes
@@ -1397,10 +1460,7 @@ pub mod pallet {
                 frame_support::traits::ExistenceRequirement::KeepAlive,
             )?;
 
-            Self::deposit_event(Event::RelayRewardsFunded {
-                funder,
-                amount,
-            });
+            Self::deposit_event(Event::RelayRewardsFunded { funder, amount });
 
             Ok(())
         }
@@ -1420,8 +1480,8 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
 
             // Confirmer must own a registered mesh node (cannot be the same owner)
-            let relayer_node = MeshNodes::<T>::get(relayer_node_id)
-                .ok_or(Error::<T>::NodeNotFound)?;
+            let relayer_node =
+                MeshNodes::<T>::get(relayer_node_id).ok_or(Error::<T>::NodeNotFound)?;
             ensure!(relayer_node.owner != who, Error::<T>::CannotConfirmOwnProof);
 
             // Confirmer must own at least one active node to be credible
@@ -1429,7 +1489,8 @@ pub mod pallet {
             ensure!(!confirmer_nodes.is_empty(), Error::<T>::NodeNotFound);
 
             RelayProofs::<T>::try_mutate(relayer_node_id, |proofs| -> DispatchResult {
-                let proof = proofs.get_mut(proof_index as usize)
+                let proof = proofs
+                    .get_mut(proof_index as usize)
                     .ok_or(Error::<T>::ProofIndexOutOfRange)?;
                 ensure!(!proof.confirmed, Error::<T>::ProofAlreadyConfirmed);
 
@@ -1443,7 +1504,7 @@ pub mod pallet {
                     RelayType::Heartbeat | RelayType::Confirmation => {
                         // SAFETY(saturated_into): constant 10u32 → BalanceOf<T> is lossless; small constant fits any Balance type.
                         T::RelayRewardPerTransaction::get() / 10u32.saturated_into()
-                    },
+                    }
                 };
 
                 RelayRewards::<T>::mutate(&relayer_node.owner, |balance| {

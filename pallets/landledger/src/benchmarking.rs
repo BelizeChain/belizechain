@@ -109,10 +109,7 @@ mod benchmarks {
         let _ = T::Currency::make_free_balance_be(&owner, deposit * 10u32.into());
 
         // Register surveyor
-        let _ = Pallet::<T>::register_surveyor(
-            RawOrigin::Root.into(),
-            surveyor.clone(),
-        );
+        let _ = Pallet::<T>::register_surveyor(RawOrigin::Root.into(), surveyor.clone());
 
         // Register a property
         let _ = Pallet::<T>::register_property(

@@ -2,6 +2,8 @@
 
 The GEM faucet provides free testnet DALLA tokens for smart contract development and testing.
 
+Use the current operator-published public-testnet RPC and faucet URLs in the examples below. Legacy unpublished public-testnet hosts are intentionally no longer advertised here.
+
 ## Faucet Details
 
 - **Drip Amount**: 1,000 DALLA per claim
@@ -14,7 +16,7 @@ The GEM faucet provides free testnet DALLA tokens for smart contract development
 
 ### Method 1: Web Interface
 
-1. Visit [faucet.belizechain.org](https://faucet.belizechain.org)
+1. Visit `https://<current-public-testnet-faucet>`
 2. Connect Polkadot.js extension
 3. Click "Request 1000 DALLA"
 4. Sign transaction
@@ -43,7 +45,7 @@ const { GemSDK } = require('@belizechain/gem-sdk');
 const { Keyring } = require('@polkadot/api');
 
 async function claimFromFaucet() {
-    const sdk = new GemSDK('wss://testnet.belizechain.org');
+    const sdk = new GemSDK('wss://<current-public-testnet-rpc>');
     await sdk.connect();
 
     const keyring = new Keyring({ type: 'sr25519' });
@@ -417,7 +419,7 @@ cargo contract instantiate \
     --suri //Admin \
     --constructor new \
     --args 1000000000000000 100 10000000000000000 \ # drip, cooldown, daily_limit
-    --url wss://testnet.belizechain.org \
+    --url wss://<current-public-testnet-rpc> \
     --value 10000000 # Initial 10M DALLA funding
 ```
 
@@ -477,5 +479,5 @@ If faucet is depleted or unavailable:
 ## Resources
 
 - **Contract Source**: [github.com/BelizeChain/gem/tree/main/faucet](https://github.com/BelizeChain/gem/tree/main/faucet)
-- **Web Faucet**: [faucet.belizechain.org](https://faucet.belizechain.org)
+- **Web Faucet**: `https://<current-public-testnet-faucet>`
 - **Discord**: [discord.belizechain.org](https://discord.belizechain.org)

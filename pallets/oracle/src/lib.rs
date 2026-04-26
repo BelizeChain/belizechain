@@ -24,12 +24,12 @@ mod benchmarking;
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
+    use crate::types::*;
+    use crate::weights::WeightInfo;
     use frame_support::pallet_prelude::*;
     use frame_support::traits::Currency as CurrencyTrait;
     use frame_system::pallet_prelude::*;
-    use sp_runtime::traits::{Saturating, SaturatedConversion};
-    use crate::types::*;
-    use crate::weights::WeightInfo;
+    use sp_runtime::traits::{SaturatedConversion, Saturating};
     use sp_std::vec::Vec;
 
     #[pallet::pallet]
@@ -96,7 +96,8 @@ pub mod pallet {
     /// Authorized oracle operators
     #[pallet::storage]
     #[pallet::getter(fn oracle_operators)]
-    pub type OracleOperators<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, bool, ValueQuery>;
+    pub type OracleOperators<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, bool, ValueQuery>;
 
     /// Tracked count of oracle operators (avoids O(n) iter().count())
     #[pallet::storage]
@@ -131,13 +132,8 @@ pub mod pallet {
     /// Stored as (price, last_update_block) with 6 decimal precision (1e6 scale)
     #[pallet::storage]
     #[pallet::getter(fn manual_exchange_rates)]
-    pub type ManualExchangeRates<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        CurrencyPair,
-        (u128, BlockNumberFor<T>),
-        OptionQuery,
-    >;
+    pub type ManualExchangeRates<T: Config> =
+        StorageMap<_, Blake2_128Concat, CurrencyPair, (u128, BlockNumberFor<T>), OptionQuery>;
 
     /// Verified merchants for tourism incentives
     #[pallet::storage]
@@ -153,13 +149,8 @@ pub mod pallet {
     /// Sanctioned entities
     #[pallet::storage]
     #[pallet::getter(fn sanctioned_entities)]
-    pub type SanctionedEntities<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        SanctionInfo<BlockNumberFor<T>>,
-        OptionQuery,
-    >;
+    pub type SanctionedEntities<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, SanctionInfo<BlockNumberFor<T>>, OptionQuery>;
 
     /// Identity verification data (KYC levels)
     #[pallet::storage]
@@ -191,7 +182,7 @@ pub mod pallet {
     pub type IoTDevices<T: Config> = StorageMap<
         _,
         Blake2_128Concat,
-        [u8; 32],  // device_id
+        [u8; 32], // device_id
         IoTDevice<T::AccountId, BlockNumberFor<T>>,
         OptionQuery,
     >;
@@ -216,8 +207,10 @@ pub mod pallet {
     #[pallet::storage]
     pub type PendingKycSubmissions<T: Config> = StorageDoubleMap<
         _,
-        Blake2_128Concat, T::AccountId,   // subject
-        Blake2_128Concat, T::AccountId,   // oracle operator
+        Blake2_128Concat,
+        T::AccountId, // subject
+        Blake2_128Concat,
+        T::AccountId, // oracle operator
         (u8, [u8; 32]),
         OptionQuery,
     >;
@@ -226,23 +219,15 @@ pub mod pallet {
     /// When agreement_count >= T::MinOracleAgreement, data is finalized and
     /// written to IdentityVerifications.
     #[pallet::storage]
-    pub type KycLeadingVote<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat, T::AccountId,
-        (u8, [u8; 32], u32),
-        OptionQuery,
-    >;
+    pub type KycLeadingVote<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, (u8, [u8; 32], u32), OptionQuery>;
 
     /// Dispute flag — set when two oracle operators submit conflicting KYC data
     /// for the same subject.  Admin must call `resolve_kyc_dispute` before fresh
     /// votes are accepted for that subject.
     #[pallet::storage]
-    pub type OracleDisputeFlag<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat, T::AccountId,
-        bool,
-        ValueQuery,
-    >;
+    pub type OracleDisputeFlag<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, bool, ValueQuery>;
 
     // ===== PHASE 5A: BEHAVIOR FLAG STORAGE =====
 
@@ -252,28 +237,27 @@ pub mod pallet {
     #[pallet::storage]
     pub type BehaviorFlags<T: Config> = StorageMap<
         _,
-        Blake2_128Concat, T::AccountId,
-        u8,           // BehaviorFlag variant as u8
+        Blake2_128Concat,
+        T::AccountId,
+        u8, // BehaviorFlag variant as u8
         OptionQuery,
     >;
 
     /// Block number at which an account's behavior-flag cooldown expires.
     /// After this block the account resumes normal governance participation.
     #[pallet::storage]
-    pub type BehaviorFlagCooldown<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat, T::AccountId,
-        BlockNumberFor<T>,
-        OptionQuery,
-    >;
+    pub type BehaviorFlagCooldown<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, BlockNumberFor<T>, OptionQuery>;
 
     /// Staged behavior-flag votes from oracle operators before consensus is reached.
     /// DoubleMap: (account, oracle_operator) → flag_type_u8
     #[pallet::storage]
     pub type PendingBehaviorFlags<T: Config> = StorageDoubleMap<
         _,
-        Blake2_128Concat, T::AccountId,
-        Blake2_128Concat, T::AccountId,
+        Blake2_128Concat,
+        T::AccountId,
+        Blake2_128Concat,
+        T::AccountId,
         u8,
         OptionQuery,
     >;
@@ -331,27 +315,18 @@ pub mod pallet {
             category: u8,
         },
         /// Merchant verification expired
-        MerchantExpired {
-            merchant: T::AccountId,
-        },
+        MerchantExpired { merchant: T::AccountId },
         /// Sanctioned entity added
-        SanctionAdded {
-            account: T::AccountId,
-            source: u8,
-        },
+        SanctionAdded { account: T::AccountId, source: u8 },
         /// Sanction removed
-        SanctionRemoved {
-            account: T::AccountId,
-        },
+        SanctionRemoved { account: T::AccountId },
         /// Identity verified
         IdentityVerified {
             account: T::AccountId,
             kyc_level: u8,
         },
         /// Identity verification expired
-        IdentityExpired {
-            account: T::AccountId,
-        },
+        IdentityExpired { account: T::AccountId },
         /// Land registry entry added
         LandRegistryUpdated {
             property_id: PropertyId,
@@ -405,16 +380,11 @@ pub mod pallet {
             oracle_count: u32,
         },
         /// Conflicting KYC submissions detected; data frozen pending admin resolution (Phase 3A).
-        KycDisputeFlagged {
-            subject: T::AccountId,
-        },
+        KycDisputeFlagged { subject: T::AccountId },
         /// KYC dispute resolved by admin; fresh oracle submissions now accepted (Phase 3A).
-        KycDisputeResolved {
-            subject: T::AccountId,
-        },
+        KycDisputeResolved { subject: T::AccountId },
 
         // ── Phase 5A: Behavior flags ──────────────────────────────────────────
-
         /// Oracle operator staged a behavior-flag vote; waiting for consensus (Phase 5A).
         BehaviorFlagVoteStaged {
             account: T::AccountId,
@@ -430,9 +400,7 @@ pub mod pallet {
             cooldown_until: BlockNumberFor<T>,
         },
         /// Behavior flag cleared by admin after manual review (Phase 5A).
-        BehaviorFlagCleared {
-            account: T::AccountId,
-        },
+        BehaviorFlagCleared { account: T::AccountId },
     }
 
     // ===== ERRORS =====
@@ -525,10 +493,7 @@ pub mod pallet {
         /// Add authorized oracle operator
         #[pallet::weight(T::WeightInfo::add_operator())]
         #[pallet::call_index(0)]
-        pub fn add_operator(
-            origin: OriginFor<T>,
-            operator: T::AccountId,
-        ) -> DispatchResult {
+        pub fn add_operator(origin: OriginFor<T>, operator: T::AccountId) -> DispatchResult {
             T::OracleAdminOrigin::ensure_origin(origin)?;
 
             ensure!(
@@ -551,10 +516,7 @@ pub mod pallet {
         /// Remove oracle operator
         #[pallet::weight(T::WeightInfo::remove_operator())]
         #[pallet::call_index(1)]
-        pub fn remove_operator(
-            origin: OriginFor<T>,
-            operator: T::AccountId,
-        ) -> DispatchResult {
+        pub fn remove_operator(origin: OriginFor<T>, operator: T::AccountId) -> DispatchResult {
             T::OracleAdminOrigin::ensure_origin(origin)?;
 
             ensure!(
@@ -603,7 +565,10 @@ pub mod pallet {
                     } else {
                         (feed.price - price).saturating_mul(10000) / feed.price
                     };
-                    ensure!(deviation <= max_deviation, Error::<T>::PriceDeviationTooHigh);
+                    ensure!(
+                        deviation <= max_deviation,
+                        Error::<T>::PriceDeviationTooHigh
+                    );
                 }
             }
 
@@ -707,10 +672,7 @@ pub mod pallet {
         /// Remove sanction
         #[pallet::weight(T::WeightInfo::remove_sanction())]
         #[pallet::call_index(5)]
-        pub fn remove_sanction(
-            origin: OriginFor<T>,
-            account: T::AccountId,
-        ) -> DispatchResult {
+        pub fn remove_sanction(origin: OriginFor<T>, account: T::AccountId) -> DispatchResult {
             T::OracleAdminOrigin::ensure_origin(origin)?;
 
             ensure!(
@@ -830,10 +792,7 @@ pub mod pallet {
                     kyc_level,
                     oracle_count: new_count,
                 });
-                Self::deposit_event(Event::IdentityVerified {
-                    account,
-                    kyc_level,
-                });
+                Self::deposit_event(Event::IdentityVerified { account, kyc_level });
             }
 
             Ok(())
@@ -879,10 +838,7 @@ pub mod pallet {
 
             LandRegistryData::<T>::insert(property_id, land_info);
 
-            Self::deposit_event(Event::LandRegistryUpdated {
-                property_id,
-                owner,
-            });
+            Self::deposit_event(Event::LandRegistryUpdated { property_id, owner });
 
             Ok(())
         }
@@ -890,7 +846,7 @@ pub mod pallet {
         // ===== IoT DATA ORACLE EXTRINSICS (Phase 1: Nawal Expansion) =====
 
         /// Register an IoT device for data submission
-        /// device_type_index: 0=Drone, 1=PhoneSensor, 2=IoTSensor, 3=WeatherStation, 
+        /// device_type_index: 0=Drone, 1=PhoneSensor, 2=IoTSensor, 3=WeatherStation,
         ///                    4=AgriculturalSensor, 5=MarineBuoy, 6=Camera, 7=Other
         #[pallet::weight(T::WeightInfo::register_iot_device())]
         #[pallet::call_index(8)]
@@ -911,22 +867,22 @@ pub mod pallet {
 
             // Convert index to DeviceType (simplified, default specs)
             let device_type = match device_type_index {
-                0 => DeviceType::Drone(DroneSpec { 
+                0 => DeviceType::Drone(DroneSpec {
                     model: BoundedVec::default(),
                     camera_resolution: 0,
                     multispectral: false,
-                    max_altitude: 0, 
+                    max_altitude: 0,
                     flight_time: 0,
                 }),
-                1 => DeviceType::PhoneSensor(PhoneSpec { 
-                    os: BoundedVec::default(), 
-                    has_camera: true, 
-                    has_gps: true, 
+                1 => DeviceType::PhoneSensor(PhoneSpec {
+                    os: BoundedVec::default(),
+                    has_camera: true,
+                    has_gps: true,
                     has_accelerometer: true,
                 }),
-                2 => DeviceType::IoTSensor(SensorSpec { 
-                    sensor_type: SensorType::Temperature, 
-                    accuracy: 0, 
+                2 => DeviceType::IoTSensor(SensorSpec {
+                    sensor_type: SensorType::Temperature,
+                    accuracy: 0,
                     sampling_rate: 0,
                 }),
                 3 => DeviceType::WeatherStation,
@@ -951,10 +907,7 @@ pub mod pallet {
 
             IoTDevices::<T>::insert(device_id, device);
 
-            Self::deposit_event(Event::IoTDeviceRegistered {
-                device_id,
-                owner,
-            });
+            Self::deposit_event(Event::IoTDeviceRegistered { device_id, owner });
 
             Ok(())
         }
@@ -979,18 +932,19 @@ pub mod pallet {
             let operator = ensure_signed(origin)?;
 
             // Verify device exists and belongs to operator
-            let mut device = IoTDevices::<T>::get(device_id)
-                .ok_or(Error::<T>::DeviceNotFound)?;
+            let mut device = IoTDevices::<T>::get(device_id).ok_or(Error::<T>::DeviceNotFound)?;
 
-            ensure!(
-                device.owner == operator,
-                Error::<T>::NotDeviceOwner
-            );
+            ensure!(device.owner == operator, Error::<T>::NotDeviceOwner);
 
             // Quality metrics are documented as 0-100 scale; reject out-of-range values
-            ensure!(accuracy <= 100 && timeliness <= 100 && completeness <= 100
-                && consistency <= 100 && provenance <= 100,
-                Error::<T>::InvalidQualityMetric);
+            ensure!(
+                accuracy <= 100
+                    && timeliness <= 100
+                    && completeness <= 100
+                    && consistency <= 100
+                    && provenance <= 100,
+                Error::<T>::InvalidQualityMetric
+            );
 
             let current_block = frame_system::Pallet::<T>::block_number();
 
@@ -1027,7 +981,7 @@ pub mod pallet {
             // Update device stats
             device.last_active = current_block;
             device.data_submissions = device.data_submissions.saturating_add(1);
-            
+
             // Update reputation based on quality score
             let quality_score = quality_metrics.calculate_score();
             Self::update_device_reputation(&mut device, quality_score);
@@ -1050,10 +1004,7 @@ pub mod pallet {
         /// Verify IoT device (oracle operator function)
         #[pallet::weight(T::WeightInfo::verify_iot_device())]
         #[pallet::call_index(10)]
-        pub fn verify_iot_device(
-            origin: OriginFor<T>,
-            device_id: [u8; 32],
-        ) -> DispatchResult {
+        pub fn verify_iot_device(origin: OriginFor<T>, device_id: [u8; 32]) -> DispatchResult {
             let operator = ensure_signed(origin)?;
 
             ensure!(
@@ -1061,8 +1012,7 @@ pub mod pallet {
                 Error::<T>::NotAuthorizedOperator
             );
 
-            let mut device = IoTDevices::<T>::get(device_id)
-                .ok_or(Error::<T>::DeviceNotFound)?;
+            let mut device = IoTDevices::<T>::get(device_id).ok_or(Error::<T>::DeviceNotFound)?;
 
             device.verified = true;
             IoTDevices::<T>::insert(device_id, device);
@@ -1089,13 +1039,11 @@ pub mod pallet {
         /// - `InsufficientTreasuryBalance` — treasury cannot cover the reward.
         #[pallet::weight(T::WeightInfo::claim_oracle_rewards())]
         #[pallet::call_index(11)]
-        pub fn claim_oracle_rewards(
-            origin: OriginFor<T>,
-        ) -> DispatchResult {
+        pub fn claim_oracle_rewards(origin: OriginFor<T>) -> DispatchResult {
             let operator = ensure_signed(origin)?;
 
-            let stats = OracleOperatorStatsMap::<T>::get(&operator)
-                .ok_or(Error::<T>::NoStatsFound)?;
+            let stats =
+                OracleOperatorStatsMap::<T>::get(&operator).ok_or(Error::<T>::NoStatsFound)?;
 
             // Calculate rewards based on contributions
             let reward_u128 = Self::calculate_oracle_reward(&stats);
@@ -1185,10 +1133,7 @@ pub mod pallet {
         /// `OracleAdminOrigin` (governance council).
         #[pallet::weight(T::WeightInfo::resolve_kyc_dispute())]
         #[pallet::call_index(13)]
-        pub fn resolve_kyc_dispute(
-            origin: OriginFor<T>,
-            account: T::AccountId,
-        ) -> DispatchResult {
+        pub fn resolve_kyc_dispute(origin: OriginFor<T>, account: T::AccountId) -> DispatchResult {
             T::OracleAdminOrigin::ensure_origin(origin)?;
 
             ensure!(
@@ -1295,10 +1240,7 @@ pub mod pallet {
             .saturating_add(T::DbWeight::get().reads(1))
             .saturating_add(T::DbWeight::get().writes(2)))]
         #[pallet::call_index(15)]
-        pub fn clear_behavior_flag(
-            origin: OriginFor<T>,
-            account: T::AccountId,
-        ) -> DispatchResult {
+        pub fn clear_behavior_flag(origin: OriginFor<T>, account: T::AccountId) -> DispatchResult {
             T::OracleAdminOrigin::ensure_origin(origin)?;
 
             ensure!(
@@ -1374,7 +1316,7 @@ pub mod pallet {
 
             // Collect all recent submissions
             let mut submissions: Vec<u128> = Vec::new();
-            
+
             // SECURITY: Bound iteration to MaxOperators to prevent DoS (H-29)
             let max_ops = T::MaxOperators::get() as usize;
             for (operator, _) in OracleOperators::<T>::iter().take(max_ops) {
@@ -1474,7 +1416,11 @@ pub mod pallet {
         pub fn behavior_cooldown_end(account: &T::AccountId) -> Option<BlockNumberFor<T>> {
             let end = BehaviorFlagCooldown::<T>::get(account)?;
             let now = frame_system::Pallet::<T>::block_number();
-            if now < end { Some(end) } else { None }
+            if now < end {
+                Some(end)
+            } else {
+                None
+            }
         }
 
         /// Get current exchange rate for currency pair
@@ -1565,7 +1511,9 @@ pub mod pallet {
         }
 
         /// Get land ownership info
-        pub fn get_land_ownership(property_id: PropertyId) -> Option<LandOwnershipInfo<T::AccountId, BlockNumberFor<T>>> {
+        pub fn get_land_ownership(
+            property_id: PropertyId,
+        ) -> Option<LandOwnershipInfo<T::AccountId, BlockNumberFor<T>>> {
             LandRegistryData::<T>::get(property_id)
         }
 
@@ -1611,7 +1559,10 @@ pub mod pallet {
         }
 
         /// Update device reputation based on quality score
-        fn update_device_reputation(device: &mut IoTDevice<T::AccountId, BlockNumberFor<T>>, quality_score: u16) {
+        fn update_device_reputation(
+            device: &mut IoTDevice<T::AccountId, BlockNumberFor<T>>,
+            quality_score: u16,
+        ) {
             // Exponential moving average: new_rep = 0.9 * old_rep + 0.1 * quality
             let old_rep = device.reputation_score as u32;
             let new_quality = quality_score as u32;
@@ -1646,17 +1597,30 @@ pub mod pallet {
                 // Update average quality score (moving average)
                 let old_avg = stats.avg_quality_score as u32;
                 let new_score = quality_score as u32;
-                stats.avg_quality_score = ((old_avg * (stats.total_submissions.saturating_sub(1)) as u32 + new_score) 
-                    / stats.total_submissions as u32) as u16;
+                stats.avg_quality_score =
+                    ((old_avg * (stats.total_submissions.saturating_sub(1)) as u32 + new_score)
+                        / stats.total_submissions as u32) as u16;
 
                 // Update domain-specific counts
                 if let Some(d) = domain {
                     match d {
-                        ModelDomain::AgriTech => stats.agritech_submissions = stats.agritech_submissions.saturating_add(1),
-                        ModelDomain::Marine => stats.marine_submissions = stats.marine_submissions.saturating_add(1),
-                        ModelDomain::Education => stats.education_submissions = stats.education_submissions.saturating_add(1),
-                        ModelDomain::Tech => stats.tech_submissions = stats.tech_submissions.saturating_add(1),
-                        ModelDomain::General => stats.general_submissions = stats.general_submissions.saturating_add(1),
+                        ModelDomain::AgriTech => {
+                            stats.agritech_submissions =
+                                stats.agritech_submissions.saturating_add(1)
+                        }
+                        ModelDomain::Marine => {
+                            stats.marine_submissions = stats.marine_submissions.saturating_add(1)
+                        }
+                        ModelDomain::Education => {
+                            stats.education_submissions =
+                                stats.education_submissions.saturating_add(1)
+                        }
+                        ModelDomain::Tech => {
+                            stats.tech_submissions = stats.tech_submissions.saturating_add(1)
+                        }
+                        ModelDomain::General => {
+                            stats.general_submissions = stats.general_submissions.saturating_add(1)
+                        }
                     }
                 }
 
@@ -1673,12 +1637,15 @@ pub mod pallet {
             let base_reward: u128 = 100_000_000_000_000; // 100 DALLA
 
             // Calculate weighted domain multiplier
-            let total_domain_submissions = 
-                stats.agritech_submissions as u128 * ModelDomain::AgriTech.reward_multiplier() as u128 +
-                stats.marine_submissions as u128 * ModelDomain::Marine.reward_multiplier() as u128 +
-                stats.education_submissions as u128 * ModelDomain::Education.reward_multiplier() as u128 +
-                stats.tech_submissions as u128 * ModelDomain::Tech.reward_multiplier() as u128 +
-                stats.general_submissions as u128 * ModelDomain::General.reward_multiplier() as u128;
+            let total_domain_submissions = stats.agritech_submissions as u128
+                * ModelDomain::AgriTech.reward_multiplier() as u128
+                + stats.marine_submissions as u128
+                    * ModelDomain::Marine.reward_multiplier() as u128
+                + stats.education_submissions as u128
+                    * ModelDomain::Education.reward_multiplier() as u128
+                + stats.tech_submissions as u128 * ModelDomain::Tech.reward_multiplier() as u128
+                + stats.general_submissions as u128
+                    * ModelDomain::General.reward_multiplier() as u128;
 
             let total_submissions = stats.total_submissions.max(1) as u128;
 
@@ -1698,8 +1665,7 @@ pub mod pallet {
                 .saturating_mul(stats.avg_quality_score as u128)
                 .saturating_mul(stats.uptime_percentage as u128);
 
-            let denominator = total_submissions
-                .saturating_mul(10_000_000_000_000u128);
+            let denominator = total_submissions.saturating_mul(10_000_000_000_000u128);
 
             if denominator == 0 {
                 return 0;
@@ -1709,12 +1675,16 @@ pub mod pallet {
         }
 
         /// Get IoT device info
-        pub fn get_iot_device(device_id: [u8; 32]) -> Option<IoTDevice<T::AccountId, BlockNumberFor<T>>> {
+        pub fn get_iot_device(
+            device_id: [u8; 32],
+        ) -> Option<IoTDevice<T::AccountId, BlockNumberFor<T>>> {
             IoTDevices::<T>::get(device_id)
         }
 
         /// Get oracle operator stats
-        pub fn get_operator_stats(operator: &T::AccountId) -> Option<OracleOperatorStats<BlockNumberFor<T>>> {
+        pub fn get_operator_stats(
+            operator: &T::AccountId,
+        ) -> Option<OracleOperatorStats<BlockNumberFor<T>>> {
             OracleOperatorStatsMap::<T>::get(operator)
         }
 

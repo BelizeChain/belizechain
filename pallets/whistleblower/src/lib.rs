@@ -52,14 +52,14 @@ mod benchmarking;
 
 #[frame_support::pallet]
 pub mod pallet {
+    use crate::weights::WeightInfo;
     use frame_support::{
         pallet_prelude::*,
-        traits::{Currency, ReservableCurrency, Get},
+        traits::{Currency, Get, ReservableCurrency},
     };
     use frame_system::pallet_prelude::*;
     use sp_runtime::traits::Saturating;
     use sp_std::vec::Vec;
-    use crate::weights::WeightInfo;
 
     pub type BalanceOf<T> =
         <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
@@ -69,7 +69,17 @@ pub mod pallet {
     const COMMITMENT_DOMAIN: &[u8] = b"BelizeChainWhistleblowerV1";
 
     // ── Report category ───────────────────────────────────────────────────────
-    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+    #[derive(
+        Encode,
+        Decode,
+        codec::DecodeWithMemTracking,
+        Clone,
+        PartialEq,
+        Eq,
+        Debug,
+        TypeInfo,
+        MaxEncodedLen,
+    )]
     pub enum ReportCategory {
         /// Fraudulent governance votes, bribery.
         Fraud,
@@ -91,7 +101,17 @@ pub mod pallet {
     }
 
     // ── Report status ─────────────────────────────────────────────────────────
-    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+    #[derive(
+        Encode,
+        Decode,
+        codec::DecodeWithMemTracking,
+        Clone,
+        PartialEq,
+        Eq,
+        Debug,
+        TypeInfo,
+        MaxEncodedLen,
+    )]
     pub enum ReportStatus {
         /// Freshly submitted; awaiting a reviewer.
         Pending,
@@ -106,7 +126,17 @@ pub mod pallet {
     }
 
     // ── Report record ─────────────────────────────────────────────────────────
-    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+    #[derive(
+        Encode,
+        Decode,
+        codec::DecodeWithMemTracking,
+        Clone,
+        PartialEq,
+        Eq,
+        Debug,
+        TypeInfo,
+        MaxEncodedLen,
+    )]
     #[scale_info(skip_type_params(T))]
     pub struct Report<T: Config> {
         /// Reporter commitment = blake2_256(DOMAIN_TAG ++ account ++ secret).
@@ -179,31 +209,18 @@ pub mod pallet {
     /// All submitted reports.
     #[pallet::storage]
     #[pallet::getter(fn reports)]
-    pub type Reports<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat, u32,
-        Report<T>,
-        OptionQuery,
-    >;
+    pub type Reports<T: Config> = StorageMap<_, Blake2_128Concat, u32, Report<T>, OptionQuery>;
 
     /// Total balance currently in the whistleblower reward pool.
     #[pallet::storage]
     #[pallet::getter(fn whistleblower_pool)]
-    pub type WhistleblowerPool<T: Config> = StorageValue<
-        _,
-        BalanceOf<T>,
-        ValueQuery,
-    >;
+    pub type WhistleblowerPool<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery>;
 
     /// Reward amounts escrowed per report (set on Verified verdict).
     #[pallet::storage]
     #[pallet::getter(fn escrowed_reward)]
-    pub type EscrowedReward<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat, u32,
-        BalanceOf<T>,
-        OptionQuery,
-    >;
+    pub type EscrowedReward<T: Config> =
+        StorageMap<_, Blake2_128Concat, u32, BalanceOf<T>, OptionQuery>;
 
     /// Per-block report submission counter (reset each block).
     #[pallet::storage]
@@ -214,8 +231,7 @@ pub mod pallet {
         fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
             ReportsThisBlock::<T>::kill();
             // Phase-5 FIX: kill() is a DB write; account for ref_time + proof_size
-            Weight::from_parts(5_000_000, 64)
-                .saturating_add(T::DbWeight::get().writes(1))
+            Weight::from_parts(5_000_000, 64).saturating_add(T::DbWeight::get().writes(1))
         }
     }
 
@@ -225,17 +241,39 @@ pub mod pallet {
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// A new report was submitted.
-        ReportSubmitted { report_id: u32, target: T::AccountId, category: u8 },
+        ReportSubmitted {
+            report_id: u32,
+            target: T::AccountId,
+            category: u8,
+        },
         /// A reviewer issued a verdict on a report.
-        ReportReviewed { report_id: u32, verdict: u8 /* 0=Verified, 1=Dismissed */ },
+        ReportReviewed {
+            report_id: u32,
+            verdict: u8, /* 0=Verified, 1=Dismissed */
+        },
         /// Reporter revealed identity and claimed reward.
-        RewardClaimed { report_id: u32, claimant: T::AccountId, amount: BalanceOf<T> },
+        RewardClaimed {
+            report_id: u32,
+            claimant: T::AccountId,
+            amount: BalanceOf<T>,
+        },
         /// Bond returned to depositor after report verified.
-        BondReturned { report_id: u32, depositor: T::AccountId, amount: BalanceOf<T> },
+        BondReturned {
+            report_id: u32,
+            depositor: T::AccountId,
+            amount: BalanceOf<T>,
+        },
         /// Bond slashed from depositor after report dismissed.
-        BondSlashed { report_id: u32, depositor: T::AccountId, amount: BalanceOf<T> },
+        BondSlashed {
+            report_id: u32,
+            depositor: T::AccountId,
+            amount: BalanceOf<T>,
+        },
         /// Governance funded the whistleblower pool.
-        PoolFunded { amount: BalanceOf<T>, new_total: BalanceOf<T> },
+        PoolFunded {
+            amount: BalanceOf<T>,
+            new_total: BalanceOf<T>,
+        },
     }
 
     // ── Errors ────────────────────────────────────────────────────────────────
@@ -288,12 +326,14 @@ pub mod pallet {
         ) -> DispatchResult {
             let reporter = ensure_signed(origin)?;
 
-            let category = ReportCategory::from_u8(category)
-                .ok_or(Error::<T>::InvalidCategory)?;
+            let category = ReportCategory::from_u8(category).ok_or(Error::<T>::InvalidCategory)?;
 
             // Per-block rate limit check
             let report_count = ReportsThisBlock::<T>::get();
-            ensure!(report_count < T::MaxReportsPerBlock::get(), Error::<T>::ReportRateLimitExceeded);
+            ensure!(
+                report_count < T::MaxReportsPerBlock::get(),
+                Error::<T>::ReportRateLimitExceeded
+            );
 
             // Reserve anti-spam bond from the REAL account (not stored in report)
             T::Currency::reserve(&reporter, T::ReportBond::get())
@@ -325,7 +365,11 @@ pub mod pallet {
                 ReportCategory::SystematicAbuse => 1,
                 ReportCategory::ChainExploit => 2,
             };
-            Self::deposit_event(Event::ReportSubmitted { report_id, target, category: cat_u8 });
+            Self::deposit_event(Event::ReportSubmitted {
+                report_id,
+                target,
+                category: cat_u8,
+            });
 
             Ok(())
         }
@@ -344,11 +388,13 @@ pub mod pallet {
         ) -> DispatchResult {
             T::ReviewerOrigin::ensure_origin(origin)?;
 
-            let mut report = Reports::<T>::get(report_id)
-                .ok_or(Error::<T>::ReportNotFound)?;
+            let mut report = Reports::<T>::get(report_id).ok_or(Error::<T>::ReportNotFound)?;
 
             ensure!(
-                matches!(report.status, ReportStatus::Pending | ReportStatus::UnderReview),
+                matches!(
+                    report.status,
+                    ReportStatus::Pending | ReportStatus::UnderReview
+                ),
                 Error::<T>::InvalidReportStatus
             );
 
@@ -376,10 +422,8 @@ pub mod pallet {
                 }
                 1 => {
                     // Dismissed — forfeit bond (slash from depositor)
-                    let (_imbalance, _remaining) = T::Currency::slash_reserved(
-                        &report.bond_depositor,
-                        report.bond,
-                    );
+                    let (_imbalance, _remaining) =
+                        T::Currency::slash_reserved(&report.bond_depositor, report.bond);
                     Self::deposit_event(Event::BondSlashed {
                         report_id,
                         depositor: report.bond_depositor.clone(),
@@ -409,8 +453,7 @@ pub mod pallet {
         ) -> DispatchResult {
             let claimant = ensure_signed(origin)?;
 
-            let report = Reports::<T>::get(report_id)
-                .ok_or(Error::<T>::ReportNotFound)?;
+            let report = Reports::<T>::get(report_id).ok_or(Error::<T>::ReportNotFound)?;
 
             ensure!(
                 matches!(report.status, ReportStatus::Verified),
@@ -422,11 +465,14 @@ pub mod pallet {
             preimage.extend_from_slice(&claimant.encode());
             preimage.extend_from_slice(&secret);
             let computed = sp_io::hashing::blake2_256(&preimage);
-            ensure!(computed == report.commitment, Error::<T>::CommitmentMismatch);
+            ensure!(
+                computed == report.commitment,
+                Error::<T>::CommitmentMismatch
+            );
 
             // Pay out escrowed reward
-            let reward = EscrowedReward::<T>::take(report_id)
-                .ok_or(Error::<T>::NoEscrowedReward)?;
+            let reward =
+                EscrowedReward::<T>::take(report_id).ok_or(Error::<T>::NoEscrowedReward)?;
 
             // P0-06 FIX: Check supply cap before minting
             let new_issuance = T::Currency::total_issuance()

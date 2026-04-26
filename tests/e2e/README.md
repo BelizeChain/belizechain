@@ -88,7 +88,7 @@ docker compose -f infra/docker-compose.yml up -d
 # OR start manually:
 
 # Blockchain
-./target/release/belizechain-node --chain=testnet --tmp --alice
+./target/release/belizechain-node --chain=local --tmp --alice
 
 # IPFS
 ipfs daemon

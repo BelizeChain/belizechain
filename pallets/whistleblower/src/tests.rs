@@ -77,7 +77,10 @@ fn submit_report_all_categories_work() {
             sample_evidence_hash(),
             0,
         ));
-        assert_eq!(Whistleblower::reports(1).unwrap().category, ReportCategory::Fraud);
+        assert_eq!(
+            Whistleblower::reports(1).unwrap().category,
+            ReportCategory::Fraud
+        );
 
         // SystematicAbuse (1)
         assert_ok!(Whistleblower::submit_report(
@@ -87,7 +90,10 @@ fn submit_report_all_categories_work() {
             sample_evidence_hash(),
             1,
         ));
-        assert_eq!(Whistleblower::reports(2).unwrap().category, ReportCategory::SystematicAbuse);
+        assert_eq!(
+            Whistleblower::reports(2).unwrap().category,
+            ReportCategory::SystematicAbuse
+        );
 
         // ChainExploit (2)
         assert_ok!(Whistleblower::submit_report(
@@ -97,7 +103,10 @@ fn submit_report_all_categories_work() {
             sample_evidence_hash(),
             2,
         ));
-        assert_eq!(Whistleblower::reports(3).unwrap().category, ReportCategory::ChainExploit);
+        assert_eq!(
+            Whistleblower::reports(3).unwrap().category,
+            ReportCategory::ChainExploit
+        );
     });
 }
 
@@ -343,7 +352,10 @@ fn review_report_verified_each_category_reward() {
             0, // Fraud
         ));
         assert_ok!(Whistleblower::review_report(
-            RuntimeOrigin::root(), 1, 0, sample_reasoning_hash(),
+            RuntimeOrigin::root(),
+            1,
+            0,
+            sample_reasoning_hash(),
         ));
         assert_eq!(Whistleblower::escrowed_reward(1).unwrap(), 10_000); // FraudReward
 
@@ -356,7 +368,10 @@ fn review_report_verified_each_category_reward() {
             1, // Abuse
         ));
         assert_ok!(Whistleblower::review_report(
-            RuntimeOrigin::root(), 2, 0, sample_reasoning_hash(),
+            RuntimeOrigin::root(),
+            2,
+            0,
+            sample_reasoning_hash(),
         ));
         assert_eq!(Whistleblower::escrowed_reward(2).unwrap(), 5_000); // AbuseReward
 
@@ -369,7 +384,10 @@ fn review_report_verified_each_category_reward() {
             2, // Exploit
         ));
         assert_ok!(Whistleblower::review_report(
-            RuntimeOrigin::root(), 3, 0, sample_reasoning_hash(),
+            RuntimeOrigin::root(),
+            3,
+            0,
+            sample_reasoning_hash(),
         ));
         assert_eq!(Whistleblower::escrowed_reward(3).unwrap(), 50_000); // ExploitReward
     });
@@ -452,11 +470,7 @@ fn claim_reward_wrong_account_fails() {
 
         // BOB tries to claim with ALICE's nonce — hash won't match
         assert_noop!(
-            Whistleblower::claim_reward(
-                RuntimeOrigin::signed(BOB),
-                report_id,
-                nonce,
-            ),
+            Whistleblower::claim_reward(RuntimeOrigin::signed(BOB), report_id, nonce,),
             Error::<Test>::CommitmentMismatch
         );
     });
@@ -478,11 +492,7 @@ fn claim_reward_not_verified_fails() {
         ));
 
         assert_noop!(
-            Whistleblower::claim_reward(
-                RuntimeOrigin::signed(ALICE),
-                1,
-                nonce,
-            ),
+            Whistleblower::claim_reward(RuntimeOrigin::signed(ALICE), 1, nonce,),
             Error::<Test>::InvalidReportStatus
         );
     });
@@ -492,11 +502,7 @@ fn claim_reward_not_verified_fails() {
 fn claim_reward_report_not_found_fails() {
     new_test_ext().execute_with(|| {
         assert_noop!(
-            Whistleblower::claim_reward(
-                RuntimeOrigin::signed(ALICE),
-                999,
-                [0u8; 32],
-            ),
+            Whistleblower::claim_reward(RuntimeOrigin::signed(ALICE), 999, [0u8; 32],),
             Error::<Test>::ReportNotFound
         );
     });
@@ -515,11 +521,7 @@ fn claim_reward_double_claim_fails() {
 
         // Second claim — status is now Claimed (terminal state from P0-3)
         assert_noop!(
-            Whistleblower::claim_reward(
-                RuntimeOrigin::signed(ALICE),
-                report_id,
-                nonce,
-            ),
+            Whistleblower::claim_reward(RuntimeOrigin::signed(ALICE), report_id, nonce,),
             Error::<Test>::InvalidReportStatus
         );
     });
@@ -556,8 +558,14 @@ fn fund_whistleblower_pool_works() {
 #[test]
 fn report_category_from_u8_covers_all() {
     assert_eq!(ReportCategory::from_u8(0), Some(ReportCategory::Fraud));
-    assert_eq!(ReportCategory::from_u8(1), Some(ReportCategory::SystematicAbuse));
-    assert_eq!(ReportCategory::from_u8(2), Some(ReportCategory::ChainExploit));
+    assert_eq!(
+        ReportCategory::from_u8(1),
+        Some(ReportCategory::SystematicAbuse)
+    );
+    assert_eq!(
+        ReportCategory::from_u8(2),
+        Some(ReportCategory::ChainExploit)
+    );
     assert_eq!(ReportCategory::from_u8(3), None);
     assert_eq!(ReportCategory::from_u8(255), None);
 }
@@ -733,7 +741,8 @@ fn claim_reward_on_dismissed_report_fails() {
         let alias = compute_commitment(ALICE, nonce);
 
         assert_ok!(Whistleblower::fund_whistleblower_pool(
-            RuntimeOrigin::signed(ALICE), 100_000,
+            RuntimeOrigin::signed(ALICE),
+            100_000,
         ));
 
         assert_ok!(Whistleblower::submit_report(
@@ -747,16 +756,15 @@ fn claim_reward_on_dismissed_report_fails() {
 
         // Dismiss
         assert_ok!(Whistleblower::review_report(
-            RuntimeOrigin::root(), report_id, 1, sample_reasoning_hash(),
+            RuntimeOrigin::root(),
+            report_id,
+            1,
+            sample_reasoning_hash(),
         ));
 
         // Attempt claim — Dismissed status
         assert_noop!(
-            Whistleblower::claim_reward(
-                RuntimeOrigin::signed(ALICE),
-                report_id,
-                nonce,
-            ),
+            Whistleblower::claim_reward(RuntimeOrigin::signed(ALICE), report_id, nonce,),
             Error::<Test>::InvalidReportStatus
         );
     });
@@ -771,22 +779,31 @@ fn claim_reward_systematic_abuse_correct_amount() {
         let alias = compute_commitment(ALICE, nonce);
 
         assert_ok!(Whistleblower::fund_whistleblower_pool(
-            RuntimeOrigin::signed(ALICE), 100_000,
+            RuntimeOrigin::signed(ALICE),
+            100_000,
         ));
 
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(ALICE),
-            alias, TARGET, sample_evidence_hash(), 1, // SystematicAbuse
+            alias,
+            TARGET,
+            sample_evidence_hash(),
+            1, // SystematicAbuse
         ));
         let report_id = Whistleblower::report_counter();
 
         assert_ok!(Whistleblower::review_report(
-            RuntimeOrigin::root(), report_id, 0, sample_reasoning_hash(),
+            RuntimeOrigin::root(),
+            report_id,
+            0,
+            sample_reasoning_hash(),
         ));
 
         let balance_before = Balances::free_balance(ALICE);
         assert_ok!(Whistleblower::claim_reward(
-            RuntimeOrigin::signed(ALICE), report_id, nonce,
+            RuntimeOrigin::signed(ALICE),
+            report_id,
+            nonce,
         ));
 
         assert_eq!(Balances::free_balance(ALICE), balance_before + 5_000); // AbuseReward
@@ -800,22 +817,31 @@ fn claim_reward_chain_exploit_correct_amount() {
         let alias = compute_commitment(ALICE, nonce);
 
         assert_ok!(Whistleblower::fund_whistleblower_pool(
-            RuntimeOrigin::signed(ALICE), 100_000,
+            RuntimeOrigin::signed(ALICE),
+            100_000,
         ));
 
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(ALICE),
-            alias, TARGET, sample_evidence_hash(), 2, // ChainExploit
+            alias,
+            TARGET,
+            sample_evidence_hash(),
+            2, // ChainExploit
         ));
         let report_id = Whistleblower::report_counter();
 
         assert_ok!(Whistleblower::review_report(
-            RuntimeOrigin::root(), report_id, 0, sample_reasoning_hash(),
+            RuntimeOrigin::root(),
+            report_id,
+            0,
+            sample_reasoning_hash(),
         ));
 
         let balance_before = Balances::free_balance(ALICE);
         assert_ok!(Whistleblower::claim_reward(
-            RuntimeOrigin::signed(ALICE), report_id, nonce,
+            RuntimeOrigin::signed(ALICE),
+            report_id,
+            nonce,
         ));
 
         assert_eq!(Balances::free_balance(ALICE), balance_before + 50_000); // ExploitReward
@@ -829,17 +855,24 @@ fn pool_depletes_across_multiple_verified_reports() {
     new_test_ext().execute_with(|| {
         // Fund pool with exactly enough for 2 fraud rewards (10K each)
         assert_ok!(Whistleblower::fund_whistleblower_pool(
-            RuntimeOrigin::signed(ALICE), 20_000,
+            RuntimeOrigin::signed(ALICE),
+            20_000,
         ));
 
         // Report 1 — Fraud (costs 10K from pool)
         let nonce1 = [1u8; 32];
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(ALICE),
-            compute_commitment(ALICE, nonce1), TARGET, sample_evidence_hash(), 0,
+            compute_commitment(ALICE, nonce1),
+            TARGET,
+            sample_evidence_hash(),
+            0,
         ));
         assert_ok!(Whistleblower::review_report(
-            RuntimeOrigin::root(), 1, 0, sample_reasoning_hash(),
+            RuntimeOrigin::root(),
+            1,
+            0,
+            sample_reasoning_hash(),
         ));
         assert_eq!(Whistleblower::whistleblower_pool(), 10_000);
 
@@ -847,10 +880,16 @@ fn pool_depletes_across_multiple_verified_reports() {
         let nonce2 = [2u8; 32];
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(BOB),
-            compute_commitment(BOB, nonce2), TARGET, sample_evidence_hash(), 0,
+            compute_commitment(BOB, nonce2),
+            TARGET,
+            sample_evidence_hash(),
+            0,
         ));
         assert_ok!(Whistleblower::review_report(
-            RuntimeOrigin::root(), 2, 0, sample_reasoning_hash(),
+            RuntimeOrigin::root(),
+            2,
+            0,
+            sample_reasoning_hash(),
         ));
         assert_eq!(Whistleblower::whistleblower_pool(), 0);
 
@@ -858,12 +897,13 @@ fn pool_depletes_across_multiple_verified_reports() {
         let nonce3 = [3u8; 32];
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(CHARLIE),
-            compute_commitment(CHARLIE, nonce3), TARGET, sample_evidence_hash(), 0,
+            compute_commitment(CHARLIE, nonce3),
+            TARGET,
+            sample_evidence_hash(),
+            0,
         ));
         assert_noop!(
-            Whistleblower::review_report(
-                RuntimeOrigin::root(), 3, 0, sample_reasoning_hash(),
-            ),
+            Whistleblower::review_report(RuntimeOrigin::root(), 3, 0, sample_reasoning_hash(),),
             Error::<Test>::InsufficientPool
         );
     });
@@ -874,17 +914,24 @@ fn pool_exactly_matches_reward_drains_to_zero() {
     new_test_ext().execute_with(|| {
         // Fund exactly the Fraud reward amount
         assert_ok!(Whistleblower::fund_whistleblower_pool(
-            RuntimeOrigin::signed(ALICE), 10_000, // = FraudReward
+            RuntimeOrigin::signed(ALICE),
+            10_000, // = FraudReward
         ));
 
         let nonce = [1u8; 32];
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(ALICE),
-            compute_commitment(ALICE, nonce), TARGET, sample_evidence_hash(), 0,
+            compute_commitment(ALICE, nonce),
+            TARGET,
+            sample_evidence_hash(),
+            0,
         ));
 
         assert_ok!(Whistleblower::review_report(
-            RuntimeOrigin::root(), 1, 0, sample_reasoning_hash(),
+            RuntimeOrigin::root(),
+            1,
+            0,
+            sample_reasoning_hash(),
         ));
 
         assert_eq!(Whistleblower::whistleblower_pool(), 0);
@@ -1061,11 +1108,17 @@ fn different_nonces_produce_different_aliases() {
 
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(ALICE),
-            alias1, TARGET, sample_evidence_hash(), 0,
+            alias1,
+            TARGET,
+            sample_evidence_hash(),
+            0,
         ));
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(ALICE),
-            alias2, TARGET, sample_evidence_hash(), 0,
+            alias2,
+            TARGET,
+            sample_evidence_hash(),
+            0,
         ));
 
         let r1 = Whistleblower::reports(1).unwrap();
@@ -1088,17 +1141,27 @@ fn same_nonce_different_accounts_produce_different_aliases() {
 fn fund_pool_cumulative_events_have_correct_totals() {
     new_test_ext().execute_with(|| {
         assert_ok!(Whistleblower::fund_whistleblower_pool(
-            RuntimeOrigin::signed(ALICE), 30_000,
+            RuntimeOrigin::signed(ALICE),
+            30_000,
         ));
         System::assert_has_event(
-            Event::<Test>::PoolFunded { amount: 30_000, new_total: 30_000 }.into()
+            Event::<Test>::PoolFunded {
+                amount: 30_000,
+                new_total: 30_000,
+            }
+            .into(),
         );
 
         assert_ok!(Whistleblower::fund_whistleblower_pool(
-            RuntimeOrigin::signed(ALICE), 20_000,
+            RuntimeOrigin::signed(ALICE),
+            20_000,
         ));
         System::assert_has_event(
-            Event::<Test>::PoolFunded { amount: 20_000, new_total: 50_000 }.into()
+            Event::<Test>::PoolFunded {
+                amount: 20_000,
+                new_total: 50_000,
+            }
+            .into(),
         );
     });
 }
@@ -1110,7 +1173,8 @@ fn full_lifecycle_submit_verify_claim() {
     new_test_ext().execute_with(|| {
         // 1. Fund the pool
         assert_ok!(Whistleblower::fund_whistleblower_pool(
-            RuntimeOrigin::signed(ALICE), 100_000,
+            RuntimeOrigin::signed(ALICE),
+            100_000,
         ));
         assert_eq!(Whistleblower::whistleblower_pool(), 100_000);
 
@@ -1121,22 +1185,30 @@ fn full_lifecycle_submit_verify_claim() {
 
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(BOB),
-            alias, TARGET, sample_evidence_hash(), 2, // ChainExploit
+            alias,
+            TARGET,
+            sample_evidence_hash(),
+            2, // ChainExploit
         ));
         let report_id = Whistleblower::report_counter();
         assert_eq!(Balances::reserved_balance(BOB), 1_000); // bond
 
         // 3. Verify report
         assert_ok!(Whistleblower::review_report(
-            RuntimeOrigin::root(), report_id, 0, sample_reasoning_hash(),
+            RuntimeOrigin::root(),
+            report_id,
+            0,
+            sample_reasoning_hash(),
         ));
         assert_eq!(Whistleblower::whistleblower_pool(), 50_000); // 100K - 50K exploit reward
-        // Bond unreserved on verification
+                                                                 // Bond unreserved on verification
         assert_eq!(Balances::reserved_balance(BOB), 0);
 
         // 4. Claim reward
         assert_ok!(Whistleblower::claim_reward(
-            RuntimeOrigin::signed(BOB), report_id, nonce,
+            RuntimeOrigin::signed(BOB),
+            report_id,
+            nonce,
         ));
         assert_eq!(Balances::free_balance(BOB), balance_before + 50_000);
         // Bond was returned on verify, reward deposited on claim
@@ -1149,7 +1221,8 @@ fn full_lifecycle_submit_verify_claim() {
 fn full_lifecycle_submit_dismiss() {
     new_test_ext().execute_with(|| {
         assert_ok!(Whistleblower::fund_whistleblower_pool(
-            RuntimeOrigin::signed(ALICE), 100_000,
+            RuntimeOrigin::signed(ALICE),
+            100_000,
         ));
         let pool_after_fund = Whistleblower::whistleblower_pool();
 
@@ -1158,13 +1231,19 @@ fn full_lifecycle_submit_dismiss() {
 
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(CHARLIE),
-            alias, TARGET, sample_evidence_hash(), 0,
+            alias,
+            TARGET,
+            sample_evidence_hash(),
+            0,
         ));
         let report_id = Whistleblower::report_counter();
 
         // Dismiss — pool should NOT be reduced
         assert_ok!(Whistleblower::review_report(
-            RuntimeOrigin::root(), report_id, 1, sample_reasoning_hash(),
+            RuntimeOrigin::root(),
+            report_id,
+            1,
+            sample_reasoning_hash(),
         ));
         assert_eq!(Whistleblower::whistleblower_pool(), pool_after_fund);
 
@@ -1188,11 +1267,18 @@ fn review_dismissed_emits_verdict_1() {
         let report_id = setup_funded_report(0);
 
         assert_ok!(Whistleblower::review_report(
-            RuntimeOrigin::root(), report_id, 1, sample_reasoning_hash(),
+            RuntimeOrigin::root(),
+            report_id,
+            1,
+            sample_reasoning_hash(),
         ));
 
         System::assert_has_event(
-            Event::<Test>::ReportReviewed { report_id, verdict: 1 }.into()
+            Event::<Test>::ReportReviewed {
+                report_id,
+                verdict: 1,
+            }
+            .into(),
         );
     });
 }
@@ -1203,11 +1289,18 @@ fn review_verified_emits_verdict_0() {
         let report_id = setup_funded_report(0);
 
         assert_ok!(Whistleblower::review_report(
-            RuntimeOrigin::root(), report_id, 0, sample_reasoning_hash(),
+            RuntimeOrigin::root(),
+            report_id,
+            0,
+            sample_reasoning_hash(),
         ));
 
         System::assert_has_event(
-            Event::<Test>::ReportReviewed { report_id, verdict: 0 }.into()
+            Event::<Test>::ReportReviewed {
+                report_id,
+                verdict: 0,
+            }
+            .into(),
         );
     });
 }
@@ -1221,19 +1314,35 @@ fn submit_report_event_category_values() {
 
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(ALICE),
-            compute_commitment(ALICE, nonce), TARGET, sample_evidence_hash(), 1,
+            compute_commitment(ALICE, nonce),
+            TARGET,
+            sample_evidence_hash(),
+            1,
         ));
         System::assert_has_event(
-            Event::<Test>::ReportSubmitted { report_id: 1, target: TARGET, category: 1 }.into()
+            Event::<Test>::ReportSubmitted {
+                report_id: 1,
+                target: TARGET,
+                category: 1,
+            }
+            .into(),
         );
 
         let nonce2 = [2u8; 32];
         assert_ok!(Whistleblower::submit_report(
             RuntimeOrigin::signed(BOB),
-            compute_commitment(BOB, nonce2), TARGET, sample_evidence_hash(), 2,
+            compute_commitment(BOB, nonce2),
+            TARGET,
+            sample_evidence_hash(),
+            2,
         ));
         System::assert_has_event(
-            Event::<Test>::ReportSubmitted { report_id: 2, target: TARGET, category: 2 }.into()
+            Event::<Test>::ReportSubmitted {
+                report_id: 2,
+                target: TARGET,
+                category: 2,
+            }
+            .into(),
         );
     });
 }
@@ -1248,7 +1357,8 @@ fn relay_submission_sponsor_pattern() {
     // BOB is the sponsor/bond-depositor; ALICE holds the commitment secret.
     new_test_ext().execute_with(|| {
         assert_ok!(Whistleblower::fund_whistleblower_pool(
-            RuntimeOrigin::signed(ALICE), 100_000,
+            RuntimeOrigin::signed(ALICE),
+            100_000,
         ));
 
         let nonce = [99u8; 32];
@@ -1275,7 +1385,10 @@ fn relay_submission_sponsor_pattern() {
 
         // Verify the report
         assert_ok!(Whistleblower::review_report(
-            RuntimeOrigin::root(), report_id, 0, sample_reasoning_hash(),
+            RuntimeOrigin::root(),
+            report_id,
+            0,
+            sample_reasoning_hash(),
         ));
 
         // Bond returned to BOB (the sponsor)
@@ -1284,7 +1397,9 @@ fn relay_submission_sponsor_pattern() {
         // ALICE claims the reward — only she knows the nonce
         let alice_balance_before = Balances::free_balance(ALICE);
         assert_ok!(Whistleblower::claim_reward(
-            RuntimeOrigin::signed(ALICE), report_id, nonce,
+            RuntimeOrigin::signed(ALICE),
+            report_id,
+            nonce,
         ));
         assert_eq!(Balances::free_balance(ALICE), alice_balance_before + 10_000);
 
@@ -1298,7 +1413,8 @@ fn relay_submission_dismissed_slashes_sponsor() {
     // Sponsor's bond is slashed when report is dismissed.
     new_test_ext().execute_with(|| {
         assert_ok!(Whistleblower::fund_whistleblower_pool(
-            RuntimeOrigin::signed(ALICE), 100_000,
+            RuntimeOrigin::signed(ALICE),
+            100_000,
         ));
 
         let nonce = [88u8; 32];
@@ -1307,14 +1423,21 @@ fn relay_submission_dismissed_slashes_sponsor() {
 
         // BOB relays
         assert_ok!(Whistleblower::submit_report(
-            RuntimeOrigin::signed(BOB), alias, TARGET, sample_evidence_hash(), 0,
+            RuntimeOrigin::signed(BOB),
+            alias,
+            TARGET,
+            sample_evidence_hash(),
+            0,
         ));
         let report_id = Whistleblower::report_counter();
         assert_eq!(Balances::reserved_balance(BOB), 1_000);
 
         // Dismiss — bond slashed from BOB
         assert_ok!(Whistleblower::review_report(
-            RuntimeOrigin::root(), report_id, 1, sample_reasoning_hash(),
+            RuntimeOrigin::root(),
+            report_id,
+            1,
+            sample_reasoning_hash(),
         ));
         assert_eq!(Balances::reserved_balance(BOB), 0);
         // Free balance should also be reduced by the bond (slashed, not returned)
@@ -1330,7 +1453,10 @@ fn bond_returned_event_on_verified() {
         let report_id = setup_funded_report(0);
 
         assert_ok!(Whistleblower::review_report(
-            RuntimeOrigin::root(), report_id, 0, sample_reasoning_hash(),
+            RuntimeOrigin::root(),
+            report_id,
+            0,
+            sample_reasoning_hash(),
         ));
 
         System::assert_has_event(
@@ -1338,7 +1464,8 @@ fn bond_returned_event_on_verified() {
                 report_id,
                 depositor: ALICE,
                 amount: 1_000,
-            }.into()
+            }
+            .into(),
         );
     });
 }
@@ -1349,7 +1476,10 @@ fn bond_slashed_event_on_dismissed() {
         let report_id = setup_funded_report(0);
 
         assert_ok!(Whistleblower::review_report(
-            RuntimeOrigin::root(), report_id, 1, sample_reasoning_hash(),
+            RuntimeOrigin::root(),
+            report_id,
+            1,
+            sample_reasoning_hash(),
         ));
 
         System::assert_has_event(
@@ -1357,7 +1487,8 @@ fn bond_slashed_event_on_dismissed() {
                 report_id,
                 depositor: ALICE,
                 amount: 1_000,
-            }.into()
+            }
+            .into(),
         );
     });
 }

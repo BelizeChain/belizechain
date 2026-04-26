@@ -5,17 +5,17 @@
 //!
 //! Substrate's `BlockAnnounceValidator` trait validates the announcement CONTENT
 //! (header + associated data), not the peer identity. Peer-level filtering is
-//! handled at the network layer via `--reserved-only` + reserved-nodes.txt
-//! (see P2P-FIX-003).
+//! handled at the network layer via `--reserved-only` plus an operator-managed
+//! reserved-nodes file (see P2P-FIX-003).
 //!
 //! This validator enforces:
 //! - Block announcements must not carry unexpected associated data
 //! - Block numbers must not be unreasonably far in the future
 //! - Associated data payload must not exceed a sane size limit
 
+use futures::FutureExt;
 use sp_consensus::block_validation::{BlockAnnounceValidator, Validation};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
-use futures::FutureExt;
 use std::marker::PhantomData;
 use std::pin::Pin;
 
@@ -57,7 +57,12 @@ where
         &mut self,
         header: &B::Header,
         data: &[u8],
-    ) -> Pin<Box<dyn std::future::Future<Output = Result<Validation, Box<dyn std::error::Error + Send>>> + Send>> {
+    ) -> Pin<
+        Box<
+            dyn std::future::Future<Output = Result<Validation, Box<dyn std::error::Error + Send>>>
+                + Send,
+        >,
+    > {
         let block_number: u64 = (*header.number()).into();
         let data_len = data.len();
         let data_is_empty = data.is_empty();
@@ -135,7 +140,11 @@ mod tests {
             extrinsics_root: Default::default(),
             digest: Default::default(),
         };
-        let result = validator.validate(&header, &[]).now_or_never().unwrap().unwrap();
+        let result = validator
+            .validate(&header, &[])
+            .now_or_never()
+            .unwrap()
+            .unwrap();
         assert_eq!(result, Validation::Success { is_new_best: false });
     }
 
@@ -149,7 +158,11 @@ mod tests {
             extrinsics_root: Default::default(),
             digest: Default::default(),
         };
-        let result = validator.validate(&header, &[0x42]).now_or_never().unwrap().unwrap();
+        let result = validator
+            .validate(&header, &[0x42])
+            .now_or_never()
+            .unwrap()
+            .unwrap();
         assert_eq!(result, Validation::Failure { disconnect: true });
     }
 
@@ -164,7 +177,11 @@ mod tests {
             extrinsics_root: Default::default(),
             digest: Default::default(),
         };
-        let result = validator.validate(&header, &[]).now_or_never().unwrap().unwrap();
+        let result = validator
+            .validate(&header, &[])
+            .now_or_never()
+            .unwrap()
+            .unwrap();
         assert_eq!(result, Validation::Failure { disconnect: false });
     }
 
@@ -179,7 +196,11 @@ mod tests {
             extrinsics_root: Default::default(),
             digest: Default::default(),
         };
-        let result = validator.validate(&header, &[]).now_or_never().unwrap().unwrap();
+        let result = validator
+            .validate(&header, &[])
+            .now_or_never()
+            .unwrap()
+            .unwrap();
         assert_eq!(result, Validation::Success { is_new_best: false });
     }
 }

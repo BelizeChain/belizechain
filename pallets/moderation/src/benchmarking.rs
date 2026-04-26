@@ -22,9 +22,8 @@ mod benchmarks {
     fn review_content() {
         // Setup: add moderator and queue content
         let moderator: T::AccountId = whitelisted_caller();
-        ModeratorSet::<T>::try_mutate(|mods| {
-            mods.try_push(moderator.clone())
-        }).expect("mod set not full");
+        ModeratorSet::<T>::try_mutate(|mods| mods.try_push(moderator.clone()))
+            .expect("mod set not full");
 
         let content_hash: ContentHash = [1u8; 32];
         ModerationQueue::<T>::insert(content_hash, true);
@@ -46,9 +45,8 @@ mod benchmarks {
     #[benchmark]
     fn remove_moderator() {
         let account: T::AccountId = account("moderator", 0, 0);
-        ModeratorSet::<T>::try_mutate(|mods| {
-            mods.try_push(account.clone())
-        }).expect("mod set not full");
+        ModeratorSet::<T>::try_mutate(|mods| mods.try_push(account.clone()))
+            .expect("mod set not full");
 
         #[extrinsic_call]
         _(RawOrigin::Root, account);

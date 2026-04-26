@@ -110,11 +110,11 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
 
     pallet_balances::GenesisConfig::<Test> {
         balances: vec![
-            (1, 1_000_000_000_000_000), // Alice - 1M DALLA
-            (2, 1_000_000_000_000_000), // Bob - 1M DALLA
-            (3, 1_000_000_000_000_000), // Charlie - 1M DALLA
-            (4, 500_000_000_000_000),   // Dave - 500K DALLA
-            (5, 500_000_000_000_000),   // Eve - 500K DALLA
+            (1, 1_000_000_000_000_000),    // Alice - 1M DALLA
+            (2, 1_000_000_000_000_000),    // Bob - 1M DALLA
+            (3, 1_000_000_000_000_000),    // Charlie - 1M DALLA
+            (4, 500_000_000_000_000),      // Dave - 500K DALLA
+            (5, 500_000_000_000_000),      // Eve - 500K DALLA
             (100, 10_000_000_000_000_000), // Treasury - 10M DALLA
         ],
         dev_accounts: None,

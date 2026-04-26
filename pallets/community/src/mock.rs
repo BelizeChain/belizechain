@@ -3,11 +3,11 @@ use frame_support::{
     parameter_types,
     traits::{ConstU32, ConstU64},
 };
+use pallet_belize_identity::{BelizeKyc, KycLevel};
 use sp_runtime::{
     traits::{BlakeTwo256, IdentityLookup},
     BuildStorage,
 };
-use pallet_belize_identity::{BelizeKyc, KycLevel};
 
 type Block = frame_system::mocking::MockBlock<Test>;
 

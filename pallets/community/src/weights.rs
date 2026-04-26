@@ -1,8 +1,8 @@
 //! Weight functions for the community pallet
-//! 
+//!
 //! These are estimated weights based on complexity analysis.
 //! For production, run benchmarks to generate accurate weights:
-//! 
+//!
 //! ```bash
 //! cargo build --release --features runtime-benchmarks
 //! ./target/release/belizechain-node benchmark pallet \
@@ -14,7 +14,7 @@
 //!     --output=./pallets/community/src/weights.rs
 //! ```
 
-use frame_support::weights::{Weight, constants::RocksDbWeight};
+use frame_support::weights::{constants::RocksDbWeight, Weight};
 
 /// Weight functions needed for pallet_belize_community.
 pub trait WeightInfo {

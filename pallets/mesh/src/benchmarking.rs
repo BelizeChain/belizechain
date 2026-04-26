@@ -32,7 +32,7 @@ fn insert_node<T: Config>(
         role: role.clone(),
         hardware: MeshHardware::Unknown,
         region: LoRaRegion::US915,
-        latitude: 174_000_000,  // ~17.4°N (Belize)
+        latitude: 174_000_000,   // ~17.4°N (Belize)
         longitude: -883_000_000, // ~-88.3°W
         altitude: 10,
         is_gateway,
@@ -61,7 +61,7 @@ fn insert_node<T: Config>(
             MeshNodeRole::Router | MeshNodeRole::RouterClient => stats.router_count += 1,
             MeshNodeRole::ValidatorRelay => stats.validator_relay_count += 1,
             MeshNodeRole::EmergencyBeacon => stats.emergency_beacon_count += 1,
-            _ => {},
+            _ => {}
         }
     });
 }
@@ -133,8 +133,8 @@ mod benchmarks {
             MeshNodeRole::Client,
             MeshHardware::Unknown,
             LoRaRegion::US915,
-            174_000_000i32,   // ~17.4°N
-            -883_000_000i32,  // ~-88.3°W
+            174_000_000i32,  // ~17.4°N
+            -883_000_000i32, // ~-88.3°W
             10i16,
             BelizeDistrict::Belize,
             TerrainType::Coastal,
@@ -162,8 +162,8 @@ mod benchmarks {
         update_node_location(
             RawOrigin::Signed(owner),
             node_id,
-            175_000_000i32,   // updated lat
-            -884_000_000i32,  // updated lon
+            175_000_000i32,  // updated lat
+            -884_000_000i32, // updated lon
             25i16,
         );
     }
@@ -188,16 +188,16 @@ mod benchmarks {
             RawOrigin::Signed(owner),
             tx_hash,
             MeshTxType::TransferDalla,
-            [1, 2, 3, 4],  // sender_compact
-            [5, 6, 7, 8],  // recipient_compact
-            1_000_000u64,   // amount
-            1u32,           // nonce
+            [1, 2, 3, 4],            // sender_compact
+            [5, 6, 7, 8],            // recipient_compact
+            1_000_000u64,            // amount
+            1u32,                    // nonce
             H256::repeat_byte(0xBB), // signature_hash
             gw_node_id,
-            vec![],         // relay_path (direct to gateway)
-            0u8,            // hop_count
-            -70i16,         // rssi
-            10i16,          // snr
+            vec![], // relay_path (direct to gateway)
+            0u8,    // hop_count
+            -70i16, // rssi
+            10i16,  // snr
         );
     }
 
@@ -234,9 +234,9 @@ mod benchmarks {
             EmergencyType::General,
             174_000_000i32,
             -883_000_000i32,
-            5000u32,         // radius_meters
+            5000u32, // radius_meters
             message,
-            1000u32,         // duration_blocks
+            1000u32, // duration_blocks
             BelizeDistrict::Belize,
         );
     }
@@ -314,14 +314,14 @@ mod benchmarks {
         relay_block_header(
             RawOrigin::Signed(owner),
             node_id,
-            42u32,                        // block_number
-            H256::repeat_byte(0x11),      // block_hash
-            H256::repeat_byte(0x22),      // parent_hash
-            H256::repeat_byte(0x33),      // state_root
-            H256::repeat_byte(0x44),      // extrinsics_root
-            [1, 2, 3, 4],                 // author_compact
-            5u16,                         // extrinsic_count
-            1_700_000_000u32,             // timestamp (Unix epoch seconds)
+            42u32,                   // block_number
+            H256::repeat_byte(0x11), // block_hash
+            H256::repeat_byte(0x22), // parent_hash
+            H256::repeat_byte(0x33), // state_root
+            H256::repeat_byte(0x44), // extrinsics_root
+            [1, 2, 3, 4],            // author_compact
+            5u16,                    // extrinsic_count
+            1_700_000_000u32,        // timestamp (Unix epoch seconds)
         );
     }
 
@@ -360,13 +360,13 @@ mod benchmarks {
         #[extrinsic_call]
         update_mesh_config(
             RawOrigin::Root,
-            10u8,                       // max_hops
+            10u8, // max_hops
             ChannelPreset::LongFast,
-            true,                       // relay_mining_active
-            true,                       // emergency_system_active
-            true,                       // validator_relay_active
-            1u8,                        // min_kyc_for_registration
-            2u8,                        // min_kyc_for_gateway
+            true, // relay_mining_active
+            true, // emergency_system_active
+            true, // validator_relay_active
+            1u8,  // min_kyc_for_registration
+            2u8,  // min_kyc_for_gateway
         );
     }
 
@@ -419,9 +419,5 @@ mod benchmarks {
         );
     }
 
-    impl_benchmark_test_suite!(
-        Pallet,
-        crate::mock::new_test_ext(),
-        crate::mock::Test,
-    );
+    impl_benchmark_test_suite!(Pallet, crate::mock::new_test_ext(), crate::mock::Test,);
 }

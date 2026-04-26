@@ -1,9 +1,10 @@
 # BelizeChain — Comprehensive Architectural Reconstruction Report
 
-**Generated**: 2025-07  
-**Scope**: Full codebase audit of `/home/wicked/Projects/belizechain-belizechain`  
-**Substrate SDK**: Polkadot SDK `stable2512` (September 2025)  
-**Runtime**: `belizechain_runtime` — spec_version=100, impl_version=1, tx_version=1
+**Generated**: 2025-07 (historical snapshot)
+**Scope**: Full codebase audit of `/home/wicked/Projects/belizechain-belizechain` at snapshot time
+**Snapshot SDK**: Polkadot SDK `stable2512` (September 2025)
+**Snapshot Runtime**: `belizechain_runtime` — spec_version=100, impl_version=1, tx_version=1
+**Current Runtime Note**: The active branch has since moved to Polkadot SDK `stable2603` and runtime `spec_version=104`; use `Cargo.toml` and `runtime/src/lib.rs` as the live sources of truth.
 
 ---
 
@@ -1458,9 +1459,9 @@ workspace
 └── pallets/mesh (lib, no-std)
 ```
 
-**SDK**: Polkadot SDK `stable2512` (git, branch-locked)  
-**Codec**: parity-scale-codec 3.6.12  
-**scale-info**: 2.11.1  
+**Snapshot SDK**: Polkadot SDK `stable2512` (git, branch-locked)
+**Codec**: parity-scale-codec 3.6.12
+**scale-info**: 2.11.1
 
 ## Appendix B: Genesis Configuration Summary
 

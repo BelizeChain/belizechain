@@ -9,8 +9,10 @@ Complete API documentation for BelizeChain's REST, WebSocket, and RPC interfaces
 | Environment | REST API | WebSocket | GraphQL |
 |-------------|----------|-----------|---------|
 | Mainnet | `https://api.belizechain.org` | `wss://rpc.belizechain.org` | `https://graphql.belizechain.org` |
-| Testnet | `https://api.testnet.belizechain.org` | `wss://rpc.testnet.belizechain.org` | `https://graphql.testnet.belizechain.org` |
+| Testnet | Not published yet | Operator-provided while the public testnet is being staged | Not published yet |
 | Local | `http://localhost:9933` | `ws://localhost:9944` | `http://localhost:8080/graphql` |
+
+The current repo does not publish fixed public testnet REST, WebSocket, or GraphQL hosts. Use the operator-provided RPC URL for the active network, or point clients at your own node.
 
 ## Authentication
 

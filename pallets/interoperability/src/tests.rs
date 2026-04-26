@@ -299,7 +299,8 @@ fn initiate_bridge_updates_total_locked_assets() {
         ));
 
         // Verify total locked assets increased by net amount
-        let total_locked = Interoperability::total_locked_assets(BridgeChain::Ethereum, BridgeAsset::DALLA);
+        let total_locked =
+            Interoperability::total_locked_assets(BridgeChain::Ethereum, BridgeAsset::DALLA);
         assert_eq!(total_locked, net_amount);
     });
 }
@@ -775,7 +776,8 @@ fn process_unlock_works() {
         ));
 
         // Verify total locked assets decreased
-        let total_locked = Interoperability::total_locked_assets(BridgeChain::Ethereum, BridgeAsset::DALLA);
+        let total_locked =
+            Interoperability::total_locked_assets(BridgeChain::Ethereum, BridgeAsset::DALLA);
         assert_eq!(total_locked, 400_000);
     });
 }
@@ -785,10 +787,7 @@ fn process_unlock_requires_validator_registration() {
     new_test_ext().execute_with(|| {
         // ALICE is not registered as validator — checked before tx lookup
         assert_noop!(
-            Interoperability::process_unlock(
-                RuntimeOrigin::signed(ALICE),
-                1u32,
-            ),
+            Interoperability::process_unlock(RuntimeOrigin::signed(ALICE), 1u32,),
             Error::<Test>::ValidatorNotRegistered
         );
     });
@@ -859,9 +858,9 @@ fn update_bridge_config_works() {
         // Update config via governance
         assert_ok!(Interoperability::update_bridge_config(
             RuntimeOrigin::root(),
-            1, // Ethereum
-            false, // Disable bridge
-            100, // New fee rate
+            1,           // Ethereum
+            false,       // Disable bridge
+            100,         // New fee rate
             500_000_000, // New max amount
         ));
 
@@ -989,7 +988,8 @@ fn get_total_locked_works() {
         ChainConfigurations::<Test>::insert(BridgeChain::Ethereum, chain_config);
 
         // Initially zero
-        let initial = Interoperability::get_total_locked(&BridgeChain::Ethereum, &BridgeAsset::DALLA);
+        let initial =
+            Interoperability::get_total_locked(&BridgeChain::Ethereum, &BridgeAsset::DALLA);
         assert_eq!(initial, 0);
 
         // Lock some assets
@@ -1014,7 +1014,9 @@ fn get_total_locked_works() {
 fn is_chain_supported_works() {
     new_test_ext().execute_with(|| {
         // Initially not supported
-        assert!(!Interoperability::is_chain_supported(&BridgeChain::Ethereum));
+        assert!(!Interoperability::is_chain_supported(
+            &BridgeChain::Ethereum
+        ));
 
         // Add config
         let chain_config = ChainConfig {
@@ -1205,7 +1207,10 @@ fn withdraw_liquidity_works() {
         ));
 
         let pool_after = Interoperability::liquidity_pools(0).unwrap();
-        assert_eq!(pool_after.belizechain_liquidity, liquidity - withdraw_amount);
+        assert_eq!(
+            pool_after.belizechain_liquidity,
+            liquidity - withdraw_amount
+        );
         assert!(pool_after.active);
     });
 }
@@ -1231,7 +1236,10 @@ fn withdraw_liquidity_full_deactivates_pool() {
 
         let pool_after = Interoperability::liquidity_pools(0).unwrap();
         assert_eq!(pool_after.belizechain_liquidity, 0);
-        assert!(!pool_after.active, "pool should be deactivated when fully drained");
+        assert!(
+            !pool_after.active,
+            "pool should be deactivated when fully drained"
+        );
     });
 }
 
@@ -2296,7 +2304,10 @@ fn process_unlock_event_emitted() {
         };
         BridgeTransactions::<Test>::insert(0u32, tx);
 
-        assert_ok!(Interoperability::process_unlock(RuntimeOrigin::signed(BOB), 0));
+        assert_ok!(Interoperability::process_unlock(
+            RuntimeOrigin::signed(BOB),
+            0
+        ));
 
         let events = System::events();
         assert!(events.iter().any(|e| matches!(
@@ -2402,11 +2413,7 @@ fn withdraw_liquidity_non_manager_fails() {
 
         // BOB is not pool manager — unauthorized
         assert_noop!(
-            Interoperability::withdraw_liquidity(
-                RuntimeOrigin::signed(BOB),
-                0,
-                100_000,
-            ),
+            Interoperability::withdraw_liquidity(RuntimeOrigin::signed(BOB), 0, 100_000,),
             Error::<Test>::UnauthorizedOperation
         );
     });
@@ -2424,11 +2431,7 @@ fn withdraw_liquidity_exceeds_pool_liquidity_fails() {
 
         // Trying to withdraw more than pool has
         assert_noop!(
-            Interoperability::withdraw_liquidity(
-                RuntimeOrigin::signed(ALICE),
-                0,
-                200_000,
-            ),
+            Interoperability::withdraw_liquidity(RuntimeOrigin::signed(ALICE), 0, 200_000,),
             Error::<Test>::InsufficientLiquidity
         );
     });
@@ -2853,9 +2856,6 @@ fn dispute_reserves_correct_bond_amount() {
             Balances::reserved_balance(ALICE),
             reserved_before + expected_bond
         );
-        assert_eq!(
-            Balances::free_balance(ALICE),
-            free_before - expected_bond
-        );
+        assert_eq!(Balances::free_balance(ALICE), free_before - expected_bond);
     });
 }

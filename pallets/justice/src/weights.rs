@@ -1,6 +1,6 @@
 //! Weight functions for the justice pallet
 
-use frame_support::weights::{Weight, constants::RocksDbWeight};
+use frame_support::weights::{constants::RocksDbWeight, Weight};
 
 /// Weight functions needed for pallet_belize_justice.
 pub trait WeightInfo {
@@ -49,10 +49,22 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 }
 
 impl WeightInfo for () {
-    fn open_dispute() -> Weight { Weight::from_parts(40_000_000, 512) }
-    fn mediator_ruling() -> Weight { Weight::from_parts(30_000_000, 512) }
-    fn appeal_ruling() -> Weight { Weight::from_parts(25_000_000, 512) }
-    fn complete_rehabilitation() -> Weight { Weight::from_parts(35_000_000, 512) }
-    fn add_mediator() -> Weight { Weight::from_parts(20_000_000, 512) }
-    fn remove_mediator() -> Weight { Weight::from_parts(20_000_000, 512) }
+    fn open_dispute() -> Weight {
+        Weight::from_parts(40_000_000, 512)
+    }
+    fn mediator_ruling() -> Weight {
+        Weight::from_parts(30_000_000, 512)
+    }
+    fn appeal_ruling() -> Weight {
+        Weight::from_parts(25_000_000, 512)
+    }
+    fn complete_rehabilitation() -> Weight {
+        Weight::from_parts(35_000_000, 512)
+    }
+    fn add_mediator() -> Weight {
+        Weight::from_parts(20_000_000, 512)
+    }
+    fn remove_mediator() -> Weight {
+        Weight::from_parts(20_000_000, 512)
+    }
 }

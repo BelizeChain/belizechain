@@ -1,5 +1,5 @@
 //! Production-grade validator and collator node configuration
-//! 
+//!
 //! Provides network presets for different deployment environments:
 //! - Development: Permissive settings with mDNS discovery
 //! - Testnet: Moderate peer limits with telemetry
@@ -52,9 +52,7 @@ impl ValidatorConfig {
             max_peers: 50,
             enable_mdns: false,
             prometheus_port: Some(9615),
-            telemetry_endpoints: vec![
-                "wss://telemetry.belizechain.org:443/submit/".to_string(),
-            ],
+            telemetry_endpoints: vec!["wss://telemetry.belizechain.org:443/submit/".to_string()],
             transaction_gossip: true,
         }
     }
@@ -66,9 +64,7 @@ impl ValidatorConfig {
             max_peers: 100,
             enable_mdns: false, // Never use mDNS in production
             prometheus_port: Some(9615),
-            telemetry_endpoints: vec![
-                "wss://telemetry.belizechain.org:443/submit/".to_string(),
-            ],
+            telemetry_endpoints: vec!["wss://telemetry.belizechain.org:443/submit/".to_string()],
             transaction_gossip: true,
         }
     }
@@ -91,42 +87,40 @@ impl ValidatorConfig {
 pub struct BootstrapNodes;
 
 impl BootstrapNodes {
-    /// Mainnet bootnodes (replace with real addresses before launch)
+    /// Mainnet bootnodes.
+    ///
+    /// Live-network bootstrap multiaddrs must be published in the operator-owned
+    /// chain spec or deployment inventory. Source control intentionally keeps
+    /// this empty so the built-in config cannot ship fake DNS bootnodes.
     pub fn mainnet() -> Vec<String> {
-        vec![
-            // Belize City node
-            "/dns4/bootnode1.belizechain.org/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp".to_string(),
-            // San Pedro node
-            "/dns4/bootnode2.belizechain.org/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMuD".to_string(),
-            // Belmopan node (Central Bank datacenter)
-            "/dns4/bootnode3.belizechain.org/tcp/30333/p2p/12D3KooWLmrYDLoNTyTYtRdDyZLWDe1paxzxTw5RgjmHLfzW96SX".to_string(),
-        ]
+        vec![]
     }
 
-    /// Testnet bootnodes
+    /// Testnet bootnodes.
+    ///
+    /// The active public-testnet flow exports an explicit raw spec with
+    /// operator-provided bootnodes. Keep the source-controlled helper empty so
+    /// it cannot advertise unpublished hosts.
     pub fn testnet() -> Vec<String> {
-        vec![
-            "/dns4/testnet-bootnode1.belizechain.org/tcp/30333/p2p/12D3KooWTestNode1".to_string(),
-            "/dns4/testnet-bootnode2.belizechain.org/tcp/30333/p2p/12D3KooWTestNode2".to_string(),
-        ]
+        vec![]
     }
 
     /// Local testnet bootnodes (localhost for multi-node testing)
     pub fn local() -> Vec<String> {
         vec![
-            "/ip4/127.0.0.1/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp".to_string(),
+            "/ip4/127.0.0.1/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp"
+                .to_string(),
         ]
     }
 }
 
 /// Authorized validator PeerIds for block announce validation (P2P-FIX-002)
-/// 
-/// **SECURITY CRITICAL**: This list MUST contain exactly the 32 validator PeerIds
-/// that correspond to the on-chain validator set. Unauthorized PeerIds attempting
-/// to announce blocks will be disconnected immediately.
-/// 
-/// **TODO BEFORE MAINNET**: Replace placeholder PeerIds with actual validator node
-/// PeerIds generated from ed25519 node keys. Extract PeerIds by running:
+///
+/// **SECURITY CRITICAL**: Source control must not ship fabricated validator
+/// peer IDs for a live network. The full validator allowlist belongs in an
+/// operator-managed deployment inventory.
+///
+/// Extract live PeerIds with:
 /// ```bash
 /// ./belizechain-node key inspect-node-key --file /path/to/node-key
 /// ```
@@ -134,128 +128,55 @@ impl BootstrapNodes {
 pub struct ValidatorPeerIds;
 
 impl ValidatorPeerIds {
-    /// Mainnet validator PeerIds (MaxAuthorities = 32)
-    /// 
-    /// **PLACEHOLDER VALUES**: These are example PeerIds and MUST be replaced
-    /// with the actual PeerIds of the 32 mainnet validators before launch.
+    /// Mainnet validator PeerIds.
+    ///
+    /// Intentionally empty until operators publish the actual validator
+    /// inventory for the active network.
     pub fn mainnet() -> Vec<String> {
-        vec![
-            // Bootnode validators (first 3 from BootstrapNodes)
-            "12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp".to_string(),
-            "12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMuD".to_string(),
-            "12D3KooWLmrYDLoNTyTYtRdDyZLWDe1paxzxTw5RgjmHLfzW96SX".to_string(),
-            // Remaining validators (29 placeholders - MUST REPLACE)
-            "12D3KooWPlaceholder04".to_string(),
-            "12D3KooWPlaceholder05".to_string(),
-            "12D3KooWPlaceholder06".to_string(),
-            "12D3KooWPlaceholder07".to_string(),
-            "12D3KooWPlaceholder08".to_string(),
-            "12D3KooWPlaceholder09".to_string(),
-            "12D3KooWPlaceholder10".to_string(),
-            "12D3KooWPlaceholder11".to_string(),
-            "12D3KooWPlaceholder12".to_string(),
-            "12D3KooWPlaceholder13".to_string(),
-            "12D3KooWPlaceholder14".to_string(),
-            "12D3KooWPlaceholder15".to_string(),
-            "12D3KooWPlaceholder16".to_string(),
-            "12D3KooWPlaceholder17".to_string(),
-            "12D3KooWPlaceholder18".to_string(),
-            "12D3KooWPlaceholder19".to_string(),
-            "12D3KooWPlaceholder20".to_string(),
-            "12D3KooWPlaceholder21".to_string(),
-            "12D3KooWPlaceholder22".to_string(),
-            "12D3KooWPlaceholder23".to_string(),
-            "12D3KooWPlaceholder24".to_string(),
-            "12D3KooWPlaceholder25".to_string(),
-            "12D3KooWPlaceholder26".to_string(),
-            "12D3KooWPlaceholder27".to_string(),
-            "12D3KooWPlaceholder28".to_string(),
-            "12D3KooWPlaceholder29".to_string(),
-            "12D3KooWPlaceholder30".to_string(),
-            "12D3KooWPlaceholder31".to_string(),
-            "12D3KooWPlaceholder32".to_string(),
-        ]
+        vec![]
     }
 
-    /// Testnet validator PeerIds (for testing block announce validation)
+    /// Testnet validator PeerIds.
+    ///
+    /// Intentionally empty until operators publish the actual validator
+    /// inventory for the active network.
     pub fn testnet() -> Vec<String> {
-        vec![
-            "12D3KooWTestNode1".to_string(),
-            "12D3KooWTestNode2".to_string(),
-        ]
+        vec![]
     }
 }
 
 /// Reserved nodes for validator-only peering (P2P-FIX-003)
-/// 
-/// **SECURITY CRITICAL**: Reserved nodes are the ONLY peers that validators will
-/// accept connections from. This prevents eclipse attacks by ensuring validators
-/// only peer with known, authorized nodes.
-/// 
-/// **IMPORTANT**: This list MUST be kept in sync with ValidatorPeerIds and the
-/// on-chain validator set. Each entry must correspond to a valid validator.
-/// 
-/// **TODO BEFORE MAINNET**: Replace placeholder multiaddrs with actual validator
-/// network addresses. Format: /ip4/IP/tcp/PORT/p2p/PEERID or /dns4/DOMAIN/tcp/PORT/p2p/PEERID
+///
+/// **SECURITY CRITICAL**: Reserved-node allowlists for live networks must come
+/// from an operator-managed deployment inventory, not from fabricated entries
+/// checked into source control.
+///
+/// Format: /ip4/IP/tcp/PORT/p2p/PEERID or /dns4/DOMAIN/tcp/PORT/p2p/PEERID
 #[allow(dead_code)]
 pub struct ReservedNodes;
 
 impl ReservedNodes {
-    /// Mainnet reserved nodes (all 32 validators)
-    /// 
-    /// **PLACEHOLDER VALUES**: These are example multiaddrs and MUST be replaced
-    /// with actual validator network addresses before mainnet launch.
+    /// Mainnet reserved nodes.
+    ///
+    /// Intentionally empty until operators publish the actual validator
+    /// inventory for the active network.
     pub fn mainnet() -> Vec<String> {
-        vec![
-            // Bootnode validators (replace with real addresses)
-            "/dns4/validator01.belizechain.org/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp".to_string(),
-            "/dns4/validator02.belizechain.org/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMuD".to_string(),
-            "/dns4/validator03.belizechain.org/tcp/30333/p2p/12D3KooWLmrYDLoNTyTYtRdDyZLWDe1paxzxTw5RgjmHLfzW96SX".to_string(),
-            // Remaining validators (29 placeholders - replace with real IPs/domains)
-            "/ip4/192.0.2.4/tcp/30333/p2p/12D3KooWPlaceholder04".to_string(),
-            "/ip4/192.0.2.5/tcp/30333/p2p/12D3KooWPlaceholder05".to_string(),
-            "/ip4/192.0.2.6/tcp/30333/p2p/12D3KooWPlaceholder06".to_string(),
-            "/ip4/192.0.2.7/tcp/30333/p2p/12D3KooWPlaceholder07".to_string(),
-            "/ip4/192.0.2.8/tcp/30333/p2p/12D3KooWPlaceholder08".to_string(),
-            "/ip4/192.0.2.9/tcp/30333/p2p/12D3KooWPlaceholder09".to_string(),
-            "/ip4/192.0.2.10/tcp/30333/p2p/12D3KooWPlaceholder10".to_string(),
-            "/ip4/192.0.2.11/tcp/30333/p2p/12D3KooWPlaceholder11".to_string(),
-            "/ip4/192.0.2.12/tcp/30333/p2p/12D3KooWPlaceholder12".to_string(),
-            "/ip4/192.0.2.13/tcp/30333/p2p/12D3KooWPlaceholder13".to_string(),
-            "/ip4/192.0.2.14/tcp/30333/p2p/12D3KooWPlaceholder14".to_string(),
-            "/ip4/192.0.2.15/tcp/30333/p2p/12D3KooWPlaceholder15".to_string(),
-            "/ip4/192.0.2.16/tcp/30333/p2p/12D3KooWPlaceholder16".to_string(),
-            "/ip4/192.0.2.17/tcp/30333/p2p/12D3KooWPlaceholder17".to_string(),
-            "/ip4/192.0.2.18/tcp/30333/p2p/12D3KooWPlaceholder18".to_string(),
-            "/ip4/192.0.2.19/tcp/30333/p2p/12D3KooWPlaceholder19".to_string(),
-            "/ip4/192.0.2.20/tcp/30333/p2p/12D3KooWPlaceholder20".to_string(),
-            "/ip4/192.0.2.21/tcp/30333/p2p/12D3KooWPlaceholder21".to_string(),
-            "/ip4/192.0.2.22/tcp/30333/p2p/12D3KooWPlaceholder22".to_string(),
-            "/ip4/192.0.2.23/tcp/30333/p2p/12D3KooWPlaceholder23".to_string(),
-            "/ip4/192.0.2.24/tcp/30333/p2p/12D3KooWPlaceholder24".to_string(),
-            "/ip4/192.0.2.25/tcp/30333/p2p/12D3KooWPlaceholder25".to_string(),
-            "/ip4/192.0.2.26/tcp/30333/p2p/12D3KooWPlaceholder26".to_string(),
-            "/ip4/192.0.2.27/tcp/30333/p2p/12D3KooWPlaceholder27".to_string(),
-            "/ip4/192.0.2.28/tcp/30333/p2p/12D3KooWPlaceholder28".to_string(),
-            "/ip4/192.0.2.29/tcp/30333/p2p/12D3KooWPlaceholder29".to_string(),
-            "/ip4/192.0.2.30/tcp/30333/p2p/12D3KooWPlaceholder30".to_string(),
-            "/ip4/192.0.2.31/tcp/30333/p2p/12D3KooWPlaceholder31".to_string(),
-            "/ip4/192.0.2.32/tcp/30333/p2p/12D3KooWPlaceholder32".to_string(),
-        ]
+        vec![]
     }
 
-    /// Testnet reserved nodes
+    /// Testnet reserved nodes.
+    ///
+    /// Intentionally empty until operators publish the actual validator
+    /// inventory for the active network.
     pub fn testnet() -> Vec<String> {
-        vec![
-            "/dns4/testnet-validator1.belizechain.org/tcp/30333/p2p/12D3KooWTestNode1".to_string(),
-            "/dns4/testnet-validator2.belizechain.org/tcp/30333/p2p/12D3KooWTestNode2".to_string(),
-        ]
+        vec![]
     }
 
     /// Local testnet reserved nodes (for development)
     pub fn local() -> Vec<String> {
         vec![
-            "/ip4/127.0.0.1/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp".to_string(),
+            "/ip4/127.0.0.1/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp"
+                .to_string(),
         ]
     }
 }
@@ -278,13 +199,16 @@ pub fn prometheus_config(port: u16) -> PrometheusConfig {
 /// Keystore configuration for validator keys
 pub fn keystore_config(base_path: &Path, network: &str) -> KeystoreConfig {
     let keystore_path = base_path.join("keystore").join(network);
-    KeystoreConfig::Path { path: keystore_path, password: None }
+    KeystoreConfig::Path {
+        path: keystore_path,
+        password: None,
+    }
 }
 
 /// P2P network transport configuration
 pub fn transport_config() -> TransportConfig {
     TransportConfig::Normal {
-        enable_mdns: false, // Disable mDNS in production
+        enable_mdns: false,      // Disable mDNS in production
         allow_private_ip: false, // Only public IPs in production
     }
 }
@@ -292,8 +216,8 @@ pub fn transport_config() -> TransportConfig {
 /// Recommended reserved peer slots for critical nodes
 pub fn reserved_peers_config() -> SetConfig {
     SetConfig {
-        in_peers: 25,  // Inbound connections
-        out_peers: 75, // Outbound connections (prioritize outbound)
+        in_peers: 25,           // Inbound connections
+        out_peers: 75,          // Outbound connections (prioritize outbound)
         reserved_nodes: vec![], // Add reserved nodes here
         non_reserved_mode: sc_network::config::NonReservedPeerMode::Accept,
     }
@@ -378,10 +302,19 @@ mod tests {
     #[test]
     fn test_bootstrap_nodes() {
         let mainnet_nodes = BootstrapNodes::mainnet();
-        assert!(mainnet_nodes.len() >= 3);
+        assert!(
+            mainnet_nodes.is_empty(),
+            "mainnet bootstrap nodes must be operator-published, not hardcoded"
+        );
 
         let testnet_nodes = BootstrapNodes::testnet();
-        assert!(testnet_nodes.len() >= 2);
+        assert!(
+            testnet_nodes.is_empty(),
+            "testnet bootstrap nodes must come from an explicit operator-published spec"
+        );
+
+        let local_nodes = BootstrapNodes::local();
+        assert!(!local_nodes.is_empty());
     }
 
     // ── ValidatorConfig presets ────────────────────────────────────────────
@@ -393,7 +326,10 @@ mod tests {
         assert_eq!(config.min_peers, 5);
         assert_eq!(config.max_peers, 50);
         assert_eq!(config.prometheus_port, Some(9615));
-        assert!(!config.telemetry_endpoints.is_empty(), "testnet must expose telemetry");
+        assert!(
+            !config.telemetry_endpoints.is_empty(),
+            "testnet must expose telemetry"
+        );
         assert!(config.transaction_gossip);
     }
 
@@ -413,7 +349,10 @@ mod tests {
         assert_eq!(config.max_peers, 25);
         assert_eq!(config.min_peers, 0);
         assert_eq!(config.prometheus_port, Some(9615));
-        assert!(config.telemetry_endpoints.is_empty(), "dev should have no telemetry");
+        assert!(
+            config.telemetry_endpoints.is_empty(),
+            "dev should have no telemetry"
+        );
         assert!(config.transaction_gossip);
     }
 
@@ -423,7 +362,10 @@ mod tests {
         assert_eq!(config.max_peers, 100);
         assert_eq!(config.min_peers, 10);
         assert_eq!(config.prometheus_port, Some(9615));
-        assert!(!config.telemetry_endpoints.is_empty(), "mainnet must expose telemetry");
+        assert!(
+            !config.telemetry_endpoints.is_empty(),
+            "mainnet must expose telemetry"
+        );
         assert!(config.transaction_gossip);
     }
 
@@ -470,22 +412,39 @@ mod tests {
     #[test]
     fn test_bootstrap_nodes_multiaddress_format() {
         for node in BootstrapNodes::mainnet() {
-            assert!(node.starts_with("/dns4/"), "mainnet node must use /dns4/: {node}");
+            assert!(
+                node.starts_with("/dns4/"),
+                "mainnet node must use /dns4/: {node}"
+            );
             assert!(
                 node.contains("/tcp/30333/p2p/"),
                 "mainnet node must include /tcp/30333/p2p/: {node}"
             );
         }
         for node in BootstrapNodes::testnet() {
-            assert!(node.starts_with("/dns4/"), "testnet node must use /dns4/: {node}");
+            assert!(
+                node.starts_with("/dns4/"),
+                "testnet node must use /dns4/: {node}"
+            );
             assert!(
                 node.contains("/tcp/30333/p2p/"),
                 "testnet node must include /tcp/30333/p2p/: {node}"
             );
         }
         for node in BootstrapNodes::local() {
-            assert!(node.contains("/p2p/"), "local node must include /p2p/ peer ID: {node}");
+            assert!(
+                node.contains("/p2p/"),
+                "local node must include /p2p/ peer ID: {node}"
+            );
         }
+    }
+
+    #[test]
+    fn test_live_network_peer_inventories_default_empty() {
+        assert!(ValidatorPeerIds::mainnet().is_empty());
+        assert!(ValidatorPeerIds::testnet().is_empty());
+        assert!(ReservedNodes::mainnet().is_empty());
+        assert!(ReservedNodes::testnet().is_empty());
     }
 
     // ── node_roles module ──────────────────────────────────────────────────
@@ -504,7 +463,10 @@ mod tests {
         let role = node_roles::archive();
         let mainnet = ValidatorConfig::mainnet();
         assert_eq!(role.max_peers, 200);
-        assert!(role.max_peers > mainnet.max_peers, "archive nodes need more peer slots");
+        assert!(
+            role.max_peers > mainnet.max_peers,
+            "archive nodes need more peer slots"
+        );
         assert!(!role.enable_mdns);
     }
 
@@ -564,11 +526,11 @@ mod tests {
         let dev_ks = keystore_config(&base, "dev");
         let mainnet_ks = keystore_config(&base, "mainnet");
         match (dev_ks, mainnet_ks) {
-            (
-                KeystoreConfig::Path { path: p1, .. },
-                KeystoreConfig::Path { path: p2, .. },
-            ) => {
-                assert_ne!(p1, p2, "different networks must produce different keystore paths");
+            (KeystoreConfig::Path { path: p1, .. }, KeystoreConfig::Path { path: p2, .. }) => {
+                assert_ne!(
+                    p1, p2,
+                    "different networks must produce different keystore paths"
+                );
             }
             _ => panic!("Expected KeystoreConfig::Path variants"),
         }
@@ -577,9 +539,15 @@ mod tests {
     #[test]
     fn test_transport_config_disables_mdns_and_private_ips() {
         match transport_config() {
-            TransportConfig::Normal { enable_mdns, allow_private_ip } => {
+            TransportConfig::Normal {
+                enable_mdns,
+                allow_private_ip,
+            } => {
                 assert!(!enable_mdns, "production transport must disable mDNS");
-                assert!(!allow_private_ip, "production transport must disallow private IPs");
+                assert!(
+                    !allow_private_ip,
+                    "production transport must disallow private IPs"
+                );
             }
             _ => panic!("Unexpected TransportConfig variant"),
         }
@@ -650,8 +618,14 @@ mod tests {
             DatabaseSource::RocksDb { cache_size, .. } => cache_size,
             _ => panic!(),
         };
-        assert!(light < validator, "light cache must be smaller than validator");
-        assert!(validator < archive, "validator cache must be smaller than archive");
+        assert!(
+            light < validator,
+            "light cache must be smaller than validator"
+        );
+        assert!(
+            validator < archive,
+            "validator cache must be smaller than archive"
+        );
     }
 
     #[test]

@@ -17,8 +17,8 @@
 
 use std::sync::Arc;
 
-use jsonrpsee::RpcModule;
 use belizechain_runtime::{opaque::Block, AccountId, Balance, Nonce};
+use jsonrpsee::RpcModule;
 use sc_transaction_pool_api::TransactionPool;
 use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
@@ -26,10 +26,10 @@ use sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata};
 
 /// Full client dependencies.
 pub struct FullDeps<C, P> {
-	/// The client instance to use.
-	pub client: Arc<C>,
-	/// Transaction pool instance.
-	pub pool: Arc<P>,
+    /// The client instance to use.
+    pub client: Arc<C>,
+    /// Transaction pool instance.
+    pub pool: Arc<P>,
 }
 
 /// Instantiate all full RPC extensions.

@@ -20,9 +20,7 @@
 //! - **Court Records**: Maintain immutable court decision history
 //! - **Education Credentials**: Track credential issuance and verification
 
-#![cfg_attr(not(feature = "std"), no_std)]
-
-use codec::{Encode, Decode, MaxEncodedLen};
+use codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_std::vec::Vec;
 
@@ -35,23 +33,23 @@ use sp_std::vec::Vec;
 pub struct TemporalAnchor<BlockNumber> {
     /// IPFS content hash (CID) of the current document version
     pub content_hash: [u8; 32],
-    
+
     /// Hash of the previous anchor in the chain (None for genesis anchor)
     pub previous_hash: Option<[u8; 32]>,
-    
+
     /// Block number when this anchor was created
     pub block_number: BlockNumber,
-    
+
     /// Unix timestamp when this anchor was created
     pub timestamp: u64,
-    
+
     /// Type of content being anchored
     pub anchor_type: AnchorType,
-    
+
     /// Merkle root of all previous anchors in the chain
     /// Allows efficient verification of entire history
     pub merkle_root: [u8; 32],
-    
+
     /// Version number in the anchor chain (0 for genesis)
     pub version: u32,
 }
@@ -61,25 +59,25 @@ pub struct TemporalAnchor<BlockNumber> {
 pub enum AnchorType {
     /// Land title deed or ownership record
     LandTitle,
-    
+
     /// Business operating license or permit
     BusinessLicense,
-    
+
     /// Governance proposal or referendum
     GovernanceProposal,
-    
+
     /// Court judgment or legal decision
     CourtRecord,
-    
+
     /// Educational credential or certificate
     EducationCredential,
-    
+
     /// Financial Services Commission regulatory document
     RegulatoryDocument,
-    
+
     /// Contract or legal agreement
     LegalContract,
-    
+
     /// Identity credential or attestation
     IdentityCredential,
 }
@@ -105,7 +103,7 @@ pub trait TemporalAnchoring<BlockNumber> {
         content_hash: [u8; 32],
         anchor_type: AnchorType,
     ) -> Result<[u8; 32], &'static str>;
-    
+
     /// Update an existing anchor with new content version
     ///
     /// Creates a new anchor that links to the previous one, forming a chain
@@ -122,7 +120,7 @@ pub trait TemporalAnchoring<BlockNumber> {
         previous_anchor_hash: [u8; 32],
         new_content_hash: [u8; 32],
     ) -> Result<[u8; 32], &'static str>;
-    
+
     /// Retrieve an anchor by its hash
     ///
     /// # Parameters
@@ -132,7 +130,7 @@ pub trait TemporalAnchoring<BlockNumber> {
     /// - `Some(TemporalAnchor)`: The anchor if found
     /// - `None`: If no anchor exists with that hash
     fn get_anchor(hash: [u8; 32]) -> Option<TemporalAnchor<BlockNumber>>;
-    
+
     /// Verify the integrity of an anchor chain
     ///
     /// Walks backward through the anchor chain, verifying that:
@@ -147,7 +145,7 @@ pub trait TemporalAnchoring<BlockNumber> {
     /// - `true`: If the entire chain is valid
     /// - `false`: If any link in the chain is broken or invalid
     fn verify_anchor_chain(hash: [u8; 32]) -> bool;
-    
+
     /// Get the complete history of an anchor chain
     ///
     /// Returns all anchors in the chain, from the given anchor back to the genesis.
@@ -159,7 +157,7 @@ pub trait TemporalAnchoring<BlockNumber> {
     /// # Returns
     /// - Vector of all anchors in the chain (empty if hash not found)
     fn get_anchor_history(hash: [u8; 32]) -> Vec<TemporalAnchor<BlockNumber>>;
-    
+
     /// Get the latest anchor for a specific content
     ///
     /// # Parameters
@@ -175,16 +173,16 @@ pub trait TemporalAnchoring<BlockNumber> {
 pub mod helpers {
     use super::*;
     use sp_io::hashing::blake2_256;
-    
+
     /// Calculate the hash of an anchor
     ///
     /// Used to generate the unique identifier for an anchor based on its contents.
     pub fn calculate_anchor_hash<BlockNumber: Encode>(
-        anchor: &TemporalAnchor<BlockNumber>
+        anchor: &TemporalAnchor<BlockNumber>,
     ) -> [u8; 32] {
         blake2_256(&anchor.encode())
     }
-    
+
     /// Calculate merkle root from a list of hashes
     ///
     /// Builds a merkle tree from the given hashes and returns the root.
@@ -193,16 +191,16 @@ pub mod helpers {
         if hashes.is_empty() {
             return [0u8; 32];
         }
-        
+
         if hashes.len() == 1 {
             return hashes[0];
         }
-        
+
         let mut current_level = hashes.to_vec();
-        
+
         while current_level.len() > 1 {
             let mut next_level = Vec::new();
-            
+
             for chunk in current_level.chunks(2) {
                 let combined = if chunk.len() == 2 {
                     let mut combined = Vec::new();
@@ -212,16 +210,16 @@ pub mod helpers {
                 } else {
                     chunk[0].to_vec()
                 };
-                
+
                 next_level.push(blake2_256(&combined));
             }
-            
+
             current_level = next_level;
         }
-        
+
         current_level[0]
     }
-    
+
     /// Verify that a hash is part of a merkle tree
     ///
     /// # Parameters
@@ -238,10 +236,10 @@ pub mod helpers {
         proof: &[[u8; 32]],
     ) -> bool {
         let mut current_hash = leaf_hash;
-        
+
         for sibling in proof {
             let mut combined = Vec::new();
-            
+
             // Order matters for merkle trees
             if current_hash < *sibling {
                 combined.extend_from_slice(&current_hash);
@@ -250,19 +248,19 @@ pub mod helpers {
                 combined.extend_from_slice(sibling);
                 combined.extend_from_slice(&current_hash);
             }
-            
+
             current_hash = blake2_256(&combined);
         }
-        
+
         current_hash == merkle_root
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::helpers::*;
-    use codec::{Encode, Decode};
+    use super::*;
+    use codec::{Decode, Encode};
 
     // ── calculate_merkle_root ────────────────────────────────────────────────
 
@@ -509,7 +507,10 @@ mod tests {
             merkle_root: [0u8; 32],
             version: 0,
         };
-        assert_ne!(calculate_anchor_hash(&anchor1), calculate_anchor_hash(&anchor2));
+        assert_ne!(
+            calculate_anchor_hash(&anchor1),
+            calculate_anchor_hash(&anchor2)
+        );
     }
 
     #[test]
@@ -525,7 +526,10 @@ mod tests {
         };
         let mut modified = base.clone();
         modified.block_number = 200u64;
-        assert_ne!(calculate_anchor_hash(&base), calculate_anchor_hash(&modified));
+        assert_ne!(
+            calculate_anchor_hash(&base),
+            calculate_anchor_hash(&modified)
+        );
     }
 
     #[test]
@@ -541,7 +545,10 @@ mod tests {
         };
         let mut modified = base.clone();
         modified.anchor_type = AnchorType::CourtRecord;
-        assert_ne!(calculate_anchor_hash(&base), calculate_anchor_hash(&modified));
+        assert_ne!(
+            calculate_anchor_hash(&base),
+            calculate_anchor_hash(&modified)
+        );
     }
 
     #[test]
@@ -687,7 +694,10 @@ mod tests {
         let hashes_4: Vec<[u8; 32]> = (1u8..=4).map(|i| [i; 32]).collect();
         let hashes_5: Vec<[u8; 32]> = (1u8..=5).map(|i| [i; 32]).collect();
         // Adding one extra leaf changes the root
-        assert_ne!(calculate_merkle_root(&hashes_4), calculate_merkle_root(&hashes_5));
+        assert_ne!(
+            calculate_merkle_root(&hashes_4),
+            calculate_merkle_root(&hashes_5)
+        );
     }
 
     // ── AnchorType clone ────────────────────────────────────────────────────

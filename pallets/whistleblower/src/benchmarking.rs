@@ -23,7 +23,13 @@ mod benchmarks {
         let category: u8 = 0; // Fraud
 
         #[extrinsic_call]
-        _(RawOrigin::Signed(caller), alias_hash, target, evidence_hash, category);
+        _(
+            RawOrigin::Signed(caller),
+            alias_hash,
+            target,
+            evidence_hash,
+            category,
+        );
     }
 
     #[benchmark]

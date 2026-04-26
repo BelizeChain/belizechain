@@ -1,11 +1,7 @@
 use crate::{
     mock::*, ChainDestination, Error, Event, JobStatus, NFTCategory, NFTRarity, QuantumResults,
 };
-use frame_support::{
-    assert_noop, assert_ok,
-    BoundedVec,
-    traits::Currency,
-};
+use frame_support::{assert_noop, assert_ok, traits::Currency, BoundedVec};
 use sp_core::ConstU32;
 
 // ============================================================================
@@ -18,34 +14,87 @@ fn debug_buy_nft_balance_trace() {
         let seller = 1u64;
         let job_id: BoundedVec<u8, ConstU32<64>> = b"job_nft".to_vec().try_into().unwrap();
 
-        println!("A) free_balance(seller) = {}", Balances::free_balance(seller));
+        println!(
+            "A) free_balance(seller) = {}",
+            Balances::free_balance(seller)
+        );
 
         assert_ok!(Quantum::submit_quantum_job(
             RuntimeOrigin::signed(seller),
             job_id.clone(),
             4,
-            [1u8; 32], 10u16, 50u32, 1000u32,
+            [1u8; 32],
+            10u16,
+            50u32,
+            1000u32,
         ));
-        println!("B) after submit_quantum_job: free={} reserved={}", Balances::free_balance(seller), Balances::reserved_balance(seller));
+        println!(
+            "B) after submit_quantum_job: free={} reserved={}",
+            Balances::free_balance(seller),
+            Balances::reserved_balance(seller)
+        );
 
-        assert_ok!(Quantum::update_job_status(RuntimeOrigin::signed(seller), job_id.clone(), 1));
-        println!("C) after update_job_status: free={} reserved={}", Balances::free_balance(seller), Balances::reserved_balance(seller));
+        assert_ok!(Quantum::update_job_status(
+            RuntimeOrigin::signed(seller),
+            job_id.clone(),
+            1
+        ));
+        println!(
+            "C) after update_job_status: free={} reserved={}",
+            Balances::free_balance(seller),
+            Balances::reserved_balance(seller)
+        );
 
         assert_ok!(Quantum::record_quantum_result(
-            RuntimeOrigin::signed(2), job_id.clone(),
-            [1u8; 32], [0xABu8; 32].to_vec().try_into().unwrap(), 95,
+            RuntimeOrigin::signed(2),
+            job_id.clone(),
+            [1u8; 32],
+            [0xABu8; 32].to_vec().try_into().unwrap(),
+            95,
         ));
-        println!("D) after record_quantum_result: free={} reserved={}", Balances::free_balance(seller), Balances::reserved_balance(seller));
+        println!(
+            "D) after record_quantum_result: free={} reserved={}",
+            Balances::free_balance(seller),
+            Balances::reserved_balance(seller)
+        );
 
-        assert_ok!(Quantum::verify_quantum_result(RuntimeOrigin::root(), job_id.clone(), true));
-        assert_ok!(Quantum::mint_achievement_nft(RuntimeOrigin::signed(seller), job_id, 0, true, 10, 95));
-        println!("E) after mint_achievement_nft: free={} reserved={}", Balances::free_balance(seller), Balances::reserved_balance(seller));
+        assert_ok!(Quantum::verify_quantum_result(
+            RuntimeOrigin::root(),
+            job_id.clone(),
+            true
+        ));
+        assert_ok!(Quantum::mint_achievement_nft(
+            RuntimeOrigin::signed(seller),
+            job_id,
+            0,
+            true,
+            10,
+            95
+        ));
+        println!(
+            "E) after mint_achievement_nft: free={} reserved={}",
+            Balances::free_balance(seller),
+            Balances::reserved_balance(seller)
+        );
 
-        assert_ok!(Quantum::list_nft(RuntimeOrigin::signed(seller), 0, 1_000_000_000_000u128, 100));
-        println!("F) after list_nft (seller_initial): free={} reserved={}", Balances::free_balance(seller), Balances::reserved_balance(seller));
+        assert_ok!(Quantum::list_nft(
+            RuntimeOrigin::signed(seller),
+            0,
+            1_000_000_000_000u128,
+            100
+        ));
+        println!(
+            "F) after list_nft (seller_initial): free={} reserved={}",
+            Balances::free_balance(seller),
+            Balances::reserved_balance(seller)
+        );
 
         assert_ok!(Quantum::buy_nft(RuntimeOrigin::signed(2), 0));
-        println!("G) after buy_nft: free={} reserved={}", Balances::free_balance(seller), Balances::reserved_balance(seller));
+        println!(
+            "G) after buy_nft: free={} reserved={}",
+            Balances::free_balance(seller),
+            Balances::reserved_balance(seller)
+        );
     });
 }
 
@@ -66,15 +115,18 @@ fn submit_quantum_job_works() {
         let initial_balance = Balances::free_balance(submitter);
 
         // Calculate expected cost: (qubits * DallaPerQubit) + (shots * DallaPerShot)
-        let expected_cost = (num_qubits as u128 * DallaPerQubit::get()) + 
-                           (num_shots as u128 * DallaPerShot::get());
+        let expected_cost =
+            (num_qubits as u128 * DallaPerQubit::get()) + (num_shots as u128 * DallaPerShot::get());
 
         // Submit job first
         assert_ok!(Quantum::submit_quantum_job(
             RuntimeOrigin::signed(1),
             job_id.clone(),
-            4,  // Qiskit
-            circuit_hash, num_qubits, circuit_depth, num_shots,
+            4, // Qiskit
+            circuit_hash,
+            num_qubits,
+            circuit_depth,
+            num_shots,
         ));
 
         // Check payment reserved
@@ -87,7 +139,7 @@ fn submit_quantum_job_works() {
         expect_event(Event::QuantumJobSubmitted {
             job_id,
             submitter,
-            backend_index: 4,  // Qiskit
+            backend_index: 4, // Qiskit
             dalla_cost: expected_cost,
         });
     });
@@ -106,11 +158,11 @@ fn submit_quantum_job_fails_duplicate() {
         assert_ok!(Quantum::submit_quantum_job(
             RuntimeOrigin::signed(submitter),
             job_id.clone(),
-            4,  // Qiskit
+            4, // Qiskit
             circuit_hash,
-            10,  // num_qubits
-            50,  // circuit_depth
-            1000,  // num_shots
+            10,   // num_qubits
+            50,   // circuit_depth
+            1000, // num_shots
         ));
 
         // Try to submit same job ID again
@@ -118,9 +170,11 @@ fn submit_quantum_job_fails_duplicate() {
             Quantum::submit_quantum_job(
                 RuntimeOrigin::signed(submitter),
                 job_id,
-                4,  // Qiskit
-                circuit_hash, num_qubits, circuit_depth, num_shots,
-                
+                4, // Qiskit
+                circuit_hash,
+                num_qubits,
+                circuit_depth,
+                num_shots,
             ),
             Error::<Test>::JobAlreadyExists
         );
@@ -139,25 +193,30 @@ fn submit_quantum_job_fails_insufficient_balance() {
         // Still not enough. Use max values: 100 qubits + 1M shots repeated
         // Actually need: 500T / 100_000 = 5B shots or 500T / 1_000_000 = 500M qubits
         // Max qubits=100, max shots=1M, so use max shots
-        let num_qubits = 100u16;  // Max allowed
+        let num_qubits = 100u16; // Max allowed
         let circuit_depth = 50u32;
-        let num_shots = 1_000_000u32;  // Max allowed = 1M shots
-        // Cost = (100 * 1M) + (1M * 100K) = 100M + 100B = 100_100_000_000
-        // This is only 100B, still less than 500T. Need to submit multiple times or increase Dave's cost
-        // Better approach: use a user with very low balance
-        // Change submitter to account with 100_000_000_000 balance (100B)
-        let low_balance_account = 6;  // New account with minimal balance
-        
+        let num_shots = 1_000_000u32; // Max allowed = 1M shots
+                                      // Cost = (100 * 1M) + (1M * 100K) = 100M + 100B = 100_100_000_000
+                                      // This is only 100B, still less than 500T. Need to submit multiple times or increase Dave's cost
+                                      // Better approach: use a user with very low balance
+                                      // Change submitter to account with 100_000_000_000 balance (100B)
+        let low_balance_account = 6; // New account with minimal balance
+
         // First give account 6 a small balance
-        let _ = pallet_balances::Pallet::<Test>::deposit_creating(&low_balance_account, 100_000_000_000);
-        
+        let _ = pallet_balances::Pallet::<Test>::deposit_creating(
+            &low_balance_account,
+            100_000_000_000,
+        );
+
         assert_noop!(
             Quantum::submit_quantum_job(
                 RuntimeOrigin::signed(low_balance_account),
                 job_id,
-                4,  // Qiskit
-                circuit_hash, num_qubits, circuit_depth, num_shots,
-                
+                4, // Qiskit
+                circuit_hash,
+                num_qubits,
+                circuit_depth,
+                num_shots,
             ),
             Error::<Test>::InsufficientBalance
         );
@@ -183,15 +242,18 @@ fn record_quantum_result_works() {
         assert_ok!(Quantum::submit_quantum_job(
             RuntimeOrigin::signed(submitter),
             job_id.clone(),
-            4,  // Qiskit
-            circuit_hash, num_qubits, circuit_depth, num_shots,
-            
+            4, // Qiskit
+            circuit_hash,
+            num_qubits,
+            circuit_depth,
+            num_shots,
         ));
 
         // Update job status to Running (required before recording result)
         // Record result (use 32-byte hash, not JSON string)
-        let result_hash = [1u8; 32];  // Hash of actual result data
-        let verification_proof: BoundedVec<u8, ConstU32<256>> = [0xABu8; 32].to_vec().try_into().unwrap();
+        let result_hash = [1u8; 32]; // Hash of actual result data
+        let verification_proof: BoundedVec<u8, ConstU32<256>> =
+            [0xABu8; 32].to_vec().try_into().unwrap();
         let accuracy = 95u8;
 
         let _executor_initial_balance = Balances::free_balance(executor);
@@ -200,7 +262,7 @@ fn record_quantum_result_works() {
         assert_ok!(Quantum::update_job_status(
             RuntimeOrigin::signed(submitter),
             job_id.clone(),
-            1,  // Running
+            1, // Running
         ));
 
         assert_ok!(Quantum::record_quantum_result(
@@ -229,7 +291,8 @@ fn record_quantum_result_fails_job_not_found() {
         let executor = 2;
         let job_id: BoundedVec<u8, ConstU32<64>> = b"nonexistent".to_vec().try_into().unwrap();
         let result_hash = [1u8; 32];
-        let verification_proof: BoundedVec<u8, ConstU32<256>> = [0xCDu8; 32].to_vec().try_into().unwrap();
+        let verification_proof: BoundedVec<u8, ConstU32<256>> =
+            [0xCDu8; 32].to_vec().try_into().unwrap();
 
         assert_noop!(
             Quantum::record_quantum_result(
@@ -262,8 +325,11 @@ fn mint_achievement_nft_works() {
         assert_ok!(Quantum::submit_quantum_job(
             RuntimeOrigin::signed(submitter),
             job_id.clone(),
-            4,  // Qiskit
-            circuit_hash, num_qubits, circuit_depth, num_shots,
+            4, // Qiskit
+            circuit_hash,
+            num_qubits,
+            circuit_depth,
+            num_shots,
             // removed extra payment argument
         ));
 
@@ -272,7 +338,7 @@ fn mint_achievement_nft_works() {
         assert_ok!(Quantum::update_job_status(
             RuntimeOrigin::signed(submitter),
             job_id.clone(),
-            1,  // Running
+            1, // Running
         ));
 
         assert_ok!(Quantum::record_quantum_result(
@@ -283,7 +349,11 @@ fn mint_achievement_nft_works() {
             95,
         ));
 
-        assert_ok!(Quantum::verify_quantum_result(RuntimeOrigin::root(), job_id.clone(), true));
+        assert_ok!(Quantum::verify_quantum_result(
+            RuntimeOrigin::root(),
+            job_id.clone(),
+            true
+        ));
 
         // Mint NFT
         let initial_balance = Balances::free_balance(submitter);
@@ -291,7 +361,7 @@ fn mint_achievement_nft_works() {
         assert_ok!(Quantum::mint_achievement_nft(
             RuntimeOrigin::signed(submitter),
             job_id.clone(),
-            0,  // FirstQuantumJob
+            0,    // FirstQuantumJob
             true, // transferable
             10,   // qubits
             95,   // accuracy
@@ -318,7 +388,7 @@ fn mint_achievement_nft_calculates_rarity_correctly() {
         let submitter = 1;
         let job_id: BoundedVec<u8, ConstU32<64>> = b"job_legendary".to_vec().try_into().unwrap();
         let circuit_hash = [1u8; 32];
-        let num_qubits = 100u16;  // 100+ qubits → qubit_bonus = 300
+        let num_qubits = 100u16; // 100+ qubits → qubit_bonus = 300
         let circuit_depth = 50u32;
         let num_shots = 1000u32;
 
@@ -326,15 +396,18 @@ fn mint_achievement_nft_calculates_rarity_correctly() {
         assert_ok!(Quantum::submit_quantum_job(
             RuntimeOrigin::signed(submitter),
             job_id.clone(),
-            4,  // Qiskit
-            circuit_hash, num_qubits, circuit_depth, num_shots,
+            4, // Qiskit
+            circuit_hash,
+            num_qubits,
+            circuit_depth,
+            num_shots,
         ));
 
         // Update job status to Running
         assert_ok!(Quantum::update_job_status(
             RuntimeOrigin::signed(submitter),
             job_id.clone(),
-            1,  // Running
+            1, // Running
         ));
 
         assert_ok!(Quantum::record_quantum_result(
@@ -345,13 +418,17 @@ fn mint_achievement_nft_calculates_rarity_correctly() {
             100,
         ));
 
-        assert_ok!(Quantum::verify_quantum_result(RuntimeOrigin::root(), job_id.clone(), true));
+        assert_ok!(Quantum::verify_quantum_result(
+            RuntimeOrigin::root(),
+            job_id.clone(),
+            true
+        ));
 
         // Mint high-quality NFT (should be Legendary)
         assert_ok!(Quantum::mint_achievement_nft(
             RuntimeOrigin::signed(submitter),
             job_id.clone(),
-            2,  // ShorAlgorithm // 500 base points
+            2, // ShorAlgorithm // 500 base points
             true,
             100, // 100 qubits = 300 points
             100, // 100% accuracy = 300 points
@@ -383,21 +460,26 @@ fn verification_consensus_works() {
         assert_ok!(Quantum::submit_quantum_job(
             RuntimeOrigin::signed(submitter),
             job_id.clone(),
-            4,  // Qiskit
-            circuit_hash, num_qubits, circuit_depth, num_shots,
+            4, // Qiskit
+            circuit_hash,
+            num_qubits,
+            circuit_depth,
+            num_shots,
         ));
 
         // Update job status to Running
         assert_ok!(Quantum::update_job_status(
             RuntimeOrigin::signed(submitter),
             job_id.clone(),
-            1,  // Running
+            1, // Running
         ));
 
         assert_ok!(Quantum::record_quantum_result(
             RuntimeOrigin::signed(2),
             job_id.clone(),
-            [1u8; 32], [0xABu8; 32].to_vec().try_into().unwrap(), 95,
+            [1u8; 32],
+            [0xABu8; 32].to_vec().try_into().unwrap(),
+            95,
         ));
 
         // Request verification
@@ -409,12 +491,12 @@ fn verification_consensus_works() {
 
         // Validators submit votes
         let result_hash = [0u8; 32];
-        
+
         // Validator 1: Approve
         assert_ok!(Quantum::submit_verification(
             RuntimeOrigin::signed(3),
             job_id.clone(),
-            0,  // Approve
+            0, // Approve
             90,
             result_hash,
         ));
@@ -423,7 +505,7 @@ fn verification_consensus_works() {
         assert_ok!(Quantum::submit_verification(
             RuntimeOrigin::signed(4),
             job_id.clone(),
-            0,  // Approve
+            0, // Approve
             95,
             result_hash,
         ));
@@ -432,7 +514,7 @@ fn verification_consensus_works() {
         assert_ok!(Quantum::submit_verification(
             RuntimeOrigin::signed(5),
             job_id.clone(),
-            0,  // Approve
+            0, // Approve
             85,
             result_hash,
         ));
@@ -461,21 +543,26 @@ fn verification_updates_reputation() {
         assert_ok!(Quantum::submit_quantum_job(
             RuntimeOrigin::signed(submitter),
             job_id.clone(),
-            4,  // Qiskit
-            circuit_hash, num_qubits, circuit_depth, num_shots,
+            4, // Qiskit
+            circuit_hash,
+            num_qubits,
+            circuit_depth,
+            num_shots,
         ));
 
         // Update job status to Running (use submitter, not validator)
         assert_ok!(Quantum::update_job_status(
             RuntimeOrigin::signed(submitter),
             job_id.clone(),
-            1,  // Running
+            1, // Running
         ));
 
         assert_ok!(Quantum::record_quantum_result(
             RuntimeOrigin::signed(2),
             job_id.clone(),
-            [1u8; 32], [0xABu8; 32].to_vec().try_into().unwrap(), 95,
+            [1u8; 32],
+            [0xABu8; 32].to_vec().try_into().unwrap(),
+            95,
         ));
 
         // Request verification
@@ -492,7 +579,7 @@ fn verification_updates_reputation() {
         assert_ok!(Quantum::submit_verification(
             RuntimeOrigin::signed(validator),
             job_id.clone(),
-            0,  // Approve
+            0, // Approve
             90,
             result_hash,
         ));
@@ -500,7 +587,7 @@ fn verification_updates_reputation() {
         assert_ok!(Quantum::submit_verification(
             RuntimeOrigin::signed(4),
             job_id.clone(),
-            0,  // Approve
+            0, // Approve
             95,
             result_hash,
         ));
@@ -508,7 +595,7 @@ fn verification_updates_reputation() {
         assert_ok!(Quantum::submit_verification(
             RuntimeOrigin::signed(5),
             job_id.clone(),
-            0,  // Approve
+            0, // Approve
             85,
             result_hash,
         ));
@@ -539,8 +626,11 @@ fn list_nft_works() {
         assert_ok!(Quantum::submit_quantum_job(
             RuntimeOrigin::signed(owner),
             job_id.clone(),
-            4,  // Qiskit
-            circuit_hash, num_qubits, circuit_depth, num_shots,
+            4, // Qiskit
+            circuit_hash,
+            num_qubits,
+            circuit_depth,
+            num_shots,
             // removed extra payment argument
         ));
 
@@ -548,21 +638,27 @@ fn list_nft_works() {
         assert_ok!(Quantum::update_job_status(
             RuntimeOrigin::signed(owner),
             job_id.clone(),
-            1,  // Running
+            1, // Running
         ));
 
         assert_ok!(Quantum::record_quantum_result(
             RuntimeOrigin::signed(2),
             job_id.clone(),
-            [1u8; 32], [0xABu8; 32].to_vec().try_into().unwrap(), 95,
+            [1u8; 32],
+            [0xABu8; 32].to_vec().try_into().unwrap(),
+            95,
         ));
 
-        assert_ok!(Quantum::verify_quantum_result(RuntimeOrigin::root(), job_id.clone(), true));
+        assert_ok!(Quantum::verify_quantum_result(
+            RuntimeOrigin::root(),
+            job_id.clone(),
+            true
+        ));
 
         assert_ok!(Quantum::mint_achievement_nft(
             RuntimeOrigin::signed(owner),
             job_id,
-            0,  // FirstQuantumJob
+            0, // FirstQuantumJob
             true,
             10,
             95,
@@ -585,10 +681,9 @@ fn list_nft_works() {
 
         // Check event
         let events = System::events();
-        assert!(events.iter().any(|e| matches!(
-            e.event,
-            RuntimeEvent::Quantum(Event::NFTListed { .. })
-        )));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e.event, RuntimeEvent::Quantum(Event::NFTListed { .. }))));
     });
 }
 
@@ -607,29 +702,38 @@ fn buy_nft_works() {
         assert_ok!(Quantum::submit_quantum_job(
             RuntimeOrigin::signed(seller),
             job_id.clone(),
-            4,  // Qiskit
-            circuit_hash, num_qubits, circuit_depth, num_shots,
+            4, // Qiskit
+            circuit_hash,
+            num_qubits,
+            circuit_depth,
+            num_shots,
         ));
 
         // Update job status to Running
         assert_ok!(Quantum::update_job_status(
             RuntimeOrigin::signed(seller),
             job_id.clone(),
-            1,  // Running
+            1, // Running
         ));
 
         assert_ok!(Quantum::record_quantum_result(
             RuntimeOrigin::signed(2),
             job_id.clone(),
-            [1u8; 32], [0xABu8; 32].to_vec().try_into().unwrap(), 95,
+            [1u8; 32],
+            [0xABu8; 32].to_vec().try_into().unwrap(),
+            95,
         ));
 
-        assert_ok!(Quantum::verify_quantum_result(RuntimeOrigin::root(), job_id.clone(), true));
+        assert_ok!(Quantum::verify_quantum_result(
+            RuntimeOrigin::root(),
+            job_id.clone(),
+            true
+        ));
 
         assert_ok!(Quantum::mint_achievement_nft(
             RuntimeOrigin::signed(seller),
             job_id,
-            0,  // FirstQuantumJob
+            0, // FirstQuantumJob
             true,
             10,
             95,
@@ -666,9 +770,15 @@ fn buy_nft_works() {
         // Seller receives: seller_amount(93%) + royalty(5%) = 98%
         let royalty = price * 5 / 100;
         let marketplace_fee = price * 2 / 100;
-        let seller_net = price - royalty - marketplace_fee;  // 93% of price
-        assert_eq!(Balances::free_balance(seller), seller_initial + seller_net + royalty);
-        assert_eq!(Balances::free_balance(buyer), buyer_initial - seller_net - marketplace_fee - royalty);
+        let seller_net = price - royalty - marketplace_fee; // 93% of price
+        assert_eq!(
+            Balances::free_balance(seller),
+            seller_initial + seller_net + royalty
+        );
+        assert_eq!(
+            Balances::free_balance(buyer),
+            buyer_initial - seller_net - marketplace_fee - royalty
+        );
     });
 }
 
@@ -686,29 +796,38 @@ fn buy_nft_fails_own_nft() {
         assert_ok!(Quantum::submit_quantum_job(
             RuntimeOrigin::signed(owner),
             job_id.clone(),
-            4,  // Qiskit
-            circuit_hash, num_qubits, circuit_depth, num_shots,
+            4, // Qiskit
+            circuit_hash,
+            num_qubits,
+            circuit_depth,
+            num_shots,
         ));
 
         // Update job status to Running
         assert_ok!(Quantum::update_job_status(
             RuntimeOrigin::signed(owner),
             job_id.clone(),
-            1,  // Running
+            1, // Running
         ));
 
         assert_ok!(Quantum::record_quantum_result(
             RuntimeOrigin::signed(2),
             job_id.clone(),
-            [1u8; 32], [0xABu8; 32].to_vec().try_into().unwrap(), 95,
+            [1u8; 32],
+            [0xABu8; 32].to_vec().try_into().unwrap(),
+            95,
         ));
 
-        assert_ok!(Quantum::verify_quantum_result(RuntimeOrigin::root(), job_id.clone(), true));
+        assert_ok!(Quantum::verify_quantum_result(
+            RuntimeOrigin::root(),
+            job_id.clone(),
+            true
+        ));
 
         assert_ok!(Quantum::mint_achievement_nft(
             RuntimeOrigin::signed(owner),
             job_id,
-            0,  // FirstQuantumJob
+            0, // FirstQuantumJob
             true,
             10,
             95,
@@ -748,29 +867,38 @@ fn bridge_to_ethereum_works() {
         assert_ok!(Quantum::submit_quantum_job(
             RuntimeOrigin::signed(owner),
             job_id.clone(),
-            4,  // Qiskit
-            circuit_hash, num_qubits, circuit_depth, num_shots,
+            4, // Qiskit
+            circuit_hash,
+            num_qubits,
+            circuit_depth,
+            num_shots,
         ));
 
         // Update job status to Running
         assert_ok!(Quantum::update_job_status(
             RuntimeOrigin::signed(owner),
             job_id.clone(),
-            1,  // Running
+            1, // Running
         ));
 
         assert_ok!(Quantum::record_quantum_result(
             RuntimeOrigin::signed(2),
             job_id.clone(),
-            [1u8; 32], [0xABu8; 32].to_vec().try_into().unwrap(), 95,
+            [1u8; 32],
+            [0xABu8; 32].to_vec().try_into().unwrap(),
+            95,
         ));
 
-        assert_ok!(Quantum::verify_quantum_result(RuntimeOrigin::root(), job_id.clone(), true));
+        assert_ok!(Quantum::verify_quantum_result(
+            RuntimeOrigin::root(),
+            job_id.clone(),
+            true
+        ));
 
         assert_ok!(Quantum::mint_achievement_nft(
             RuntimeOrigin::signed(owner),
             job_id,
-            0,  // FirstQuantumJob
+            0, // FirstQuantumJob
             true,
             10,
             95,
@@ -798,7 +926,7 @@ fn bridge_to_ethereum_works() {
         assert!(events.iter().any(|e| matches!(
             e.event,
             RuntimeEvent::Quantum(Event::BridgeInitiated {
-                destination_index: 0,  // Ethereum
+                destination_index: 0, // Ethereum
                 ..
             })
         )));
@@ -819,36 +947,45 @@ fn bridge_fails_for_listed_nft() {
         assert_ok!(Quantum::submit_quantum_job(
             RuntimeOrigin::signed(owner),
             job_id.clone(),
-            4,  // Qiskit
-            circuit_hash, num_qubits, circuit_depth, num_shots,
+            4, // Qiskit
+            circuit_hash,
+            num_qubits,
+            circuit_depth,
+            num_shots,
         ));
 
         // Update job status to Running
         assert_ok!(Quantum::update_job_status(
             RuntimeOrigin::signed(owner),
             job_id.clone(),
-            1,  // Running
+            1, // Running
         ));
 
         assert_ok!(Quantum::record_quantum_result(
             RuntimeOrigin::signed(2),
             job_id.clone(),
-            [1u8; 32], [0xABu8; 32].to_vec().try_into().unwrap(), 95,
+            [1u8; 32],
+            [0xABu8; 32].to_vec().try_into().unwrap(),
+            95,
         ));
 
-        assert_ok!(Quantum::verify_quantum_result(RuntimeOrigin::root(), job_id.clone(), true));
+        assert_ok!(Quantum::verify_quantum_result(
+            RuntimeOrigin::root(),
+            job_id.clone(),
+            true
+        ));
 
         assert_ok!(Quantum::mint_achievement_nft(
             RuntimeOrigin::signed(owner),
             job_id,
-            0,  // FirstQuantumJob
+            0, // FirstQuantumJob
             true,
             10,
             95,
         ));
 
         let nft_id = 0;
-        
+
         // List NFT first
         assert_ok!(Quantum::list_nft(
             RuntimeOrigin::signed(owner),
@@ -884,29 +1021,38 @@ fn bridge_to_parachain_works() {
         assert_ok!(Quantum::submit_quantum_job(
             RuntimeOrigin::signed(owner),
             job_id.clone(),
-            4,  // Qiskit
-            circuit_hash, num_qubits, circuit_depth, num_shots,
+            4, // Qiskit
+            circuit_hash,
+            num_qubits,
+            circuit_depth,
+            num_shots,
         ));
 
         // Update job status to Running
         assert_ok!(Quantum::update_job_status(
             RuntimeOrigin::signed(owner),
             job_id.clone(),
-            1,  // Running
+            1, // Running
         ));
 
         assert_ok!(Quantum::record_quantum_result(
             RuntimeOrigin::signed(2),
             job_id.clone(),
-            [1u8; 32], [0xABu8; 32].to_vec().try_into().unwrap(), 95,
+            [1u8; 32],
+            [0xABu8; 32].to_vec().try_into().unwrap(),
+            95,
         ));
 
-        assert_ok!(Quantum::verify_quantum_result(RuntimeOrigin::root(), job_id.clone(), true));
+        assert_ok!(Quantum::verify_quantum_result(
+            RuntimeOrigin::root(),
+            job_id.clone(),
+            true
+        ));
 
         assert_ok!(Quantum::mint_achievement_nft(
             RuntimeOrigin::signed(owner),
             job_id,
-            0,  // FirstQuantumJob
+            0, // FirstQuantumJob
             true,
             10,
             95,
@@ -929,7 +1075,10 @@ fn bridge_to_parachain_works() {
 
         // Check bridge request created
         let bridge_request = Quantum::bridge_requests(nft_id).unwrap();
-        assert_eq!(bridge_request.destination, ChainDestination::Parachain(parachain_id));
+        assert_eq!(
+            bridge_request.destination,
+            ChainDestination::Parachain(parachain_id)
+        );
     });
 }
 
@@ -947,7 +1096,10 @@ fn record_result_rejects_short_proof() {
             RuntimeOrigin::signed(owner),
             job_id.clone(),
             4, // Qiskit
-            [1u8; 32], 4, 10, 100,
+            [1u8; 32],
+            4,
+            10,
+            100,
         ));
 
         // Proof < 32 bytes should be rejected
@@ -977,7 +1129,10 @@ fn record_result_rejects_zero_result_hash() {
             RuntimeOrigin::signed(owner),
             job_id.clone(),
             4, // Qiskit
-            [1u8; 32], 4, 10, 100,
+            [1u8; 32],
+            4,
+            10,
+            100,
         ));
 
         // Zero result hash should be rejected
@@ -1006,7 +1161,10 @@ fn record_result_rejects_invalid_accuracy() {
             RuntimeOrigin::signed(owner),
             job_id.clone(),
             4, // Qiskit
-            [1u8; 32], 4, 10, 100,
+            [1u8; 32],
+            4,
+            10,
+            100,
         ));
 
         let valid_proof: BoundedVec<u8, ConstU32<256>> = [0xABu8; 32].to_vec().try_into().unwrap();
@@ -1024,7 +1182,7 @@ fn record_result_rejects_invalid_accuracy() {
 }
 
 // ============================================================================
-// UPDATE JOB STATUS TESTS  
+// UPDATE JOB STATUS TESTS
 // ============================================================================
 
 #[test]
@@ -1034,12 +1192,26 @@ fn update_job_status_running_to_completed_works() {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"job_complete".to_vec().try_into().unwrap();
 
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(owner), job_id.clone(), 4, [1u8; 32], 4, 10, 100,
+            RuntimeOrigin::signed(owner),
+            job_id.clone(),
+            4,
+            [1u8; 32],
+            4,
+            10,
+            100,
         ));
         // Pending → Running
-        assert_ok!(Quantum::update_job_status(RuntimeOrigin::signed(owner), job_id.clone(), 1));
+        assert_ok!(Quantum::update_job_status(
+            RuntimeOrigin::signed(owner),
+            job_id.clone(),
+            1
+        ));
         // Running → Completed
-        assert_ok!(Quantum::update_job_status(RuntimeOrigin::signed(owner), job_id.clone(), 2));
+        assert_ok!(Quantum::update_job_status(
+            RuntimeOrigin::signed(owner),
+            job_id.clone(),
+            2
+        ));
 
         let job = Quantum::quantum_jobs(&job_id).expect("job must exist");
         assert_eq!(job.status, JobStatus::Completed);
@@ -1054,11 +1226,25 @@ fn update_job_status_running_to_failed_works() {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"job_fail".to_vec().try_into().unwrap();
 
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(owner), job_id.clone(), 4, [1u8; 32], 4, 10, 100,
+            RuntimeOrigin::signed(owner),
+            job_id.clone(),
+            4,
+            [1u8; 32],
+            4,
+            10,
+            100,
         ));
-        assert_ok!(Quantum::update_job_status(RuntimeOrigin::signed(owner), job_id.clone(), 1));
+        assert_ok!(Quantum::update_job_status(
+            RuntimeOrigin::signed(owner),
+            job_id.clone(),
+            1
+        ));
         // Running → Failed (refunds payment)
-        assert_ok!(Quantum::update_job_status(RuntimeOrigin::signed(owner), job_id.clone(), 3));
+        assert_ok!(Quantum::update_job_status(
+            RuntimeOrigin::signed(owner),
+            job_id.clone(),
+            3
+        ));
 
         let job = Quantum::quantum_jobs(&job_id).expect("job must exist");
         assert_eq!(job.status, JobStatus::Failed);
@@ -1072,10 +1258,20 @@ fn update_job_status_cancelled_works() {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"job_cancel".to_vec().try_into().unwrap();
 
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(owner), job_id.clone(), 4, [1u8; 32], 4, 10, 100,
+            RuntimeOrigin::signed(owner),
+            job_id.clone(),
+            4,
+            [1u8; 32],
+            4,
+            10,
+            100,
         ));
         // Pending → Cancelled (index 4 or any out-of-range maps to Cancelled)
-        assert_ok!(Quantum::update_job_status(RuntimeOrigin::signed(owner), job_id.clone(), 4));
+        assert_ok!(Quantum::update_job_status(
+            RuntimeOrigin::signed(owner),
+            job_id.clone(),
+            4
+        ));
 
         let job = Quantum::quantum_jobs(&job_id).expect("job must exist");
         assert_eq!(job.status, JobStatus::Cancelled);
@@ -1089,7 +1285,13 @@ fn update_job_status_invalid_transition_fails() {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"job_bad_trans".to_vec().try_into().unwrap();
 
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(owner), job_id.clone(), 4, [1u8; 32], 4, 10, 100,
+            RuntimeOrigin::signed(owner),
+            job_id.clone(),
+            4,
+            [1u8; 32],
+            4,
+            10,
+            100,
         ));
         // Pending → Completed is an invalid transition
         assert_noop!(
@@ -1107,9 +1309,19 @@ fn update_job_status_invalid_transition_fails() {
 fn setup_nft(owner: u64) {
     let job_id: BoundedVec<u8, ConstU32<64>> = b"job_for_nft".to_vec().try_into().unwrap();
     assert_ok!(Quantum::submit_quantum_job(
-        RuntimeOrigin::signed(owner), job_id.clone(), 4, [1u8; 32], 4, 10, 100,
+        RuntimeOrigin::signed(owner),
+        job_id.clone(),
+        4,
+        [1u8; 32],
+        4,
+        10,
+        100,
     ));
-    assert_ok!(Quantum::update_job_status(RuntimeOrigin::signed(owner), job_id.clone(), 1));
+    assert_ok!(Quantum::update_job_status(
+        RuntimeOrigin::signed(owner),
+        job_id.clone(),
+        1
+    ));
     assert_ok!(Quantum::record_quantum_result(
         RuntimeOrigin::signed(2),
         job_id.clone(),
@@ -1117,7 +1329,11 @@ fn setup_nft(owner: u64) {
         [0xABu8; 32].to_vec().try_into().unwrap(),
         95,
     ));
-    assert_ok!(Quantum::verify_quantum_result(RuntimeOrigin::root(), job_id.clone(), true));
+    assert_ok!(Quantum::verify_quantum_result(
+        RuntimeOrigin::root(),
+        job_id.clone(),
+        true
+    ));
     assert_ok!(Quantum::mint_achievement_nft(
         RuntimeOrigin::signed(owner),
         job_id,
@@ -1138,10 +1354,17 @@ fn transfer_nft_works() {
         let nft_id = 0u64;
         assert_eq!(Quantum::quantum_achievements(nft_id).unwrap().owner, owner);
 
-        assert_ok!(Quantum::transfer_nft(RuntimeOrigin::signed(owner), nft_id, recipient));
+        assert_ok!(Quantum::transfer_nft(
+            RuntimeOrigin::signed(owner),
+            nft_id,
+            recipient
+        ));
 
         // Ownership must have changed.
-        assert_eq!(Quantum::quantum_achievements(nft_id).unwrap().owner, recipient);
+        assert_eq!(
+            Quantum::quantum_achievements(nft_id).unwrap().owner,
+            recipient
+        );
     });
 }
 
@@ -1214,12 +1437,16 @@ fn cancel_bridge_works() {
 
         let eth_address: BoundedVec<u8, ConstU32<64>> =
             b"0x1234567890123456789012345678901234567890"
-            .to_vec()
-            .try_into()
-            .unwrap();
+                .to_vec()
+                .try_into()
+                .unwrap();
 
         // Initiate bridge — NFT becomes locked.
-        assert_ok!(Quantum::bridge_to_ethereum(RuntimeOrigin::signed(owner), nft_id, eth_address));
+        assert_ok!(Quantum::bridge_to_ethereum(
+            RuntimeOrigin::signed(owner),
+            nft_id,
+            eth_address
+        ));
         assert!(Quantum::bridge_requests(nft_id).is_some());
 
         // Cancel bridge — NFT must be unlocked and request removed.
@@ -1239,11 +1466,15 @@ fn cancel_bridge_not_owner_fails() {
 
         let eth_address: BoundedVec<u8, ConstU32<64>> =
             b"0x1234567890123456789012345678901234567890"
-            .to_vec()
-            .try_into()
-            .unwrap();
+                .to_vec()
+                .try_into()
+                .unwrap();
 
-        assert_ok!(Quantum::bridge_to_ethereum(RuntimeOrigin::signed(owner), nft_id, eth_address));
+        assert_ok!(Quantum::bridge_to_ethereum(
+            RuntimeOrigin::signed(owner),
+            nft_id,
+            eth_address
+        ));
 
         // Account 3 did not initiate the bridge.
         assert_noop!(
@@ -1371,7 +1602,13 @@ fn submit_job_zero_qubits_fails() {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"zero_qubits".to_vec().try_into().unwrap();
         assert_noop!(
             Quantum::submit_quantum_job(
-                RuntimeOrigin::signed(1), job_id, 0, [1u8; 32], 0u16, 10, 100
+                RuntimeOrigin::signed(1),
+                job_id,
+                0,
+                [1u8; 32],
+                0u16,
+                10,
+                100
             ),
             Error::<Test>::InvalidCircuitParameters
         );
@@ -1384,7 +1621,13 @@ fn submit_job_too_many_qubits_fails() {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"many_qubits".to_vec().try_into().unwrap();
         assert_noop!(
             Quantum::submit_quantum_job(
-                RuntimeOrigin::signed(1), job_id, 0, [1u8; 32], 101u16, 10, 100
+                RuntimeOrigin::signed(1),
+                job_id,
+                0,
+                [1u8; 32],
+                101u16,
+                10,
+                100
             ),
             Error::<Test>::InvalidCircuitParameters
         );
@@ -1397,7 +1640,13 @@ fn submit_job_zero_shots_fails() {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"zero_shots".to_vec().try_into().unwrap();
         assert_noop!(
             Quantum::submit_quantum_job(
-                RuntimeOrigin::signed(1), job_id, 0, [1u8; 32], 10u16, 10, 0u32
+                RuntimeOrigin::signed(1),
+                job_id,
+                0,
+                [1u8; 32],
+                10u16,
+                10,
+                0u32
             ),
             Error::<Test>::InvalidCircuitParameters
         );
@@ -1410,7 +1659,13 @@ fn submit_job_too_many_shots_fails() {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"max_shots".to_vec().try_into().unwrap();
         assert_noop!(
             Quantum::submit_quantum_job(
-                RuntimeOrigin::signed(1), job_id, 0, [1u8; 32], 10u16, 10, 1_000_001u32
+                RuntimeOrigin::signed(1),
+                job_id,
+                0,
+                [1u8; 32],
+                10u16,
+                10,
+                1_000_001u32
             ),
             Error::<Test>::InvalidCircuitParameters
         );
@@ -1422,7 +1677,13 @@ fn submit_job_boundary_100_qubits_works() {
     new_test_ext().execute_with(|| {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"boundary_q".to_vec().try_into().unwrap();
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(1), job_id, 0, [1u8; 32], 100u16, 10, 100
+            RuntimeOrigin::signed(1),
+            job_id,
+            0,
+            [1u8; 32],
+            100u16,
+            10,
+            100
         ));
     });
 }
@@ -1432,7 +1693,13 @@ fn submit_job_boundary_1m_shots_works() {
     new_test_ext().execute_with(|| {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"boundary_s".to_vec().try_into().unwrap();
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(1), job_id, 0, [1u8; 32], 10u16, 10, 1_000_000u32
+            RuntimeOrigin::signed(1),
+            job_id,
+            0,
+            [1u8; 32],
+            10u16,
+            10,
+            1_000_000u32
         ));
     });
 }
@@ -1442,7 +1709,13 @@ fn submit_job_updates_account_stats() {
     new_test_ext().execute_with(|| {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"stats_job".to_vec().try_into().unwrap();
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(1), job_id, 4, [1u8; 32], 10u16, 50, 1000
+            RuntimeOrigin::signed(1),
+            job_id,
+            4,
+            [1u8; 32],
+            10u16,
+            50,
+            1000
         ));
 
         let stats = Quantum::account_stats(1);
@@ -1460,10 +1733,22 @@ fn submit_job_increments_total_jobs() {
         let job_id1: BoundedVec<u8, ConstU32<64>> = b"j1".to_vec().try_into().unwrap();
         let job_id2: BoundedVec<u8, ConstU32<64>> = b"j2".to_vec().try_into().unwrap();
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(1), job_id1, 0, [1u8; 32], 5, 10, 100
+            RuntimeOrigin::signed(1),
+            job_id1,
+            0,
+            [1u8; 32],
+            5,
+            10,
+            100
         ));
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(2), job_id2, 0, [2u8; 32], 5, 10, 100
+            RuntimeOrigin::signed(2),
+            job_id2,
+            0,
+            [2u8; 32],
+            5,
+            10,
+            100
         ));
         assert_eq!(Quantum::total_quantum_jobs(), 2);
     });
@@ -1476,7 +1761,13 @@ fn submit_job_reserves_correct_amount() {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"reserve_job".to_vec().try_into().unwrap();
         // cost = 10 * 1_000_000 + 1000 * 100_000 = 10_000_000 + 100_000_000 = 110_000_000
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(1), job_id, 0, [1u8; 32], 10u16, 50, 1000
+            RuntimeOrigin::signed(1),
+            job_id,
+            0,
+            [1u8; 32],
+            10u16,
+            50,
+            1000
         ));
         assert_eq!(Balances::reserved_balance(1), 110_000_000);
         assert_eq!(Balances::free_balance(1), initial - 110_000_000);
@@ -1488,7 +1779,13 @@ fn update_job_status_not_authorized_fails() {
     new_test_ext().execute_with(|| {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"auth_test".to_vec().try_into().unwrap();
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(1), job_id.clone(), 0, [1u8; 32], 5, 10, 100
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            0,
+            [1u8; 32],
+            5,
+            10,
+            100
         ));
         // Account 3 is neither submitter nor executor
         assert_noop!(
@@ -1504,13 +1801,27 @@ fn update_job_failed_refunds_cost() {
         let initial = Balances::free_balance(1);
         let job_id: BoundedVec<u8, ConstU32<64>> = b"refund_job".to_vec().try_into().unwrap();
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(1), job_id.clone(), 0, [1u8; 32], 10, 50, 1000
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            0,
+            [1u8; 32],
+            10,
+            50,
+            1000
         ));
         let reserved = Balances::reserved_balance(1);
         assert!(reserved > 0);
 
-        assert_ok!(Quantum::update_job_status(RuntimeOrigin::signed(1), job_id.clone(), 1)); // Running
-        assert_ok!(Quantum::update_job_status(RuntimeOrigin::signed(1), job_id, 3)); // Failed
+        assert_ok!(Quantum::update_job_status(
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            1
+        )); // Running
+        assert_ok!(Quantum::update_job_status(
+            RuntimeOrigin::signed(1),
+            job_id,
+            3
+        )); // Failed
 
         // Funds should be refunded
         assert_eq!(Balances::reserved_balance(1), 0);
@@ -1524,9 +1835,19 @@ fn update_job_cancelled_from_pending_refunds() {
         let initial = Balances::free_balance(1);
         let job_id: BoundedVec<u8, ConstU32<64>> = b"cancel_job".to_vec().try_into().unwrap();
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(1), job_id.clone(), 0, [1u8; 32], 5, 10, 100
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            0,
+            [1u8; 32],
+            5,
+            10,
+            100
         ));
-        assert_ok!(Quantum::update_job_status(RuntimeOrigin::signed(1), job_id, 4)); // Cancelled
+        assert_ok!(Quantum::update_job_status(
+            RuntimeOrigin::signed(1),
+            job_id,
+            4
+        )); // Cancelled
         assert_eq!(Balances::reserved_balance(1), 0);
         assert_eq!(Balances::free_balance(1), initial);
     });
@@ -1537,10 +1858,24 @@ fn update_completed_job_cannot_be_cancelled() {
     new_test_ext().execute_with(|| {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"done_cancel".to_vec().try_into().unwrap();
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(1), job_id.clone(), 0, [1u8; 32], 5, 10, 100
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            0,
+            [1u8; 32],
+            5,
+            10,
+            100
         ));
-        assert_ok!(Quantum::update_job_status(RuntimeOrigin::signed(1), job_id.clone(), 1));
-        assert_ok!(Quantum::update_job_status(RuntimeOrigin::signed(1), job_id.clone(), 2));
+        assert_ok!(Quantum::update_job_status(
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            1
+        ));
+        assert_ok!(Quantum::update_job_status(
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            2
+        ));
         // Audit fix: completed jobs cannot be cancelled
         assert_noop!(
             Quantum::update_job_status(RuntimeOrigin::signed(1), job_id, 4),
@@ -1554,17 +1889,29 @@ fn record_result_already_recorded_fails() {
     new_test_ext().execute_with(|| {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"dup_result".to_vec().try_into().unwrap();
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(1), job_id.clone(), 0, [1u8; 32], 5, 10, 100
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            0,
+            [1u8; 32],
+            5,
+            10,
+            100
         ));
-        assert_ok!(Quantum::update_job_status(RuntimeOrigin::signed(1), job_id.clone(), 1));
+        assert_ok!(Quantum::update_job_status(
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            1
+        ));
         let proof: BoundedVec<u8, ConstU32<256>> = vec![0xABu8; 32].try_into().unwrap();
         assert_ok!(Quantum::record_quantum_result(
-            RuntimeOrigin::signed(2), job_id.clone(), [1u8; 32], proof.clone(), 90
+            RuntimeOrigin::signed(2),
+            job_id.clone(),
+            [1u8; 32],
+            proof.clone(),
+            90
         ));
         assert_noop!(
-            Quantum::record_quantum_result(
-                RuntimeOrigin::signed(2), job_id, [1u8; 32], proof, 90
-            ),
+            Quantum::record_quantum_result(RuntimeOrigin::signed(2), job_id, [1u8; 32], proof, 90),
             Error::<Test>::ResultAlreadyRecorded
         );
     });
@@ -1575,19 +1922,42 @@ fn mint_nft_charges_fee() {
     new_test_ext().execute_with(|| {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"fee_nft".to_vec().try_into().unwrap();
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(1), job_id.clone(), 0, [1u8; 32], 5, 10, 100
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            0,
+            [1u8; 32],
+            5,
+            10,
+            100
         ));
-        assert_ok!(Quantum::update_job_status(RuntimeOrigin::signed(1), job_id.clone(), 1));
+        assert_ok!(Quantum::update_job_status(
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            1
+        ));
         let proof: BoundedVec<u8, ConstU32<256>> = vec![0xAAu8; 32].try_into().unwrap();
         assert_ok!(Quantum::record_quantum_result(
-            RuntimeOrigin::signed(2), job_id.clone(), [1u8; 32], proof, 95
+            RuntimeOrigin::signed(2),
+            job_id.clone(),
+            [1u8; 32],
+            proof,
+            95
         ));
 
-        assert_ok!(Quantum::verify_quantum_result(RuntimeOrigin::root(), job_id.clone(), true));
+        assert_ok!(Quantum::verify_quantum_result(
+            RuntimeOrigin::root(),
+            job_id.clone(),
+            true
+        ));
 
         let before = Balances::free_balance(1);
         assert_ok!(Quantum::mint_achievement_nft(
-            RuntimeOrigin::signed(1), job_id, 0, true, 5, 95
+            RuntimeOrigin::signed(1),
+            job_id,
+            0,
+            true,
+            5,
+            95
         ));
         let after = Balances::free_balance(1);
         // NFTMintingFee = 500_000_000_000
@@ -1600,15 +1970,33 @@ fn mint_nft_not_authorized_fails() {
     new_test_ext().execute_with(|| {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"auth_nft".to_vec().try_into().unwrap();
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(1), job_id.clone(), 0, [1u8; 32], 5, 10, 100
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            0,
+            [1u8; 32],
+            5,
+            10,
+            100
         ));
-        assert_ok!(Quantum::update_job_status(RuntimeOrigin::signed(1), job_id.clone(), 1));
+        assert_ok!(Quantum::update_job_status(
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            1
+        ));
         let proof: BoundedVec<u8, ConstU32<256>> = vec![0xAAu8; 32].try_into().unwrap();
         assert_ok!(Quantum::record_quantum_result(
-            RuntimeOrigin::signed(2), job_id.clone(), [1u8; 32], proof, 95
+            RuntimeOrigin::signed(2),
+            job_id.clone(),
+            [1u8; 32],
+            proof,
+            95
         ));
 
-        assert_ok!(Quantum::verify_quantum_result(RuntimeOrigin::root(), job_id.clone(), true));
+        assert_ok!(Quantum::verify_quantum_result(
+            RuntimeOrigin::root(),
+            job_id.clone(),
+            true
+        ));
 
         // Account 3 is neither submitter nor executor
         assert_noop!(
@@ -1624,16 +2012,39 @@ fn transfer_nnt_non_transferable_fails() {
         // Create non-transferable NFT
         let job_id: BoundedVec<u8, ConstU32<64>> = b"notr_nft".to_vec().try_into().unwrap();
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(1), job_id.clone(), 0, [1u8; 32], 5, 10, 100
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            0,
+            [1u8; 32],
+            5,
+            10,
+            100
         ));
-        assert_ok!(Quantum::update_job_status(RuntimeOrigin::signed(1), job_id.clone(), 1));
+        assert_ok!(Quantum::update_job_status(
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            1
+        ));
         let proof: BoundedVec<u8, ConstU32<256>> = vec![0xAAu8; 32].try_into().unwrap();
         assert_ok!(Quantum::record_quantum_result(
-            RuntimeOrigin::signed(2), job_id.clone(), [1u8; 32], proof, 95
+            RuntimeOrigin::signed(2),
+            job_id.clone(),
+            [1u8; 32],
+            proof,
+            95
         ));
-        assert_ok!(Quantum::verify_quantum_result(RuntimeOrigin::root(), job_id.clone(), true));
+        assert_ok!(Quantum::verify_quantum_result(
+            RuntimeOrigin::root(),
+            job_id.clone(),
+            true
+        ));
         assert_ok!(Quantum::mint_achievement_nft(
-            RuntimeOrigin::signed(1), job_id, 0, false, 5, 95  // transferable = false
+            RuntimeOrigin::signed(1),
+            job_id,
+            0,
+            false,
+            5,
+            95 // transferable = false
         ));
 
         assert_noop!(
@@ -1647,9 +2058,15 @@ fn transfer_nnt_non_transferable_fails() {
 fn transfer_nft_locked_in_bridge_fails() {
     new_test_ext().execute_with(|| {
         setup_nft(1);
-        let eth_addr: BoundedVec<u8, ConstU32<64>> =
-            b"0x1234567890123456789012345678901234567890".to_vec().try_into().unwrap();
-        assert_ok!(Quantum::bridge_to_ethereum(RuntimeOrigin::signed(1), 0, eth_addr));
+        let eth_addr: BoundedVec<u8, ConstU32<64>> = b"0x1234567890123456789012345678901234567890"
+            .to_vec()
+            .try_into()
+            .unwrap();
+        assert_ok!(Quantum::bridge_to_ethereum(
+            RuntimeOrigin::signed(1),
+            0,
+            eth_addr
+        ));
 
         assert_noop!(
             Quantum::transfer_nft(RuntimeOrigin::signed(1), 0, 2),
@@ -1673,16 +2090,39 @@ fn list_nft_not_transferable_fails() {
     new_test_ext().execute_with(|| {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"list_notr".to_vec().try_into().unwrap();
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(1), job_id.clone(), 0, [1u8; 32], 5, 10, 100
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            0,
+            [1u8; 32],
+            5,
+            10,
+            100
         ));
-        assert_ok!(Quantum::update_job_status(RuntimeOrigin::signed(1), job_id.clone(), 1));
+        assert_ok!(Quantum::update_job_status(
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            1
+        ));
         let proof: BoundedVec<u8, ConstU32<256>> = vec![0xAAu8; 32].try_into().unwrap();
         assert_ok!(Quantum::record_quantum_result(
-            RuntimeOrigin::signed(2), job_id.clone(), [1u8; 32], proof, 95
+            RuntimeOrigin::signed(2),
+            job_id.clone(),
+            [1u8; 32],
+            proof,
+            95
         ));
-        assert_ok!(Quantum::verify_quantum_result(RuntimeOrigin::root(), job_id.clone(), true));
+        assert_ok!(Quantum::verify_quantum_result(
+            RuntimeOrigin::root(),
+            job_id.clone(),
+            true
+        ));
         assert_ok!(Quantum::mint_achievement_nft(
-            RuntimeOrigin::signed(1), job_id, 0, false, 5, 95
+            RuntimeOrigin::signed(1),
+            job_id,
+            0,
+            false,
+            5,
+            95
         ));
         assert_noop!(
             Quantum::list_nft(RuntimeOrigin::signed(1), 0, 1_000_000, 100),
@@ -1718,7 +2158,12 @@ fn list_nft_not_owner_fails() {
 fn buy_nft_listing_expired_fails() {
     new_test_ext().execute_with(|| {
         setup_nft(1);
-        assert_ok!(Quantum::list_nft(RuntimeOrigin::signed(1), 0, 1_000_000_000_000, 10));
+        assert_ok!(Quantum::list_nft(
+            RuntimeOrigin::signed(1),
+            0,
+            1_000_000_000_000,
+            10
+        ));
         // Advance past the expiry
         run_to_block(15);
         assert_noop!(
@@ -1742,7 +2187,12 @@ fn buy_nft_listing_not_found_fails() {
 fn buy_nft_transfers_ownership() {
     new_test_ext().execute_with(|| {
         setup_nft(1);
-        assert_ok!(Quantum::list_nft(RuntimeOrigin::signed(1), 0, 1_000_000_000_000, 100));
+        assert_ok!(Quantum::list_nft(
+            RuntimeOrigin::signed(1),
+            0,
+            1_000_000_000_000,
+            100
+        ));
         assert_ok!(Quantum::buy_nft(RuntimeOrigin::signed(2), 0));
         assert_eq!(Quantum::quantum_achievements(0).unwrap().owner, 2);
         // Listing should be removed
@@ -1779,9 +2229,15 @@ fn bridge_to_ethereum_invalid_address_fails() {
 fn bridge_already_initiated_blocked_by_non_transferable() {
     new_test_ext().execute_with(|| {
         setup_nft(1);
-        let eth_addr: BoundedVec<u8, ConstU32<64>> =
-            b"0x1234567890123456789012345678901234567890".to_vec().try_into().unwrap();
-        assert_ok!(Quantum::bridge_to_ethereum(RuntimeOrigin::signed(1), 0, eth_addr.clone()));
+        let eth_addr: BoundedVec<u8, ConstU32<64>> = b"0x1234567890123456789012345678901234567890"
+            .to_vec()
+            .try_into()
+            .unwrap();
+        assert_ok!(Quantum::bridge_to_ethereum(
+            RuntimeOrigin::signed(1),
+            0,
+            eth_addr.clone()
+        ));
         // First bridge marks NFT non-transferable, so second attempt fails with that error
         assert_noop!(
             Quantum::bridge_to_ethereum(RuntimeOrigin::signed(1), 0, eth_addr),
@@ -1794,10 +2250,16 @@ fn bridge_already_initiated_blocked_by_non_transferable() {
 fn bridge_locks_nft_not_transferable() {
     new_test_ext().execute_with(|| {
         setup_nft(1);
-        let eth_addr: BoundedVec<u8, ConstU32<64>> =
-            b"0x1234567890123456789012345678901234567890".to_vec().try_into().unwrap();
+        let eth_addr: BoundedVec<u8, ConstU32<64>> = b"0x1234567890123456789012345678901234567890"
+            .to_vec()
+            .try_into()
+            .unwrap();
         assert!(Quantum::quantum_achievements(0).unwrap().transferable);
-        assert_ok!(Quantum::bridge_to_ethereum(RuntimeOrigin::signed(1), 0, eth_addr));
+        assert_ok!(Quantum::bridge_to_ethereum(
+            RuntimeOrigin::signed(1),
+            0,
+            eth_addr
+        ));
         assert!(!Quantum::quantum_achievements(0).unwrap().transferable);
     });
 }
@@ -1828,14 +2290,32 @@ fn request_verification_works() {
     new_test_ext().execute_with(|| {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"req_verify".to_vec().try_into().unwrap();
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(1), job_id.clone(), 0, [1u8; 32], 5, 10, 100
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            0,
+            [1u8; 32],
+            5,
+            10,
+            100
         ));
-        assert_ok!(Quantum::update_job_status(RuntimeOrigin::signed(1), job_id.clone(), 1));
+        assert_ok!(Quantum::update_job_status(
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            1
+        ));
         let proof: BoundedVec<u8, ConstU32<256>> = vec![0xAAu8; 32].try_into().unwrap();
         assert_ok!(Quantum::record_quantum_result(
-            RuntimeOrigin::signed(2), job_id.clone(), [1u8; 32], proof, 90
+            RuntimeOrigin::signed(2),
+            job_id.clone(),
+            [1u8; 32],
+            proof,
+            90
         ));
-        assert_ok!(Quantum::request_verification(RuntimeOrigin::signed(1), job_id.clone(), 3));
+        assert_ok!(Quantum::request_verification(
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            3
+        ));
         assert!(Quantum::verification_requests(&job_id).is_some());
     });
 }
@@ -1845,12 +2325,26 @@ fn request_verification_not_submitter_fails() {
     new_test_ext().execute_with(|| {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"nosubmit".to_vec().try_into().unwrap();
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(1), job_id.clone(), 0, [1u8; 32], 5, 10, 100
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            0,
+            [1u8; 32],
+            5,
+            10,
+            100
         ));
-        assert_ok!(Quantum::update_job_status(RuntimeOrigin::signed(1), job_id.clone(), 1));
+        assert_ok!(Quantum::update_job_status(
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            1
+        ));
         let proof: BoundedVec<u8, ConstU32<256>> = vec![0xAAu8; 32].try_into().unwrap();
         assert_ok!(Quantum::record_quantum_result(
-            RuntimeOrigin::signed(2), job_id.clone(), [1u8; 32], proof, 90
+            RuntimeOrigin::signed(2),
+            job_id.clone(),
+            [1u8; 32],
+            proof,
+            90
         ));
         assert_noop!(
             Quantum::request_verification(RuntimeOrigin::signed(3), job_id, 3),
@@ -1864,7 +2358,13 @@ fn request_verification_no_result_fails() {
     new_test_ext().execute_with(|| {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"no_res_v".to_vec().try_into().unwrap();
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(1), job_id.clone(), 0, [1u8; 32], 5, 10, 100
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            0,
+            [1u8; 32],
+            5,
+            10,
+            100
         ));
         assert_noop!(
             Quantum::request_verification(RuntimeOrigin::signed(1), job_id, 3),
@@ -1878,14 +2378,32 @@ fn request_verification_duplicate_fails() {
     new_test_ext().execute_with(|| {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"dup_vreq".to_vec().try_into().unwrap();
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(1), job_id.clone(), 0, [1u8; 32], 5, 10, 100
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            0,
+            [1u8; 32],
+            5,
+            10,
+            100
         ));
-        assert_ok!(Quantum::update_job_status(RuntimeOrigin::signed(1), job_id.clone(), 1));
+        assert_ok!(Quantum::update_job_status(
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            1
+        ));
         let proof: BoundedVec<u8, ConstU32<256>> = vec![0xAAu8; 32].try_into().unwrap();
         assert_ok!(Quantum::record_quantum_result(
-            RuntimeOrigin::signed(2), job_id.clone(), [1u8; 32], proof, 90
+            RuntimeOrigin::signed(2),
+            job_id.clone(),
+            [1u8; 32],
+            proof,
+            90
         ));
-        assert_ok!(Quantum::request_verification(RuntimeOrigin::signed(1), job_id.clone(), 3));
+        assert_ok!(Quantum::request_verification(
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            3
+        ));
         assert_noop!(
             Quantum::request_verification(RuntimeOrigin::signed(1), job_id, 3),
             Error::<Test>::VerificationRequestAlreadyExists
@@ -1898,14 +2416,32 @@ fn submit_verification_invalid_confidence_fails() {
     new_test_ext().execute_with(|| {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"bad_conf".to_vec().try_into().unwrap();
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(1), job_id.clone(), 0, [1u8; 32], 5, 10, 100
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            0,
+            [1u8; 32],
+            5,
+            10,
+            100
         ));
-        assert_ok!(Quantum::update_job_status(RuntimeOrigin::signed(1), job_id.clone(), 1));
+        assert_ok!(Quantum::update_job_status(
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            1
+        ));
         let proof: BoundedVec<u8, ConstU32<256>> = vec![0xAAu8; 32].try_into().unwrap();
         assert_ok!(Quantum::record_quantum_result(
-            RuntimeOrigin::signed(2), job_id.clone(), [1u8; 32], proof, 90
+            RuntimeOrigin::signed(2),
+            job_id.clone(),
+            [1u8; 32],
+            proof,
+            90
         ));
-        assert_ok!(Quantum::request_verification(RuntimeOrigin::signed(1), job_id.clone(), 3));
+        assert_ok!(Quantum::request_verification(
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            3
+        ));
         assert_noop!(
             Quantum::submit_verification(RuntimeOrigin::signed(3), job_id, 0, 101, [1u8; 32]),
             Error::<Test>::InvalidVerificationVote
@@ -1919,12 +2455,26 @@ fn submit_verification_no_request_fails() {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"noreq_v".to_vec().try_into().unwrap();
         // Create job and record result but skip request_verification
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(1), job_id.clone(), 0, [1u8; 32], 5, 10, 100
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            0,
+            [1u8; 32],
+            5,
+            10,
+            100
         ));
-        assert_ok!(Quantum::update_job_status(RuntimeOrigin::signed(1), job_id.clone(), 1));
+        assert_ok!(Quantum::update_job_status(
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            1
+        ));
         let proof: BoundedVec<u8, ConstU32<256>> = vec![0xAAu8; 32].try_into().unwrap();
         assert_ok!(Quantum::record_quantum_result(
-            RuntimeOrigin::signed(2), job_id.clone(), [1u8; 32], proof, 95
+            RuntimeOrigin::signed(2),
+            job_id.clone(),
+            [1u8; 32],
+            proof,
+            95
         ));
         // No request_verification call — should fail
         assert_noop!(
@@ -1939,14 +2489,32 @@ fn submit_verification_deadline_passed_fails() {
     new_test_ext().execute_with(|| {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"deadline_v".to_vec().try_into().unwrap();
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(1), job_id.clone(), 0, [1u8; 32], 5, 10, 100
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            0,
+            [1u8; 32],
+            5,
+            10,
+            100
         ));
-        assert_ok!(Quantum::update_job_status(RuntimeOrigin::signed(1), job_id.clone(), 1));
+        assert_ok!(Quantum::update_job_status(
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            1
+        ));
         let proof: BoundedVec<u8, ConstU32<256>> = vec![0xAAu8; 32].try_into().unwrap();
         assert_ok!(Quantum::record_quantum_result(
-            RuntimeOrigin::signed(2), job_id.clone(), [1u8; 32], proof, 90
+            RuntimeOrigin::signed(2),
+            job_id.clone(),
+            [1u8; 32],
+            proof,
+            90
         ));
-        assert_ok!(Quantum::request_verification(RuntimeOrigin::signed(1), job_id.clone(), 3));
+        assert_ok!(Quantum::request_verification(
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            3
+        ));
         // Deadline is 100 blocks from creation
         run_to_block(105);
         assert_noop!(
@@ -1961,16 +2529,38 @@ fn submit_verification_duplicate_validator_fails() {
     new_test_ext().execute_with(|| {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"dup_val".to_vec().try_into().unwrap();
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(1), job_id.clone(), 0, [1u8; 32], 5, 10, 100
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            0,
+            [1u8; 32],
+            5,
+            10,
+            100
         ));
-        assert_ok!(Quantum::update_job_status(RuntimeOrigin::signed(1), job_id.clone(), 1));
+        assert_ok!(Quantum::update_job_status(
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            1
+        ));
         let proof: BoundedVec<u8, ConstU32<256>> = vec![0xAAu8; 32].try_into().unwrap();
         assert_ok!(Quantum::record_quantum_result(
-            RuntimeOrigin::signed(2), job_id.clone(), [1u8; 32], proof, 90
+            RuntimeOrigin::signed(2),
+            job_id.clone(),
+            [1u8; 32],
+            proof,
+            90
         ));
-        assert_ok!(Quantum::request_verification(RuntimeOrigin::signed(1), job_id.clone(), 3));
+        assert_ok!(Quantum::request_verification(
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            3
+        ));
         assert_ok!(Quantum::submit_verification(
-            RuntimeOrigin::signed(3), job_id.clone(), 0, 80, [1u8; 32]
+            RuntimeOrigin::signed(3),
+            job_id.clone(),
+            0,
+            80,
+            [1u8; 32]
         ));
         assert_noop!(
             Quantum::submit_verification(RuntimeOrigin::signed(3), job_id, 0, 80, [1u8; 32]),
@@ -2004,9 +2594,16 @@ fn bridge_to_parachain_not_owner_fails() {
 fn multiple_jobs_by_same_account_tracked() {
     new_test_ext().execute_with(|| {
         for i in 0..5u8 {
-            let job_id: BoundedVec<u8, ConstU32<64>> = format!("multi_job_{i}").into_bytes().try_into().unwrap();
+            let job_id: BoundedVec<u8, ConstU32<64>> =
+                format!("multi_job_{i}").into_bytes().try_into().unwrap();
             assert_ok!(Quantum::submit_quantum_job(
-                RuntimeOrigin::signed(1), job_id, 0, [i; 32], 5, 10, 100
+                RuntimeOrigin::signed(1),
+                job_id,
+                0,
+                [i; 32],
+                5,
+                10,
+                100
             ));
         }
         let jobs = Quantum::jobs_by_account(1);
@@ -2023,12 +2620,24 @@ fn total_dalla_spent_accumulates() {
         let j1: BoundedVec<u8, ConstU32<64>> = b"spend1".to_vec().try_into().unwrap();
         let j2: BoundedVec<u8, ConstU32<64>> = b"spend2".to_vec().try_into().unwrap();
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(1), j1, 0, [1u8; 32], 10, 10, 1000
+            RuntimeOrigin::signed(1),
+            j1,
+            0,
+            [1u8; 32],
+            10,
+            10,
+            1000
         ));
         let spent1 = Quantum::total_dalla_spent();
         assert!(spent1 > 0);
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(2), j2, 0, [2u8; 32], 10, 10, 1000
+            RuntimeOrigin::signed(2),
+            j2,
+            0,
+            [2u8; 32],
+            10,
+            10,
+            1000
         ));
         assert_eq!(Quantum::total_dalla_spent(), spent1 * 2);
     });
@@ -2039,10 +2648,18 @@ fn all_backend_indices_work() {
     new_test_ext().execute_with(|| {
         // All backend indices 0-7 should be valid
         for backend in 0..8u8 {
-            let job_id: BoundedVec<u8, ConstU32<64>> =
-                format!("backend_{backend}").into_bytes().try_into().unwrap();
+            let job_id: BoundedVec<u8, ConstU32<64>> = format!("backend_{backend}")
+                .into_bytes()
+                .try_into()
+                .unwrap();
             assert_ok!(Quantum::submit_quantum_job(
-                RuntimeOrigin::signed(1), job_id, backend, [backend; 32], 5, 10, 100
+                RuntimeOrigin::signed(1),
+                job_id,
+                backend,
+                [backend; 32],
+                5,
+                10,
+                100
             ));
         }
         assert_eq!(Quantum::total_quantum_jobs(), 8);
@@ -2065,14 +2682,18 @@ fn record_result_job_not_running_fails() {
     new_test_ext().execute_with(|| {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"not_running".to_vec().try_into().unwrap();
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(1), job_id.clone(), 0, [1u8; 32], 5, 10, 100
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            0,
+            [1u8; 32],
+            5,
+            10,
+            100
         ));
         // Job is Pending, not Running
         let proof: BoundedVec<u8, ConstU32<256>> = vec![0xAAu8; 32].try_into().unwrap();
         assert_noop!(
-            Quantum::record_quantum_result(
-                RuntimeOrigin::signed(2), job_id, [1u8; 32], proof, 90
-            ),
+            Quantum::record_quantum_result(RuntimeOrigin::signed(2), job_id, [1u8; 32], proof, 90),
             Error::<Test>::InvalidStatusTransition
         );
     });
@@ -2095,7 +2716,11 @@ fn bridge_to_ethereum_20_byte_address_works() {
         setup_nft(1);
         // 20-byte raw address (not hex-encoded)
         let raw_addr: BoundedVec<u8, ConstU32<64>> = vec![0xABu8; 20].try_into().unwrap();
-        assert_ok!(Quantum::bridge_to_ethereum(RuntimeOrigin::signed(1), 0, raw_addr));
+        assert_ok!(Quantum::bridge_to_ethereum(
+            RuntimeOrigin::signed(1),
+            0,
+            raw_addr
+        ));
     });
 }
 
@@ -2105,19 +2730,37 @@ fn verify_result_pays_executor() {
         let executor = 2u64;
         let job_id: BoundedVec<u8, ConstU32<64>> = b"pay_exec".to_vec().try_into().unwrap();
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(1), job_id.clone(), 0, [1u8; 32], 10, 50, 1000
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            0,
+            [1u8; 32],
+            10,
+            50,
+            1000
         ));
         let reserved = Balances::reserved_balance(1);
         assert!(reserved > 0);
         let exec_before = Balances::free_balance(executor);
 
-        assert_ok!(Quantum::update_job_status(RuntimeOrigin::signed(1), job_id.clone(), 1));
+        assert_ok!(Quantum::update_job_status(
+            RuntimeOrigin::signed(1),
+            job_id.clone(),
+            1
+        ));
         let proof: BoundedVec<u8, ConstU32<256>> = vec![0xAAu8; 32].try_into().unwrap();
         assert_ok!(Quantum::record_quantum_result(
-            RuntimeOrigin::signed(executor), job_id.clone(), [1u8; 32], proof, 95
+            RuntimeOrigin::signed(executor),
+            job_id.clone(),
+            [1u8; 32],
+            proof,
+            95
         ));
         // Root verifies — executor gets the reserved funds
-        assert_ok!(Quantum::verify_quantum_result(RuntimeOrigin::root(), job_id, true));
+        assert_ok!(Quantum::verify_quantum_result(
+            RuntimeOrigin::root(),
+            job_id,
+            true
+        ));
 
         assert_eq!(Balances::reserved_balance(1), 0);
         let exec_after = Balances::free_balance(executor);
@@ -2132,15 +2775,33 @@ fn verify_result_failed_refunds_submitter() {
         let job_id: BoundedVec<u8, ConstU32<64>> = b"refund_v".to_vec().try_into().unwrap();
         let initial = Balances::free_balance(submitter);
         assert_ok!(Quantum::submit_quantum_job(
-            RuntimeOrigin::signed(submitter), job_id.clone(), 0, [1u8; 32], 10, 50, 1000
+            RuntimeOrigin::signed(submitter),
+            job_id.clone(),
+            0,
+            [1u8; 32],
+            10,
+            50,
+            1000
         ));
-        assert_ok!(Quantum::update_job_status(RuntimeOrigin::signed(submitter), job_id.clone(), 1));
+        assert_ok!(Quantum::update_job_status(
+            RuntimeOrigin::signed(submitter),
+            job_id.clone(),
+            1
+        ));
         let proof: BoundedVec<u8, ConstU32<256>> = vec![0xAAu8; 32].try_into().unwrap();
         assert_ok!(Quantum::record_quantum_result(
-            RuntimeOrigin::signed(2), job_id.clone(), [1u8; 32], proof, 95
+            RuntimeOrigin::signed(2),
+            job_id.clone(),
+            [1u8; 32],
+            proof,
+            95
         ));
         // Verification fails — submitter gets refund
-        assert_ok!(Quantum::verify_quantum_result(RuntimeOrigin::root(), job_id, false));
+        assert_ok!(Quantum::verify_quantum_result(
+            RuntimeOrigin::root(),
+            job_id,
+            false
+        ));
         assert_eq!(Balances::free_balance(submitter), initial);
         assert_eq!(Balances::reserved_balance(submitter), 0);
     });

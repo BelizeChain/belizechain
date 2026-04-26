@@ -1,4 +1,4 @@
-use crate::{mock::*, Error, Event, RiskLevel, VerificationLevel, ComplianceStatus};
+use crate::{mock::*, ComplianceStatus, Error, Event, RiskLevel, VerificationLevel};
 use frame_support::{assert_noop, assert_ok};
 
 #[test]
@@ -18,10 +18,13 @@ fn verify_account_works() {
         assert_eq!(status.risk_level, RiskLevel::Low);
 
         // Check event (level is encoded as u8)
-        System::assert_last_event(Event::VerificationLevelUpdated {
-            account: 1,
-            level: 2, // Standard = 2
-        }.into());
+        System::assert_last_event(
+            Event::VerificationLevelUpdated {
+                account: 1,
+                level: 2, // Standard = 2
+            }
+            .into(),
+        );
     });
 }
 
@@ -140,11 +143,7 @@ fn sanctions_list_works() {
 
         // Try to add duplicate
         assert_noop!(
-            Compliance::add_sanctions_entry(
-                RuntimeOrigin::root(),
-                entity_hash,
-                b"UN".to_vec()
-            ),
+            Compliance::add_sanctions_entry(RuntimeOrigin::root(), entity_hash, b"UN".to_vec()),
             Error::<Test>::SanctionsEntryExists
         );
 
@@ -209,7 +208,7 @@ fn can_participate_in_governance_works() {
         assert_ok!(Compliance::update_risk_level(
             RuntimeOrigin::root(),
             1,
-            3  // Prohibited = 3
+            3 // Prohibited = 3
         ));
 
         assert!(!Compliance::can_participate_in_governance(&1));
@@ -324,7 +323,10 @@ fn sync_verification_from_identity_still_valid_works() {
         ));
 
         let status_before = Compliance::compliance_status(1);
-        assert_eq!(status_before.verification_level, VerificationLevel::Standard);
+        assert_eq!(
+            status_before.verification_level,
+            VerificationLevel::Standard
+        );
 
         // Sync immediately while still within validity period
         assert_ok!(Compliance::sync_verification_from_identity(
@@ -350,7 +352,10 @@ fn sync_verification_from_identity_expired_downgrades() {
         ));
 
         let status_before = Compliance::compliance_status(1);
-        assert_eq!(status_before.verification_level, VerificationLevel::Standard);
+        assert_eq!(
+            status_before.verification_level,
+            VerificationLevel::Standard
+        );
         assert_eq!(status_before.last_verification, 1_000); // 1_000_000 ms / 1000
 
         // Advance time past the validity period (1 year = 31_536_000 secs)
@@ -367,10 +372,13 @@ fn sync_verification_from_identity_expired_downgrades() {
         assert_eq!(status_after.verification_level, VerificationLevel::None);
         assert!(status_after.restricted);
 
-        System::assert_last_event(Event::VerificationLevelUpdated {
-            account: 1,
-            level: 0, // None = 0
-        }.into());
+        System::assert_last_event(
+            Event::VerificationLevelUpdated {
+                account: 1,
+                level: 0, // None = 0
+            }
+            .into(),
+        );
     });
 }
 
@@ -432,9 +440,7 @@ fn lift_restriction_non_root_fails() {
 fn flag_suspicious_activity_non_root_fails() {
     new_test_ext().execute_with(|| {
         assert_noop!(
-            Compliance::flag_suspicious_activity(
-                RuntimeOrigin::signed(1), 2, 0, b"test".to_vec()
-            ),
+            Compliance::flag_suspicious_activity(RuntimeOrigin::signed(1), 2, 0, b"test".to_vec()),
             sp_runtime::DispatchError::BadOrigin
         );
     });
@@ -444,9 +450,7 @@ fn flag_suspicious_activity_non_root_fails() {
 fn add_sanctions_entry_non_root_fails() {
     new_test_ext().execute_with(|| {
         assert_noop!(
-            Compliance::add_sanctions_entry(
-                RuntimeOrigin::signed(1), [0u8; 32], b"OFAC".to_vec()
-            ),
+            Compliance::add_sanctions_entry(RuntimeOrigin::signed(1), [0u8; 32], b"OFAC".to_vec()),
             sp_runtime::DispatchError::BadOrigin
         );
     });
@@ -489,9 +493,7 @@ fn flag_suspicious_activity_details_too_long_fails() {
     new_test_ext().execute_with(|| {
         let long_details = vec![b'y'; 300];
         assert_noop!(
-            Compliance::flag_suspicious_activity(
-                RuntimeOrigin::root(), 1, 0, long_details
-            ),
+            Compliance::flag_suspicious_activity(RuntimeOrigin::root(), 1, 0, long_details),
             Error::<Test>::InvalidRiskAssessment
         );
     });
@@ -506,15 +508,21 @@ fn update_risk_level_emits_event() {
     new_test_ext().execute_with(|| {
         assert_ok!(Compliance::verify_account(RuntimeOrigin::root(), 1, 2, 0));
         assert_ok!(Compliance::update_risk_level(RuntimeOrigin::root(), 1, 1));
-        System::assert_last_event(Event::RiskLevelUpdated {
-            account: 1,
-            risk_level: 1, // Medium
-        }.into());
+        System::assert_last_event(
+            Event::RiskLevelUpdated {
+                account: 1,
+                risk_level: 1, // Medium
+            }
+            .into(),
+        );
         // Also verify AuditRecordCreated was emitted.
-        System::assert_has_event(Event::AuditRecordCreated {
-            account: 1,
-            action_type: 1, // RiskAssessmentUpdated
-        }.into());
+        System::assert_has_event(
+            Event::AuditRecordCreated {
+                account: 1,
+                action_type: 1, // RiskAssessmentUpdated
+            }
+            .into(),
+        );
     });
 }
 
@@ -522,14 +530,19 @@ fn update_risk_level_emits_event() {
 fn restrict_account_emits_event() {
     new_test_ext().execute_with(|| {
         assert_ok!(Compliance::restrict_account(
-            RuntimeOrigin::root(), 1, b"AML concern".to_vec()
+            RuntimeOrigin::root(),
+            1,
+            b"AML concern".to_vec()
         ));
         let bounded: frame_support::BoundedVec<u8, frame_support::traits::ConstU32<256>> =
             b"AML concern".to_vec().try_into().unwrap();
-        System::assert_has_event(Event::AccountRestricted {
-            account: 1,
-            reason: bounded,
-        }.into());
+        System::assert_has_event(
+            Event::AccountRestricted {
+                account: 1,
+                reason: bounded,
+            }
+            .into(),
+        );
     });
 }
 
@@ -537,7 +550,9 @@ fn restrict_account_emits_event() {
 fn lift_restriction_emits_event() {
     new_test_ext().execute_with(|| {
         assert_ok!(Compliance::restrict_account(
-            RuntimeOrigin::root(), 1, b"test".to_vec()
+            RuntimeOrigin::root(),
+            1,
+            b"test".to_vec()
         ));
         assert_ok!(Compliance::lift_restriction(RuntimeOrigin::root(), 1));
         System::assert_has_event(Event::RestrictionLifted { account: 1 }.into());
@@ -548,12 +563,18 @@ fn lift_restriction_emits_event() {
 fn flag_suspicious_activity_emits_event() {
     new_test_ext().execute_with(|| {
         assert_ok!(Compliance::flag_suspicious_activity(
-            RuntimeOrigin::root(), 1, 4, b"ML indicators".to_vec()
+            RuntimeOrigin::root(),
+            1,
+            4,
+            b"ML indicators".to_vec()
         ));
-        System::assert_has_event(Event::SuspiciousActivityReported {
-            account: 1,
-            activity_type: 4,
-        }.into());
+        System::assert_has_event(
+            Event::SuspiciousActivityReported {
+                account: 1,
+                activity_type: 4,
+            }
+            .into(),
+        );
     });
 }
 
@@ -562,7 +583,9 @@ fn add_sanctions_entry_emits_event() {
     new_test_ext().execute_with(|| {
         let hash = [42u8; 32];
         assert_ok!(Compliance::add_sanctions_entry(
-            RuntimeOrigin::root(), hash, b"UN".to_vec()
+            RuntimeOrigin::root(),
+            hash,
+            b"UN".to_vec()
         ));
         System::assert_has_event(Event::SanctionsEntryAdded { entity_hash: hash }.into());
     });
@@ -573,9 +596,14 @@ fn remove_sanctions_entry_emits_event() {
     new_test_ext().execute_with(|| {
         let hash = [42u8; 32];
         assert_ok!(Compliance::add_sanctions_entry(
-            RuntimeOrigin::root(), hash, b"UN".to_vec()
+            RuntimeOrigin::root(),
+            hash,
+            b"UN".to_vec()
         ));
-        assert_ok!(Compliance::remove_sanctions_entry(RuntimeOrigin::root(), hash));
+        assert_ok!(Compliance::remove_sanctions_entry(
+            RuntimeOrigin::root(),
+            hash
+        ));
         System::assert_last_event(Event::SanctionsEntryRemoved { entity_hash: hash }.into());
     });
 }
@@ -588,13 +616,25 @@ fn remove_sanctions_entry_emits_event() {
 fn meets_verification_level_checks() {
     new_test_ext().execute_with(|| {
         // Unverified account does not meet Basic.
-        assert!(!Compliance::meets_verification_level(&1, VerificationLevel::Basic));
+        assert!(!Compliance::meets_verification_level(
+            &1,
+            VerificationLevel::Basic
+        ));
 
         // Verify at Standard.
         assert_ok!(Compliance::verify_account(RuntimeOrigin::root(), 1, 2, 0));
-        assert!(Compliance::meets_verification_level(&1, VerificationLevel::Basic));
-        assert!(Compliance::meets_verification_level(&1, VerificationLevel::Standard));
-        assert!(!Compliance::meets_verification_level(&1, VerificationLevel::Enhanced));
+        assert!(Compliance::meets_verification_level(
+            &1,
+            VerificationLevel::Basic
+        ));
+        assert!(Compliance::meets_verification_level(
+            &1,
+            VerificationLevel::Standard
+        ));
+        assert!(!Compliance::meets_verification_level(
+            &1,
+            VerificationLevel::Enhanced
+        ));
     });
 }
 
@@ -641,7 +681,9 @@ fn can_access_treasury_restricted_fails() {
         assert_ok!(Compliance::verify_account(RuntimeOrigin::root(), 1, 3, 0));
         assert!(Compliance::can_access_treasury(&1));
         assert_ok!(Compliance::restrict_account(
-            RuntimeOrigin::root(), 1, b"test".to_vec()
+            RuntimeOrigin::root(),
+            1,
+            b"test".to_vec()
         ));
         assert!(!Compliance::can_access_treasury(&1));
     });
@@ -685,7 +727,9 @@ fn re_verify_does_not_double_count_stats() {
 fn lift_restriction_decrements_stats() {
     new_test_ext().execute_with(|| {
         assert_ok!(Compliance::restrict_account(
-            RuntimeOrigin::root(), 1, b"test".to_vec()
+            RuntimeOrigin::root(),
+            1,
+            b"test".to_vec()
         ));
         let (_, r1, _, _) = Compliance::get_stats();
         assert_eq!(r1, 1);
@@ -700,7 +744,12 @@ fn lift_restriction_decrements_stats() {
 fn verify_all_risk_levels() {
     new_test_ext().execute_with(|| {
         for risk in 0..=3u8 {
-            assert_ok!(Compliance::verify_account(RuntimeOrigin::root(), 1, 2, risk));
+            assert_ok!(Compliance::verify_account(
+                RuntimeOrigin::root(),
+                1,
+                2,
+                risk
+            ));
             let status = Compliance::compliance_status(1);
             let expected = match risk {
                 1 => RiskLevel::Medium,
@@ -719,7 +768,10 @@ fn suspicious_activity_types_all_mapped() {
         // Flag one of each type (0..=7) — verifies no panic.
         for t in 0..=7u8 {
             assert_ok!(Compliance::flag_suspicious_activity(
-                RuntimeOrigin::root(), 1, t, b"test".to_vec()
+                RuntimeOrigin::root(),
+                1,
+                t,
+                b"test".to_vec()
             ));
         }
         let activities = Compliance::suspicious_activities(1);
@@ -732,7 +784,9 @@ fn sanctions_entry_structure_correct() {
     new_test_ext().execute_with(|| {
         let hash = [0xAA; 32];
         assert_ok!(Compliance::add_sanctions_entry(
-            RuntimeOrigin::root(), hash, b"EU".to_vec()
+            RuntimeOrigin::root(),
+            hash,
+            b"EU".to_vec()
         ));
         let entry = Compliance::sanctions_list(hash).expect("entry must exist");
         assert!(entry.active);

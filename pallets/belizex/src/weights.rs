@@ -59,14 +59,12 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 
     /// Storage: ExchangePaused (r:0 w:1)
     fn pause() -> Weight {
-        Weight::from_parts(5_000_000, 512)
-            .saturating_add(T::DbWeight::get().writes(1))
+        Weight::from_parts(5_000_000, 512).saturating_add(T::DbWeight::get().writes(1))
     }
 
     /// Storage: ExchangePaused (r:0 w:1)
     fn resume() -> Weight {
-        Weight::from_parts(5_000_000, 512)
-            .saturating_add(T::DbWeight::get().writes(1))
+        Weight::from_parts(5_000_000, 512).saturating_add(T::DbWeight::get().writes(1))
     }
 
     /// Storage: TradingPairs (r:1 w:1)

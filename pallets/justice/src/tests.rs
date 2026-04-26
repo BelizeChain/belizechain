@@ -48,19 +48,37 @@ fn open_dispute_works() {
 fn open_dispute_all_severities() {
     new_test_ext().execute_with(|| {
         assert_ok!(Justice::open_dispute(
-            RuntimeOrigin::signed(ALICE), BOB, sample_evidence(), 0,
+            RuntimeOrigin::signed(ALICE),
+            BOB,
+            sample_evidence(),
+            0,
         ));
-        assert_eq!(Justice::disputes(1).unwrap().severity, DisputeSeverity::Minor);
+        assert_eq!(
+            Justice::disputes(1).unwrap().severity,
+            DisputeSeverity::Minor
+        );
 
         assert_ok!(Justice::open_dispute(
-            RuntimeOrigin::signed(ALICE), BOB, sample_evidence(), 1,
+            RuntimeOrigin::signed(ALICE),
+            BOB,
+            sample_evidence(),
+            1,
         ));
-        assert_eq!(Justice::disputes(2).unwrap().severity, DisputeSeverity::Moderate);
+        assert_eq!(
+            Justice::disputes(2).unwrap().severity,
+            DisputeSeverity::Moderate
+        );
 
         assert_ok!(Justice::open_dispute(
-            RuntimeOrigin::signed(ALICE), BOB, sample_evidence(), 2,
+            RuntimeOrigin::signed(ALICE),
+            BOB,
+            sample_evidence(),
+            2,
         ));
-        assert_eq!(Justice::disputes(3).unwrap().severity, DisputeSeverity::Severe);
+        assert_eq!(
+            Justice::disputes(3).unwrap().severity,
+            DisputeSeverity::Severe
+        );
     });
 }
 
@@ -68,16 +86,12 @@ fn open_dispute_all_severities() {
 fn open_dispute_invalid_severity_fails() {
     new_test_ext().execute_with(|| {
         assert_noop!(
-            Justice::open_dispute(
-                RuntimeOrigin::signed(ALICE), BOB, sample_evidence(), 3,
-            ),
+            Justice::open_dispute(RuntimeOrigin::signed(ALICE), BOB, sample_evidence(), 3,),
             Error::<Test>::InvalidSeverity
         );
 
         assert_noop!(
-            Justice::open_dispute(
-                RuntimeOrigin::signed(ALICE), BOB, sample_evidence(), 255,
-            ),
+            Justice::open_dispute(RuntimeOrigin::signed(ALICE), BOB, sample_evidence(), 255,),
             Error::<Test>::InvalidSeverity
         );
     });
@@ -88,9 +102,7 @@ fn open_dispute_insufficient_balance_fails() {
     new_test_ext().execute_with(|| {
         let poor = 999u64;
         assert_noop!(
-            Justice::open_dispute(
-                RuntimeOrigin::signed(poor), BOB, sample_evidence(), 0,
-            ),
+            Justice::open_dispute(RuntimeOrigin::signed(poor), BOB, sample_evidence(), 0,),
             pallet_balances::Error::<Test>::InsufficientBalance
         );
     });
@@ -100,7 +112,10 @@ fn open_dispute_insufficient_balance_fails() {
 fn open_dispute_emits_event() {
     new_test_ext().execute_with(|| {
         assert_ok!(Justice::open_dispute(
-            RuntimeOrigin::signed(ALICE), BOB, sample_evidence(), 0,
+            RuntimeOrigin::signed(ALICE),
+            BOB,
+            sample_evidence(),
+            0,
         ));
 
         System::assert_last_event(
@@ -108,7 +123,8 @@ fn open_dispute_emits_event() {
                 dispute_id: 1,
                 disputant: ALICE,
                 target: BOB,
-            }.into()
+            }
+            .into(),
         );
     });
 }
@@ -177,14 +193,10 @@ fn remove_mediator_not_found_fails() {
 fn add_remove_mediator_emits_events() {
     new_test_ext().execute_with(|| {
         assert_ok!(Justice::add_mediator(RuntimeOrigin::root(), MEDIATOR));
-        System::assert_last_event(
-            Event::<Test>::MediatorAdded { mediator: MEDIATOR }.into()
-        );
+        System::assert_last_event(Event::<Test>::MediatorAdded { mediator: MEDIATOR }.into());
 
         assert_ok!(Justice::remove_mediator(RuntimeOrigin::root(), MEDIATOR));
-        System::assert_last_event(
-            Event::<Test>::MediatorRemoved { mediator: MEDIATOR }.into()
-        );
+        System::assert_last_event(Event::<Test>::MediatorRemoved { mediator: MEDIATOR }.into());
     });
 }
 
@@ -270,13 +282,14 @@ fn mediator_ruling_not_approved_mediator_fails() {
     new_test_ext().execute_with(|| {
         // Open dispute without adding DAVE as mediator
         assert_ok!(Justice::open_dispute(
-            RuntimeOrigin::signed(ALICE), BOB, sample_evidence(), 0,
+            RuntimeOrigin::signed(ALICE),
+            BOB,
+            sample_evidence(),
+            0,
         ));
 
         assert_noop!(
-            Justice::mediator_ruling(
-                RuntimeOrigin::signed(DAVE), 1, 0, 0,
-            ),
+            Justice::mediator_ruling(RuntimeOrigin::signed(DAVE), 1, 0, 0,),
             Error::<Test>::NotApprovedMediator
         );
     });
@@ -288,9 +301,7 @@ fn mediator_ruling_dispute_not_found_fails() {
         assert_ok!(Justice::add_mediator(RuntimeOrigin::root(), MEDIATOR));
 
         assert_noop!(
-            Justice::mediator_ruling(
-                RuntimeOrigin::signed(MEDIATOR), 999, 0, 0,
-            ),
+            Justice::mediator_ruling(RuntimeOrigin::signed(MEDIATOR), 999, 0, 0,),
             Error::<Test>::DisputeNotFound
         );
     });
@@ -303,14 +314,15 @@ fn mediator_ruling_invalid_status_fails() {
 
         // First ruling
         assert_ok!(Justice::mediator_ruling(
-            RuntimeOrigin::signed(MEDIATOR), id, 0, 0,
+            RuntimeOrigin::signed(MEDIATOR),
+            id,
+            0,
+            0,
         ));
 
         // Second ruling — already Ruled
         assert_noop!(
-            Justice::mediator_ruling(
-                RuntimeOrigin::signed(MEDIATOR), id, 1, 0,
-            ),
+            Justice::mediator_ruling(RuntimeOrigin::signed(MEDIATOR), id, 1, 0,),
             Error::<Test>::InvalidDisputeStatus
         );
     });
@@ -322,9 +334,7 @@ fn mediator_ruling_invalid_code_fails() {
         let id = setup_dispute_with_mediator();
 
         assert_noop!(
-            Justice::mediator_ruling(
-                RuntimeOrigin::signed(MEDIATOR), id, 5, 0,
-            ),
+            Justice::mediator_ruling(RuntimeOrigin::signed(MEDIATOR), id, 5, 0,),
             Error::<Test>::InvalidDisputeStatus
         );
     });
@@ -336,14 +346,18 @@ fn mediator_ruling_emits_event() {
         let id = setup_dispute_with_mediator();
 
         assert_ok!(Justice::mediator_ruling(
-            RuntimeOrigin::signed(MEDIATOR), id, 1, 0,
+            RuntimeOrigin::signed(MEDIATOR),
+            id,
+            1,
+            0,
         ));
 
         System::assert_has_event(
             Event::<Test>::MediatorRulingIssued {
                 dispute_id: id,
                 resolution: DisputeResolution::Upheld,
-            }.into()
+            }
+            .into(),
         );
     });
 }
@@ -363,14 +377,21 @@ fn mediator_ruling_dismissed_with_escrow_refunds() {
 
         // Dismissed ruling → slash refunded
         assert_ok!(Justice::mediator_ruling(
-            RuntimeOrigin::signed(MEDIATOR), id, 0, 0,
+            RuntimeOrigin::signed(MEDIATOR),
+            id,
+            0,
+            0,
         ));
 
         assert_eq!(Balances::reserved_balance(BOB), 0);
         assert!(Justice::slash_pending(BOB).is_none());
 
         System::assert_has_event(
-            Event::<Test>::SlashRefunded { account: BOB, amount: 10_000 }.into()
+            Event::<Test>::SlashRefunded {
+                account: BOB,
+                amount: 10_000,
+            }
+            .into(),
         );
     });
 }
@@ -385,7 +406,10 @@ fn mediator_ruling_upheld_with_escrow_slashes() {
 
         // Upheld → slash executed
         assert_ok!(Justice::mediator_ruling(
-            RuntimeOrigin::signed(MEDIATOR), id, 1, 0,
+            RuntimeOrigin::signed(MEDIATOR),
+            id,
+            1,
+            0,
         ));
 
         // BOB lost the slashed amount
@@ -393,7 +417,11 @@ fn mediator_ruling_upheld_with_escrow_slashes() {
         assert!(balance_after < balance_before);
 
         System::assert_has_event(
-            Event::<Test>::SlashExecuted { account: BOB, amount: 10_000 }.into()
+            Event::<Test>::SlashExecuted {
+                account: BOB,
+                amount: 10_000,
+            }
+            .into(),
         );
     });
 }
@@ -407,15 +435,26 @@ fn mediator_ruling_mediated_with_escrow_partial_slash() {
 
         // Mediated at 50% (5000 bps)
         assert_ok!(Justice::mediator_ruling(
-            RuntimeOrigin::signed(MEDIATOR), id, 2, 5000,
+            RuntimeOrigin::signed(MEDIATOR),
+            id,
+            2,
+            5000,
         ));
 
         // Slash and refund events should both be emitted
         System::assert_has_event(
-            Event::<Test>::SlashExecuted { account: BOB, amount: 5_000 }.into()
+            Event::<Test>::SlashExecuted {
+                account: BOB,
+                amount: 5_000,
+            }
+            .into(),
         );
         System::assert_has_event(
-            Event::<Test>::SlashRefunded { account: BOB, amount: 5_000 }.into()
+            Event::<Test>::SlashRefunded {
+                account: BOB,
+                amount: 5_000,
+            }
+            .into(),
         );
     });
 }
@@ -431,7 +470,10 @@ fn appeal_ruling_works() {
 
         // Issue ruling
         assert_ok!(Justice::mediator_ruling(
-            RuntimeOrigin::signed(MEDIATOR), id, 1, 0,
+            RuntimeOrigin::signed(MEDIATOR),
+            id,
+            1,
+            0,
         ));
 
         // Target (BOB) appeals
@@ -454,14 +496,15 @@ fn appeal_ruling_not_target_fails() {
         let id = setup_dispute_with_mediator();
 
         assert_ok!(Justice::mediator_ruling(
-            RuntimeOrigin::signed(MEDIATOR), id, 1, 0,
+            RuntimeOrigin::signed(MEDIATOR),
+            id,
+            1,
+            0,
         ));
 
         // ALICE (disputant) tries to appeal — not the target
         assert_noop!(
-            Justice::appeal_ruling(
-                RuntimeOrigin::signed(ALICE), id, [0u8; 32],
-            ),
+            Justice::appeal_ruling(RuntimeOrigin::signed(ALICE), id, [0u8; 32],),
             Error::<Test>::NotDisputeTarget
         );
     });
@@ -473,9 +516,7 @@ fn appeal_ruling_wrong_status_fails() {
         let id = setup_dispute_with_mediator();
         // Status is still Pending, not Ruled
         assert_noop!(
-            Justice::appeal_ruling(
-                RuntimeOrigin::signed(BOB), id, [0u8; 32],
-            ),
+            Justice::appeal_ruling(RuntimeOrigin::signed(BOB), id, [0u8; 32],),
             Error::<Test>::InvalidDisputeStatus
         );
     });
@@ -487,18 +528,21 @@ fn appeal_ruling_double_appeal_fails() {
         let id = setup_dispute_with_mediator();
 
         assert_ok!(Justice::mediator_ruling(
-            RuntimeOrigin::signed(MEDIATOR), id, 1, 0,
+            RuntimeOrigin::signed(MEDIATOR),
+            id,
+            1,
+            0,
         ));
 
         assert_ok!(Justice::appeal_ruling(
-            RuntimeOrigin::signed(BOB), id, [0xAA; 32],
+            RuntimeOrigin::signed(BOB),
+            id,
+            [0xAA; 32],
         ));
 
         // Second appeal
         assert_noop!(
-            Justice::appeal_ruling(
-                RuntimeOrigin::signed(BOB), id, [0xBB; 32],
-            ),
+            Justice::appeal_ruling(RuntimeOrigin::signed(BOB), id, [0xBB; 32],),
             Error::<Test>::InvalidDisputeStatus
         );
     });
@@ -508,9 +552,7 @@ fn appeal_ruling_double_appeal_fails() {
 fn appeal_ruling_not_found_fails() {
     new_test_ext().execute_with(|| {
         assert_noop!(
-            Justice::appeal_ruling(
-                RuntimeOrigin::signed(BOB), 999, [0u8; 32],
-            ),
+            Justice::appeal_ruling(RuntimeOrigin::signed(BOB), 999, [0u8; 32],),
             Error::<Test>::DisputeNotFound
         );
     });
@@ -522,15 +564,24 @@ fn appeal_ruling_emits_event() {
         let id = setup_dispute_with_mediator();
 
         assert_ok!(Justice::mediator_ruling(
-            RuntimeOrigin::signed(MEDIATOR), id, 1, 0,
+            RuntimeOrigin::signed(MEDIATOR),
+            id,
+            1,
+            0,
         ));
 
         assert_ok!(Justice::appeal_ruling(
-            RuntimeOrigin::signed(BOB), id, [0xCC; 32],
+            RuntimeOrigin::signed(BOB),
+            id,
+            [0xCC; 32],
         ));
 
         System::assert_last_event(
-            Event::<Test>::RulingAppealed { dispute_id: id, by: BOB }.into()
+            Event::<Test>::RulingAppealed {
+                dispute_id: id,
+                by: BOB,
+            }
+            .into(),
         );
     });
 }
@@ -550,7 +601,10 @@ fn complete_rehabilitation_works() {
 
         // Dismissed ruling → target enters InRehabilitation (via escrow path)
         assert_ok!(Justice::mediator_ruling(
-            RuntimeOrigin::signed(MEDIATOR), id, 0, 0,
+            RuntimeOrigin::signed(MEDIATOR),
+            id,
+            0,
+            0,
         ));
         assert_eq!(Justice::rehab_status(BOB), RehabStatus::InRehabilitation);
 
@@ -558,10 +612,7 @@ fn complete_rehabilitation_works() {
         run_to_block(102);
 
         // Governance reinstates
-        assert_ok!(Justice::complete_rehabilitation(
-            RuntimeOrigin::root(),
-            BOB,
-        ));
+        assert_ok!(Justice::complete_rehabilitation(RuntimeOrigin::root(), BOB,));
 
         assert_eq!(Justice::rehab_status(BOB), RehabStatus::Reinstated);
         assert!(Justice::cooling_off_end(BOB).is_none());
@@ -577,7 +628,10 @@ fn complete_rehabilitation_cooling_off_active_fails() {
         assert_ok!(Justice::escrow_slash(&BOB, 5_000));
 
         assert_ok!(Justice::mediator_ruling(
-            RuntimeOrigin::signed(MEDIATOR), id, 0, 0,
+            RuntimeOrigin::signed(MEDIATOR),
+            id,
+            0,
+            0,
         ));
 
         // Don't advance blocks — cooling-off still active
@@ -605,15 +659,16 @@ fn complete_rehabilitation_emits_event() {
         let id = setup_dispute_with_mediator();
         assert_ok!(Justice::escrow_slash(&BOB, 5_000));
         assert_ok!(Justice::mediator_ruling(
-            RuntimeOrigin::signed(MEDIATOR), id, 0, 0,
+            RuntimeOrigin::signed(MEDIATOR),
+            id,
+            0,
+            0,
         ));
         run_to_block(102);
 
         assert_ok!(Justice::complete_rehabilitation(RuntimeOrigin::root(), BOB));
 
-        System::assert_last_event(
-            Event::<Test>::AccountReinstated { account: BOB }.into()
-        );
+        System::assert_last_event(Event::<Test>::AccountReinstated { account: BOB }.into());
     });
 }
 

@@ -65,8 +65,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
     /// Storage: ComplianceStatus (r:1 w:0), SanctionsList (r:1 w:0),
     ///          WhitelistedAccounts (r:1 w:0)
     fn check_compliance() -> Weight {
-        Weight::from_parts(25_000_000, 2560)
-            .saturating_add(T::DbWeight::get().reads(3))
+        Weight::from_parts(25_000_000, 2560).saturating_add(T::DbWeight::get().reads(3))
     }
 
     /// Storage: ComplianceStatus (r:1 w:1), VerificationRecords (r:1 w:0)

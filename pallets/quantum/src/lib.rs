@@ -9,20 +9,16 @@
 //! 4. Integration with Proof of Useful Work consensus
 //! 5. Decentralized quantum resource marketplace
 
-use codec::{Encode, Decode, MaxEncodedLen};
+use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::{
     pallet_prelude::*,
-    traits::{
-        Currency, ReservableCurrency, Get, ExistenceRequirement, WithdrawReasons,
-    },
+    traits::{Currency, ExistenceRequirement, Get, ReservableCurrency, WithdrawReasons},
+    weights::{constants::RocksDbWeight, Weight},
     BoundedVec,
-    weights::{Weight, constants::RocksDbWeight},
 };
 use frame_system::pallet_prelude::*;
-use sp_runtime::{
-    traits::{SaturatedConversion, Saturating, Zero},
-};
 use scale_info::TypeInfo;
+use sp_runtime::traits::{SaturatedConversion, Saturating, Zero};
 
 pub use pallet::*;
 
@@ -482,28 +478,23 @@ pub mod pallet {
     pub type QuantumJobOf<T> = QuantumJob<
         <T as frame_system::Config>::AccountId,
         <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance,
-        BlockNumberFor<T>
+        BlockNumberFor<T>,
     >;
     pub type NFTListingOf<T> = NFTListing<
         <T as frame_system::Config>::AccountId,
         <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance,
-        BlockNumberFor<T>
+        BlockNumberFor<T>,
     >;
     pub type AuctionListingOf<T> = AuctionListing<
         <T as frame_system::Config>::AccountId,
         <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance,
-        BlockNumberFor<T>
+        BlockNumberFor<T>,
     >;
 
     /// Storage: Quantum jobs by job ID
     #[pallet::storage]
     #[pallet::getter(fn quantum_jobs)]
-    pub type QuantumJobs<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        JobId,
-        QuantumJobOf<T>,
-    >;
+    pub type QuantumJobs<T: Config> = StorageMap<_, Blake2_128Concat, JobId, QuantumJobOf<T>>;
 
     /// Storage: Jobs by submitter account
     #[pallet::storage]
@@ -519,12 +510,8 @@ pub mod pallet {
     /// Storage: Quantum results by job ID
     #[pallet::storage]
     #[pallet::getter(fn quantum_results)]
-    pub type QuantumResults<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>>,
-        QuantumResult,
-    >;
+    pub type QuantumResults<T: Config> =
+        StorageMap<_, Blake2_128Concat, BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>>, QuantumResult>;
 
     /// Storage: Quantum achievement NFTs
     #[pallet::storage]
@@ -549,11 +536,8 @@ pub mod pallet {
     /// Storage: Total DALLA spent on quantum computing
     #[pallet::storage]
     #[pallet::getter(fn total_dalla_spent)]
-    pub type TotalDallaSpent<T: Config> = StorageValue<
-        _,
-        <T::Currency as Currency<T::AccountId>>::Balance,
-        ValueQuery,
-    >;
+    pub type TotalDallaSpent<T: Config> =
+        StorageValue<_, <T::Currency as Currency<T::AccountId>>::Balance, ValueQuery>;
 
     /// Storage: Account quantum statistics
     #[pallet::storage]
@@ -660,13 +644,13 @@ pub mod pallet {
         QuantumJobSubmitted {
             job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>>,
             submitter: T::AccountId,
-            backend_index: u8,  // Index into QuantumBackend enum
+            backend_index: u8, // Index into QuantumBackend enum
             dalla_cost: <T::Currency as Currency<T::AccountId>>::Balance,
         },
         /// Quantum job status updated
         JobStatusUpdated {
             job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>>,
-            status_index: u8,  // Index into JobStatus enum
+            status_index: u8, // Index into JobStatus enum
         },
         /// Quantum result recorded on-chain
         QuantumResultRecorded {
@@ -677,13 +661,13 @@ pub mod pallet {
         /// Quantum result verified
         ResultVerified {
             job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>>,
-            verification_status_index: u8,  // Index into VerificationStatus enum
+            verification_status_index: u8, // Index into VerificationStatus enum
         },
         /// Achievement NFT minted
         AchievementNFTMinted {
             nft_id: u64,
             owner: T::AccountId,
-            achievement_type_index: u8,  // Index into AchievementType enum
+            achievement_type_index: u8, // Index into AchievementType enum
             job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>>,
         },
         /// NFT transferred to new owner
@@ -703,7 +687,7 @@ pub mod pallet {
         VerificationSubmitted {
             job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>>,
             validator: T::AccountId,
-            vote_index: u8,  // Index into VerificationVote enum
+            vote_index: u8, // Index into VerificationVote enum
             confidence: u8,
         },
         /// Verification consensus reached
@@ -734,24 +718,18 @@ pub mod pallet {
             royalty: <T::Currency as Currency<T::AccountId>>::Balance,
         },
         /// NFT delisted from marketplace (Phase 2.3.3)
-        NFTDelisted {
-            nft_id: u64,
-            seller: T::AccountId,
-        },
+        NFTDelisted { nft_id: u64, seller: T::AccountId },
         // AuctionCreated, BidPlaced, AuctionFinalized, BridgeClaimed
         // removed (E-7): orphaned events, never emitted via deposit_event.
         /// NFT bridge initiated (Phase 2.3.4)
         BridgeInitiated {
             nft_id: u64,
             owner: T::AccountId,
-            destination_index: u8,  // Index into ChainDestination enum
+            destination_index: u8, // Index into ChainDestination enum
             recipient: BoundedVec<u8, ConstU32<64>>,
         },
         /// NFT bridge cancelled by owner (Phase 2.3.4)
-        BridgeCancelled {
-            nft_id: u64,
-            owner: T::AccountId,
-        },
+        BridgeCancelled { nft_id: u64, owner: T::AccountId },
     }
 
     #[pallet::error]
@@ -857,14 +835,14 @@ pub mod pallet {
         pub fn submit_quantum_job(
             origin: OriginFor<T>,
             job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>>,
-            backend_index: u8,  // Index into QuantumBackend enum
+            backend_index: u8, // Index into QuantumBackend enum
             circuit_hash: [u8; 32],
             num_qubits: u16,
             circuit_depth: u32,
             num_shots: u32,
         ) -> DispatchResult {
             let submitter = ensure_signed(origin)?;
-            
+
             // Convert index to enum with validation
             let backend = match backend_index {
                 0 => QuantumBackend::AzureIonQ,
@@ -878,17 +856,24 @@ pub mod pallet {
             };
 
             // Ensure job doesn't already exist
-            ensure!(!QuantumJobs::<T>::contains_key(&job_id), Error::<T>::JobAlreadyExists);
+            ensure!(
+                !QuantumJobs::<T>::contains_key(&job_id),
+                Error::<T>::JobAlreadyExists
+            );
 
             // Validate circuit parameters
-            ensure!(num_qubits > 0 && num_qubits <= 100, Error::<T>::InvalidCircuitParameters);
-            ensure!(num_shots > 0 && num_shots <= 1_000_000, Error::<T>::InvalidCircuitParameters);
+            ensure!(
+                num_qubits > 0 && num_qubits <= 100,
+                Error::<T>::InvalidCircuitParameters
+            );
+            ensure!(
+                num_shots > 0 && num_shots <= 1_000_000,
+                Error::<T>::InvalidCircuitParameters
+            );
 
             // Calculate cost: (qubits * qubit_cost) + (shots * shot_cost)
-            let qubit_cost = T::DallaPerQubit::get()
-                .saturating_mul((num_qubits as u32).into());
-            let shot_cost = T::DallaPerShot::get()
-                .saturating_mul(num_shots.into());
+            let qubit_cost = T::DallaPerQubit::get().saturating_mul((num_qubits as u32).into());
+            let shot_cost = T::DallaPerShot::get().saturating_mul(num_shots.into());
             let total_cost = qubit_cost.saturating_add(shot_cost);
 
             // Reserve payment from submitter
@@ -957,7 +942,7 @@ pub mod pallet {
         pub fn update_job_status(
             origin: OriginFor<T>,
             job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>>,
-            new_status_index: u8,  // Index into JobStatus enum
+            new_status_index: u8, // Index into JobStatus enum
         ) -> DispatchResult {
             // Convert index to enum with validation
             let new_status = match new_status_index {
@@ -974,8 +959,7 @@ pub mod pallet {
 
                 // Authorization check: must be submitter, executor, or root
                 ensure!(
-                    caller == job.submitter || 
-                    job.executor.as_ref() == Some(&caller),
+                    caller == job.submitter || job.executor.as_ref() == Some(&caller),
                     Error::<T>::NotAuthorized
                 );
 
@@ -984,30 +968,29 @@ pub mod pallet {
                     (JobStatus::Pending, JobStatus::Running) => {
                         // Submitter or assigned executor can start the job
                         ensure!(
-                            caller == job.submitter ||
-                            job.executor.as_ref() == Some(&caller),
+                            caller == job.submitter || job.executor.as_ref() == Some(&caller),
                             Error::<T>::NotAuthorized
                         );
-                    },
+                    }
                     (JobStatus::Running, JobStatus::Completed) => {
                         job.completion_time = Some(frame_system::Pallet::<T>::block_number());
-                        
+
                         // Update account stats
                         AccountStats::<T>::mutate(&job.submitter, |stats| {
                             stats.completed_jobs = stats.completed_jobs.saturating_add(1);
                         });
-                    },
+                    }
                     (JobStatus::Running, JobStatus::Failed) => {
                         job.completion_time = Some(frame_system::Pallet::<T>::block_number());
-                        
+
                         // Refund payment on failure
                         let _ = T::Currency::unreserve(&job.submitter, job.dalla_cost);
-                        
+
                         // Update account stats
                         AccountStats::<T>::mutate(&job.submitter, |stats| {
                             stats.failed_jobs = stats.failed_jobs.saturating_add(1);
                         });
-                    },
+                    }
                     (_, JobStatus::Cancelled) => {
                         // Only submitter can cancel, and only from Pending or Running
                         ensure!(caller == job.submitter, Error::<T>::NotAuthorized);
@@ -1016,7 +999,7 @@ pub mod pallet {
                             Error::<T>::InvalidStatusTransition
                         );
                         let _ = T::Currency::unreserve(&job.submitter, job.dalla_cost);
-                    },
+                    }
                     _ => return Err(Error::<T>::InvalidStatusTransition.into()),
                 }
 
@@ -1073,21 +1056,22 @@ pub mod pallet {
                 result_data_hash != [0u8; 32],
                 Error::<T>::InvalidVerificationProof
             );
-            ensure!(
-                accuracy_score <= 100,
-                Error::<T>::InvalidCircuitParameters
-            );
+            ensure!(accuracy_score <= 100, Error::<T>::InvalidCircuitParameters);
 
             // Ensure job exists and is in correct status
             QuantumJobs::<T>::try_mutate(&job_id, |maybe_job| {
                 let job = maybe_job.as_mut().ok_or(Error::<T>::JobNotFound)?;
-                
-                ensure!(job.status == JobStatus::Running || job.status == JobStatus::Completed, 
-                    Error::<T>::InvalidStatusTransition);
-                
+
+                ensure!(
+                    job.status == JobStatus::Running || job.status == JobStatus::Completed,
+                    Error::<T>::InvalidStatusTransition
+                );
+
                 // Ensure result not already recorded
-                ensure!(!QuantumResults::<T>::contains_key(&job_id), 
-                    Error::<T>::ResultAlreadyRecorded);
+                ensure!(
+                    !QuantumResults::<T>::contains_key(&job_id),
+                    Error::<T>::ResultAlreadyRecorded
+                );
 
                 // Update job with result — stays in Verifying until multi-validator
                 // consensus or root verification approves it
@@ -1172,7 +1156,9 @@ pub mod pallet {
                 } else {
                     // AUDIT FIX (C-Q1): Reject if no executor assigned — prevents
                     // funds from being locked indefinitely with no payee.
-                    let executor = job.executor.as_ref()
+                    let executor = job
+                        .executor
+                        .as_ref()
                         .ok_or(Error::<T>::ExecutorNotAssigned)?;
                     // If verified, transfer payment to executor
                     let _ = T::Currency::repatriate_reserved(
@@ -1206,7 +1192,7 @@ pub mod pallet {
         pub fn mint_achievement_nft(
             origin: OriginFor<T>,
             job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>>,
-            achievement_type_index: u8,  // Index into AchievementType enum
+            achievement_type_index: u8, // Index into AchievementType enum
             transferable: bool,
             _circuit_qubits: u16,
             _accuracy: u8,
@@ -1230,8 +1216,10 @@ pub mod pallet {
 
             // Ensure job exists and belongs to owner
             let job = QuantumJobs::<T>::get(&job_id).ok_or(Error::<T>::JobNotFound)?;
-            ensure!(job.submitter == owner || job.executor.as_ref() == Some(&owner), 
-                Error::<T>::NotAuthorized);
+            ensure!(
+                job.submitter == owner || job.executor.as_ref() == Some(&owner),
+                Error::<T>::NotAuthorized
+            );
 
             // Require job verification before minting
             ensure!(
@@ -1253,7 +1241,8 @@ pub mod pallet {
                 mint_fee,
                 WithdrawReasons::FEE,
                 ExistenceRequirement::KeepAlive,
-            ).map_err(|_| Error::<T>::InsufficientBalance)?;
+            )
+            .map_err(|_| Error::<T>::InsufficientBalance)?;
 
             // Check if job was verified (Phase 2.3.2)
             let verification_approved = true; // Already enforced via ensure! above
@@ -1269,7 +1258,9 @@ pub mod pallet {
             // Generate unique NFT ID with overflow protection
             let nft_id = NFTCounter::<T>::try_mutate(|counter| {
                 let id = *counter;
-                *counter = counter.checked_add(1).ok_or(Error::<T>::ArithmeticOverflow)?;
+                *counter = counter
+                    .checked_add(1)
+                    .ok_or(Error::<T>::ArithmeticOverflow)?;
                 Ok::<u64, Error<T>>(id)
             })?;
 
@@ -1327,15 +1318,14 @@ pub mod pallet {
         /// * `to` - Recipient account
         #[pallet::call_index(5)]
         #[pallet::weight(T::WeightInfo::transfer_nft())]
-        pub fn transfer_nft(
-            origin: OriginFor<T>,
-            nft_id: u64,
-            to: T::AccountId,
-        ) -> DispatchResult {
+        pub fn transfer_nft(origin: OriginFor<T>, nft_id: u64, to: T::AccountId) -> DispatchResult {
             let from = ensure_signed(origin)?;
 
             // Ensure NFT is not locked in a bridge request
-            ensure!(!BridgeRequests::<T>::contains_key(nft_id), Error::<T>::NFTLockedInBridge);
+            ensure!(
+                !BridgeRequests::<T>::contains_key(nft_id),
+                Error::<T>::NFTLockedInBridge
+            );
 
             QuantumAchievements::<T>::try_mutate(nft_id, |maybe_nft| {
                 let nft = maybe_nft.as_mut().ok_or(Error::<T>::NFTNotFound)?;
@@ -1349,11 +1339,7 @@ pub mod pallet {
                 // Transfer NFT
                 nft.owner = to.clone();
 
-                Self::deposit_event(Event::NFTTransferred {
-                    nft_id,
-                    from,
-                    to,
-                });
+                Self::deposit_event(Event::NFTTransferred { nft_id, from, to });
 
                 Ok(())
             })
@@ -1384,8 +1370,14 @@ pub mod pallet {
             ensure!(nft.transferable, Error::<T>::NFTNotTransferable);
 
             // Ensure not already listed or in auction
-            ensure!(!NFTListings::<T>::contains_key(nft_id), Error::<T>::NFTAlreadyListed);
-            ensure!(!NFTAuctions::<T>::contains_key(nft_id), Error::<T>::NFTAlreadyListed);
+            ensure!(
+                !NFTListings::<T>::contains_key(nft_id),
+                Error::<T>::NFTAlreadyListed
+            );
+            ensure!(
+                !NFTAuctions::<T>::contains_key(nft_id),
+                Error::<T>::NFTAlreadyListed
+            );
 
             // Create listing
             let current_block = frame_system::Pallet::<T>::block_number();
@@ -1427,10 +1419,7 @@ pub mod pallet {
         /// * `nft_id` - NFT to purchase
         #[pallet::call_index(7)]
         #[pallet::weight(T::WeightInfo::buy_nft())]
-        pub fn buy_nft(
-            origin: OriginFor<T>,
-            nft_id: u64,
-        ) -> DispatchResult {
+        pub fn buy_nft(origin: OriginFor<T>, nft_id: u64) -> DispatchResult {
             let buyer = ensure_signed(origin)?;
 
             // Get listing
@@ -1449,7 +1438,8 @@ pub mod pallet {
             let marketplace_fee_rate = 2u32; // 2%
 
             let royalty = sale_price.saturating_mul(royalty_rate.into()) / 100u32.into();
-            let marketplace_fee = sale_price.saturating_mul(marketplace_fee_rate.into()) / 100u32.into();
+            let marketplace_fee =
+                sale_price.saturating_mul(marketplace_fee_rate.into()) / 100u32.into();
             let seller_amount = sale_price
                 .saturating_sub(royalty)
                 .saturating_sub(marketplace_fee);
@@ -1458,19 +1448,39 @@ pub mod pallet {
             let treasury = T::Treasury::get();
 
             // Transfer seller amount
-            T::Currency::transfer(&buyer, &listing.seller, seller_amount, ExistenceRequirement::KeepAlive)?;
-            
+            T::Currency::transfer(
+                &buyer,
+                &listing.seller,
+                seller_amount,
+                ExistenceRequirement::KeepAlive,
+            )?;
+
             // Transfer marketplace fee to treasury
             if marketplace_fee > Zero::zero() {
-                T::Currency::transfer(&buyer, &treasury, marketplace_fee, ExistenceRequirement::KeepAlive)?;
+                T::Currency::transfer(
+                    &buyer,
+                    &treasury,
+                    marketplace_fee,
+                    ExistenceRequirement::KeepAlive,
+                )?;
             }
-            
+
             // Pay royalty to original minter if not seller
             if listing.original_minter != listing.seller {
-                T::Currency::transfer(&buyer, &listing.original_minter, royalty, ExistenceRequirement::KeepAlive)?;
+                T::Currency::transfer(
+                    &buyer,
+                    &listing.original_minter,
+                    royalty,
+                    ExistenceRequirement::KeepAlive,
+                )?;
             } else {
                 // Original minter is selling — add royalty back to seller
-                T::Currency::transfer(&buyer, &listing.seller, royalty, ExistenceRequirement::KeepAlive)?;
+                T::Currency::transfer(
+                    &buyer,
+                    &listing.seller,
+                    royalty,
+                    ExistenceRequirement::KeepAlive,
+                )?;
             }
 
             // Transfer NFT
@@ -1501,10 +1511,7 @@ pub mod pallet {
         /// * `nft_id` - NFT to delist
         #[pallet::call_index(8)]
         #[pallet::weight(T::WeightInfo::delist_nft())]
-        pub fn delist_nft(
-            origin: OriginFor<T>,
-            nft_id: u64,
-        ) -> DispatchResult {
+        pub fn delist_nft(origin: OriginFor<T>, nft_id: u64) -> DispatchResult {
             let seller = ensure_signed(origin)?;
 
             // Get listing
@@ -1516,10 +1523,7 @@ pub mod pallet {
             // Remove listing
             NFTListings::<T>::remove(nft_id);
 
-            Self::deposit_event(Event::NFTDelisted {
-                nft_id,
-                seller,
-            });
+            Self::deposit_event(Event::NFTDelisted { nft_id, seller });
 
             Ok(())
         }
@@ -1549,14 +1553,26 @@ pub mod pallet {
             ensure!(nft.transferable, Error::<T>::NFTNotTransferable);
 
             // Ensure not listed or in auction
-            ensure!(!NFTListings::<T>::contains_key(nft_id), Error::<T>::NFTAlreadyListed);
-            ensure!(!NFTAuctions::<T>::contains_key(nft_id), Error::<T>::NFTAlreadyListed);
+            ensure!(
+                !NFTListings::<T>::contains_key(nft_id),
+                Error::<T>::NFTAlreadyListed
+            );
+            ensure!(
+                !NFTAuctions::<T>::contains_key(nft_id),
+                Error::<T>::NFTAlreadyListed
+            );
 
             // Ensure not already bridged
-            ensure!(!BridgeRequests::<T>::contains_key(nft_id), Error::<T>::BridgeAlreadyInitiated);
+            ensure!(
+                !BridgeRequests::<T>::contains_key(nft_id),
+                Error::<T>::BridgeAlreadyInitiated
+            );
 
             // Validate Ethereum address format (20 bytes)
-            ensure!(recipient.len() == 20 || recipient.len() == 42, Error::<T>::InvalidRecipientAddress);
+            ensure!(
+                recipient.len() == 20 || recipient.len() == 42,
+                Error::<T>::InvalidRecipientAddress
+            );
 
             // Create bridge request
             let current_block = frame_system::Pallet::<T>::block_number();
@@ -1615,11 +1631,20 @@ pub mod pallet {
             ensure!(nft.transferable, Error::<T>::NFTNotTransferable);
 
             // Ensure not listed or in auction
-            ensure!(!NFTListings::<T>::contains_key(nft_id), Error::<T>::NFTAlreadyListed);
-            ensure!(!NFTAuctions::<T>::contains_key(nft_id), Error::<T>::NFTAlreadyListed);
+            ensure!(
+                !NFTListings::<T>::contains_key(nft_id),
+                Error::<T>::NFTAlreadyListed
+            );
+            ensure!(
+                !NFTAuctions::<T>::contains_key(nft_id),
+                Error::<T>::NFTAlreadyListed
+            );
 
             // Ensure not already bridged
-            ensure!(!BridgeRequests::<T>::contains_key(nft_id), Error::<T>::BridgeAlreadyInitiated);
+            ensure!(
+                !BridgeRequests::<T>::contains_key(nft_id),
+                Error::<T>::BridgeAlreadyInitiated
+            );
 
             // Create bridge request
             let current_block = frame_system::Pallet::<T>::block_number();
@@ -1665,15 +1690,12 @@ pub mod pallet {
         /// * `nft_id` - Bridged NFT to cancel
         #[pallet::call_index(13)]
         #[pallet::weight(T::WeightInfo::cancel_bridge())]
-        pub fn cancel_bridge(
-            origin: OriginFor<T>,
-            nft_id: u64,
-        ) -> DispatchResult {
+        pub fn cancel_bridge(origin: OriginFor<T>, nft_id: u64) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
             // Get and validate bridge request
-            let bridge_request = BridgeRequests::<T>::get(nft_id)
-                .ok_or(Error::<T>::BridgeRequestNotFound)?;
+            let bridge_request =
+                BridgeRequests::<T>::get(nft_id).ok_or(Error::<T>::BridgeRequestNotFound)?;
             ensure!(bridge_request.owner == who, Error::<T>::NotAuthorized);
             ensure!(!bridge_request.claimed, Error::<T>::BridgeAlreadyClaimed);
 
@@ -1687,10 +1709,7 @@ pub mod pallet {
                 }
             });
 
-            Self::deposit_event(Event::BridgeCancelled {
-                nft_id,
-                owner: who,
-            });
+            Self::deposit_event(Event::BridgeCancelled { nft_id, owner: who });
 
             Ok(())
         }
@@ -1717,7 +1736,10 @@ pub mod pallet {
 
             // Ensure job exists and has result
             let job = QuantumJobs::<T>::get(&job_id).ok_or(Error::<T>::JobNotFound)?;
-            ensure!(QuantumResults::<T>::contains_key(&job_id), Error::<T>::ResultNotFound);
+            ensure!(
+                QuantumResults::<T>::contains_key(&job_id),
+                Error::<T>::ResultNotFound
+            );
 
             // Verify requester is submitter
             ensure!(job.submitter == requester, Error::<T>::NotAuthorized);
@@ -1775,7 +1797,7 @@ pub mod pallet {
         pub fn submit_verification(
             origin: OriginFor<T>,
             job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>>,
-            vote_index: u8,  // Index into VerificationVote enum
+            vote_index: u8, // Index into VerificationVote enum
             confidence: u8,
             result_hash: [u8; 32],
         ) -> DispatchResult {
@@ -1789,9 +1811,12 @@ pub mod pallet {
 
             // Prevent executor and submitter from verifying their own job
             let job = QuantumJobs::<T>::get(&job_id).ok_or(Error::<T>::JobNotFound)?;
-            ensure!(job.executor.as_ref() != Some(&validator), Error::<T>::ExecutorCannotVerify);
+            ensure!(
+                job.executor.as_ref() != Some(&validator),
+                Error::<T>::ExecutorCannotVerify
+            );
             ensure!(job.submitter != validator, Error::<T>::ExecutorCannotVerify);
-            
+
             // Convert index to enum with validation
             let vote = match vote_index {
                 0 => VerificationVote::Approve,
@@ -1807,7 +1832,10 @@ pub mod pallet {
                 .ok_or(Error::<T>::VerificationRequestNotFound)?;
 
             // Check consensus not already reached
-            ensure!(!request.consensus_reached, Error::<T>::ConsensusAlreadyReached);
+            ensure!(
+                !request.consensus_reached,
+                Error::<T>::ConsensusAlreadyReached
+            );
 
             // Check deadline
             let current_block = frame_system::Pallet::<T>::block_number();
@@ -1818,11 +1846,14 @@ pub mod pallet {
             );
 
             // Check validator hasn't already verified
-            let validator_bytes: BoundedVec<u8, ConstU32<32>> = 
+            let validator_bytes: BoundedVec<u8, ConstU32<32>> =
                 validator.encode().try_into().unwrap_or_default();
-            
+
             ensure!(
-                !request.verifications.iter().any(|v| v.validator == validator_bytes),
+                !request
+                    .verifications
+                    .iter()
+                    .any(|v| v.validator == validator_bytes),
                 Error::<T>::ValidatorAlreadyVerified
             );
 
@@ -1837,14 +1868,20 @@ pub mod pallet {
             };
 
             // Add verification first (bounded to 10 max) — must succeed before updating counts
-            request.verifications.try_push(verification)
+            request
+                .verifications
+                .try_push(verification)
                 .map_err(|_| Error::<T>::ConsensusAlreadyReached)?;
 
             // Update vote counts only after successful push
             match vote {
-                VerificationVote::Approve => request.approvals = request.approvals.saturating_add(1),
-                VerificationVote::Reject => request.rejections = request.rejections.saturating_add(1),
-                VerificationVote::Abstain => {}, // Abstain doesn't count
+                VerificationVote::Approve => {
+                    request.approvals = request.approvals.saturating_add(1)
+                }
+                VerificationVote::Reject => {
+                    request.rejections = request.rejections.saturating_add(1)
+                }
+                VerificationVote::Abstain => {} // Abstain doesn't count
             }
 
             // Check if consensus reached
@@ -1891,7 +1928,7 @@ pub mod pallet {
                 // Consensus result should always be set when threshold is reached
                 // Use unwrap_or(false) as safe fallback
                 let consensus_result = request.consensus_result.unwrap_or(false);
-                
+
                 Self::deposit_event(Event::VerificationConsensusReached {
                     job_id: job_id.clone(),
                     result: consensus_result,
@@ -1943,7 +1980,9 @@ pub mod pallet {
                 if let Some(_original_result) = QuantumResults::<T>::get(&request.job_id) {
                     for verification in &request.verifications {
                         // Decode validator account
-                        if let Ok(validator_account) = T::AccountId::decode(&mut &verification.validator[..]) {
+                        if let Ok(validator_account) =
+                            T::AccountId::decode(&mut &verification.validator[..])
+                        {
                             let mut reputation = ValidatorReputation::<T>::get(&validator_account);
 
                             // Update reputation based on vote accuracy
@@ -2073,8 +2112,7 @@ pub mod pallet {
                 rarity_str, category_str, nft_id
             );
 
-            BoundedVec::try_from(uri.into_bytes())
-                .map_err(|_| Error::<T>::InvalidMetadataURI)
+            BoundedVec::try_from(uri.into_bytes()).map_err(|_| Error::<T>::InvalidMetadataURI)
         }
     }
 }
@@ -2130,43 +2168,43 @@ impl WeightInfo for () {
     }
     fn list_nft() -> Weight {
         Weight::from_parts(12_000_000, 2560)
-            .saturating_add(RocksDbWeight::get().reads(3))  // Read NFT + check listings + auctions
-            .saturating_add(RocksDbWeight::get().writes(2))  // Create listing + counter
+            .saturating_add(RocksDbWeight::get().reads(3)) // Read NFT + check listings + auctions
+            .saturating_add(RocksDbWeight::get().writes(2)) // Create listing + counter
     }
     fn buy_nft() -> Weight {
         Weight::from_parts(25_000_000, 1536)
-            .saturating_add(RocksDbWeight::get().reads(2))  // Read listing + NFT
-            .saturating_add(RocksDbWeight::get().writes(2))  // Transfer NFT + remove listing
+            .saturating_add(RocksDbWeight::get().reads(2)) // Read listing + NFT
+            .saturating_add(RocksDbWeight::get().writes(2)) // Transfer NFT + remove listing
     }
     fn delist_nft() -> Weight {
         Weight::from_parts(10_000_000, 2560)
-            .saturating_add(RocksDbWeight::get().reads(1))  // Read listing
-            .saturating_add(RocksDbWeight::get().writes(1))  // Remove listing
+            .saturating_add(RocksDbWeight::get().reads(1)) // Read listing
+            .saturating_add(RocksDbWeight::get().writes(1)) // Remove listing
     }
     fn bridge_to_ethereum() -> Weight {
         Weight::from_parts(18_000_000, 4096)
-            .saturating_add(RocksDbWeight::get().reads(4))  // Read NFT + check listings/auctions + bridge requests
-            .saturating_add(RocksDbWeight::get().writes(2))  // Create bridge request + counter
+            .saturating_add(RocksDbWeight::get().reads(4)) // Read NFT + check listings/auctions + bridge requests
+            .saturating_add(RocksDbWeight::get().writes(2)) // Create bridge request + counter
     }
     fn bridge_to_parachain() -> Weight {
         Weight::from_parts(20_000_000, 2048)
-            .saturating_add(RocksDbWeight::get().reads(4))  // Read NFT + check listings/auctions + bridge requests
-            .saturating_add(RocksDbWeight::get().writes(2))  // Create bridge request + counter + XCM send
+            .saturating_add(RocksDbWeight::get().reads(4)) // Read NFT + check listings/auctions + bridge requests
+            .saturating_add(RocksDbWeight::get().writes(2)) // Create bridge request + counter + XCM send
     }
     fn request_verification() -> Weight {
         Weight::from_parts(15_000_000, 2560)
-            .saturating_add(RocksDbWeight::get().reads(2))  // Read job + result
-            .saturating_add(RocksDbWeight::get().writes(1))  // Create verification request
+            .saturating_add(RocksDbWeight::get().reads(2)) // Read job + result
+            .saturating_add(RocksDbWeight::get().writes(1)) // Create verification request
     }
     fn submit_verification() -> Weight {
         Weight::from_parts(20_000_000, 2560)
-            .saturating_add(RocksDbWeight::get().reads(3))  // Read request + job + result
-            .saturating_add(RocksDbWeight::get().writes(3))  // Update request + job + reputation
+            .saturating_add(RocksDbWeight::get().reads(3)) // Read request + job + result
+            .saturating_add(RocksDbWeight::get().writes(3)) // Update request + job + reputation
     }
     fn cancel_bridge() -> Weight {
         Weight::from_parts(12_000_000, 1024)
-            .saturating_add(RocksDbWeight::get().reads(2))  // Read bridge request + NFT
-            .saturating_add(RocksDbWeight::get().writes(2))  // Remove bridge request + unlock NFT
+            .saturating_add(RocksDbWeight::get().reads(2)) // Read bridge request + NFT
+            .saturating_add(RocksDbWeight::get().writes(2)) // Remove bridge request + unlock NFT
     }
 }
 

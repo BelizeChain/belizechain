@@ -18,7 +18,7 @@ impl IdentityOracleProvider<u64> for MockOracle {
         // Return None to rely on on-chain attestations
         None
     }
-    
+
     fn meets_kyc_requirement(account: &u64, required_level: u8) -> bool {
         // Account 100 is "oracle-verified" for testing
         if *account == 100 && required_level <= 2 {
@@ -26,7 +26,7 @@ impl IdentityOracleProvider<u64> for MockOracle {
         }
         false
     }
-    
+
     fn is_sanctioned(account: &u64) -> bool {
         // Account 666 is sanctioned for testing
         *account == 666
@@ -180,10 +180,10 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
         paused: false,
         start_identity_id: 1000,
         issuer_bond_amount: Some(1_000_000), // 1M bond requirement
-        rate_window_blocks: Some(50), // 50 block window
-        rate_limit_ssn: Some(10), // 10 per window
-        rate_limit_passport: Some(5), // 5 per window
-        rate_limit_biometrics: Some(3), // 3 per window
+        rate_window_blocks: Some(50),        // 50 block window
+        rate_limit_ssn: Some(10),            // 10 per window
+        rate_limit_passport: Some(5),        // 5 per window
+        rate_limit_biometrics: Some(3),      // 3 per window
     }
     .assimilate_storage(&mut t)
     .unwrap();

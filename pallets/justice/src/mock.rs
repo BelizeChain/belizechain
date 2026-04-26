@@ -1,7 +1,10 @@
 //! Mock runtime for Justice pallet tests
 
 use crate as pallet_belize_justice;
-use frame_support::{construct_runtime, parameter_types, traits::{ConstU16, ConstU32, Everything, Hooks}};
+use frame_support::{
+    construct_runtime, parameter_types,
+    traits::{ConstU16, ConstU32, Everything, Hooks},
+};
 use sp_core::H256;
 use sp_runtime::{
     traits::{BlakeTwo256, IdentityLookup},
@@ -89,10 +92,10 @@ impl pallet_belize_justice::Config for Test {
 }
 
 // Test accounts
-pub const ALICE: u64 = 1;    // Disputant
-pub const BOB: u64 = 2;      // Target / accused
+pub const ALICE: u64 = 1; // Disputant
+pub const BOB: u64 = 2; // Target / accused
 pub const MEDIATOR: u64 = 3; // Mediator account
-pub const DAVE: u64 = 4;     // Additional account
+pub const DAVE: u64 = 4; // Additional account
 pub const GOVERNANCE: u64 = 99;
 
 pub fn new_test_ext() -> sp_io::TestExternalities {

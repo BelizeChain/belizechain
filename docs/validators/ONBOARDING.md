@@ -344,14 +344,18 @@ belizechain-node key inspect-node-key --file /data/belizechain/node-key
 # Create config directory
 mkdir -p ~/belizechain-config
 
-# Download chain spec
-wget https://raw.githubusercontent.com/BelizeChain/belizechain/main/chainspecs/belizechain-testnet-raw.json \
-     -O ~/belizechain-config/chain-spec.json
+# Save the operator-provided raw spec
+cp /path/to/operator-provided-testnet-chain-spec-raw.json \
+     ~/belizechain-config/chain-spec.json
 
 # Verify
-cat ~/belizechain-config/chain-spec.json | jq .name
-# Output: "BelizeChain Testnet"
+jq '.name, .chainType' ~/belizechain-config/chain-spec.json
+# Output:
+# "BelizeChain Testnet"
+# "Live"
 ```
+
+Do not use the disabled built-in `testnet` alias or any locally generated `--chain local` spec for validator onboarding. Validators should only use the raw spec published for the active network.
 
 ### 3.5 Create Systemd Service
 
@@ -382,9 +386,7 @@ ExecStart=/usr/local/bin/belizechain-node \
     --rpc-port 9944 \
     --prometheus-port 9615 \
     --rpc-methods Safe \
-    --pruning 1000 \
-    --bootnodes /dns/boot1.testnet.belizechain.org/tcp/30333/p2p/12D3KooW... \
-    --bootnodes /dns/boot2.testnet.belizechain.org/tcp/30333/p2p/12D3KooW...
+     --pruning 1000
 
 Restart=always
 RestartSec=10
@@ -455,7 +457,7 @@ curl -H "Content-Type: application/json" \
 
 **Testnet**: Get from faucet
 ```bash
-# Visit faucet: https://faucet.testnet.belizechain.org
+# Use the current operator-provided faucet or request funds from the active coordinator
 # Enter stash address: 5ABC...XYZ
 # Click "Request 10,000 DALLA"
 ```
@@ -473,7 +475,7 @@ Using Polkadot.js Apps:
 2. Connect to BelizeChain:
    - Click network dropdown
    - Select "Development" → "Custom"
-   - Enter: `wss://rpc.testnet.belizechain.org` (or your node)
+     - Enter: `wss://<current-testnet-rpc-url>` from the current operator packet, or use your own node
    - Click "Switch"
 
 3. Navigate to **Network → Staking → Account actions**

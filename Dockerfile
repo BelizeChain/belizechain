@@ -15,10 +15,7 @@ RUN cargo build --release --package belizechain-node && \
     # Strip debug symbols to shrink binary (~50 %)
     strip /build/target/release/belizechain-node
 
-# Optional: export a raw chain spec for testnet inside the image
-RUN /build/target/release/belizechain-node build-spec \
-    --chain local --raw --disable-default-bootnode \
-    > /build/testnet-chain-spec-raw.json
+# Public testnet specs must be supplied explicitly at runtime.
 
 
 # Stage 2: Minimal runtime image
@@ -36,7 +33,6 @@ RUN apt-get update && \
 
 # Copy the compiled binary and chain spec
 COPY --from=builder /build/target/release/belizechain-node /usr/local/bin/belizechain-node
-COPY --from=builder /build/testnet-chain-spec-raw.json      /etc/belizechain/testnet-chain-spec-raw.json
 
 # Non-root user
 RUN useradd -m -u 1000 -U -s /bin/sh -d /data belizechain && \

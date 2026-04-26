@@ -1,7 +1,7 @@
 use crate as pallet_economy;
 use frame_support::{
     parameter_types,
-    traits::{ConstU32, ConstU64, ConstU128},
+    traits::{ConstU128, ConstU32, ConstU64},
     PalletId,
 };
 use sp_runtime::{
@@ -115,14 +115,14 @@ impl pallet_economy::OracleProvider<u64> for MockOracleProvider {
         // For testing, always return true
         true
     }
-        fn meets_kyc_requirement(_account: &u64, _required_level: u8) -> bool {
-            // In mock environment, default to true to simplify tests
-            true
-        }
-        fn is_sanctioned(_account: &u64) -> bool {
-            // In mock environment, no sanctioned accounts
-            false
-        }
+    fn meets_kyc_requirement(_account: &u64, _required_level: u8) -> bool {
+        // In mock environment, default to true to simplify tests
+        true
+    }
+    fn is_sanctioned(_account: &u64) -> bool {
+        // In mock environment, no sanctioned accounts
+        false
+    }
 }
 
 impl pallet_economy::Config for Test {

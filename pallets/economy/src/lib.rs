@@ -30,23 +30,20 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
+use codec::{Decode, Encode, MaxEncodedLen};
+use frame_support::weights::{constants::RocksDbWeight, Weight};
 use frame_support::{
     pallet_prelude::*,
-    traits::{
-        Currency, ReservableCurrency, ExistenceRequirement,
-        Get, UnixTime, ConstU32,
-    },
-    PalletId, BoundedVec,
     sp_runtime::traits::AccountIdConversion,
+    traits::{ConstU32, Currency, ExistenceRequirement, Get, ReservableCurrency, UnixTime},
+    BoundedVec, PalletId,
 };
 use frame_system::pallet_prelude::*;
+use scale_info::TypeInfo;
 use sp_runtime::{
     traits::{Saturating, Zero},
-    SaturatedConversion, Permill, Debug,
+    Debug, Permill, SaturatedConversion,
 };
-use codec::{Encode, Decode, MaxEncodedLen};
-use scale_info::TypeInfo;
-use frame_support::weights::{Weight, constants::RocksDbWeight};
 
 // ===== CONSTANTS =====
 
@@ -63,12 +60,12 @@ const ANNUAL_INFLATION_RATE: Permill = Permill::from_percent(2);
 
 /// Weight functions needed for the Economy pallet
 pub trait WeightInfo {
-    fn issue_bbzd() -> Weight;  // Used for mint_bbzd
+    fn issue_bbzd() -> Weight; // Used for mint_bbzd
     fn redeem_bbzd() -> Weight;
     fn process_redemption() -> Weight;
     fn set_minter_authorization() -> Weight;
     fn update_reserves() -> Weight;
-    fn pay_tourism_incentive() -> Weight; 
+    fn pay_tourism_incentive() -> Weight;
     fn update_inflation() -> Weight;
     fn burn_dalla() -> Weight;
     fn governance_burn() -> Weight;
@@ -81,40 +78,40 @@ pub struct SubstrateWeight<T>(sp_std::marker::PhantomData<T>);
 impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
     fn issue_bbzd() -> Weight {
         Weight::from_parts(25_000_000, 2560)
-            .saturating_add(RocksDbWeight::get().reads(3))  // CentralBankReserves, TotalBbzdSupply, AuthorizedMinters
-            .saturating_add(RocksDbWeight::get().writes(2))  // BBZDBalances, TotalBbzdSupply
+            .saturating_add(RocksDbWeight::get().reads(3)) // CentralBankReserves, TotalBbzdSupply, AuthorizedMinters
+            .saturating_add(RocksDbWeight::get().writes(2)) // BBZDBalances, TotalBbzdSupply
     }
-    
+
     fn redeem_bbzd() -> Weight {
         Weight::from_parts(30_000_000, 1024)
-            .saturating_add(RocksDbWeight::get().reads(2))  // BBZDBalances, TotalBbzdSupply
-            .saturating_add(RocksDbWeight::get().writes(4))  // BBZDBalances, TotalBbzdSupply, RedemptionRequests, NextRedemptionId
+            .saturating_add(RocksDbWeight::get().reads(2)) // BBZDBalances, TotalBbzdSupply
+            .saturating_add(RocksDbWeight::get().writes(4)) // BBZDBalances, TotalBbzdSupply, RedemptionRequests, NextRedemptionId
     }
-    
+
     fn process_redemption() -> Weight {
         Weight::from_parts(20_000_000, 1024)
-            .saturating_add(RocksDbWeight::get().reads(2))  // AuthorizedMinters, RedemptionRequests
-            .saturating_add(RocksDbWeight::get().writes(1))  // RedemptionRequests
+            .saturating_add(RocksDbWeight::get().reads(2)) // AuthorizedMinters, RedemptionRequests
+            .saturating_add(RocksDbWeight::get().writes(1)) // RedemptionRequests
     }
-    
+
     fn set_minter_authorization() -> Weight {
         Weight::from_parts(15_000_000, 1024)
             .saturating_add(RocksDbWeight::get().reads(0))
-            .saturating_add(RocksDbWeight::get().writes(1))  // AuthorizedMinters
+            .saturating_add(RocksDbWeight::get().writes(1)) // AuthorizedMinters
     }
-    
+
     fn update_reserves() -> Weight {
         Weight::from_parts(18_000_000, 2560)
-            .saturating_add(RocksDbWeight::get().reads(2))  // CentralBankReserves, TotalBbzdSupply
-            .saturating_add(RocksDbWeight::get().writes(1))  // CentralBankReserves
+            .saturating_add(RocksDbWeight::get().reads(2)) // CentralBankReserves, TotalBbzdSupply
+            .saturating_add(RocksDbWeight::get().writes(1)) // CentralBankReserves
     }
-    
+
     fn pay_tourism_incentive() -> Weight {
         Weight::from_parts(50_000_000, 2048)
             .saturating_add(RocksDbWeight::get().reads(3))
             .saturating_add(RocksDbWeight::get().writes(2))
     }
-    
+
     /// DOS-012 FIX: Weight covers full inflation path — 3× deposit_creating,
     /// 2× cumulative mutate, TotalSupply sync, LastInflationBlock update.
     fn update_inflation() -> Weight {
@@ -122,13 +119,13 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
             .saturating_add(RocksDbWeight::get().reads(7))
             .saturating_add(RocksDbWeight::get().writes(7))
     }
-    
+
     fn burn_dalla() -> Weight {
         Weight::from_parts(30_000_000, 2048)
             .saturating_add(RocksDbWeight::get().reads(2))
             .saturating_add(RocksDbWeight::get().writes(2))
     }
-    
+
     fn governance_burn() -> Weight {
         Weight::from_parts(35_000_000, 1024)
             .saturating_add(RocksDbWeight::get().reads(2))
@@ -213,23 +210,23 @@ pub mod pallet {
     pub trait Config: frame_system::Config {
         /// Native currency (DALLA token)
         type Currency: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
-        
+
         /// Treasury account ID
         type Treasury: Get<Self::AccountId>;
-        
+
         /// Unix time provider
         type UnixTime: UnixTime;
-        
+
         /// WeightInfo trait for operation weights
         type WeightInfo: WeightInfo;
-        
+
         /// Maximum DALLA supply (501B DALLA with 6 decimals = 501_000_000_000 * 10^6)
         #[pallet::constant]
         type MaxSupply: Get<<Self::Currency as Currency<Self::AccountId>>::Balance>;
-        
+
         /// Governance origin for economic policy changes
         type GovernanceOrigin: EnsureOrigin<Self::RuntimeOrigin>;
-        
+
         /// Oracle for merchant verification only (NOT used for bBZD peg)
         type Oracle: OracleProvider<Self::AccountId>;
 
@@ -281,7 +278,7 @@ pub mod pallet {
             BlockNumberFor<Self>,
         >;
     }
-    
+
     /// Oracle provider trait for merchant verification only
     pub trait OracleProvider<AccountId> {
         /// Verify merchant is registered for tourism category
@@ -295,11 +292,8 @@ pub mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn total_supply)]
     /// Total DALLA supply in circulation
-    pub type TotalSupply<T: Config> = StorageValue<
-        _,
-        <T::Currency as Currency<T::AccountId>>::Balance,
-        ValueQuery,
-    >;
+    pub type TotalSupply<T: Config> =
+        StorageValue<_, <T::Currency as Currency<T::AccountId>>::Balance, ValueQuery>;
 
     // EconomicMetricsStorage removed (E-7): write-only, never read on-chain.
 
@@ -322,7 +316,8 @@ pub mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn authorized_minters)]
     /// Authorized Central Bank accounts that can mint bBZD
-    pub type AuthorizedMinters<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, bool, ValueQuery>;
+    pub type AuthorizedMinters<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, bool, ValueQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn next_redemption_id)]
@@ -332,24 +327,27 @@ pub mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn redemption_requests)]
     /// Pending redemption requests for Central Bank processing
-    pub type RedemptionRequests<T: Config> = StorageMap<_, Blake2_128Concat, u64, RedemptionRequest<T::AccountId>>;
+    pub type RedemptionRequests<T: Config> =
+        StorageMap<_, Blake2_128Concat, u64, RedemptionRequest<T::AccountId>>;
 
     #[pallet::storage]
     #[pallet::getter(fn pending_redemption_ids)]
     /// Convenience index of currently pending redemption IDs for simple UI/tests access
     /// Bounded to prevent unbounded growth; governance should ensure timely processing.
-    pub type PendingRedemptionIds<T: Config> = StorageValue<_, BoundedVec<u64, ConstU32<10000>>, ValueQuery>;
+    pub type PendingRedemptionIds<T: Config> =
+        StorageValue<_, BoundedVec<u64, ConstU32<10000>>, ValueQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn bbzd_balances)]
     /// bBZD stablecoin balances
-    pub type BBZDBalances<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, u128, ValueQuery>;
+    pub type BBZDBalances<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, u128, ValueQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn next_payment_id)]
     /// Next tourism payment ID
     pub type NextPaymentId<T: Config> = StorageValue<_, u32, ValueQuery>;
-    
+
     #[pallet::storage]
     #[pallet::getter(fn last_inflation_block)]
     /// Last block number when inflation was applied
@@ -359,13 +357,8 @@ pub mod pallet {
     // Key: (AccountId, last_block_number). Cleared lazily each new block.
     #[pallet::storage]
     /// Rate limit: number of mint_bbzd calls by account in the current block.
-    pub type MintCallsThisBlock<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        u32,
-        ValueQuery,
-    >;
+    pub type MintCallsThisBlock<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, u32, ValueQuery>;
 
     // Tracks the block number when MintCallsThisBlock was last reset.
     #[pallet::storage]
@@ -395,33 +388,34 @@ pub mod pallet {
                 MintingHalted::<T>::put(false);
             }
             weight = weight.saturating_add(Weight::from_parts(2_000_000, 64));
-            
+
             // Check if a year has passed since last inflation
             let last_inflation = LastInflationBlock::<T>::get();
-            
+
             // Convert block numbers to u64 for comparison (W-8: safe saturated conversion)
             let current_block: u64 = n.saturated_into();
             let last_block: u64 = last_inflation.saturated_into();
             let blocks_passed = current_block.saturating_sub(last_block);
-            
+
             // Apply annual inflation if BLOCKS_PER_YEAR have passed
             if blocks_passed >= BLOCKS_PER_YEAR as u64 {
                 let current_supply = T::Currency::total_issuance();
                 let max_supply = T::MaxSupply::get();
-                
+
                 // Calculate inflation amount (2% of current supply)
-            let inflation_amount = ANNUAL_INFLATION_RATE * current_supply;
-            
-            // Check if adding inflation would exceed max supply
-            let new_supply = current_supply.saturating_add(inflation_amount);
-            
-            if new_supply <= max_supply {
+                let inflation_amount = ANNUAL_INFLATION_RATE * current_supply;
+
+                // Check if adding inflation would exceed max supply
+                let new_supply = current_supply.saturating_add(inflation_amount);
+
+                if new_supply <= max_supply {
                     let treasury = T::Treasury::get();
 
                     // ── Phase 2C: Progressive public-goods routing ────────────
                     // Route `PublicGoodsRoutingPercent`% of inflation to the
                     // public-goods treasury; remainder goes to main treasury.
-                    let routing_percent: u128 = T::PublicGoodsRoutingPercent::get().min(100) as u128;
+                    let routing_percent: u128 =
+                        T::PublicGoodsRoutingPercent::get().min(100) as u128;
                     let total_u128: u128 = inflation_amount.saturated_into::<u128>();
                     let pg_u128: u128 = total_u128.saturating_mul(routing_percent) / 100;
                     let main_u128: u128 = total_u128.saturating_sub(pg_u128);
@@ -472,7 +466,7 @@ pub mod pallet {
                 }
                 // If max supply would be exceeded, don't apply inflation (hard cap reached)
             }
-            
+
             weight
         }
 
@@ -552,10 +546,10 @@ pub mod pallet {
     pub enum Event<T: Config> {
         /// bBZD minted by Central Bank (after off-chain BZD deposit verified)
         BbzdMinted {
-            minter: T::AccountId,  // Central Bank account
+            minter: T::AccountId, // Central Bank account
             recipient: T::AccountId,
             amount: u128,
-            deposit_reference: BoundedVec<u8, ConstU32<64>>,  // Off-chain bank transaction ID
+            deposit_reference: BoundedVec<u8, ConstU32<64>>, // Off-chain bank transaction ID
             new_total_supply: u128,
         },
         /// bBZD redeemed (burned on-chain, triggers off-chain BZD transfer)
@@ -576,7 +570,7 @@ pub mod pallet {
         ReservesUpdated {
             old_reserves: u128,
             new_reserves: u128,
-            total_supply: u128,  // Must be <= new_reserves (1:1 backing)
+            total_supply: u128, // Must be <= new_reserves (1:1 backing)
         },
         /// Authorized minter added/removed
         MinterAuthorization {
@@ -620,10 +614,7 @@ pub mod pallet {
             new_supply: <T::Currency as Currency<T::AccountId>>::Balance,
         },
         /// E-1: bBZD invariant violation detected at runtime
-        BbzdInvariantViolation {
-            total_supply: u128,
-            reserves: u128,
-        },
+        BbzdInvariantViolation { total_supply: u128, reserves: u128 },
     }
 
     #[pallet::call]
@@ -658,11 +649,14 @@ pub mod pallet {
             Self::check_mint_rate_limit(&minter)?;
 
             // C-ECON-1: Block minting while under-collateralized
-            ensure!(!MintingHalted::<T>::get(), Error::<T>::MintingHaltedUndercollateralized);
-            
+            ensure!(
+                !MintingHalted::<T>::get(),
+                Error::<T>::MintingHaltedUndercollateralized
+            );
+
             // Ensure non-zero amount
             ensure!(amount > 0, Error::<T>::AmountMustBeNonZero);
-            
+
             // ONLY authorized Central Bank accounts can mint
             ensure!(
                 Self::authorized_minters(&minter),
@@ -670,8 +664,14 @@ pub mod pallet {
             );
 
             // Compliance: recipient must not be sanctioned and must have at least Basic KYC (level 1)
-            ensure!(!T::Oracle::is_sanctioned(&recipient), Error::<T>::SanctionedEntity);
-            ensure!(T::Oracle::meets_kyc_requirement(&recipient, 1), Error::<T>::KycVerificationRequired);
+            ensure!(
+                !T::Oracle::is_sanctioned(&recipient),
+                Error::<T>::SanctionedEntity
+            );
+            ensure!(
+                T::Oracle::meets_kyc_requirement(&recipient, 1),
+                Error::<T>::KycVerificationRequired
+            );
 
             // COMP-CRIT-1: Travel rule — large mints require Enhanced KYC (L2)
             let threshold = T::TravelRuleThreshold::get();
@@ -692,20 +692,20 @@ pub mod pallet {
             let current_supply = Self::total_bbzd_supply();
             let current_reserves = Self::central_bank_reserves();
             let new_supply = current_supply.saturating_add(amount);
-            
+
             ensure!(
                 new_supply <= current_reserves,
                 Error::<T>::InsufficientReserves
             );
-            
+
             // Mint bBZD to recipient (pure mint, no collateral locked)
             BBZDBalances::<T>::mutate(&recipient, |balance| {
                 *balance = balance.saturating_add(amount);
             });
-            
+
             // Update total supply tracking
             TotalBbzdSupply::<T>::put(new_supply);
-            
+
             // COMP-CRIT-2: Report transaction to structuring detector
             T::ComplianceReporter::report_transaction(&recipient, amount);
 
@@ -717,7 +717,7 @@ pub mod pallet {
                 deposit_reference,
                 new_total_supply: new_supply,
             });
-            
+
             Ok(())
         }
 
@@ -751,8 +751,14 @@ pub mod pallet {
             ensure!(amount > 0, Error::<T>::AmountMustBeNonZero);
 
             // Compliance: redeemer must not be sanctioned and must have at least Basic KYC (level 1)
-            ensure!(!T::Oracle::is_sanctioned(&who), Error::<T>::SanctionedEntity);
-            ensure!(T::Oracle::meets_kyc_requirement(&who, 1), Error::<T>::KycVerificationRequired);
+            ensure!(
+                !T::Oracle::is_sanctioned(&who),
+                Error::<T>::SanctionedEntity
+            );
+            ensure!(
+                T::Oracle::meets_kyc_requirement(&who, 1),
+                Error::<T>::KycVerificationRequired
+            );
 
             // COMP-CRIT-1: Travel rule — large redemptions require Enhanced KYC (L2)
             let threshold = T::TravelRuleThreshold::get();
@@ -765,21 +771,18 @@ pub mod pallet {
 
             // Verify user has sufficient bBZD balance
             let balance = Self::bbzd_balances(&who);
-            ensure!(
-                balance >= amount,
-                Error::<T>::InsufficientBbzdBalance
-            );
-            
+            ensure!(balance >= amount, Error::<T>::InsufficientBbzdBalance);
+
             // Burn bBZD immediately (remove from circulation)
             BBZDBalances::<T>::mutate(&who, |balance| {
                 *balance = balance.saturating_sub(amount);
             });
-            
+
             // Update total supply
             TotalBbzdSupply::<T>::mutate(|supply| {
                 *supply = supply.saturating_sub(amount);
             });
-            
+
             // Create redemption request for Central Bank processing
             let redemption_id = Self::next_redemption_id();
             let request = RedemptionRequest {
@@ -789,10 +792,11 @@ pub mod pallet {
                 redemption_id,
                 status: RedemptionStatus::Pending,
             };
-            
+
             RedemptionRequests::<T>::insert(redemption_id, request);
             // W-4: Use checked_add to prevent ID collision at u64::MAX
-            let next_id = redemption_id.checked_add(1)
+            let next_id = redemption_id
+                .checked_add(1)
                 .ok_or(Error::<T>::RedemptionQueueFull)?;
             NextRedemptionId::<T>::put(next_id);
 
@@ -801,10 +805,10 @@ pub mod pallet {
                 ids.try_push(redemption_id)
                     .map_err(|_| Error::<T>::RedemptionQueueFull)
             })?;
-            
+
             // Update total supply
             let new_supply = TotalBbzdSupply::<T>::get();
-            
+
             // COMP-CRIT-2: Report transaction to structuring detector
             T::ComplianceReporter::report_transaction(&who, amount);
 
@@ -816,7 +820,7 @@ pub mod pallet {
                 redemption_id,
                 new_total_supply: new_supply,
             });
-            
+
             Ok(())
         }
 
@@ -830,28 +834,25 @@ pub mod pallet {
         /// - `redemption_id`: ID of the redemption request
         #[pallet::call_index(2)]
         #[pallet::weight(T::WeightInfo::process_redemption())]
-        pub fn process_redemption(
-            origin: OriginFor<T>,
-            redemption_id: u64,
-        ) -> DispatchResult {
+        pub fn process_redemption(origin: OriginFor<T>, redemption_id: u64) -> DispatchResult {
             let processor = ensure_signed(origin)?;
-            
+
             // Only Central Bank can mark redemptions as processed
             ensure!(
                 Self::authorized_minters(&processor),
                 Error::<T>::UnauthorizedMinter
             );
-            
+
             // Get redemption request
-            let mut request = Self::redemption_requests(redemption_id)
-                .ok_or(Error::<T>::InvalidRedemptionId)?;
-            
+            let mut request =
+                Self::redemption_requests(redemption_id).ok_or(Error::<T>::InvalidRedemptionId)?;
+
             // Verify not already processed
             ensure!(
                 matches!(request.status, RedemptionStatus::Pending),
                 Error::<T>::RedemptionAlreadyProcessed
             );
-            
+
             // Mark as processed
             request.status = RedemptionStatus::Processed;
             RedemptionRequests::<T>::insert(redemption_id, request.clone());
@@ -862,23 +863,22 @@ pub mod pallet {
                     ids.swap_remove(pos);
                 }
             });
-            
+
             // Emit confirmation event with redemption_id as bank transfer reference
             // (Central Bank would provide actual bank transaction ID off-chain)
             // Using simple numeric conversion without to_string (no_std compat)
             let id_bytes = redemption_id.to_le_bytes();
             let mut transfer_ref_bytes = b"REDEMPTION_".to_vec();
             transfer_ref_bytes.extend_from_slice(&id_bytes);
-            let transfer_ref: BoundedVec<u8, ConstU32<64>> = transfer_ref_bytes
-                .try_into()
-                .unwrap_or_default();
-            
+            let transfer_ref: BoundedVec<u8, ConstU32<64>> =
+                transfer_ref_bytes.try_into().unwrap_or_default();
+
             Self::deposit_event(Event::RedemptionProcessed {
                 redemption_id,
                 amount: request.amount,
                 bank_transfer_reference: transfer_ref,
             });
-            
+
             Ok(())
         }
 
@@ -899,14 +899,14 @@ pub mod pallet {
             authorized: bool,
         ) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
-            
+
             AuthorizedMinters::<T>::insert(&account, authorized);
-            
+
             Self::deposit_event(Event::MinterAuthorization {
                 minter: account,
                 authorized,
             });
-            
+
             Ok(())
         }
 
@@ -921,32 +921,30 @@ pub mod pallet {
         /// - `new_reserves`: Updated BZD reserve amount (in bBZD decimals)
         #[pallet::call_index(4)]
         #[pallet::weight(T::WeightInfo::update_reserves())]
-        pub fn update_reserves(
-            origin: OriginFor<T>,
-            new_reserves: u128,
-        ) -> DispatchResult {
+        pub fn update_reserves(origin: OriginFor<T>, new_reserves: u128) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
-            
+
             let old_reserves = Self::central_bank_reserves();
             let total_supply = Self::total_bbzd_supply();
-            
+
             // Reserves can never be less than circulating supply
             // (would mean unbacked bBZD in circulation)
             ensure!(
                 new_reserves >= total_supply,
                 Error::<T>::InsufficientReserves
             );
-            
+
             CentralBankReserves::<T>::put(new_reserves);
-            
+
             Self::deposit_event(Event::ReservesUpdated {
                 old_reserves,
                 new_reserves,
                 total_supply,
             });
-            
+
             Ok(())
-        }        /// Process tourism payment with incentives (DALLA-based, NOT bBZD)
+        }
+        /// Process tourism payment with incentives (DALLA-based, NOT bBZD)
         ///
         /// Tourism incentive payments use DALLA tokens (2-8% rewards based on category).
         /// This does NOT involve bBZD - tourists pay vendors in DALLA and receive
@@ -968,8 +966,14 @@ pub mod pallet {
             let tourist = ensure_signed(origin)?;
 
             // COMP-CRIT-1: Compliance checks (previously missing entirely)
-            ensure!(!T::Oracle::is_sanctioned(&tourist), Error::<T>::SanctionedEntity);
-            ensure!(T::Oracle::meets_kyc_requirement(&tourist, 1), Error::<T>::KycVerificationRequired);
+            ensure!(
+                !T::Oracle::is_sanctioned(&tourist),
+                Error::<T>::SanctionedEntity
+            );
+            ensure!(
+                T::Oracle::meets_kyc_requirement(&tourist, 1),
+                Error::<T>::KycVerificationRequired
+            );
 
             // Travel rule — large payments require Enhanced KYC (L2)
             let amount_u128: u128 = amount.saturated_into();
@@ -992,16 +996,16 @@ pub mod pallet {
                 T::Oracle::is_merchant_verified(&vendor, category_id),
                 Error::<T>::MerchantNotVerified
             );
-            
+
             // Convert category_id to TourismCategory for incentive calculation
             // Map Oracle categories to Economy categories
             let category = match category_id {
                 0 => TourismCategory::Accommodation,
-                1 => TourismCategory::Dining,          // Oracle FoodBeverage
-                2 => TourismCategory::Tours,            // Oracle TourOperator
+                1 => TourismCategory::Dining, // Oracle FoodBeverage
+                2 => TourismCategory::Tours,  // Oracle TourOperator
                 3 => TourismCategory::Transportation,
-                4 => TourismCategory::Shopping,         // Oracle Retail
-                5 => TourismCategory::Cultural,         // Oracle Other
+                4 => TourismCategory::Shopping, // Oracle Retail
+                5 => TourismCategory::Cultural, // Oracle Other
                 _ => return Err(Error::<T>::InvalidTourismCategory.into()),
             };
 
@@ -1020,7 +1024,12 @@ pub mod pallet {
 
             // Pay DALLA incentive from treasury
             let treasury = T::Treasury::get();
-            T::Currency::transfer(&treasury, &tourist, incentive_amount, ExistenceRequirement::KeepAlive)?;
+            T::Currency::transfer(
+                &treasury,
+                &tourist,
+                incentive_amount,
+                ExistenceRequirement::KeepAlive,
+            )?;
 
             // COMP-CRIT-2: Report transaction to structuring detector
             T::ComplianceReporter::report_transaction(&tourist, amount_u128);
@@ -1052,10 +1061,19 @@ pub mod pallet {
             ensure!(from != to, Error::<T>::InsufficientBbzdBalance); // no self-transfer
 
             // KYC/sanctions checks on both parties
-            ensure!(!T::Oracle::is_sanctioned(&from), Error::<T>::SanctionedEntity);
+            ensure!(
+                !T::Oracle::is_sanctioned(&from),
+                Error::<T>::SanctionedEntity
+            );
             ensure!(!T::Oracle::is_sanctioned(&to), Error::<T>::SanctionedEntity);
-            ensure!(T::Oracle::meets_kyc_requirement(&from, 1), Error::<T>::KycVerificationRequired);
-            ensure!(T::Oracle::meets_kyc_requirement(&to, 1), Error::<T>::KycVerificationRequired);
+            ensure!(
+                T::Oracle::meets_kyc_requirement(&from, 1),
+                Error::<T>::KycVerificationRequired
+            );
+            ensure!(
+                T::Oracle::meets_kyc_requirement(&to, 1),
+                Error::<T>::KycVerificationRequired
+            );
 
             // Travel rule for large transfers
             let threshold = T::TravelRuleThreshold::get();
@@ -1065,12 +1083,17 @@ pub mod pallet {
                     Error::<T>::TravelRuleEnhancedKycRequired
                 );
                 Self::deposit_event(Event::TravelRuleTriggered {
-                    from: from.clone(), to: to.clone(), amount,
+                    from: from.clone(),
+                    to: to.clone(),
+                    amount,
                 });
             }
 
             let sender_balance = BBZDBalances::<T>::get(&from);
-            ensure!(sender_balance >= amount, Error::<T>::InsufficientBbzdBalance);
+            ensure!(
+                sender_balance >= amount,
+                Error::<T>::InsufficientBbzdBalance
+            );
 
             BBZDBalances::<T>::mutate(&from, |b| *b = b.saturating_sub(amount));
             BBZDBalances::<T>::mutate(&to, |b| *b = b.saturating_add(amount));
@@ -1078,28 +1101,26 @@ pub mod pallet {
             // Report to compliance structuring detector
             T::ComplianceReporter::report_transaction(&from, amount);
 
-            Self::deposit_event(Event::BbzdTransferred {
-                from, to, amount,
-            });
+            Self::deposit_event(Event::BbzdTransferred { from, to, amount });
 
             Ok(())
         }
-        
+
         /// Burn DALLA tokens voluntarily (user-initiated deflationary mechanism)
-        /// 
+        ///
         /// Allows any user to permanently destroy their DALLA tokens, reducing the total supply.
         /// This creates deflationary pressure and helps stabilize the economy. NOT related to bBZD.
-        /// 
+        ///
         /// # Parameters
         /// - `origin`: Signed origin of the account burning tokens
         /// - `amount`: Amount of DALLA to burn (must not exceed user's balance)
-        /// 
+        ///
         /// # Errors
         /// - `InsufficientBalance`: User doesn't have enough DALLA to burn
-        /// 
+        ///
         /// # Events
         /// - `DallaBurned { who, amount, new_supply }`: Emitted when tokens are successfully burned
-        /// 
+        ///
         /// # Example
         /// ```ignore
         /// // Burn 1000 DALLA (1000 * 10^6 with 6 decimals)
@@ -1112,19 +1133,16 @@ pub mod pallet {
             amount: <T::Currency as Currency<T::AccountId>>::Balance,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            
+
             // Ensure non-zero amount
-            ensure!(
-                amount > Zero::zero(),
-                Error::<T>::AmountMustBeNonZero
-            );
-            
+            ensure!(amount > Zero::zero(), Error::<T>::AmountMustBeNonZero);
+
             // Verify balance
             ensure!(
                 T::Currency::free_balance(&who) >= amount,
                 Error::<T>::InsufficientBalance
             );
-            
+
             // Slash tokens (effectively burning them)
             // slash() returns (NegativeImbalance, remaining) — remaining is the amount that could NOT be slashed
             let (imbalance, remaining) = T::Currency::slash(&who, amount);
@@ -1145,28 +1163,28 @@ pub mod pallet {
                 amount: actually_burned,
                 new_supply,
             });
-            
+
             Ok(())
         }
-        
+
         /// Governance-controlled burn from treasury (monetary policy tool)
-        /// 
+        ///
         /// Allows governance to burn DALLA tokens directly from the treasury account.
         /// This is a critical economic policy tool for controlling inflation, managing supply,
         /// and responding to macroeconomic conditions. Only callable by governance origin
         /// (e.g., elected councils, root, or multi-signature governance).
-        /// 
+        ///
         /// # Parameters
         /// - `origin`: Governance origin (must pass GovernanceOrigin check)
         /// - `amount`: Amount of DALLA to burn from treasury (must not exceed treasury balance)
-        /// 
+        ///
         /// # Errors
         /// - `BadOrigin`: Caller is not authorized governance origin
         /// - `InsufficientBalance`: Treasury doesn't have enough DALLA to burn
-        /// 
+        ///
         /// # Events
         /// - `GovernanceBurn { amount, new_supply }`: Emitted when tokens are successfully burned
-        /// 
+        ///
         /// # Example
         /// ```ignore
         /// // Governance burns 1M DALLA from treasury (1M * 10^6 with 6 decimals)
@@ -1180,15 +1198,15 @@ pub mod pallet {
         ) -> DispatchResult {
             // Only governance can call
             T::GovernanceOrigin::ensure_origin(origin)?;
-            
+
             let treasury = T::Treasury::get();
-            
+
             // Verify treasury balance
             ensure!(
                 T::Currency::free_balance(&treasury) >= amount,
                 Error::<T>::InsufficientBalance
             );
-            
+
             // Slash from treasury
             let (imbalance, remaining) = T::Currency::slash(&treasury, amount);
             let actually_burned = imbalance.peek();
@@ -1206,7 +1224,7 @@ pub mod pallet {
                 amount: actually_burned,
                 new_supply,
             });
-            
+
             Ok(())
         }
     }
@@ -1229,9 +1247,16 @@ pub mod pallet {
             if stale {
                 LastMintRateLimitBlock::<T>::put(current_block);
             }
-            let prev = if stale { 0u32 } else { MintCallsThisBlock::<T>::get(who) };
+            let prev = if stale {
+                0u32
+            } else {
+                MintCallsThisBlock::<T>::get(who)
+            };
             let count = prev.saturating_add(1);
-            ensure!(count <= T::MaxMintPerBlock::get(), Error::<T>::RateLimitExceeded);
+            ensure!(
+                count <= T::MaxMintPerBlock::get(),
+                Error::<T>::RateLimitExceeded
+            );
             MintCallsThisBlock::<T>::insert(who, count);
             Ok(())
         }
@@ -1239,12 +1264,12 @@ pub mod pallet {
         /// Get tourism incentive rate for category (Permill parts: 1_000_000 = 100%)
         pub fn get_tourism_incentive_rate(category: &TourismCategory) -> u32 {
             match category {
-                TourismCategory::Accommodation => 50_000, // 5%
-                TourismCategory::Dining => 30_000,        // 3%
-                TourismCategory::Tours => 70_000,         // 7%
+                TourismCategory::Accommodation => 50_000,  // 5%
+                TourismCategory::Dining => 30_000,         // 3%
+                TourismCategory::Tours => 70_000,          // 7%
                 TourismCategory::Transportation => 20_000, // 2%
-                TourismCategory::Shopping => 40_000,      // 4%
-                TourismCategory::Cultural => 80_000,      // 8%
+                TourismCategory::Shopping => 40_000,       // 4%
+                TourismCategory::Cultural => 80_000,       // 8%
             }
         }
     }

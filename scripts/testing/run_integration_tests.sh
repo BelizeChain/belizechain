@@ -11,7 +11,7 @@ echo ""
 # Check if node is running
 if ! curl -s -o /dev/null -w "%{http_code}" http://localhost:9933 2>/dev/null | grep -q "200\|405"; then
     echo "❌ BelizeChain node not running at localhost:9933"
-    echo "💡 Start node with: ./target/release/belizechain-node --chain=testnet --tmp --alice"
+    echo "💡 Start node with: ./target/release/belizechain-node --chain=local --tmp --alice"
     exit 1
 fi
 echo "✅ BelizeChain node running"
@@ -22,7 +22,7 @@ export PYTHONPATH=$(pwd):$PYTHONPATH
 
 # Run tests based on argument
 if [ "$1" == "blockchain" ]; then
-    echo "🔬 Running Blockchain Core Tests (16 pallets)..."
+    echo "🔬 Running Blockchain Core Tests..."
     python3 -m pytest tests/blockchain/ -v --tb=short
 elif [ "$1" == "cross-pallet" ]; then
     echo "🔬 Running Cross-Pallet Integration Tests..."
@@ -46,7 +46,7 @@ else
     echo "Usage: $0 {blockchain|cross-pallet|governance|economic|belizex|e2e|all}"
     echo ""
     echo "Options:"
-    echo "  blockchain    - Run blockchain core pallet tests (16 pallets)"
+    echo "  blockchain    - Run blockchain core pallet tests"
     echo "  cross-pallet  - Run cross-pallet integration tests"
     echo "  governance    - Run governance system tests (proposals, voting, treasury, council, emergency)"
     echo "  economic      - Run economic system tests (DALLA/bBZD)"

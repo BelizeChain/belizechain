@@ -410,4 +410,4 @@ impl pallet_belize_consensus::Config for Runtime {
 
 **Maintained by:** BelizeChain Core Team  
 **Last Updated:** January 29, 2026  
-**Status:** Production Ready (Polkadot SDK stable2512) - Integrated with Nawal AI and Kinich Quantum
+**Status:** Production Ready (Polkadot SDK stable2603) - Integrated with Nawal AI and Kinich Quantum

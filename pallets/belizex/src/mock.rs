@@ -1,11 +1,18 @@
 //! Mock runtime for BelizeX pallet tests
 #![allow(dead_code)]
 
-use crate as pallet_belize_belizex;
 use super::*;
-use frame_support::{parameter_types, traits::{ConstU16, ConstU32, Everything}, PalletId};
+use crate as pallet_belize_belizex;
+use frame_support::{
+    parameter_types,
+    traits::{ConstU16, ConstU32, Everything},
+    PalletId,
+};
 use frame_system as system;
-use sp_runtime::{traits::{BlakeTwo256, IdentityLookup}, BuildStorage};
+use sp_runtime::{
+    traits::{BlakeTwo256, IdentityLookup},
+    BuildStorage,
+};
 
 pub type AccountId = u64;
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -13,16 +20,24 @@ type Block = frame_system::mocking::MockBlock<Test>;
 // Minimal KYC impl for tests
 pub struct MockKyc;
 impl KycCheck<AccountId> for MockKyc {
-    fn is_kyc_ok(_who: &AccountId) -> bool { true }
-    fn is_sanctioned(_who: &AccountId) -> bool { false }
+    fn is_kyc_ok(_who: &AccountId) -> bool {
+        true
+    }
+    fn is_sanctioned(_who: &AccountId) -> bool {
+        false
+    }
 }
 
 // A dummy KYC that rejects to test gating
 #[allow(dead_code)]
 pub struct DenyKyc;
 impl KycCheck<AccountId> for DenyKyc {
-    fn is_kyc_ok(_who: &AccountId) -> bool { false }
-    fn is_sanctioned(_who: &AccountId) -> bool { true }
+    fn is_kyc_ok(_who: &AccountId) -> bool {
+        false
+    }
+    fn is_sanctioned(_who: &AccountId) -> bool {
+        true
+    }
 }
 
 parameter_types! {
@@ -151,7 +166,11 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
         .build_storage()
         .unwrap();
     pallet_balances::GenesisConfig::<Test> {
-        balances: vec![(1, 1_000_000_000_000u128), (2, 1_000_000_000_000u128), (999, 1_000_000_000_000u128)],
+        balances: vec![
+            (1, 1_000_000_000_000u128),
+            (2, 1_000_000_000_000u128),
+            (999, 1_000_000_000_000u128),
+        ],
         dev_accounts: Default::default(),
     }
     .assimilate_storage(&mut t)

@@ -287,4 +287,4 @@ pub trait ComplianceProvider<AccountId> {
 
 **Maintained by:** BelizeChain Core Team  
 **Last Updated:** January 29, 2026  
-**Status:** Production Ready (Polkadot SDK stable2512)
+**Status:** Production Ready (Polkadot SDK stable2603)

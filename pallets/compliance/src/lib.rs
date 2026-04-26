@@ -3,7 +3,7 @@
 //! # BelizeChain Compliance Pallet - Production Ready
 //!
 //! ## Overview
-//! 
+//!
 //! This pallet provides comprehensive regulatory compliance enforcement for BelizeChain,
 //! ensuring all participants meet KYC/AML requirements and comply with international standards
 //! including FATF recommendations, while maintaining privacy through hash-based verification.
@@ -66,13 +66,13 @@
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::{
     pallet_prelude::*,
-    traits::{Currency, ReservableCurrency, UnixTime, Get},
-    BoundedVec,
+    traits::{Currency, Get, ReservableCurrency, UnixTime},
     weights::Weight,
+    BoundedVec,
 };
 use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
-use sp_runtime::{Saturating, SaturatedConversion};
+use sp_runtime::{SaturatedConversion, Saturating};
 use sp_std::prelude::*;
 
 #[cfg(test)]
@@ -83,9 +83,9 @@ mod tests;
 
 pub use pallet::*;
 
-pub mod weights;
 /// Runtime API declaration for off-chain compliance queries (AR-11).
 pub mod runtime_api;
+pub mod weights;
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
@@ -94,7 +94,11 @@ mod benchmarking;
 
 /// Type alias for suspicious activity report entries
 /// (ActivityType, BlockNumber, Description)
-pub type SuspiciousActivityReport<BlockNumber> = (SuspiciousActivityType, BlockNumber, BoundedVec<u8, ConstU32<256>>);
+pub type SuspiciousActivityReport<BlockNumber> = (
+    SuspiciousActivityType,
+    BlockNumber,
+    BoundedVec<u8, ConstU32<256>>,
+);
 
 /// Verification levels for compliance
 #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
@@ -353,20 +357,16 @@ pub mod pallet {
         type AccountSanctionsChecker: AccountSanctionsChecker<Self::AccountId>;
     }
 
-    pub type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+    pub type BalanceOf<T> =
+        <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
     // ===== STORAGE =====
 
     /// Compliance status for each account
     #[pallet::storage]
     #[pallet::getter(fn compliance_status)]
-    pub type ComplianceStatusOf<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        ComplianceStatus,
-        ValueQuery,
-    >;
+    pub type ComplianceStatusOf<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, ComplianceStatus, ValueQuery>;
 
     /// Audit trail for compliance actions
     #[pallet::storage]
@@ -393,24 +393,14 @@ pub mod pallet {
     /// Sanctions list (hash-based for privacy)
     #[pallet::storage]
     #[pallet::getter(fn sanctions_list)]
-    pub type SanctionsList<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        [u8; 32],
-        SanctionEntry,
-        OptionQuery,
-    >;
+    pub type SanctionsList<T: Config> =
+        StorageMap<_, Blake2_128Concat, [u8; 32], SanctionEntry, OptionQuery>;
 
     /// Whitelisted accounts for special operations
     #[pallet::storage]
     #[pallet::getter(fn is_whitelisted)]
-    pub type WhitelistedAccounts<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        bool,
-        ValueQuery,
-    >;
+    pub type WhitelistedAccounts<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, bool, ValueQuery>;
 
     /// Restricted accounts (blocked from operations)
     #[pallet::storage]
@@ -470,10 +460,8 @@ pub mod pallet {
             }
 
             let mut total_weight = base_weight;
-            let current_block: u64 = TryInto::<u64>::try_into(
-                frame_system::Pallet::<T>::block_number(),
-            )
-            .unwrap_or(0);
+            let current_block: u64 =
+                TryInto::<u64>::try_into(frame_system::Pallet::<T>::block_number()).unwrap_or(0);
 
             // Collect account keys first to avoid iterator invalidation on mutate.
             let accounts: Vec<T::AccountId> = SuspiciousActivities::<T>::iter_keys()
@@ -494,10 +482,8 @@ pub mod pallet {
                     .into_inner()
                     .into_iter()
                     .filter(|report| {
-                        let report_block: u64 =
-                            TryInto::<u64>::try_into(report.1).unwrap_or(0);
-                        current_block.saturating_sub(report_block)
-                            < SUSPICIOUS_ACTIVITY_TTL_BLOCKS
+                        let report_block: u64 = TryInto::<u64>::try_into(report.1).unwrap_or(0);
+                        current_block.saturating_sub(report_block) < SUSPICIOUS_ACTIVITY_TTL_BLOCKS
                     })
                     .collect();
 
@@ -523,46 +509,32 @@ pub mod pallet {
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// Account verification level updated (level as u8 for encoding)
-        VerificationLevelUpdated {
-            account: T::AccountId,
-            level: u8,
-        },
+        VerificationLevelUpdated { account: T::AccountId, level: u8 },
         /// Risk level updated for account (risk as u8 for encoding)
         RiskLevelUpdated {
             account: T::AccountId,
             risk_level: u8,
         },
         /// Account whitelisted
-        AccountWhitelisted {
-            account: T::AccountId,
-        },
+        AccountWhitelisted { account: T::AccountId },
         /// Account restricted
         AccountRestricted {
             account: T::AccountId,
             reason: BoundedVec<u8, ConstU32<256>>,
         },
         /// Account restriction lifted
-        RestrictionLifted {
-            account: T::AccountId,
-        },
+        RestrictionLifted { account: T::AccountId },
         /// Suspicious activity reported (activity_type as u8 for encoding)
         SuspiciousActivityReported {
             account: T::AccountId,
             activity_type: u8,
         },
         /// Sanctions entry added
-        SanctionsEntryAdded {
-            entity_hash: [u8; 32],
-        },
+        SanctionsEntryAdded { entity_hash: [u8; 32] },
         /// Sanctions entry removed
-        SanctionsEntryRemoved {
-            entity_hash: [u8; 32],
-        },
+        SanctionsEntryRemoved { entity_hash: [u8; 32] },
         /// Compliance check performed
-        ComplianceCheckPerformed {
-            account: T::AccountId,
-            passed: bool,
-        },
+        ComplianceCheckPerformed { account: T::AccountId, passed: bool },
         /// Audit record created (action_type as u8 for encoding)
         AuditRecordCreated {
             account: T::AccountId,
@@ -636,17 +608,17 @@ pub mod pallet {
 
             let now = T::UnixTime::now().as_secs();
             let mut status = ComplianceStatusOf::<T>::get(&account);
-            
+
             let verification_level = VerificationLevel::from_u8(level);
             let risk = Self::u8_to_risk_level(risk_level);
-            
+
             // CP-4 FIX: Capture previous level before mutation
             let was_unverified = status.verification_level == VerificationLevel::None;
 
             status.verification_level = verification_level;
             status.risk_level = risk;
             status.last_verification = now;
-            
+
             ComplianceStatusOf::<T>::insert(&account, status);
 
             // Create audit record
@@ -664,8 +636,11 @@ pub mod pallet {
                 ComplianceStats::<T>::put((verified, restricted, suspicious, sanctions));
             }
 
-            Self::deposit_event(Event::VerificationLevelUpdated { account, level: verification_level.as_u8() });
-            
+            Self::deposit_event(Event::VerificationLevelUpdated {
+                account,
+                level: verification_level.as_u8(),
+            });
+
             Ok(())
         }
 
@@ -700,8 +675,11 @@ pub mod pallet {
                 b"Risk level updated".to_vec(),
             )?;
 
-            Self::deposit_event(Event::RiskLevelUpdated { account, risk_level: Self::risk_level_to_u8(risk) });
-            
+            Self::deposit_event(Event::RiskLevelUpdated {
+                account,
+                risk_level: Self::risk_level_to_u8(risk),
+            });
+
             Ok(())
         }
 
@@ -714,10 +692,7 @@ pub mod pallet {
         /// - `account`: Account to whitelist
         #[pallet::call_index(2)]
         #[pallet::weight(T::WeightInfo::whitelist_account())]
-        pub fn whitelist_account(
-            origin: OriginFor<T>,
-            account: T::AccountId,
-        ) -> DispatchResult {
+        pub fn whitelist_account(origin: OriginFor<T>, account: T::AccountId) -> DispatchResult {
             T::ComplianceOrigin::ensure_origin(origin)?;
 
             ComplianceStatusOf::<T>::try_mutate(&account, |status| -> DispatchResult {
@@ -735,7 +710,7 @@ pub mod pallet {
             )?;
 
             Self::deposit_event(Event::AccountWhitelisted { account });
-            
+
             Ok(())
         }
 
@@ -756,7 +731,8 @@ pub mod pallet {
         ) -> DispatchResult {
             T::ComplianceOrigin::ensure_origin(origin)?;
 
-            let bounded_reason: BoundedVec<u8, ConstU32<256>> = reason.try_into()
+            let bounded_reason: BoundedVec<u8, ConstU32<256>> = reason
+                .try_into()
                 .map_err(|_| Error::<T>::InvalidRiskAssessment)?;
 
             ComplianceStatusOf::<T>::try_mutate(&account, |status| -> DispatchResult {
@@ -784,8 +760,11 @@ pub mod pallet {
                 ComplianceStats::<T>::put((verified, restricted, suspicious, sanctions));
             }
 
-            Self::deposit_event(Event::AccountRestricted { account, reason: bounded_reason });
-            
+            Self::deposit_event(Event::AccountRestricted {
+                account,
+                reason: bounded_reason,
+            });
+
             Ok(())
         }
 
@@ -796,10 +775,7 @@ pub mod pallet {
         /// - `account`: Account to unrestrict
         #[pallet::call_index(4)]
         #[pallet::weight(T::WeightInfo::restrict_account())]
-        pub fn lift_restriction(
-            origin: OriginFor<T>,
-            account: T::AccountId,
-        ) -> DispatchResult {
+        pub fn lift_restriction(origin: OriginFor<T>, account: T::AccountId) -> DispatchResult {
             T::ComplianceOrigin::ensure_origin(origin)?;
 
             // CRIT-2 FIX: Only decrement counter if account was actually restricted
@@ -828,7 +804,7 @@ pub mod pallet {
             ComplianceStats::<T>::put((verified, restricted, suspicious, sanctions));
 
             Self::deposit_event(Event::RestrictionLifted { account });
-            
+
             Ok(())
         }
 
@@ -853,18 +829,23 @@ pub mod pallet {
 
             let activity = Self::u8_to_activity_type(activity_type);
 
-            let bounded_details: BoundedVec<u8, ConstU32<256>> = details.try_into()
+            let bounded_details: BoundedVec<u8, ConstU32<256>> = details
+                .try_into()
                 .map_err(|_| Error::<T>::InvalidRiskAssessment)?;
 
             let current_block = frame_system::Pallet::<T>::block_number();
 
             SuspiciousActivities::<T>::try_mutate(&account, |reports| -> DispatchResult {
                 // FIFO eviction: if at capacity, remove oldest report to make room
-                if reports.try_push((activity, current_block, bounded_details.clone())).is_err() {
+                if reports
+                    .try_push((activity, current_block, bounded_details.clone()))
+                    .is_err()
+                {
                     if !reports.is_empty() {
                         reports.remove(0);
                     }
-                    reports.try_push((activity, current_block, bounded_details.clone()))
+                    reports
+                        .try_push((activity, current_block, bounded_details.clone()))
                         .map_err(|_| Error::<T>::SuspiciousActivityReportsOverflow)?;
                 }
                 Ok(())
@@ -888,8 +869,11 @@ pub mod pallet {
             suspicious = suspicious.saturating_add(1);
             ComplianceStats::<T>::put((verified, restricted, suspicious, sanctions));
 
-            Self::deposit_event(Event::SuspiciousActivityReported { account, activity_type });
-            
+            Self::deposit_event(Event::SuspiciousActivityReported {
+                account,
+                activity_type,
+            });
+
             Ok(())
         }
 
@@ -915,7 +899,8 @@ pub mod pallet {
                 Error::<T>::SanctionsEntryExists
             );
 
-            let bounded_source: BoundedVec<u8, ConstU32<32>> = list_source.try_into()
+            let bounded_source: BoundedVec<u8, ConstU32<32>> = list_source
+                .try_into()
                 .map_err(|_| Error::<T>::InvalidRiskAssessment)?;
 
             let current_block = frame_system::Pallet::<T>::block_number();
@@ -931,7 +916,7 @@ pub mod pallet {
             SanctionsList::<T>::insert(entity_hash, entry);
 
             Self::deposit_event(Event::SanctionsEntryAdded { entity_hash });
-            
+
             Ok(())
         }
 
@@ -956,7 +941,7 @@ pub mod pallet {
             SanctionsList::<T>::remove(entity_hash);
 
             Self::deposit_event(Event::SanctionsEntryRemoved { entity_hash });
-            
+
             Ok(())
         }
 
@@ -973,9 +958,7 @@ pub mod pallet {
         /// - `origin`: Signed by the account itself
         #[pallet::call_index(8)]
         #[pallet::weight(T::WeightInfo::update_verification_level())]
-        pub fn sync_verification_from_identity(
-            origin: OriginFor<T>,
-        ) -> DispatchResult {
+        pub fn sync_verification_from_identity(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
             let now = T::UnixTime::now().as_secs();
@@ -1027,7 +1010,8 @@ pub mod pallet {
             success: bool,
             details: Vec<u8>,
         ) -> DispatchResult {
-            let bounded_details: BoundedVec<u8, ConstU32<256>> = details.try_into()
+            let bounded_details: BoundedVec<u8, ConstU32<256>> = details
+                .try_into()
                 .map_err(|_| Error::<T>::InvalidRiskAssessment)?;
 
             let now = T::UnixTime::now().as_secs();
@@ -1049,13 +1033,17 @@ pub mod pallet {
                     if !records.is_empty() {
                         records.remove(0);
                     }
-                    records.try_push(record)
+                    records
+                        .try_push(record)
                         .map_err(|_| Error::<T>::AuditRecordsOverflow)?;
                 }
                 Ok(())
             })?;
 
-            Self::deposit_event(Event::AuditRecordCreated { account: account.clone(), action_type: Self::action_type_to_u8(action_type) });
+            Self::deposit_event(Event::AuditRecordCreated {
+                account: account.clone(),
+                action_type: Self::action_type_to_u8(action_type),
+            });
 
             Ok(())
         }
@@ -1074,7 +1062,7 @@ pub mod pallet {
             let status = ComplianceStatusOf::<T>::get(account);
             let now = T::UnixTime::now().as_secs();
             let validity_period = T::VerificationValidityPeriod::get();
-            
+
             // ARITH-COMP-01 FIX: use saturating_sub to avoid theoretical u64 overflow
             now.saturating_sub(status.last_verification) <= validity_period
         }
@@ -1082,32 +1070,32 @@ pub mod pallet {
         /// Check if account can participate in validator operations
         pub fn can_be_validator(account: &T::AccountId) -> bool {
             let status = ComplianceStatusOf::<T>::get(account);
-            
-            !status.restricted &&
-            status.verification_level.as_u8() >= T::MinValidatorVerification::get().as_u8() &&
-            Self::is_verification_valid(account) &&
-            status.risk_level != RiskLevel::Prohibited
+
+            !status.restricted
+                && status.verification_level.as_u8() >= T::MinValidatorVerification::get().as_u8()
+                && Self::is_verification_valid(account)
+                && status.risk_level != RiskLevel::Prohibited
         }
 
         /// Check if account can participate in governance
         pub fn can_participate_in_governance(account: &T::AccountId) -> bool {
             let status = ComplianceStatusOf::<T>::get(account);
-            
-            !status.restricted &&
-            status.verification_level.as_u8() >= T::MinGovernanceVerification::get().as_u8() &&
-            Self::is_verification_valid(account) &&
-            status.risk_level != RiskLevel::Prohibited
+
+            !status.restricted
+                && status.verification_level.as_u8() >= T::MinGovernanceVerification::get().as_u8()
+                && Self::is_verification_valid(account)
+                && status.risk_level != RiskLevel::Prohibited
         }
 
         /// Check if account can access treasury
         pub fn can_access_treasury(account: &T::AccountId) -> bool {
             let status = ComplianceStatusOf::<T>::get(account);
-            
-            (status.whitelisted || 
-             status.verification_level.as_u8() >= T::MinTreasuryVerification::get().as_u8()) &&
-            !status.restricted &&
-            Self::is_verification_valid(account) &&
-            status.risk_level != RiskLevel::Prohibited
+
+            (status.whitelisted
+                || status.verification_level.as_u8() >= T::MinTreasuryVerification::get().as_u8())
+                && !status.restricted
+                && Self::is_verification_valid(account)
+                && status.risk_level != RiskLevel::Prohibited
         }
 
         /// Check if transaction requires travel rule reporting
@@ -1224,7 +1212,10 @@ pub mod pallet {
 
                 // Check structuring condition
                 let all_below = entries.iter().all(|(a, _)| *a < threshold);
-                let cumulative: u128 = entries.iter().map(|(a, _)| a).fold(0u128, |acc, a| acc.saturating_add(*a));
+                let cumulative: u128 = entries
+                    .iter()
+                    .map(|(a, _)| a)
+                    .fold(0u128, |acc, a| acc.saturating_add(*a));
                 let tx_count = entries.len() as u32;
 
                 if all_below && cumulative >= threshold && tx_count >= 2 {

@@ -12,8 +12,8 @@
 
 use super::*;
 use frame_benchmarking::v2::*;
-use frame_system::RawOrigin;
 use frame_support::traits::Currency;
+use frame_system::RawOrigin;
 use sp_std::vec;
 
 const SEED: u32 = 0;
@@ -24,11 +24,9 @@ fn setup_chain_config<T: Config>() {
         enabled: true,
         min_confirmations: 12,
         max_amount: 1_000_000_000_000_000_000u128, // 1M DALLA
-        fee_rate: 100, // 1%
+        fee_rate: 100,                             // 1%
         pq_signatures_required: 1,
-        rpc_endpoint: vec![b'h', b't', b't', b'p']
-            .try_into()
-            .expect("rpc fits"),
+        rpc_endpoint: vec![b'h', b't', b't', b'p'].try_into().expect("rpc fits"),
         contract_address: None,
     };
     ChainConfigurations::<T>::insert(BridgeChain::Ethereum, config);
@@ -39,12 +37,8 @@ fn setup_bridge_validator<T: Config>(idx: u32) -> T::AccountId {
     let who: T::AccountId = account("bridge_val", idx, SEED);
     let validator = BridgeValidator {
         account: who.clone(),
-        pq_public_key: vec![1u8; 96]
-            .try_into()
-            .unwrap_or_default(),
-        supported_chains: vec![BridgeChain::Ethereum]
-            .try_into()
-            .unwrap_or_default(),
+        pq_public_key: vec![1u8; 96].try_into().unwrap_or_default(),
+        supported_chains: vec![BridgeChain::Ethereum].try_into().unwrap_or_default(),
         stake: 1_000_000_000_000u128,
         reliability_score: 100u8,
         signatures_count: 0u32,
@@ -94,7 +88,7 @@ mod benchmarks {
         setup_chain_config::<T>();
         let caller: T::AccountId = whitelisted_caller();
         let amount = 100_000_000_000_000u128; // 100 DALLA (above MinBridgeAmount of 50 DALLA)
-        // SAFETY(saturated_into): benchmark seed balance, well within Balance range
+                                              // SAFETY(saturated_into): benchmark seed balance, well within Balance range
         T::Currency::make_free_balance_be(&caller, (amount * 10).saturated_into());
 
         // Pre-fund treasury so the fee transfer doesn't fail due to ExistentialDeposit
@@ -104,7 +98,7 @@ mod benchmarks {
         #[extrinsic_call]
         initiate_bridge(
             RawOrigin::Signed(caller),
-            1u8, // Ethereum
+            1u8,           // Ethereum
             vec![0u8; 20], // target_address
             amount.saturated_into(),
             0u8, // DALLA
@@ -178,9 +172,8 @@ mod benchmarks {
         let tx_id = NextTxId::<T>::get();
         let current_block = frame_system::Pallet::<T>::block_number();
         let recipient_encoded = recipient.encode();
-        let recipient_bounded: BoundedVec<u8, ConstU32<64>> = recipient_encoded
-            .try_into()
-            .unwrap_or_default();
+        let recipient_bounded: BoundedVec<u8, ConstU32<64>> =
+            recipient_encoded.try_into().unwrap_or_default();
         let bridge_tx = BridgeTransaction {
             tx_id,
             initiator: validator.clone(),
@@ -209,10 +202,7 @@ mod benchmarks {
         T::Currency::make_free_balance_be(&escrow, (amount * 10).saturated_into());
 
         #[extrinsic_call]
-        process_unlock(
-            RawOrigin::Signed(validator),
-            tx_id,
-        );
+        process_unlock(RawOrigin::Signed(validator), tx_id);
     }
 
     // ───────────────────────────────────────────
@@ -234,7 +224,7 @@ mod benchmarks {
         #[extrinsic_call]
         send_cross_chain_message(
             RawOrigin::Signed(caller),
-            1u8, // Ethereum
+            1u8,           // Ethereum
             vec![1u8; 64], // payload
         );
     }
@@ -252,9 +242,9 @@ mod benchmarks {
         #[extrinsic_call]
         update_bridge_config(
             RawOrigin::Root,
-            1u8,   // chain: Ethereum
-            true,  // enabled
-            200u32, // fee_rate
+            1u8,                           // chain: Ethereum
+            true,                          // enabled
+            200u32,                        // fee_rate
             2_000_000_000_000_000_000u128, // max_amount
         );
     }

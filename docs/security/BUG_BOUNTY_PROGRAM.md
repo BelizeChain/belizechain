@@ -120,7 +120,7 @@ Welcome to the BelizeChain Bug Bounty Program! We're committed to building the m
 
 **Live Deployments:**
 - **Mainnet:** `https://mainnet.belizechain.org`
-- **Testnet:** `https://testnet.belizechain.org`
+- **Public testnet:** Operator-published endpoints for the current bounty window
 - **Staging:** `https://staging.belizechain.org`
 
 ---
@@ -723,7 +723,7 @@ We will NOT pursue legal action if you:
 ## 9. Frequently Asked Questions
 
 ### Q1: Can I test on mainnet?
-**A:** NO. Always use testnet. Exploiting mainnet results in disqualification and potential legal action. Testnet faucet: https://faucet.belizechain.org
+**A:** NO. Always use the operator-published public testnet. Exploiting mainnet results in disqualification and potential legal action. Testnet faucet: https://<current-public-testnet-faucet>
 
 ### Q2: How long until I get paid?
 **A:** 

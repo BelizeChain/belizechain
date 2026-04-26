@@ -10,10 +10,7 @@
 ///    a version guard: `if on_chain < N { ... }`.
 /// 4. Implement `pre_upgrade` / `post_upgrade` for `try-runtime` validation.
 use codec::{Decode, Encode};
-use frame_support::{
-    traits::OnRuntimeUpgrade,
-    weights::Weight,
-};
+use frame_support::{traits::OnRuntimeUpgrade, weights::Weight};
 use sp_std::marker::PhantomData;
 
 #[cfg(feature = "try-runtime")]
@@ -47,8 +44,7 @@ const MIGRATION_VERSION_KEY: &[u8] = b"belizechain::migration_version";
 /// MG-1 FIX: Uses twox_128 hashed key for proper storage namespacing.
 fn on_chain_version() -> u32 {
     let key = sp_core::hashing::twox_128(MIGRATION_VERSION_KEY);
-    frame_support::storage::unhashed::get::<u32>(&key)
-        .unwrap_or(0)
+    frame_support::storage::unhashed::get::<u32>(&key).unwrap_or(0)
 }
 
 /// Write the on-chain migration version.
@@ -58,11 +54,11 @@ fn set_on_chain_version(v: u32) {
 }
 
 /// Template for pallet storage migrations
-/// 
+///
 /// Usage:
 /// ```rust,ignore
 /// pub struct MigrateV1ToV2<T>(PhantomData<T>);
-/// 
+///
 /// impl<T: Config> OnRuntimeUpgrade for MigrateV1ToV2<T> {
 ///     fn on_runtime_upgrade() -> Weight {
 ///         let current = StorageVersion::get::<Pallet<T>>();
@@ -109,9 +105,7 @@ impl<T: frame_system::Config> OnRuntimeUpgrade for CoordinatedUpgrade<T> {
         let mut total_weight = Weight::zero();
 
         if on_chain >= CURRENT_RUNTIME_VERSION {
-            log::info!(
-                "✅ Runtime already at migration version {on_chain}, nothing to do."
-            );
+            log::info!("✅ Runtime already at migration version {on_chain}, nothing to do.");
             return total_weight;
         }
 
@@ -127,7 +121,7 @@ impl<T: frame_system::Config> OnRuntimeUpgrade for CoordinatedUpgrade<T> {
             //     MigrateEconomyV1ToV2::<T>::on_runtime_upgrade()
             // );
             total_weight = total_weight.saturating_add(
-                Weight::from_parts(1_000_000, 0) // bookkeeping weight
+                Weight::from_parts(1_000_000, 0), // bookkeeping weight
             );
             // MG-2 FIX: Advance version per-step for rollback safety
             set_on_chain_version(1);
@@ -157,8 +151,8 @@ impl<T: frame_system::Config> OnRuntimeUpgrade for CoordinatedUpgrade<T> {
 
     #[cfg(feature = "try-runtime")]
     fn post_upgrade(state: Vec<u8>) -> Result<(), sp_runtime::TryRuntimeError> {
-        let pre_version = u32::decode(&mut &state[..])
-            .map_err(|_| "Failed to decode pre-upgrade version")?;
+        let pre_version =
+            u32::decode(&mut &state[..]).map_err(|_| "Failed to decode pre-upgrade version")?;
         let post_version = on_chain_version();
         log::info!(
             "Post-upgrade check: {pre_version} → {post_version} (target: {CURRENT_RUNTIME_VERSION})"
@@ -190,16 +184,16 @@ pub mod test_utils {
 #[cfg(feature = "example-migration")]
 pub mod example {
     use super::*;
-    
+
     pub struct MigrateEconomyV1ToV2<T>(PhantomData<T>);
-    
+
     impl<T: frame_system::Config> OnRuntimeUpgrade for MigrateEconomyV1ToV2<T> {
         fn on_runtime_upgrade() -> Weight {
             log::info!("Migrating Economy pallet from V1 to V2...");
-            
+
             // Migration logic here
             // Example: Iterate through all accounts and add new field
-            
+
             Weight::from_parts(10_000_000, 0)
         }
 

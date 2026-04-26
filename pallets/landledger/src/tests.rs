@@ -16,8 +16,8 @@ fn register_property_works() {
             test_title(1),
             test_description("Beachfront residential lot"),
             test_coordinates(0, 0),
-            1000, // 1000 sqm
-            0, // Residential
+            1000,    // 1000 sqm
+            0,       // Residential
             500_000, // 500K bBZD assessed value
         ));
 
@@ -219,7 +219,7 @@ fn transfer_property_works() {
             1, // Property ID
             EVE,
             500_000, // Transfer price
-            0, // Sale
+            0,       // Sale
         ));
 
         // Verify ownership changed
@@ -270,13 +270,7 @@ fn transfer_property_requires_ownership() {
 
         // BOB tries to transfer ALICE's property
         assert_noop!(
-            LandLedger::transfer_property(
-                RuntimeOrigin::signed(BOB),
-                1,
-                EVE,
-                100_000,
-                0,
-            ),
+            LandLedger::transfer_property(RuntimeOrigin::signed(BOB), 1, EVE, 100_000, 0,),
             Error::<Test>::NotOwner
         );
     });
@@ -309,13 +303,7 @@ fn transfer_property_requires_oracle_verification() {
 
         // Transfer should fail because Oracle doesn't verify property 200 for ALICE
         assert_noop!(
-            LandLedger::transfer_property(
-                RuntimeOrigin::signed(ALICE),
-                200,
-                EVE,
-                100_000,
-                0,
-            ),
+            LandLedger::transfer_property(RuntimeOrigin::signed(ALICE), 200, EVE, 100_000, 0,),
             Error::<Test>::OwnershipVerificationFailed
         );
     });
@@ -348,13 +336,7 @@ fn transfer_property_checks_sanctions() {
 
         // SANCTIONED tries to transfer
         assert_noop!(
-            LandLedger::transfer_property(
-                RuntimeOrigin::signed(SANCTIONED),
-                101,
-                EVE,
-                100_000,
-                0,
-            ),
+            LandLedger::transfer_property(RuntimeOrigin::signed(SANCTIONED), 101, EVE, 100_000, 0,),
             Error::<Test>::AccountSanctioned
         );
     });
@@ -386,25 +368,13 @@ fn transfer_property_requires_buyer_kyc() {
 
         // Transfer to LOW_KYC (Level 1 - insufficient)
         assert_noop!(
-            LandLedger::transfer_property(
-                RuntimeOrigin::signed(ALICE),
-                1,
-                LOW_KYC,
-                100_000,
-                0,
-            ),
+            LandLedger::transfer_property(RuntimeOrigin::signed(ALICE), 1, LOW_KYC, 100_000, 0,),
             Error::<Test>::BuyerKycInsufficient
         );
 
         // Transfer to NO_KYC (no KYC data)
         assert_noop!(
-            LandLedger::transfer_property(
-                RuntimeOrigin::signed(ALICE),
-                1,
-                NO_KYC,
-                100_000,
-                0,
-            ),
+            LandLedger::transfer_property(RuntimeOrigin::signed(ALICE), 1, NO_KYC, 100_000, 0,),
             Error::<Test>::BuyerKycInsufficient
         );
     });
@@ -435,13 +405,7 @@ fn transfer_property_requires_government_verification() {
         Properties::<Test>::insert(1, property);
 
         assert_noop!(
-            LandLedger::transfer_property(
-                RuntimeOrigin::signed(ALICE),
-                1,
-                EVE,
-                100_000,
-                0,
-            ),
+            LandLedger::transfer_property(RuntimeOrigin::signed(ALICE), 1, EVE, 100_000, 0,),
             Error::<Test>::PropertyNotVerified
         );
     });
@@ -470,10 +434,7 @@ fn verify_property_works() {
         assert!(!property.government_verified);
 
         // Government verifies
-        assert_ok!(LandLedger::verify_property(
-            RuntimeOrigin::root(),
-            0,
-        ));
+        assert_ok!(LandLedger::verify_property(RuntimeOrigin::root(), 0,));
 
         // Now verified
         let property = LandLedger::properties(0).unwrap();
@@ -497,10 +458,7 @@ fn verify_property_requires_government_origin() {
 
         // Regular user cannot verify
         assert_noop!(
-            LandLedger::verify_property(
-                RuntimeOrigin::signed(ALICE),
-                0,
-            ),
+            LandLedger::verify_property(RuntimeOrigin::signed(ALICE), 0,),
             sp_runtime::DispatchError::BadOrigin
         );
     });
@@ -527,10 +485,7 @@ fn verify_property_fails_for_nonexistent() {
 fn survey_property_works() {
     new_test_ext().execute_with(|| {
         // Register surveyor
-        assert_ok!(LandLedger::register_surveyor(
-            RuntimeOrigin::root(),
-            BOB,
-        ));
+        assert_ok!(LandLedger::register_surveyor(RuntimeOrigin::root(), BOB,));
 
         // Register property
         assert_ok!(LandLedger::register_property(
@@ -552,7 +507,7 @@ fn survey_property_works() {
         assert_ok!(LandLedger::survey_property(
             RuntimeOrigin::signed(BOB),
             0,
-            150, // Actual measured area
+            150,                            // Actual measured area
             Some(test_coordinates(10, 10)), // Updated coordinates
         ));
 
@@ -580,12 +535,7 @@ fn survey_property_requires_authorized_surveyor() {
 
         // ALICE (not a surveyor) tries to survey
         assert_noop!(
-            LandLedger::survey_property(
-                RuntimeOrigin::signed(ALICE),
-                0,
-                150,
-                None,
-            ),
+            LandLedger::survey_property(RuntimeOrigin::signed(ALICE), 0, 150, None,),
             Error::<Test>::NotAuthorizedSurveyor
         );
     });
@@ -602,10 +552,7 @@ fn register_surveyor_works() {
         assert!(!LandLedger::government_surveyors(BOB));
 
         // Government registers BOB as surveyor
-        assert_ok!(LandLedger::register_surveyor(
-            RuntimeOrigin::root(),
-            BOB,
-        ));
+        assert_ok!(LandLedger::register_surveyor(RuntimeOrigin::root(), BOB,));
 
         // Now registered
         assert!(LandLedger::government_surveyors(BOB));
@@ -617,10 +564,7 @@ fn register_surveyor_requires_government_origin() {
     new_test_ext().execute_with(|| {
         // Regular user cannot register surveyor
         assert_noop!(
-            LandLedger::register_surveyor(
-                RuntimeOrigin::signed(ALICE),
-                BOB,
-            ),
+            LandLedger::register_surveyor(RuntimeOrigin::signed(ALICE), BOB,),
             sp_runtime::DispatchError::BadOrigin
         );
     });
@@ -668,17 +612,11 @@ fn account_id_generation_works() {
 fn remove_surveyor_works() {
     new_test_ext().execute_with(|| {
         // Register BOB as surveyor first
-        assert_ok!(LandLedger::register_surveyor(
-            RuntimeOrigin::root(),
-            BOB,
-        ));
+        assert_ok!(LandLedger::register_surveyor(RuntimeOrigin::root(), BOB,));
         assert!(LandLedger::government_surveyors(BOB));
 
         // Government removes surveyor
-        assert_ok!(LandLedger::remove_surveyor(
-            RuntimeOrigin::root(),
-            BOB,
-        ));
+        assert_ok!(LandLedger::remove_surveyor(RuntimeOrigin::root(), BOB,));
 
         // BOB is no longer a surveyor
         assert!(!LandLedger::government_surveyors(BOB));
@@ -998,13 +936,7 @@ fn transfer_property_buyer_sanctioned() {
         setup_verified_property(ALICE, 1);
         // Transfer to SANCTIONED (account 666) - buyer is sanctioned
         assert_noop!(
-            LandLedger::transfer_property(
-                RuntimeOrigin::signed(ALICE),
-                1,
-                SANCTIONED,
-                100_000,
-                0,
-            ),
+            LandLedger::transfer_property(RuntimeOrigin::signed(ALICE), 1, SANCTIONED, 100_000, 0,),
             Error::<Test>::AccountSanctioned
         );
     });
@@ -1466,12 +1398,7 @@ fn removed_surveyor_cannot_survey() {
 
         // BOB can no longer survey
         assert_noop!(
-            LandLedger::survey_property(
-                RuntimeOrigin::signed(BOB),
-                0,
-                200,
-                None,
-            ),
+            LandLedger::survey_property(RuntimeOrigin::signed(BOB), 0, 200, None,),
             Error::<Test>::NotAuthorizedSurveyor
         );
     });
@@ -1565,7 +1492,8 @@ fn register_property_emits_event() {
                 property_id: 0,
                 owner: ALICE,
                 title_number: title,
-            }.into()
+            }
+            .into(),
         );
     });
 }
@@ -1589,7 +1517,8 @@ fn transfer_property_emits_event() {
                 to_owner: EVE,
                 transfer_price: 200_000,
                 transfer_id: 0,
-            }.into()
+            }
+            .into(),
         );
     });
 }
@@ -1612,7 +1541,8 @@ fn verify_property_emits_event() {
             Event::PropertyVerified {
                 property_id: 0,
                 verifier: LandLedger::account_id(),
-            }.into()
+            }
+            .into(),
         );
     });
 }
@@ -1642,7 +1572,8 @@ fn survey_property_emits_event() {
                 property_id: 0,
                 surveyor: BOB,
                 area_sqm: 300,
-            }.into()
+            }
+            .into(),
         );
     });
 }
@@ -1652,11 +1583,7 @@ fn register_surveyor_emits_event() {
     new_test_ext().execute_with(|| {
         System::set_block_number(1);
         assert_ok!(LandLedger::register_surveyor(RuntimeOrigin::root(), BOB));
-        System::assert_has_event(
-            Event::SurveyorRegistered {
-                surveyor: BOB,
-            }.into()
-        );
+        System::assert_has_event(Event::SurveyorRegistered { surveyor: BOB }.into());
     });
 }
 
@@ -1666,11 +1593,7 @@ fn remove_surveyor_emits_event() {
         System::set_block_number(1);
         assert_ok!(LandLedger::register_surveyor(RuntimeOrigin::root(), BOB));
         assert_ok!(LandLedger::remove_surveyor(RuntimeOrigin::root(), BOB));
-        System::assert_has_event(
-            Event::SurveyorRemoved {
-                surveyor: BOB,
-            }.into()
-        );
+        System::assert_has_event(Event::SurveyorRemoved { surveyor: BOB }.into());
     });
 }
 
@@ -1692,7 +1615,10 @@ fn registration_creates_temporal_anchor() {
         ));
         // PropertyAnchorChain should have an entry for property 0
         let anchor_hash = PropertyAnchorChain::<Test>::get(0);
-        assert!(anchor_hash.is_some(), "Anchor hash should exist after registration");
+        assert!(
+            anchor_hash.is_some(),
+            "Anchor hash should exist after registration"
+        );
 
         // The anchor itself should exist in LandAnchors
         let anchor = LandAnchors::<Test>::get(anchor_hash.unwrap());
@@ -1724,7 +1650,12 @@ fn transfer_updates_temporal_anchor_chain() {
         // Verify and survey and transfer
         assert_ok!(LandLedger::verify_property(RuntimeOrigin::root(), 1));
         assert_ok!(LandLedger::register_surveyor(RuntimeOrigin::root(), ALICE));
-        assert_ok!(LandLedger::survey_property(RuntimeOrigin::signed(ALICE), 1, 100, None));
+        assert_ok!(LandLedger::survey_property(
+            RuntimeOrigin::signed(ALICE),
+            1,
+            100,
+            None
+        ));
         assert_ok!(LandLedger::transfer_property(
             RuntimeOrigin::signed(ALICE),
             1,
@@ -1735,7 +1666,10 @@ fn transfer_updates_temporal_anchor_chain() {
 
         // Anchor chain should be updated
         let new_hash = PropertyAnchorChain::<Test>::get(1).unwrap();
-        assert_ne!(new_hash, genesis_hash, "Anchor hash should change after transfer");
+        assert_ne!(
+            new_hash, genesis_hash,
+            "Anchor hash should change after transfer"
+        );
 
         // New anchor links back to genesis
         let new_anchor = LandAnchors::<Test>::get(new_hash).unwrap();
@@ -1761,7 +1695,12 @@ fn anchor_chain_structure_is_consistent() {
         ));
         assert_ok!(LandLedger::verify_property(RuntimeOrigin::root(), 1));
         assert_ok!(LandLedger::register_surveyor(RuntimeOrigin::root(), ALICE));
-        assert_ok!(LandLedger::survey_property(RuntimeOrigin::signed(ALICE), 1, 100, None));
+        assert_ok!(LandLedger::survey_property(
+            RuntimeOrigin::signed(ALICE),
+            1,
+            100,
+            None
+        ));
 
         // Transfer creates second anchor in chain
         assert_ok!(LandLedger::transfer_property(
@@ -1804,7 +1743,12 @@ fn anchor_chain_grows_with_multiple_transfers() {
         ));
         assert_ok!(LandLedger::verify_property(RuntimeOrigin::root(), 1));
         assert_ok!(LandLedger::register_surveyor(RuntimeOrigin::root(), ALICE));
-        assert_ok!(LandLedger::survey_property(RuntimeOrigin::signed(ALICE), 1, 100, None));
+        assert_ok!(LandLedger::survey_property(
+            RuntimeOrigin::signed(ALICE),
+            1,
+            100,
+            None
+        ));
 
         let hash0 = PropertyAnchorChain::<Test>::get(1).unwrap();
 
@@ -1854,7 +1798,10 @@ fn property_defaults_to_mixed_use_zoning() {
             0,
             100_000,
         ));
-        assert_eq!(LandLedger::properties(0).unwrap().zoning, ZoningType::MixedUse);
+        assert_eq!(
+            LandLedger::properties(0).unwrap().zoning,
+            ZoningType::MixedUse
+        );
     });
 }
 
@@ -1874,7 +1821,10 @@ fn zoning_map_overrides_default() {
             4, // Tourism
             100_000,
         ));
-        assert_eq!(LandLedger::properties(0).unwrap().zoning, ZoningType::TourismDevelopment);
+        assert_eq!(
+            LandLedger::properties(0).unwrap().zoning,
+            ZoningType::TourismDevelopment
+        );
     });
 }
 

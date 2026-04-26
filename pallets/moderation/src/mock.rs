@@ -72,11 +72,21 @@ impl pallet_belize_moderation::Config for Test {
 
 // Provide a trivial WeightInfo impl for tests
 impl crate::weights::WeightInfo for () {
-    fn flag_content() -> frame_support::weights::Weight { frame_support::weights::Weight::zero() }
-    fn review_content() -> frame_support::weights::Weight { frame_support::weights::Weight::zero() }
-    fn add_moderator() -> frame_support::weights::Weight { frame_support::weights::Weight::zero() }
-    fn remove_moderator() -> frame_support::weights::Weight { frame_support::weights::Weight::zero() }
-    fn submit_nawal_assessment() -> frame_support::weights::Weight { frame_support::weights::Weight::zero() }
+    fn flag_content() -> frame_support::weights::Weight {
+        frame_support::weights::Weight::zero()
+    }
+    fn review_content() -> frame_support::weights::Weight {
+        frame_support::weights::Weight::zero()
+    }
+    fn add_moderator() -> frame_support::weights::Weight {
+        frame_support::weights::Weight::zero()
+    }
+    fn remove_moderator() -> frame_support::weights::Weight {
+        frame_support::weights::Weight::zero()
+    }
+    fn submit_nawal_assessment() -> frame_support::weights::Weight {
+        frame_support::weights::Weight::zero()
+    }
 }
 
 // Test accounts
@@ -98,5 +108,9 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
 }
 
 /// Helper: content hash fixtures
-pub fn content_a() -> [u8; 32] { [0xAA; 32] }
-pub fn content_b() -> [u8; 32] { [0xBB; 32] }
+pub fn content_a() -> [u8; 32] {
+    [0xAA; 32]
+}
+pub fn content_b() -> [u8; 32] {
+    [0xBB; 32]
+}

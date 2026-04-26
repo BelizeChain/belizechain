@@ -142,9 +142,9 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
 
     pallet_balances::GenesisConfig::<Test> {
         balances: vec![
-            (1, 10_000_000_000_000_000),  // 10000 DALLA
-            (2, 10_000_000_000_000_000),  // 10000 DALLA
-            (3, 5_000_000_000_000_000),   // 5000 DALLA
+            (1, 10_000_000_000_000_000),   // 10000 DALLA
+            (2, 10_000_000_000_000_000),   // 10000 DALLA
+            (3, 5_000_000_000_000_000),    // 5000 DALLA
             (100, 20_000_000_000_000_000), // 20000 DALLA (verified account)
             (666, 10_000_000_000_000_000), // 10000 DALLA (sanctioned)
             (999, 10_000_000_000_000),     // Treasury with 10 DALLA initial balance

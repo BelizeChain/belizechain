@@ -343,7 +343,7 @@ cargo contract instantiate \
     --suri //Alice \
     --constructor new \
     --args "BeLi" "BELI" \  # name, symbol
-    --url wss://testnet.belizechain.org
+    --url wss://<current-public-testnet-rpc>
 ```
 
 ### 3. Deploy via SDK

@@ -2,8 +2,7 @@
 
 use crate as pallet_mesh;
 use frame_support::{
-    derive_impl,
-    parameter_types,
+    derive_impl, parameter_types,
     traits::{ConstU128, ConstU32, ConstU64},
     PalletId,
 };
@@ -139,12 +138,12 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
 
     pallet_balances::GenesisConfig::<Test> {
         balances: vec![
-            (1, 1_000_000_000_000),   // 1000 DALLA
-            (2, 500_000_000_000),     // 500 DALLA
-            (3, 100_000_000_000),     // 100 DALLA
-            (4, 50_000_000_000),      // 50 DALLA (no KYC)
-            (5, 500_000_000_000),     // 500 DALLA (emergency authority)
-            (10, 1_000_000_000_000),  // 1000 DALLA (validator)
+            (1, 1_000_000_000_000),  // 1000 DALLA
+            (2, 500_000_000_000),    // 500 DALLA
+            (3, 100_000_000_000),    // 100 DALLA
+            (4, 50_000_000_000),     // 50 DALLA (no KYC)
+            (5, 500_000_000_000),    // 500 DALLA (emergency authority)
+            (10, 1_000_000_000_000), // 1000 DALLA (validator)
         ],
         dev_accounts: None,
     }

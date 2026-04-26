@@ -358,7 +358,7 @@ export function AnalyticsDashboard() {
 # ui/maya-wallet/.env.local
 NEXT_PUBLIC_WS_PROVIDER=ws://localhost:9944
 NEXT_PUBLIC_NETWORK=BelizeChain Testnet
-NEXT_PUBLIC_FAUCET_URL=https://faucet.belizechain.org
+NEXT_PUBLIC_FAUCET_URL=https://<current-public-testnet-faucet>
 
 # ui/blue-hole-portal/.env.local
 NEXT_PUBLIC_WS_PROVIDER=ws://localhost:9944

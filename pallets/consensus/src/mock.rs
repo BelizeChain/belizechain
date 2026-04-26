@@ -108,19 +108,19 @@ pub struct MockStakingProvider;
 impl pallet_belize_consensus::ConsensusStakingProvider<u64, u128> for MockStakingProvider {
     fn get_validator_reputation(account: &u64) -> u8 {
         match *account {
-            1..=3 => 90, // High reputation validators
-            10 | 11 => 70,   // Medium reputation
-            100 => 40,       // Low reputation
-            _ => 50,         // Default
+            1..=3 => 90,   // High reputation validators
+            10 | 11 => 70, // Medium reputation
+            100 => 40,     // Low reputation
+            _ => 50,       // Default
         }
     }
 
     fn get_model_quality_score(account: &u64) -> u8 {
         match *account {
-            1..=3 => 85, // High quality models
-            10 | 11 => 65,   // Medium quality
-            100 => 35,       // Low quality
-            _ => 50,         // Default
+            1..=3 => 85,   // High quality models
+            10 | 11 => 65, // Medium quality
+            100 => 35,     // Low quality
+            _ => 50,       // Default
         }
     }
 
@@ -158,8 +158,12 @@ impl pallet_belize_consensus::Config for Test {
 /// Test PQ verifier — accepts all inputs.
 pub struct MockPqVerifier;
 impl crate::PqSignatureVerifier for MockPqVerifier {
-    fn verify_public_key(_public_key: &[u8]) -> bool { true }
-    fn verify_signature(_public_key: &[u8], _signature: &[u8], _message: &[u8]) -> bool { true }
+    fn verify_public_key(_public_key: &[u8]) -> bool {
+        true
+    }
+    fn verify_signature(_public_key: &[u8], _signature: &[u8], _message: &[u8]) -> bool {
+        true
+    }
 }
 
 // Test account constants

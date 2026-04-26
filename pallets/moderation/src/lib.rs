@@ -38,12 +38,9 @@
 //! - `submit_nawal_assessment` is gated by `NawalOracleOrigin`.
 //! - Adding/removing moderators requires `ModeratorAdminOrigin`.
 
-use frame_support::{
-    pallet_prelude::*,
-    BoundedVec,
-};
+use codec::{Decode, Encode, MaxEncodedLen};
+use frame_support::{pallet_prelude::*, BoundedVec};
 use frame_system::pallet_prelude::*;
-use codec::{Encode, Decode, MaxEncodedLen};
 use scale_info::TypeInfo;
 
 pub use weights::WeightInfo;
@@ -63,7 +60,17 @@ pub use pallet::*;
 pub type ContentHash = [u8; 32];
 
 /// Reasons a community member may flag content.
-#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+#[derive(
+    Encode,
+    Decode,
+    codec::DecodeWithMemTracking,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    TypeInfo,
+    MaxEncodedLen,
+)]
 pub enum FlagReason {
     /// Hate speech or harassment (0)
     HateSpeech,
@@ -91,7 +98,17 @@ impl FlagReason {
 }
 
 /// Ruling issued by a human moderator after content review.
-#[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+#[derive(
+    Encode,
+    Decode,
+    codec::DecodeWithMemTracking,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
+    TypeInfo,
+    MaxEncodedLen,
+)]
 pub enum ModerationRuling {
     /// Content is acceptable; close the queue item (0)
     Cleared,
@@ -158,8 +175,10 @@ pub mod pallet {
     #[pallet::getter(fn content_flag)]
     pub type ContentFlags<T: Config> = StorageDoubleMap<
         _,
-        Blake2_128Concat, ContentHash,
-        Blake2_128Concat, T::AccountId,
+        Blake2_128Concat,
+        ContentHash,
+        Blake2_128Concat,
+        T::AccountId,
         FlagReason,
         OptionQuery,
     >;
@@ -167,52 +186,32 @@ pub mod pallet {
     /// Cumulative flag count per content item.
     #[pallet::storage]
     #[pallet::getter(fn flag_count)]
-    pub type FlagCounts<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat, ContentHash,
-        u32,
-        ValueQuery,
-    >;
+    pub type FlagCounts<T: Config> = StorageMap<_, Blake2_128Concat, ContentHash, u32, ValueQuery>;
 
     /// Set of content hashes awaiting moderator review.
     #[pallet::storage]
     #[pallet::getter(fn is_queued)]
-    pub type ModerationQueue<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat, ContentHash,
-        bool,
-        ValueQuery,
-    >;
+    pub type ModerationQueue<T: Config> =
+        StorageMap<_, Blake2_128Concat, ContentHash, bool, ValueQuery>;
 
     /// Final ruling issued for a content item, if any.
     #[pallet::storage]
     #[pallet::getter(fn ruling)]
-    pub type RuledContent<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat, ContentHash,
-        ModerationRuling,
-        OptionQuery,
-    >;
+    pub type RuledContent<T: Config> =
+        StorageMap<_, Blake2_128Concat, ContentHash, ModerationRuling, OptionQuery>;
 
     /// Nawal AI risk scores for content items (0 = clean, 100 = extreme risk).
     #[pallet::storage]
     #[pallet::getter(fn nawal_score)]
-    pub type NawalAssessments<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat, ContentHash,
-        u8,
-        OptionQuery,
-    >;
+    pub type NawalAssessments<T: Config> =
+        StorageMap<_, Blake2_128Concat, ContentHash, u8, OptionQuery>;
 
     /// Set of accounts authorised to review queued content.
     /// Stored as a bounded vec of account IDs; duplicates prevented on add.
     #[pallet::storage]
     #[pallet::getter(fn moderator_set)]
-    pub type ModeratorSet<T: Config> = StorageValue<
-        _,
-        BoundedVec<T::AccountId, T::MaxModerators>,
-        ValueQuery,
-    >;
+    pub type ModeratorSet<T: Config> =
+        StorageValue<_, BoundedVec<T::AccountId, T::MaxModerators>, ValueQuery>;
 
     // =========================================================================
     // Events
@@ -251,7 +250,17 @@ pub mod pallet {
     }
 
     /// What triggered an auto-queue action.
-    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+    #[derive(
+        Encode,
+        Decode,
+        codec::DecodeWithMemTracking,
+        Clone,
+        PartialEq,
+        Eq,
+        Debug,
+        TypeInfo,
+        MaxEncodedLen,
+    )]
     pub enum AutoQueueTrigger {
         /// Community flag count reached `FlagThreshold`.
         FlagThreshold,
@@ -321,8 +330,8 @@ pub mod pallet {
             );
 
             // Validate reason
-            let reason = FlagReason::from_index(reason_index)
-                .ok_or(Error::<T>::InvalidFlagReason)?;
+            let reason =
+                FlagReason::from_index(reason_index).ok_or(Error::<T>::InvalidFlagReason)?;
 
             // Prevent double-flagging by the same account
             ensure!(
@@ -334,7 +343,10 @@ pub mod pallet {
             ContentFlags::<T>::insert(content_hash, &who, reason);
             let new_count = FlagCounts::<T>::get(content_hash).saturating_add(1);
             // MOD-01 FIX: Enforce MaxFlagsPerContent to bound storage and clear_prefix
-            ensure!(new_count <= T::MaxFlagsPerContent::get(), Error::<T>::FlagLimitReached);
+            ensure!(
+                new_count <= T::MaxFlagsPerContent::get(),
+                Error::<T>::FlagLimitReached
+            );
             FlagCounts::<T>::insert(content_hash, new_count);
 
             Self::deposit_event(Event::ContentFlagged {
@@ -385,15 +397,16 @@ pub mod pallet {
             );
 
             // Validate ruling
-            let ruling = ModerationRuling::from_index(ruling_index)
-                .ok_or(Error::<T>::InvalidRuling)?;
+            let ruling =
+                ModerationRuling::from_index(ruling_index).ok_or(Error::<T>::InvalidRuling)?;
 
             // Dequeue and record ruling
             ModerationQueue::<T>::remove(content_hash);
             RuledContent::<T>::insert(content_hash, ruling);
 
             // MOD-01 FIX: Bounded clear_prefix using MaxFlagsPerContent instead of u32::MAX
-            let _ = ContentFlags::<T>::clear_prefix(content_hash, T::MaxFlagsPerContent::get(), None);
+            let _ =
+                ContentFlags::<T>::clear_prefix(content_hash, T::MaxFlagsPerContent::get(), None);
             FlagCounts::<T>::remove(content_hash);
             NawalAssessments::<T>::remove(content_hash);
 
@@ -411,10 +424,7 @@ pub mod pallet {
         /// Requires `ModeratorAdminOrigin` (e.g. governance council multisig).
         #[pallet::call_index(2)]
         #[pallet::weight(T::WeightInfo::add_moderator())]
-        pub fn add_moderator(
-            origin: OriginFor<T>,
-            account: T::AccountId,
-        ) -> DispatchResult {
+        pub fn add_moderator(origin: OriginFor<T>, account: T::AccountId) -> DispatchResult {
             T::ModeratorAdminOrigin::ensure_origin(origin)?;
 
             ModeratorSet::<T>::try_mutate(|mods| -> DispatchResult {
@@ -433,10 +443,7 @@ pub mod pallet {
         /// Requires `ModeratorAdminOrigin`.
         #[pallet::call_index(3)]
         #[pallet::weight(T::WeightInfo::remove_moderator())]
-        pub fn remove_moderator(
-            origin: OriginFor<T>,
-            account: T::AccountId,
-        ) -> DispatchResult {
+        pub fn remove_moderator(origin: OriginFor<T>, account: T::AccountId) -> DispatchResult {
             T::ModeratorAdminOrigin::ensure_origin(origin)?;
 
             ModeratorSet::<T>::try_mutate(|mods| -> DispatchResult {
@@ -475,7 +482,10 @@ pub mod pallet {
 
             NawalAssessments::<T>::insert(content_hash, score);
 
-            Self::deposit_event(Event::NawalAssessmentSubmitted { content_hash, score });
+            Self::deposit_event(Event::NawalAssessmentSubmitted {
+                content_hash,
+                score,
+            });
 
             // Auto-queue if score exceeds threshold and item not already queued/ruled
             if score > T::NawalAutoQueueScore::get()

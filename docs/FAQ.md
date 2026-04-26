@@ -242,7 +242,7 @@ cargo contract instantiate \
   --constructor new \
   --args "1000000000000000" \
   --suri //YourSeed \
-  --url wss://rpc.testnet.belizechain.org \
+  --url wss://<current-testnet-rpc-url> \
   --execute
 ```
 
@@ -387,7 +387,7 @@ All support same functionality.
 
 **3 environments**:
 1. **Local dev node**: `./belizechain-node --dev --tmp`
-2. **Testnet**: `wss://rpc.testnet.belizechain.org` (public, faucet available)
+2. **Testnet**: Use the current operator-provided RPC URL or your own node
 3. **Mainnet**: `wss://rpc.belizechain.org` (production, real value)
 
 Use testnet for integration testing before mainnet deployment.

@@ -95,7 +95,7 @@ impl pallet_payroll::PayrollOracleProvider<u64> for MockPayrollOracleProvider {
     fn get_kyc_level(_account: &u64) -> Option<u8> {
         Some(1)
     }
-    
+
     fn meets_kyc_requirement(_account: &u64, required_level: u8) -> bool {
         required_level <= 1
     }
@@ -124,13 +124,13 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
 
     pallet_balances::GenesisConfig::<Test> {
         balances: vec![
-            (1, 1_000_000_000_000_000),  // Employer 1 (1 million DALLA with 6 decimals)
-            (2, 1_000_000_000_000_000),  // Employer 2
-            (3, 10_000_000_000),         // Employee 1 (10K DALLA)
-            (4, 10_000_000_000),         // Employee 2
-            (5, 10_000_000_000),         // Employee 3
-            (6, 10_000_000_000),         // Employee 4
-            (100, 500_000_000_000_000),  // Admin account
+            (1, 1_000_000_000_000_000), // Employer 1 (1 million DALLA with 6 decimals)
+            (2, 1_000_000_000_000_000), // Employer 2
+            (3, 10_000_000_000),        // Employee 1 (10K DALLA)
+            (4, 10_000_000_000),        // Employee 2
+            (5, 10_000_000_000),        // Employee 3
+            (6, 10_000_000_000),        // Employee 4
+            (100, 500_000_000_000_000), // Admin account
         ],
         dev_accounts: Default::default(),
     }

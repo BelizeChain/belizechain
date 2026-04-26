@@ -1,6 +1,6 @@
 //! Tests for the Meshtastic mesh network pallet
 
-use crate::{mock::*, types::*, Error, Event, pallet::*};
+use crate::{mock::*, pallet::*, types::*, Error, Event};
 use frame_support::{assert_noop, assert_ok};
 use sp_core::H256;
 
@@ -329,14 +329,14 @@ fn submit_mesh_transaction_works() {
             MeshTxType::TransferBbzd,
             [0x01, 0x02, 0x03, 0x04], // sender compact ID
             [0x05, 0x06, 0x07, 0x08], // recipient compact ID
-            45_000_000_000,            // 45 bBZD
-            1,                          // nonce
-            H256::from([0xAA; 32]),    // signature hash
+            45_000_000_000,           // 45 bBZD
+            1,                        // nonce
+            H256::from([0xAA; 32]),   // signature hash
             gateway_id,
             vec![[0x11, 0x22, 0x33, 0x44], [0x55, 0x66, 0x77, 0x88]], // relay path
-            3,  // 3 hops
-            -80, // RSSI
-            100, // SNR * 10
+            3,                                                        // 3 hops
+            -80,                                                      // RSSI
+            100,                                                      // SNR * 10
         ));
 
         // Transaction should be pending
@@ -666,14 +666,14 @@ fn relay_block_header_works() {
         assert_ok!(Mesh::relay_block_header(
             RuntimeOrigin::signed(10),
             node_id,
-            42,          // block number
+            42, // block number
             block_hash,
             parent_hash,
             state_root,
             extrinsics_root,
             [0x01, 0x02, 0x03, 0x04], // author compact
-            15,           // 15 extrinsics
-            1707843600,   // timestamp
+            15,                       // 15 extrinsics
+            1707843600,               // timestamp
         ));
 
         let header = Mesh::mesh_block_headers(42).unwrap();
@@ -732,7 +732,7 @@ fn update_mesh_config_works() {
     new_test_ext().execute_with(|| {
         assert_ok!(Mesh::update_mesh_config(
             RuntimeOrigin::root(),
-            5,  // reduce max hops
+            5, // reduce max hops
             ChannelPreset::LongSlow,
             true,
             true,
@@ -932,9 +932,16 @@ fn register_node_insufficient_deposit_fails() {
         let node_id: MeshtasticNodeId = [0xA1, 0xA2, 0xA3, 0xA4];
         assert_noop!(
             Mesh::register_node(
-                RuntimeOrigin::signed(6), node_id, MeshNodeRole::Client,
-                MeshHardware::TBeam, LoRaRegion::US915,
-                174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+                RuntimeOrigin::signed(6),
+                node_id,
+                MeshNodeRole::Client,
+                MeshHardware::TBeam,
+                LoRaRegion::US915,
+                174_500_000,
+                -882_000_000,
+                5,
+                BelizeDistrict::Belize,
+                TerrainType::Coastal,
             ),
             Error::<Test>::InsufficientDeposit
         );
@@ -949,18 +956,32 @@ fn register_too_many_nodes_fails() {
         for i in 0u8..10 {
             let node_id: MeshtasticNodeId = [0xB0 + i, 0x01, 0x01, 0x01];
             assert_ok!(Mesh::register_node(
-                RuntimeOrigin::signed(1), node_id, MeshNodeRole::Client,
-                MeshHardware::TBeam, LoRaRegion::US915,
-                174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+                RuntimeOrigin::signed(1),
+                node_id,
+                MeshNodeRole::Client,
+                MeshHardware::TBeam,
+                LoRaRegion::US915,
+                174_500_000,
+                -882_000_000,
+                5,
+                BelizeDistrict::Belize,
+                TerrainType::Coastal,
             ));
         }
         // 11th should fail
         let node_id: MeshtasticNodeId = [0xBB, 0x01, 0x01, 0x01];
         assert_noop!(
             Mesh::register_node(
-                RuntimeOrigin::signed(1), node_id, MeshNodeRole::Client,
-                MeshHardware::TBeam, LoRaRegion::US915,
-                174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+                RuntimeOrigin::signed(1),
+                node_id,
+                MeshNodeRole::Client,
+                MeshHardware::TBeam,
+                LoRaRegion::US915,
+                174_500_000,
+                -882_000_000,
+                5,
+                BelizeDistrict::Belize,
+                TerrainType::Coastal,
             ),
             Error::<Test>::TooManyNodes
         );
@@ -972,9 +993,16 @@ fn register_router_node_works() {
     new_test_ext().execute_with(|| {
         let node_id: MeshtasticNodeId = [0xC1, 0xC2, 0xC3, 0xC4];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(1), node_id, MeshNodeRole::Router,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 50, BelizeDistrict::OrangeWalk, TerrainType::Jungle,
+            RuntimeOrigin::signed(1),
+            node_id,
+            MeshNodeRole::Router,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            50,
+            BelizeDistrict::OrangeWalk,
+            TerrainType::Jungle,
         ));
         let node = Mesh::mesh_nodes(node_id).unwrap();
         assert_eq!(node.role, MeshNodeRole::Router);
@@ -987,9 +1015,16 @@ fn register_emergency_beacon_node_works() {
     new_test_ext().execute_with(|| {
         let node_id: MeshtasticNodeId = [0xE1, 0xE2, 0xE3, 0xE4];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(1), node_id, MeshNodeRole::EmergencyBeacon,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 10, BelizeDistrict::Toledo, TerrainType::Mountain,
+            RuntimeOrigin::signed(1),
+            node_id,
+            MeshNodeRole::EmergencyBeacon,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            10,
+            BelizeDistrict::Toledo,
+            TerrainType::Mountain,
         ));
         let node = Mesh::mesh_nodes(node_id).unwrap();
         assert_eq!(node.role, MeshNodeRole::EmergencyBeacon);
@@ -1016,9 +1051,16 @@ fn deregister_refunds_deposit() {
         let node_id: MeshtasticNodeId = [0xD1, 0xD2, 0xD3, 0xD4];
         let bal_before = Balances::free_balance(1u64);
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(1), node_id, MeshNodeRole::Client,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+            RuntimeOrigin::signed(1),
+            node_id,
+            MeshNodeRole::Client,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            5,
+            BelizeDistrict::Belize,
+            TerrainType::Coastal,
         ));
         // Balance reduced by deposit (10 DALLA reserved)
         assert!(Balances::free_balance(1u64) < bal_before);
@@ -1046,14 +1088,28 @@ fn deregister_multi_node_owner_removes_correct_node() {
         let node_a: MeshtasticNodeId = [0xA1, 0xA1, 0xA1, 0xA1];
         let node_b: MeshtasticNodeId = [0xB1, 0xB1, 0xB1, 0xB1];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(1), node_a, MeshNodeRole::Client,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+            RuntimeOrigin::signed(1),
+            node_a,
+            MeshNodeRole::Client,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            5,
+            BelizeDistrict::Belize,
+            TerrainType::Coastal,
         ));
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(1), node_b, MeshNodeRole::Client,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+            RuntimeOrigin::signed(1),
+            node_b,
+            MeshNodeRole::Client,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            5,
+            BelizeDistrict::Belize,
+            TerrainType::Coastal,
         ));
         assert_eq!(Mesh::nodes_by_owner(1u64).len(), 2);
 
@@ -1073,9 +1129,16 @@ fn update_location_invalid_coordinates_fails() {
     new_test_ext().execute_with(|| {
         let node_id: MeshtasticNodeId = [0x01, 0x02, 0x03, 0x04];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(1), node_id, MeshNodeRole::Client,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+            RuntimeOrigin::signed(1),
+            node_id,
+            MeshNodeRole::Client,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            5,
+            BelizeDistrict::Belize,
+            TerrainType::Coastal,
         ));
         assert_noop!(
             Mesh::update_node_location(RuntimeOrigin::signed(1), node_id, 999_999_999, 0, 0),
@@ -1089,12 +1152,25 @@ fn update_location_not_owner_fails() {
     new_test_ext().execute_with(|| {
         let node_id: MeshtasticNodeId = [0x01, 0x02, 0x03, 0x04];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(1), node_id, MeshNodeRole::Client,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+            RuntimeOrigin::signed(1),
+            node_id,
+            MeshNodeRole::Client,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            5,
+            BelizeDistrict::Belize,
+            TerrainType::Coastal,
         ));
         assert_noop!(
-            Mesh::update_node_location(RuntimeOrigin::signed(2), node_id, 175_000_000, -883_000_000, 10),
+            Mesh::update_node_location(
+                RuntimeOrigin::signed(2),
+                node_id,
+                175_000_000,
+                -883_000_000,
+                10
+            ),
             Error::<Test>::NotNodeOwner
         );
     });
@@ -1104,7 +1180,13 @@ fn update_location_not_owner_fails() {
 fn update_location_nonexistent_node_fails() {
     new_test_ext().execute_with(|| {
         assert_noop!(
-            Mesh::update_node_location(RuntimeOrigin::signed(1), [0xFF; 4], 174_500_000, -882_000_000, 5),
+            Mesh::update_node_location(
+                RuntimeOrigin::signed(1),
+                [0xFF; 4],
+                174_500_000,
+                -882_000_000,
+                5
+            ),
             Error::<Test>::NodeNotFound
         );
     });
@@ -1117,9 +1199,16 @@ fn heartbeat_reactivates_inactive_node() {
     new_test_ext().execute_with(|| {
         let node_id: MeshtasticNodeId = [0x01, 0x02, 0x03, 0x04];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(1), node_id, MeshNodeRole::Client,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+            RuntimeOrigin::signed(1),
+            node_id,
+            MeshNodeRole::Client,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            5,
+            BelizeDistrict::Belize,
+            TerrainType::Coastal,
         ));
         // Advance past heartbeat timeout (100 blocks)
         run_to_block(200);
@@ -1136,9 +1225,16 @@ fn heartbeat_not_owner_fails() {
     new_test_ext().execute_with(|| {
         let node_id: MeshtasticNodeId = [0x01, 0x02, 0x03, 0x04];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(1), node_id, MeshNodeRole::Client,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+            RuntimeOrigin::signed(1),
+            node_id,
+            MeshNodeRole::Client,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            5,
+            BelizeDistrict::Belize,
+            TerrainType::Coastal,
         ));
         assert_noop!(
             Mesh::node_heartbeat(RuntimeOrigin::signed(2), node_id),
@@ -1165,10 +1261,19 @@ fn mesh_tx_invalid_signature_fails() {
         let gw_id = setup_gateway();
         assert_noop!(
             Mesh::submit_mesh_transaction(
-                RuntimeOrigin::signed(2), H256::from([0x42; 32]),
-                MeshTxType::TransferBbzd, [0x01; 4], [0x02; 4],
-                1_000_000, 1, H256::zero(), // zero signature
-                gw_id, vec![], 1, -80, 100,
+                RuntimeOrigin::signed(2),
+                H256::from([0x42; 32]),
+                MeshTxType::TransferBbzd,
+                [0x01; 4],
+                [0x02; 4],
+                1_000_000,
+                1,
+                H256::zero(), // zero signature
+                gw_id,
+                vec![],
+                1,
+                -80,
+                100,
             ),
             Error::<Test>::InvalidMeshSignature
         );
@@ -1187,10 +1292,19 @@ fn mesh_tx_inactive_gateway_fails() {
         });
         assert_noop!(
             Mesh::submit_mesh_transaction(
-                RuntimeOrigin::signed(2), H256::from([0x42; 32]),
-                MeshTxType::TransferBbzd, [0x01; 4], [0x02; 4],
-                1_000_000, 1, H256::from([0xAA; 32]),
-                gw_id, vec![], 1, -80, 100,
+                RuntimeOrigin::signed(2),
+                H256::from([0x42; 32]),
+                MeshTxType::TransferBbzd,
+                [0x01; 4],
+                [0x02; 4],
+                1_000_000,
+                1,
+                H256::from([0xAA; 32]),
+                gw_id,
+                vec![],
+                1,
+                -80,
+                100,
             ),
             Error::<Test>::NodeInactive
         );
@@ -1205,9 +1319,17 @@ fn mesh_tx_not_gateway_owner_fails() {
             Mesh::submit_mesh_transaction(
                 RuntimeOrigin::signed(1), // not the gateway owner
                 H256::from([0x42; 32]),
-                MeshTxType::TransferBbzd, [0x01; 4], [0x02; 4],
-                1_000_000, 1, H256::from([0xAA; 32]),
-                gw_id, vec![], 1, -80, 100,
+                MeshTxType::TransferBbzd,
+                [0x01; 4],
+                [0x02; 4],
+                1_000_000,
+                1,
+                H256::from([0xAA; 32]),
+                gw_id,
+                vec![],
+                1,
+                -80,
+                100,
             ),
             Error::<Test>::NotNodeOwner
         );
@@ -1219,10 +1341,19 @@ fn mesh_tx_nonexistent_gateway_fails() {
     new_test_ext().execute_with(|| {
         assert_noop!(
             Mesh::submit_mesh_transaction(
-                RuntimeOrigin::signed(1), H256::from([0x42; 32]),
-                MeshTxType::TransferBbzd, [0x01; 4], [0x02; 4],
-                1_000_000, 1, H256::from([0xAA; 32]),
-                [0xFF; 4], vec![], 1, -80, 100,
+                RuntimeOrigin::signed(1),
+                H256::from([0x42; 32]),
+                MeshTxType::TransferBbzd,
+                [0x01; 4],
+                [0x02; 4],
+                1_000_000,
+                1,
+                H256::from([0xAA; 32]),
+                [0xFF; 4],
+                vec![],
+                1,
+                -80,
+                100,
             ),
             Error::<Test>::NodeNotFound
         );
@@ -1234,20 +1365,38 @@ fn mesh_tx_updates_gateway_transactions_relayed() {
     new_test_ext().execute_with(|| {
         let gw_id = setup_gateway();
         assert_ok!(Mesh::submit_mesh_transaction(
-            RuntimeOrigin::signed(2), H256::from([0x42; 32]),
-            MeshTxType::TransferBbzd, [0x01; 4], [0x02; 4],
-            1_000_000, 1, H256::from([0xAA; 32]),
-            gw_id, vec![], 1, -80, 100,
+            RuntimeOrigin::signed(2),
+            H256::from([0x42; 32]),
+            MeshTxType::TransferBbzd,
+            [0x01; 4],
+            [0x02; 4],
+            1_000_000,
+            1,
+            H256::from([0xAA; 32]),
+            gw_id,
+            vec![],
+            1,
+            -80,
+            100,
         ));
         let node = Mesh::mesh_nodes(gw_id).unwrap();
         assert_eq!(node.transactions_relayed, 1);
 
         // Submit another
         assert_ok!(Mesh::submit_mesh_transaction(
-            RuntimeOrigin::signed(2), H256::from([0x43; 32]),
-            MeshTxType::TransferBbzd, [0x01; 4], [0x02; 4],
-            2_000_000, 2, H256::from([0xBB; 32]),
-            gw_id, vec![], 1, -80, 100,
+            RuntimeOrigin::signed(2),
+            H256::from([0x43; 32]),
+            MeshTxType::TransferBbzd,
+            [0x01; 4],
+            [0x02; 4],
+            2_000_000,
+            2,
+            H256::from([0xBB; 32]),
+            gw_id,
+            vec![],
+            1,
+            -80,
+            100,
         ));
         assert_eq!(Mesh::mesh_nodes(gw_id).unwrap().transactions_relayed, 2);
     });
@@ -1260,9 +1409,16 @@ fn relay_proof_inactive_node_fails() {
     new_test_ext().execute_with(|| {
         let node_id: MeshtasticNodeId = [0x01, 0x02, 0x03, 0x04];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(1), node_id, MeshNodeRole::Client,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+            RuntimeOrigin::signed(1),
+            node_id,
+            MeshNodeRole::Client,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            5,
+            BelizeDistrict::Belize,
+            TerrainType::Coastal,
         ));
         // Manually set node as inactive
         MeshNodes::<Test>::mutate(node_id, |maybe_node| {
@@ -1272,10 +1428,14 @@ fn relay_proof_inactive_node_fails() {
         });
         assert_noop!(
             Mesh::submit_relay_proof(
-                RuntimeOrigin::signed(1), node_id,
-                RelayType::Transaction, H256::from([0x11; 32]),
-                [0xA1; 4], RelayDestination::Node([0xB1; 4]),
-                -80, 100,
+                RuntimeOrigin::signed(1),
+                node_id,
+                RelayType::Transaction,
+                H256::from([0x11; 32]),
+                [0xA1; 4],
+                RelayDestination::Node([0xB1; 4]),
+                -80,
+                100,
             ),
             Error::<Test>::NodeInactive
         );
@@ -1287,16 +1447,27 @@ fn relay_proof_not_owner_fails() {
     new_test_ext().execute_with(|| {
         let node_id: MeshtasticNodeId = [0x01, 0x02, 0x03, 0x04];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(1), node_id, MeshNodeRole::Client,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+            RuntimeOrigin::signed(1),
+            node_id,
+            MeshNodeRole::Client,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            5,
+            BelizeDistrict::Belize,
+            TerrainType::Coastal,
         ));
         assert_noop!(
             Mesh::submit_relay_proof(
-                RuntimeOrigin::signed(2), node_id,
-                RelayType::Transaction, H256::from([0x11; 32]),
-                [0xA1; 4], RelayDestination::Node([0xB1; 4]),
-                -80, 100,
+                RuntimeOrigin::signed(2),
+                node_id,
+                RelayType::Transaction,
+                H256::from([0x11; 32]),
+                [0xA1; 4],
+                RelayDestination::Node([0xB1; 4]),
+                -80,
+                100,
             ),
             Error::<Test>::NotNodeOwner
         );
@@ -1308,10 +1479,14 @@ fn relay_proof_nonexistent_node_fails() {
     new_test_ext().execute_with(|| {
         assert_noop!(
             Mesh::submit_relay_proof(
-                RuntimeOrigin::signed(1), [0xFF; 4],
-                RelayType::Transaction, H256::from([0x11; 32]),
-                [0xA1; 4], RelayDestination::Node([0xB1; 4]),
-                -80, 100,
+                RuntimeOrigin::signed(1),
+                [0xFF; 4],
+                RelayType::Transaction,
+                H256::from([0x11; 32]),
+                [0xA1; 4],
+                RelayDestination::Node([0xB1; 4]),
+                -80,
+                100,
             ),
             Error::<Test>::NodeNotFound
         );
@@ -1323,22 +1498,38 @@ fn relay_proof_disabled_fails() {
     new_test_ext().execute_with(|| {
         // Disable relay mining via config
         assert_ok!(Mesh::update_mesh_config(
-            RuntimeOrigin::root(), 8, ChannelPreset::LongFast,
+            RuntimeOrigin::root(),
+            8,
+            ChannelPreset::LongFast,
             false, // relay_mining_active = false
-            true, true, 1, 2,
+            true,
+            true,
+            1,
+            2,
         ));
         let node_id: MeshtasticNodeId = [0x01, 0x02, 0x03, 0x04];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(1), node_id, MeshNodeRole::Client,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+            RuntimeOrigin::signed(1),
+            node_id,
+            MeshNodeRole::Client,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            5,
+            BelizeDistrict::Belize,
+            TerrainType::Coastal,
         ));
         assert_noop!(
             Mesh::submit_relay_proof(
-                RuntimeOrigin::signed(1), node_id,
-                RelayType::Transaction, H256::from([0x11; 32]),
-                [0xA1; 4], RelayDestination::Node([0xB1; 4]),
-                -80, 100,
+                RuntimeOrigin::signed(1),
+                node_id,
+                RelayType::Transaction,
+                H256::from([0x11; 32]),
+                [0xA1; 4],
+                RelayDestination::Node([0xB1; 4]),
+                -80,
+                100,
             ),
             Error::<Test>::RelayMiningDisabled
         );
@@ -1350,16 +1541,27 @@ fn relay_proof_updates_messages_relayed_and_reputation() {
     new_test_ext().execute_with(|| {
         let node_id: MeshtasticNodeId = [0x01, 0x02, 0x03, 0x04];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(1), node_id, MeshNodeRole::Client,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+            RuntimeOrigin::signed(1),
+            node_id,
+            MeshNodeRole::Client,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            5,
+            BelizeDistrict::Belize,
+            TerrainType::Coastal,
         ));
         let node_before = Mesh::mesh_nodes(node_id).unwrap();
         assert_ok!(Mesh::submit_relay_proof(
-            RuntimeOrigin::signed(1), node_id,
-            RelayType::Transaction, H256::from([0x11; 32]),
-            [0xA1; 4], RelayDestination::Node([0xB1; 4]),
-            -80, 100,
+            RuntimeOrigin::signed(1),
+            node_id,
+            RelayType::Transaction,
+            H256::from([0x11; 32]),
+            [0xA1; 4],
+            RelayDestination::Node([0xB1; 4]),
+            -80,
+            100,
         ));
         let node_after = Mesh::mesh_nodes(node_id).unwrap();
         assert!(node_after.messages_relayed > node_before.messages_relayed);
@@ -1374,15 +1576,26 @@ fn confirm_relay_proof_own_proof_fails() {
     new_test_ext().execute_with(|| {
         let node_id: MeshtasticNodeId = [0x01, 0x02, 0x03, 0x04];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(1), node_id, MeshNodeRole::Client,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+            RuntimeOrigin::signed(1),
+            node_id,
+            MeshNodeRole::Client,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            5,
+            BelizeDistrict::Belize,
+            TerrainType::Coastal,
         ));
         assert_ok!(Mesh::submit_relay_proof(
-            RuntimeOrigin::signed(1), node_id,
-            RelayType::Transaction, H256::from([0x11; 32]),
-            [0xA1; 4], RelayDestination::Node([0xB1; 4]),
-            -80, 100,
+            RuntimeOrigin::signed(1),
+            node_id,
+            RelayType::Transaction,
+            H256::from([0x11; 32]),
+            [0xA1; 4],
+            RelayDestination::Node([0xB1; 4]),
+            -80,
+            100,
         ));
         // Owner trying to confirm own proof
         assert_noop!(
@@ -1397,22 +1610,40 @@ fn confirm_relay_proof_index_out_of_range_fails() {
     new_test_ext().execute_with(|| {
         let node_id: MeshtasticNodeId = [0x01, 0x02, 0x03, 0x04];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(1), node_id, MeshNodeRole::Client,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+            RuntimeOrigin::signed(1),
+            node_id,
+            MeshNodeRole::Client,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            5,
+            BelizeDistrict::Belize,
+            TerrainType::Coastal,
         ));
         assert_ok!(Mesh::submit_relay_proof(
-            RuntimeOrigin::signed(1), node_id,
-            RelayType::Transaction, H256::from([0x11; 32]),
-            [0xA1; 4], RelayDestination::Node([0xB1; 4]),
-            -80, 100,
+            RuntimeOrigin::signed(1),
+            node_id,
+            RelayType::Transaction,
+            H256::from([0x11; 32]),
+            [0xA1; 4],
+            RelayDestination::Node([0xB1; 4]),
+            -80,
+            100,
         ));
         // Register confirmer's own node so they pass the NodeNotFound check
         let confirmer_node: MeshtasticNodeId = [0xC2, 0xC2, 0xC2, 0xC2];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(2), confirmer_node, MeshNodeRole::Client,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+            RuntimeOrigin::signed(2),
+            confirmer_node,
+            MeshNodeRole::Client,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            5,
+            BelizeDistrict::Belize,
+            TerrainType::Coastal,
         ));
         // Bad index
         assert_noop!(
@@ -1427,24 +1658,46 @@ fn confirm_relay_proof_already_confirmed_fails() {
     new_test_ext().execute_with(|| {
         let node_id: MeshtasticNodeId = [0x01, 0x02, 0x03, 0x04];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(1), node_id, MeshNodeRole::Client,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+            RuntimeOrigin::signed(1),
+            node_id,
+            MeshNodeRole::Client,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            5,
+            BelizeDistrict::Belize,
+            TerrainType::Coastal,
         ));
         assert_ok!(Mesh::submit_relay_proof(
-            RuntimeOrigin::signed(1), node_id,
-            RelayType::Transaction, H256::from([0x11; 32]),
-            [0xA1; 4], RelayDestination::Node([0xB1; 4]),
-            -80, 100,
+            RuntimeOrigin::signed(1),
+            node_id,
+            RelayType::Transaction,
+            H256::from([0x11; 32]),
+            [0xA1; 4],
+            RelayDestination::Node([0xB1; 4]),
+            -80,
+            100,
         ));
         // Register confirmer node
         let confirmer_node: MeshtasticNodeId = [0xC1, 0xC1, 0xC1, 0xC1];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(2), confirmer_node, MeshNodeRole::Client,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+            RuntimeOrigin::signed(2),
+            confirmer_node,
+            MeshNodeRole::Client,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            5,
+            BelizeDistrict::Belize,
+            TerrainType::Coastal,
         ));
-        assert_ok!(Mesh::confirm_relay_proof(RuntimeOrigin::signed(2), node_id, 0));
+        assert_ok!(Mesh::confirm_relay_proof(
+            RuntimeOrigin::signed(2),
+            node_id,
+            0
+        ));
         // Second confirm fails
         assert_noop!(
             Mesh::confirm_relay_proof(RuntimeOrigin::signed(2), node_id, 0),
@@ -1460,17 +1713,26 @@ fn emergency_alert_system_disabled_fails() {
     new_test_ext().execute_with(|| {
         // Disable emergency system
         assert_ok!(Mesh::update_mesh_config(
-            RuntimeOrigin::root(), 8, ChannelPreset::LongFast,
+            RuntimeOrigin::root(),
+            8,
+            ChannelPreset::LongFast,
             true,
             false, // emergency_system_active = false
-            true, 1, 2,
+            true,
+            1,
+            2,
         ));
         assert_noop!(
             Mesh::issue_emergency_alert(
                 RuntimeOrigin::signed(5), // emergency authority
-                AlertSeverity::Emergency, EmergencyType::Hurricane,
-                174_500_000, -882_000_000, 10_000,
-                b"Hurricane incoming".to_vec(), 100, BelizeDistrict::Belize,
+                AlertSeverity::Emergency,
+                EmergencyType::Hurricane,
+                174_500_000,
+                -882_000_000,
+                10_000,
+                b"Hurricane incoming".to_vec(),
+                100,
+                BelizeDistrict::Belize,
             ),
             Error::<Test>::EmergencySystemDisabled
         );
@@ -1484,9 +1746,14 @@ fn emergency_alert_message_too_long_fails() {
         assert_noop!(
             Mesh::issue_emergency_alert(
                 RuntimeOrigin::signed(5),
-                AlertSeverity::Catastrophic, EmergencyType::Hurricane,
-                174_500_000, -882_000_000, 10_000,
-                long_msg, 100, BelizeDistrict::Belize,
+                AlertSeverity::Catastrophic,
+                EmergencyType::Hurricane,
+                174_500_000,
+                -882_000_000,
+                10_000,
+                long_msg,
+                100,
+                BelizeDistrict::Belize,
             ),
             Error::<Test>::MessageTooLong
         );
@@ -1509,13 +1776,21 @@ fn resolve_alert_already_resolved_fails() {
         // Issue alert
         assert_ok!(Mesh::issue_emergency_alert(
             RuntimeOrigin::root(),
-            AlertSeverity::Emergency, EmergencyType::Hurricane,
-            174_500_000, -882_000_000, 10_000,
-            b"Storm".to_vec(), 100, BelizeDistrict::Belize,
+            AlertSeverity::Emergency,
+            EmergencyType::Hurricane,
+            174_500_000,
+            -882_000_000,
+            10_000,
+            b"Storm".to_vec(),
+            100,
+            BelizeDistrict::Belize,
         ));
         let alert_id = Mesh::next_alert_id() - 1;
         // Resolve once
-        assert_ok!(Mesh::resolve_emergency_alert(RuntimeOrigin::root(), alert_id));
+        assert_ok!(Mesh::resolve_emergency_alert(
+            RuntimeOrigin::root(),
+            alert_id
+        ));
         // Resolve again
         assert_noop!(
             Mesh::resolve_emergency_alert(RuntimeOrigin::root(), alert_id),
@@ -1529,9 +1804,16 @@ fn confirm_alert_not_found_fails() {
     new_test_ext().execute_with(|| {
         let node_id: MeshtasticNodeId = [0x01, 0x02, 0x03, 0x04];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(1), node_id, MeshNodeRole::Client,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+            RuntimeOrigin::signed(1),
+            node_id,
+            MeshNodeRole::Client,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            5,
+            BelizeDistrict::Belize,
+            TerrainType::Coastal,
         ));
         assert_noop!(
             Mesh::confirm_emergency_alert(RuntimeOrigin::signed(1), 999, node_id),
@@ -1545,18 +1827,34 @@ fn confirm_alert_duplicate_fails() {
     new_test_ext().execute_with(|| {
         let node_id: MeshtasticNodeId = [0x01, 0x02, 0x03, 0x04];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(1), node_id, MeshNodeRole::Client,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+            RuntimeOrigin::signed(1),
+            node_id,
+            MeshNodeRole::Client,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            5,
+            BelizeDistrict::Belize,
+            TerrainType::Coastal,
         ));
         assert_ok!(Mesh::issue_emergency_alert(
             RuntimeOrigin::root(),
-            AlertSeverity::Emergency, EmergencyType::Flooding,
-            174_500_000, -882_000_000, 5_000,
-            b"Flood".to_vec(), 50, BelizeDistrict::Belize,
+            AlertSeverity::Emergency,
+            EmergencyType::Flooding,
+            174_500_000,
+            -882_000_000,
+            5_000,
+            b"Flood".to_vec(),
+            50,
+            BelizeDistrict::Belize,
         ));
         let alert_id = Mesh::next_alert_id() - 1;
-        assert_ok!(Mesh::confirm_emergency_alert(RuntimeOrigin::signed(1), alert_id, node_id));
+        assert_ok!(Mesh::confirm_emergency_alert(
+            RuntimeOrigin::signed(1),
+            alert_id,
+            node_id
+        ));
         assert_noop!(
             Mesh::confirm_emergency_alert(RuntimeOrigin::signed(1), alert_id, node_id),
             Error::<Test>::AlertAlreadyConfirmed
@@ -1569,15 +1867,27 @@ fn confirm_alert_not_node_owner_fails() {
     new_test_ext().execute_with(|| {
         let node_id: MeshtasticNodeId = [0x01, 0x02, 0x03, 0x04];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(1), node_id, MeshNodeRole::Client,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+            RuntimeOrigin::signed(1),
+            node_id,
+            MeshNodeRole::Client,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            5,
+            BelizeDistrict::Belize,
+            TerrainType::Coastal,
         ));
         assert_ok!(Mesh::issue_emergency_alert(
             RuntimeOrigin::root(),
-            AlertSeverity::Advisory, EmergencyType::Wildfire,
-            174_500_000, -882_000_000, 2_000,
-            b"Fire".to_vec(), 50, BelizeDistrict::Cayo,
+            AlertSeverity::Advisory,
+            EmergencyType::Wildfire,
+            174_500_000,
+            -882_000_000,
+            2_000,
+            b"Fire".to_vec(),
+            50,
+            BelizeDistrict::Cayo,
         ));
         let alert_id = Mesh::next_alert_id() - 1;
         assert_noop!(
@@ -1593,15 +1903,26 @@ fn multiple_alerts_same_district_track_count() {
         for i in 0u8..3 {
             assert_ok!(Mesh::issue_emergency_alert(
                 RuntimeOrigin::root(),
-                AlertSeverity::Emergency, EmergencyType::Hurricane,
-                174_500_000, -882_000_000, 10_000,
-                vec![0x41 + i; 10], 100, BelizeDistrict::Belize,
+                AlertSeverity::Emergency,
+                EmergencyType::Hurricane,
+                174_500_000,
+                -882_000_000,
+                10_000,
+                vec![0x41 + i; 10],
+                100,
+                BelizeDistrict::Belize,
             ));
         }
-        assert_eq!(ActiveAlertCountPerDistrict::<Test>::get(BelizeDistrict::Belize), 3);
+        assert_eq!(
+            ActiveAlertCountPerDistrict::<Test>::get(BelizeDistrict::Belize),
+            3
+        );
         // Resolve one
         assert_ok!(Mesh::resolve_emergency_alert(RuntimeOrigin::root(), 0));
-        assert_eq!(ActiveAlertCountPerDistrict::<Test>::get(BelizeDistrict::Belize), 2);
+        assert_eq!(
+            ActiveAlertCountPerDistrict::<Test>::get(BelizeDistrict::Belize),
+            2
+        );
     });
 }
 
@@ -1613,24 +1934,43 @@ fn relay_header_already_exists_fails() {
         // Register validator relay node
         let vr_id: MeshtasticNodeId = [0xA0, 0xA1, 0xA2, 0xA3];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(10), vr_id, MeshNodeRole::ValidatorRelay,
-            MeshHardware::StationG2, LoRaRegion::US915,
-            174_500_000, -882_000_000, 50, BelizeDistrict::Belize, TerrainType::Urban,
+            RuntimeOrigin::signed(10),
+            vr_id,
+            MeshNodeRole::ValidatorRelay,
+            MeshHardware::StationG2,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            50,
+            BelizeDistrict::Belize,
+            TerrainType::Urban,
         ));
         // First relay
         assert_ok!(Mesh::relay_block_header(
-            RuntimeOrigin::signed(10), vr_id,
-            42, H256::from([0x01; 32]), H256::from([0x02; 32]),
-            H256::from([0x03; 32]), H256::from([0x04; 32]),
-            [0x11; 4], 5, 1000,
+            RuntimeOrigin::signed(10),
+            vr_id,
+            42,
+            H256::from([0x01; 32]),
+            H256::from([0x02; 32]),
+            H256::from([0x03; 32]),
+            H256::from([0x04; 32]),
+            [0x11; 4],
+            5,
+            1000,
         ));
         // Duplicate
         assert_noop!(
             Mesh::relay_block_header(
-                RuntimeOrigin::signed(10), vr_id,
-                42, H256::from([0x01; 32]), H256::from([0x02; 32]),
-                H256::from([0x03; 32]), H256::from([0x04; 32]),
-                [0x11; 4], 5, 1000,
+                RuntimeOrigin::signed(10),
+                vr_id,
+                42,
+                H256::from([0x01; 32]),
+                H256::from([0x02; 32]),
+                H256::from([0x03; 32]),
+                H256::from([0x04; 32]),
+                [0x11; 4],
+                5,
+                1000,
             ),
             Error::<Test>::HeaderAlreadyExists
         );
@@ -1642,23 +1982,40 @@ fn relay_header_disabled_fails() {
     new_test_ext().execute_with(|| {
         // Disable validator relay
         assert_ok!(Mesh::update_mesh_config(
-            RuntimeOrigin::root(), 8, ChannelPreset::LongFast,
-            true, true,
+            RuntimeOrigin::root(),
+            8,
+            ChannelPreset::LongFast,
+            true,
+            true,
             false, // validator_relay_active = false
-            1, 2,
+            1,
+            2,
         ));
         let vr_id: MeshtasticNodeId = [0xA0, 0xA1, 0xA2, 0xA3];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(10), vr_id, MeshNodeRole::ValidatorRelay,
-            MeshHardware::StationG2, LoRaRegion::US915,
-            174_500_000, -882_000_000, 50, BelizeDistrict::Belize, TerrainType::Urban,
+            RuntimeOrigin::signed(10),
+            vr_id,
+            MeshNodeRole::ValidatorRelay,
+            MeshHardware::StationG2,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            50,
+            BelizeDistrict::Belize,
+            TerrainType::Urban,
         ));
         assert_noop!(
             Mesh::relay_block_header(
-                RuntimeOrigin::signed(10), vr_id,
-                42, H256::from([0x01; 32]), H256::from([0x02; 32]),
-                H256::from([0x03; 32]), H256::from([0x04; 32]),
-                [0x11; 4], 5, 1000,
+                RuntimeOrigin::signed(10),
+                vr_id,
+                42,
+                H256::from([0x01; 32]),
+                H256::from([0x02; 32]),
+                H256::from([0x03; 32]),
+                H256::from([0x04; 32]),
+                [0x11; 4],
+                5,
+                1000,
             ),
             Error::<Test>::RelayMiningDisabled
         );
@@ -1672,8 +2029,10 @@ fn fund_relay_rewards_insufficient_balance_fails() {
     new_test_ext().execute_with(|| {
         // Account 4 has 50 DALLA, try to fund more
         assert!(Mesh::fund_relay_rewards(
-            RuntimeOrigin::signed(4), 100_000_000_000_000, // way more than balance
-        ).is_err());
+            RuntimeOrigin::signed(4),
+            100_000_000_000_000, // way more than balance
+        )
+        .is_err());
     });
 }
 
@@ -1686,27 +2045,51 @@ fn config_change_affects_max_hops() {
 
         // Set max_hops to 2
         assert_ok!(Mesh::update_mesh_config(
-            RuntimeOrigin::root(), 2, ChannelPreset::LongFast,
-            true, true, true, 1, 2,
+            RuntimeOrigin::root(),
+            2,
+            ChannelPreset::LongFast,
+            true,
+            true,
+            true,
+            1,
+            2,
         ));
 
         // Submit with 3 hops should now fail (max is 2)
         assert_noop!(
             Mesh::submit_mesh_transaction(
-                RuntimeOrigin::signed(2), H256::from([0x42; 32]),
-                MeshTxType::TransferBbzd, [0x01; 4], [0x02; 4],
-                1_000_000, 1, H256::from([0xAA; 32]),
-                gw_id, vec![[0x11; 4], [0x22; 4], [0x33; 4]], 3, -80, 100,
+                RuntimeOrigin::signed(2),
+                H256::from([0x42; 32]),
+                MeshTxType::TransferBbzd,
+                [0x01; 4],
+                [0x02; 4],
+                1_000_000,
+                1,
+                H256::from([0xAA; 32]),
+                gw_id,
+                vec![[0x11; 4], [0x22; 4], [0x33; 4]],
+                3,
+                -80,
+                100,
             ),
             Error::<Test>::ExcessiveHopCount
         );
 
         // Submit with 2 hops should work
         assert_ok!(Mesh::submit_mesh_transaction(
-            RuntimeOrigin::signed(2), H256::from([0x42; 32]),
-            MeshTxType::TransferBbzd, [0x01; 4], [0x02; 4],
-            1_000_000, 1, H256::from([0xAA; 32]),
-            gw_id, vec![[0x11; 4], [0x22; 4]], 2, -80, 100,
+            RuntimeOrigin::signed(2),
+            H256::from([0x42; 32]),
+            MeshTxType::TransferBbzd,
+            [0x01; 4],
+            [0x02; 4],
+            1_000_000,
+            1,
+            H256::from([0xAA; 32]),
+            gw_id,
+            vec![[0x11; 4], [0x22; 4]],
+            2,
+            -80,
+            100,
         ));
     });
 }
@@ -1720,16 +2103,30 @@ fn network_stats_track_registrations_accurately() {
         let node_a: MeshtasticNodeId = [0xA1; 4];
         let node_b: MeshtasticNodeId = [0xB1; 4];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(1), node_a, MeshNodeRole::Client,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+            RuntimeOrigin::signed(1),
+            node_a,
+            MeshNodeRole::Client,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            5,
+            BelizeDistrict::Belize,
+            TerrainType::Coastal,
         ));
         assert_eq!(Mesh::network_stats().total_nodes, 1);
 
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(2), node_b, MeshNodeRole::Gateway,
-            MeshHardware::StationG2, LoRaRegion::US915,
-            174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Urban,
+            RuntimeOrigin::signed(2),
+            node_b,
+            MeshNodeRole::Gateway,
+            MeshHardware::StationG2,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            5,
+            BelizeDistrict::Belize,
+            TerrainType::Urban,
         ));
         assert_eq!(Mesh::network_stats().total_nodes, 2);
 
@@ -1744,10 +2141,19 @@ fn network_stats_track_mesh_transactions() {
         let gw_id = setup_gateway();
         assert_eq!(Mesh::network_stats().total_mesh_transactions, 0);
         assert_ok!(Mesh::submit_mesh_transaction(
-            RuntimeOrigin::signed(2), H256::from([0x42; 32]),
-            MeshTxType::TransferBbzd, [0x01; 4], [0x02; 4],
-            1_000_000, 1, H256::from([0xAA; 32]),
-            gw_id, vec![], 1, -80, 100,
+            RuntimeOrigin::signed(2),
+            H256::from([0x42; 32]),
+            MeshTxType::TransferBbzd,
+            [0x01; 4],
+            [0x02; 4],
+            1_000_000,
+            1,
+            H256::from([0xAA; 32]),
+            gw_id,
+            vec![],
+            1,
+            -80,
+            100,
         ));
         assert_eq!(Mesh::network_stats().total_mesh_transactions, 1);
     });
@@ -1758,16 +2164,27 @@ fn network_stats_track_relay_proofs() {
     new_test_ext().execute_with(|| {
         let node_id: MeshtasticNodeId = [0x01, 0x02, 0x03, 0x04];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(1), node_id, MeshNodeRole::Client,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+            RuntimeOrigin::signed(1),
+            node_id,
+            MeshNodeRole::Client,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            5,
+            BelizeDistrict::Belize,
+            TerrainType::Coastal,
         ));
         assert_eq!(Mesh::network_stats().total_relay_proofs, 0);
         assert_ok!(Mesh::submit_relay_proof(
-            RuntimeOrigin::signed(1), node_id,
-            RelayType::Transaction, H256::from([0x11; 32]),
-            [0xA1; 4], RelayDestination::Node([0xB1; 4]),
-            -80, 100,
+            RuntimeOrigin::signed(1),
+            node_id,
+            RelayType::Transaction,
+            H256::from([0x11; 32]),
+            [0xA1; 4],
+            RelayDestination::Node([0xB1; 4]),
+            -80,
+            100,
         ));
         assert_eq!(Mesh::network_stats().total_relay_proofs, 1);
     });
@@ -1779,9 +2196,14 @@ fn network_stats_track_emergency_alerts() {
         assert_eq!(Mesh::network_stats().total_emergency_alerts, 0);
         assert_ok!(Mesh::issue_emergency_alert(
             RuntimeOrigin::root(),
-            AlertSeverity::Catastrophic, EmergencyType::Hurricane,
-            174_500_000, -882_000_000, 50_000,
-            b"Cat5".to_vec(), 500, BelizeDistrict::Belize,
+            AlertSeverity::Catastrophic,
+            EmergencyType::Hurricane,
+            174_500_000,
+            -882_000_000,
+            50_000,
+            b"Cat5".to_vec(),
+            500,
+            BelizeDistrict::Belize,
         ));
         assert_eq!(Mesh::network_stats().total_emergency_alerts, 1);
     });
@@ -1792,16 +2214,29 @@ fn network_stats_track_block_headers_relayed() {
     new_test_ext().execute_with(|| {
         let vr_id: MeshtasticNodeId = [0xA0, 0xA1, 0xA2, 0xA3];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(10), vr_id, MeshNodeRole::ValidatorRelay,
-            MeshHardware::StationG2, LoRaRegion::US915,
-            174_500_000, -882_000_000, 50, BelizeDistrict::Belize, TerrainType::Urban,
+            RuntimeOrigin::signed(10),
+            vr_id,
+            MeshNodeRole::ValidatorRelay,
+            MeshHardware::StationG2,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            50,
+            BelizeDistrict::Belize,
+            TerrainType::Urban,
         ));
         assert_eq!(Mesh::network_stats().total_block_headers_relayed, 0);
         assert_ok!(Mesh::relay_block_header(
-            RuntimeOrigin::signed(10), vr_id,
-            100, H256::from([0x01; 32]), H256::from([0x02; 32]),
-            H256::from([0x03; 32]), H256::from([0x04; 32]),
-            [0x11; 4], 10, 5000,
+            RuntimeOrigin::signed(10),
+            vr_id,
+            100,
+            H256::from([0x01; 32]),
+            H256::from([0x02; 32]),
+            H256::from([0x03; 32]),
+            H256::from([0x04; 32]),
+            [0x11; 4],
+            10,
+            5000,
         ));
         assert_eq!(Mesh::network_stats().total_block_headers_relayed, 1);
     });
@@ -1815,15 +2250,23 @@ fn catastrophic_alert_count_tracked() {
         assert_eq!(CatastrophicAlertCount::<Test>::get(), 0);
         assert_ok!(Mesh::issue_emergency_alert(
             RuntimeOrigin::root(),
-            AlertSeverity::Catastrophic, EmergencyType::Earthquake,
-            174_500_000, -882_000_000, 100_000,
-            b"Major quake".to_vec(), 1000, BelizeDistrict::Belize,
+            AlertSeverity::Catastrophic,
+            EmergencyType::Earthquake,
+            174_500_000,
+            -882_000_000,
+            100_000,
+            b"Major quake".to_vec(),
+            1000,
+            BelizeDistrict::Belize,
         ));
         assert_eq!(CatastrophicAlertCount::<Test>::get(), 1);
 
         // Resolve it
         let alert_id = Mesh::next_alert_id() - 1;
-        assert_ok!(Mesh::resolve_emergency_alert(RuntimeOrigin::root(), alert_id));
+        assert_ok!(Mesh::resolve_emergency_alert(
+            RuntimeOrigin::root(),
+            alert_id
+        ));
         assert_eq!(CatastrophicAlertCount::<Test>::get(), 0);
     });
 }
@@ -1835,15 +2278,26 @@ fn relay_proof_block_header_type_works() {
     new_test_ext().execute_with(|| {
         let node_id: MeshtasticNodeId = [0x01, 0x02, 0x03, 0x04];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(1), node_id, MeshNodeRole::Client,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+            RuntimeOrigin::signed(1),
+            node_id,
+            MeshNodeRole::Client,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            5,
+            BelizeDistrict::Belize,
+            TerrainType::Coastal,
         ));
         assert_ok!(Mesh::submit_relay_proof(
-            RuntimeOrigin::signed(1), node_id,
-            RelayType::BlockHeader, H256::from([0x22; 32]),
-            [0xA1; 4], RelayDestination::Node([0xB1; 4]),
-            -90, 80,
+            RuntimeOrigin::signed(1),
+            node_id,
+            RelayType::BlockHeader,
+            H256::from([0x22; 32]),
+            [0xA1; 4],
+            RelayDestination::Node([0xB1; 4]),
+            -90,
+            80,
         ));
         let proofs = Mesh::relay_proofs(node_id);
         assert_eq!(proofs.len(), 1);
@@ -1856,15 +2310,26 @@ fn relay_proof_emergency_alert_type_works() {
     new_test_ext().execute_with(|| {
         let node_id: MeshtasticNodeId = [0x01, 0x02, 0x03, 0x04];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(1), node_id, MeshNodeRole::Client,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+            RuntimeOrigin::signed(1),
+            node_id,
+            MeshNodeRole::Client,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            5,
+            BelizeDistrict::Belize,
+            TerrainType::Coastal,
         ));
         assert_ok!(Mesh::submit_relay_proof(
-            RuntimeOrigin::signed(1), node_id,
-            RelayType::EmergencyAlert, H256::from([0x33; 32]),
-            [0xA1; 4], RelayDestination::Node([0xB1; 4]),
-            -70, 120,
+            RuntimeOrigin::signed(1),
+            node_id,
+            RelayType::EmergencyAlert,
+            H256::from([0x33; 32]),
+            [0xA1; 4],
+            RelayDestination::Node([0xB1; 4]),
+            -70,
+            120,
         ));
         let proofs = Mesh::relay_proofs(node_id);
         assert_eq!(proofs[0].relay_type, RelayType::EmergencyAlert);
@@ -1876,15 +2341,26 @@ fn relay_proof_heartbeat_type_works() {
     new_test_ext().execute_with(|| {
         let node_id: MeshtasticNodeId = [0x01, 0x02, 0x03, 0x04];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(1), node_id, MeshNodeRole::Client,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+            RuntimeOrigin::signed(1),
+            node_id,
+            MeshNodeRole::Client,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            5,
+            BelizeDistrict::Belize,
+            TerrainType::Coastal,
         ));
         assert_ok!(Mesh::submit_relay_proof(
-            RuntimeOrigin::signed(1), node_id,
-            RelayType::Heartbeat, H256::from([0x44; 32]),
-            [0xA1; 4], RelayDestination::Node([0xB1; 4]),
-            -60, 150,
+            RuntimeOrigin::signed(1),
+            node_id,
+            RelayType::Heartbeat,
+            H256::from([0x44; 32]),
+            [0xA1; 4],
+            RelayDestination::Node([0xB1; 4]),
+            -60,
+            150,
         ));
         let proofs = Mesh::relay_proofs(node_id);
         assert_eq!(proofs[0].relay_type, RelayType::Heartbeat);
@@ -1899,33 +2375,58 @@ fn claim_relay_rewards_clears_proofs_and_stats() {
         // Register relayer
         let node_id: MeshtasticNodeId = [0x01, 0x02, 0x03, 0x04];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(1), node_id, MeshNodeRole::Client,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+            RuntimeOrigin::signed(1),
+            node_id,
+            MeshNodeRole::Client,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            5,
+            BelizeDistrict::Belize,
+            TerrainType::Coastal,
         ));
 
         // Submit proof
         assert_ok!(Mesh::submit_relay_proof(
-            RuntimeOrigin::signed(1), node_id,
-            RelayType::Transaction, H256::from([0x11; 32]),
-            [0xA1; 4], RelayDestination::Node([0xB1; 4]),
-            -80, 100,
+            RuntimeOrigin::signed(1),
+            node_id,
+            RelayType::Transaction,
+            H256::from([0x11; 32]),
+            [0xA1; 4],
+            RelayDestination::Node([0xB1; 4]),
+            -80,
+            100,
         ));
 
         // Register confirmer and confirm
         let confirmer_node: MeshtasticNodeId = [0xC1; 4];
         assert_ok!(Mesh::register_node(
-            RuntimeOrigin::signed(2), confirmer_node, MeshNodeRole::Client,
-            MeshHardware::TBeam, LoRaRegion::US915,
-            174_500_000, -882_000_000, 5, BelizeDistrict::Belize, TerrainType::Coastal,
+            RuntimeOrigin::signed(2),
+            confirmer_node,
+            MeshNodeRole::Client,
+            MeshHardware::TBeam,
+            LoRaRegion::US915,
+            174_500_000,
+            -882_000_000,
+            5,
+            BelizeDistrict::Belize,
+            TerrainType::Coastal,
         ));
-        assert_ok!(Mesh::confirm_relay_proof(RuntimeOrigin::signed(2), node_id, 0));
+        assert_ok!(Mesh::confirm_relay_proof(
+            RuntimeOrigin::signed(2),
+            node_id,
+            0
+        ));
 
         let reward = Mesh::relay_rewards(1u64);
         assert!(reward > 0);
 
         // Fund pallet
-        assert_ok!(Mesh::fund_relay_rewards(RuntimeOrigin::signed(1), reward + 1));
+        assert_ok!(Mesh::fund_relay_rewards(
+            RuntimeOrigin::signed(1),
+            reward + 1
+        ));
 
         // Claim
         assert_ok!(Mesh::claim_relay_rewards(RuntimeOrigin::signed(1)));
@@ -1942,12 +2443,20 @@ fn resolve_alert_signed_authority_works() {
     new_test_ext().execute_with(|| {
         assert_ok!(Mesh::issue_emergency_alert(
             RuntimeOrigin::signed(5), // emergency authority
-            AlertSeverity::Warning, EmergencyType::Flooding,
-            174_500_000, -882_000_000, 5_000,
-            b"Flood receding".to_vec(), 50, BelizeDistrict::StannCreek,
+            AlertSeverity::Warning,
+            EmergencyType::Flooding,
+            174_500_000,
+            -882_000_000,
+            5_000,
+            b"Flood receding".to_vec(),
+            50,
+            BelizeDistrict::StannCreek,
         ));
         let alert_id = Mesh::next_alert_id() - 1;
-        assert_ok!(Mesh::resolve_emergency_alert(RuntimeOrigin::signed(5), alert_id));
+        assert_ok!(Mesh::resolve_emergency_alert(
+            RuntimeOrigin::signed(5),
+            alert_id
+        ));
         let alert = Mesh::emergency_alerts(alert_id).unwrap();
         assert!(alert.resolved);
     });
@@ -1958,9 +2467,14 @@ fn resolve_alert_non_authority_fails() {
     new_test_ext().execute_with(|| {
         assert_ok!(Mesh::issue_emergency_alert(
             RuntimeOrigin::root(),
-            AlertSeverity::Emergency, EmergencyType::Wildfire,
-            174_500_000, -882_000_000, 5_000,
-            b"Fire".to_vec(), 50, BelizeDistrict::Cayo,
+            AlertSeverity::Emergency,
+            EmergencyType::Wildfire,
+            174_500_000,
+            -882_000_000,
+            5_000,
+            b"Fire".to_vec(),
+            50,
+            BelizeDistrict::Cayo,
         ));
         let alert_id = Mesh::next_alert_id() - 1;
         assert_noop!(

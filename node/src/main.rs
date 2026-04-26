@@ -1,6 +1,6 @@
 #![allow(clippy::result_large_err)]
 //! BelizeChain Node Implementation
-//! 
+//!
 //! The sovereign blockchain node for Belize, implementing:
 //! - Substrate-based architecture
 //! - Custom consensus with federated AI integration
@@ -11,14 +11,14 @@ use belizechain_runtime::{self, opaque::Block};
 use sc_cli::{ChainSpec, SubstrateCli};
 use sc_service::PartialComponents;
 
+mod block_announce_validator;
 mod chain_spec;
 mod chain_spec_configs;
 mod validator_config;
-mod block_announce_validator;
 #[macro_use]
 mod service;
-mod rpc;
 mod cli;
+mod rpc;
 
 use cli::{Cli, Subcommand};
 
@@ -48,18 +48,26 @@ impl SubstrateCli for Cli {
     }
 
     /// Load chain specification from ID or file path
-    /// 
+    ///
     /// Supported chain IDs:
     /// - "dev" - Development mode with Alice as validator
     /// - "local" - Local testnet with Alice and Bob
-    /// - "testnet" - Single-validator testnet for AKS deployment
+    /// - "testnet-template" - Public testnet template for `build-spec` only
+    /// - "staging" - Pre-mainnet rehearsal template
+    /// - "testnet" - intentionally disabled as a built-in alias; use an explicit JSON/raw spec file
     /// - "belize" or "" - Mainnet configuration
     /// - Custom path - Load from JSON file
     fn load_spec(&self, id: &str) -> Result<Box<dyn ChainSpec>, String> {
         Ok(match id {
             "dev" => Box::new(chain_spec::development_config()?),
             "local" => Box::new(chain_spec::local_testnet_config()?),
-            "testnet" => Box::new(chain_spec::belizechain_testnet_config()?),
+            "testnet-template" => Box::new(chain_spec::public_testnet_config()?),
+            "staging" => Box::new(chain_spec::staging_config()?),
+            "testnet" => {
+                return Err(
+                    "Built-in chain ID `testnet` is disabled. Generate a dedicated testnet spec with `build-spec --disable-default-bootnode --chain testnet-template`, convert it to raw with the same flag, and launch nodes with the resulting JSON/raw spec file path.".into()
+                )
+            }
             "" | "belize" => Box::new(chain_spec::belizechain_mainnet_config()?),
             path => {
                 Box::new(chain_spec::ChainSpec::from_json_file(std::path::PathBuf::from(path))?)
@@ -82,30 +90,46 @@ pub fn run() -> sc_cli::Result<()> {
         Some(Subcommand::CheckBlock(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             runner.async_run(|config| {
-                let PartialComponents { client, task_manager, import_queue, .. } =
-                    service::new_partial(&config)?;
+                let PartialComponents {
+                    client,
+                    task_manager,
+                    import_queue,
+                    ..
+                } = service::new_partial(&config)?;
                 Ok((cmd.run(client, import_queue), task_manager))
             })
         }
         Some(Subcommand::ExportBlocks(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             runner.async_run(|config| {
-                let PartialComponents { client, task_manager, .. } = service::new_partial(&config)?;
+                let PartialComponents {
+                    client,
+                    task_manager,
+                    ..
+                } = service::new_partial(&config)?;
                 Ok((cmd.run(client, config.database), task_manager))
             })
         }
         Some(Subcommand::ExportState(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             runner.async_run(|config| {
-                let PartialComponents { client, task_manager, .. } = service::new_partial(&config)?;
+                let PartialComponents {
+                    client,
+                    task_manager,
+                    ..
+                } = service::new_partial(&config)?;
                 Ok((cmd.run(client, config.chain_spec), task_manager))
             })
         }
         Some(Subcommand::ImportBlocks(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             runner.async_run(|config| {
-                let PartialComponents { client, task_manager, import_queue, .. } =
-                    service::new_partial(&config)?;
+                let PartialComponents {
+                    client,
+                    task_manager,
+                    import_queue,
+                    ..
+                } = service::new_partial(&config)?;
                 Ok((cmd.run(client, import_queue), task_manager))
             })
         }
@@ -116,8 +140,12 @@ pub fn run() -> sc_cli::Result<()> {
         Some(Subcommand::Revert(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             runner.async_run(|config| {
-                let PartialComponents { client, task_manager, backend, .. } =
-                    service::new_partial(&config)?;
+                let PartialComponents {
+                    client,
+                    task_manager,
+                    backend,
+                    ..
+                } = service::new_partial(&config)?;
                 let aux_revert = Box::new(|client, _, blocks| {
                     sc_consensus_grandpa::revert(client, blocks)?;
                     Ok(())
@@ -128,18 +156,18 @@ pub fn run() -> sc_cli::Result<()> {
         #[cfg(feature = "runtime-benchmarks")]
         Some(Subcommand::Benchmark(cmd)) => {
             let runner = cli.create_runner(cmd.as_ref())?;
-            runner.sync_run(|config| {
-                match cmd.as_ref() {
-                    frame_benchmarking_cli::BenchmarkCmd::Pallet(cmd) => {
-                        cmd.run_with_spec::<sp_runtime::traits::HashingFor<Block>, sp_io::SubstrateHostFunctions>(
-                            Some(config.chain_spec),
-                        )
-                    }
-                    frame_benchmarking_cli::BenchmarkCmd::Machine(cmd) => {
-                        cmd.run(&config, frame_benchmarking_cli::SUBSTRATE_REFERENCE_HARDWARE.clone())
-                    }
-                    _ => Err("This benchmark sub-command is not supported yet.".into()),
-                }
+            runner.sync_run(|config| match cmd.as_ref() {
+                frame_benchmarking_cli::BenchmarkCmd::Pallet(cmd) => cmd
+                    .run_with_spec::<sp_runtime::traits::HashingFor<
+                    Block,
+                >, sp_io::SubstrateHostFunctions>(
+                    Some(config.chain_spec)
+                ),
+                frame_benchmarking_cli::BenchmarkCmd::Machine(cmd) => cmd.run(
+                    &config,
+                    frame_benchmarking_cli::SUBSTRATE_REFERENCE_HARDWARE.clone(),
+                ),
+                _ => Err("This benchmark sub-command is not supported yet.".into()),
             })
         }
         #[cfg(feature = "try-runtime")]
@@ -159,9 +187,10 @@ pub fn run() -> sc_cli::Result<()> {
                         >,
                     >(config)
                     .map_err(sc_cli::Error::Service),
-                    sc_network::config::NetworkBackendType::Litep2p =>
+                    sc_network::config::NetworkBackendType::Litep2p => {
                         service::new_full::<sc_network::Litep2pNetworkBackend>(config)
-                            .map_err(sc_cli::Error::Service),
+                            .map_err(sc_cli::Error::Service)
+                    }
                 }
             })
         }
@@ -200,15 +229,27 @@ mod tests {
     #[test]
     fn test_author_matches_cargo_toml() {
         let a = Cli::author();
-        assert!(a.contains("BelizeChain"), "author must contain 'BelizeChain': {a}");
+        assert!(
+            a.contains("BelizeChain"),
+            "author must contain 'BelizeChain': {a}"
+        );
     }
 
     #[test]
     fn test_support_url_points_to_github_issues() {
         let url = Cli::support_url();
-        assert!(url.contains("github.com"), "support URL must be on GitHub: {url}");
-        assert!(url.contains("BelizeChain"), "support URL must reference the org: {url}");
-        assert!(url.ends_with("/issues/new"), "support URL must point to /issues/new: {url}");
+        assert!(
+            url.contains("github.com"),
+            "support URL must be on GitHub: {url}"
+        );
+        assert!(
+            url.contains("BelizeChain"),
+            "support URL must reference the org: {url}"
+        );
+        assert!(
+            url.ends_with("/issues/new"),
+            "support URL must point to /issues/new: {url}"
+        );
     }
 
     #[test]
@@ -227,14 +268,54 @@ mod tests {
         // "dev" arm calls development_config() — succeeds when WASM_BINARY is compiled in.
         let cli = default_cli();
         let result = cli.load_spec("dev");
-        assert!(result.is_ok(), "load_spec(\"dev\") must succeed in test build: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "load_spec(\"dev\") must succeed in test build: {:?}",
+            result.err()
+        );
     }
 
     #[test]
     fn test_load_spec_local_succeeds_when_wasm_built() {
         let cli = default_cli();
         let result = cli.load_spec("local");
-        assert!(result.is_ok(), "load_spec(\"local\") must succeed in test build: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "load_spec(\"local\") must succeed in test build: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn test_load_spec_testnet_template_succeeds_when_wasm_built() {
+        let cli = default_cli();
+        let result = cli.load_spec("testnet-template");
+        assert!(
+            result.is_ok(),
+            "load_spec(\"testnet-template\") must succeed in test build: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn test_load_spec_staging_succeeds_when_wasm_built() {
+        let cli = default_cli();
+        let result = cli.load_spec("staging");
+        assert!(
+            result.is_ok(),
+            "load_spec(\"staging\") must succeed in test build: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn test_load_spec_testnet_fails_closed_until_external_spec_is_provided() {
+        let cli = default_cli();
+        let result = cli.load_spec("testnet");
+        assert!(
+            result.is_err(),
+            "load_spec(\"testnet\") must fail closed until an external spec is provided"
+        );
     }
 
     #[test]
@@ -243,14 +324,20 @@ mod tests {
         // mainnet_genesis() returns Err when MAINNET_KEYS_CONFIGURED = false.
         let cli = default_cli();
         let result = cli.load_spec("");
-        assert!(result.is_err(), "load_spec(\"\") must fail until mainnet keys are set");
+        assert!(
+            result.is_err(),
+            "load_spec(\"\") must fail until mainnet keys are set"
+        );
     }
 
     #[test]
     fn test_load_spec_belize_fails_mainnet_keys_not_configured() {
         let cli = default_cli();
         let result = cli.load_spec("belize");
-        assert!(result.is_err(), "load_spec(\"belize\") must fail until mainnet keys are set");
+        assert!(
+            result.is_err(),
+            "load_spec(\"belize\") must fail until mainnet keys are set"
+        );
     }
 
     #[test]
@@ -258,6 +345,9 @@ mod tests {
         // `path` arm — tries to load from a JSON file that doesn't exist.
         let cli = default_cli();
         let result = cli.load_spec("/nonexistent/path/to/chainspec.json");
-        assert!(result.is_err(), "load_spec with nonexistent path must return Err");
+        assert!(
+            result.is_err(),
+            "load_spec with nonexistent path must return Err"
+        );
     }
 }

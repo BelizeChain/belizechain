@@ -2,7 +2,7 @@ use crate as pallet_belize_landledger;
 use crate::LandLedgerOracleProvider;
 use frame_support::{
     parameter_types,
-    traits::{ConstU32, ConstU64, ConstU128, Everything},
+    traits::{ConstU128, ConstU32, ConstU64, Everything},
 };
 use sp_core::H256;
 use sp_runtime::{

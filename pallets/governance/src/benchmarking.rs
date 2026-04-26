@@ -16,7 +16,8 @@ mod benchmarks {
         let _ = T::Currency::make_free_balance_be(&caller, balance);
 
         let title: Vec<u8> = b"Benchmark Proposal Title".to_vec();
-        let description: Vec<u8> = b"Benchmark proposal description for testing weight calculation".to_vec();
+        let description: Vec<u8> =
+            b"Benchmark proposal description for testing weight calculation".to_vec();
         let proposal_type_index: u8 = 0; // Constitutional
         let threshold_index: u8 = 0; // SimpleMajority
         let is_emergency: bool = false;
@@ -64,7 +65,12 @@ mod benchmarks {
         let conviction: u8 = 1;
 
         #[extrinsic_call]
-        _(RawOrigin::Signed(voter), proposal_id, vote_choice_index, conviction);
+        _(
+            RawOrigin::Signed(voter),
+            proposal_id,
+            vote_choice_index,
+            conviction,
+        );
     }
 
     #[benchmark]

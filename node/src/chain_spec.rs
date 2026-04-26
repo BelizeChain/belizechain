@@ -1,15 +1,15 @@
+use frame_support::{pallet_prelude::ConstU32, BoundedVec};
+use sc_service::ChainType;
 use sp_consensus_babe::AuthorityId as BabeId;
 use sp_consensus_grandpa::AuthorityId as GrandpaId;
-use sp_core::{Pair, Public, sr25519};
+use sp_core::{sr25519, Pair, Public};
 use sp_runtime::{
     traits::{IdentifyAccount, Verify},
     MultiSignature,
 };
-use sc_service::ChainType;
-use frame_support::{BoundedVec, pallet_prelude::ConstU32};
 
-use belizechain_runtime::{AccountId, BABE_GENESIS_EPOCH_CONFIG, WASM_BINARY, opaque::SessionKeys};
 use crate::chain_spec_configs::NetworkConfig;
+use belizechain_runtime::{opaque::SessionKeys, AccountId, BABE_GENESIS_EPOCH_CONFIG, WASM_BINARY};
 
 /// Specialized `ChainSpec`. This is a specialization of the general Substrate ChainSpec type.
 pub type ChainSpec = sc_service::GenericChainSpec;
@@ -37,6 +37,22 @@ pub fn authority_keys_from_seed(s: &str) -> (AccountId, BabeId, GrandpaId) {
         get_account_id_from_seed::<sr25519::Public>(s),
         get_from_seed::<BabeId>(s),
         get_from_seed::<GrandpaId>(s),
+    )
+}
+
+/// Generate authority keys from explicit seeds.
+///
+/// The validator account and BABE key are derived from the sr25519 account seed,
+/// while GRANDPA uses its own ed25519 seed.
+pub fn authority_keys_from_explicit_seeds(
+    account_seed: &str,
+    babe_seed: &str,
+    grandpa_seed: &str,
+) -> (AccountId, BabeId, GrandpaId) {
+    (
+        get_account_id_from_seed::<sr25519::Public>(account_seed),
+        get_from_seed::<BabeId>(babe_seed),
+        get_from_seed::<GrandpaId>(grandpa_seed),
     )
 }
 
@@ -102,87 +118,8 @@ pub fn local_testnet_config() -> Result<ChainSpec, String> {
         crate::validator_config::BootstrapNodes::testnet()
             .into_iter()
             .filter_map(|addr| addr.parse().ok())
-            .collect()
+            .collect(),
     )
-    .build())
-}
-
-/// BelizeChain Testnet — single-validator chain for AKS deployment.
-///
-/// Uses real keys generated via `subkey` (not dev seeds).
-/// Sr25519 (BABE/Account): 5Dk6wqPb2wzD1DscaBqNemv1xrETVQnmqXpjk2z6oHpQgjx8
-/// Ed25519 (GRANDPA):      5FsJu5aQCFsz2kEB2pdYpXF7JD2Jfr1qWUXhzz81uMThSGcw
-pub fn belizechain_testnet_config() -> Result<ChainSpec, String> {
-    use sp_core::crypto::Ss58Codec;
-
-    let babe_key = BabeId::from_ss58check(
-        "5Dk6wqPb2wzD1DscaBqNemv1xrETVQnmqXpjk2z6oHpQgjx8",
-    )
-    .map_err(|e| format!("Invalid BABE key: {e:?}"))?;
-    let grandpa_key = GrandpaId::from_ss58check(
-        "5FsJu5aQCFsz2kEB2pdYpXF7JD2Jfr1qWUXhzz81uMThSGcw",
-    )
-    .map_err(|e| format!("Invalid GRANDPA key: {e:?}"))?;
-
-    let root_key: AccountId = sp_runtime::AccountId32::from_ss58check(
-        "5Dk6wqPb2wzD1DscaBqNemv1xrETVQnmqXpjk2z6oHpQgjx8",
-    )
-    .map_err(|e| format!("Invalid root key: {e:?}"))?;
-
-    let endowment: u128 = 10_000_000 * 1_000_000_000_000; // 10M DALLA
-
-    Ok(ChainSpec::builder(
-        WASM_BINARY.ok_or_else(|| "Testnet wasm not available".to_string())?,
-        Default::default(),
-    )
-    .with_name("BelizeChain Testnet")
-    .with_id("belizechain_testnet")
-    .with_chain_type(ChainType::Live)
-    .with_genesis_config_patch(serde_json::json!({
-        "balances": {
-            "balances": vec![(root_key.clone(), endowment)],
-        },
-        "session": {
-            "keys": vec![(
-                root_key.clone(),
-                root_key.clone(),
-                SessionKeys {
-                    babe: babe_key,
-                    grandpa: grandpa_key,
-                },
-            )],
-        },
-        "babe": {
-            "epochConfig": Some(BABE_GENESIS_EPOCH_CONFIG),
-        },
-        "grandpa": {},
-        "sudo": {
-            "key": Some(root_key.clone()),
-        },
-        "identity": {
-            "operationFee": Some(10u128 * 1_000_000_000_000u128),
-            "ssnStandardVersion": 1u8,
-            "passportStandardVersion": 1u8,
-            "initialSsnIssuers": vec![ root_key.clone() ],
-            "initialPassportIssuers": vec![ root_key.clone() ],
-            "initialBiometricIssuers": vec![ root_key.clone() ],
-            "paused": false,
-            "startIdentityId": 1u64,
-            "issuerBondAmount": Some(1_000u128 * 1_000_000_000_000u128),
-            "rateWindowBlocks": Some(14_400u32),
-            "rateLimitSsn": Some(500u32),
-            "rateLimitPassport": Some(200u32),
-            "rateLimitBiometrics": Some(100u32),
-        },
-        "governance": {
-            "councilMembers": vec![
-                (root_key.clone(), 1u32, 0u32),
-            ],
-            "democracyLaunchPeriod": 28800u32,
-            "democracyVotingPeriod": 43200u32,
-            "democracyMinimumDeposit": 1000u128 * 1_000_000_000_000u128,
-        },
-    }))
     .build())
 }
 
@@ -199,7 +136,7 @@ pub fn belizechain_mainnet_config() -> Result<ChainSpec, String> {
         crate::validator_config::BootstrapNodes::mainnet()
             .into_iter()
             .filter_map(|addr| addr.parse().ok())
-            .collect()
+            .collect(),
     )
     .build())
 }
@@ -242,10 +179,10 @@ fn testnet_genesis(
         "sudo": {
             "key": Some(root_key.clone()),
         },
-        
+
         // BelizeChain custom pallet configurations
         // Note: Economy pallet doesn't have genesis config yet
-        
+
         "identity": {
             "operationFee": Some(10u128 * 1_000_000_000_000u128), // 10 DALLA with 12 decimals
             "ssnStandardVersion": 1u8,
@@ -261,7 +198,7 @@ fn testnet_genesis(
             "rateLimitPassport": Some(200u32),
             "rateLimitBiometrics": Some(100u32),
         },
-        
+
         "governance": {
             "councilMembers": vec![
                 (root_key.clone(), 1u32, 0u32),  // (account, rank, pouw_contribution)
@@ -272,7 +209,7 @@ fn testnet_genesis(
             "democracyVotingPeriod": 43200u32, // 3 days in blocks
             "democracyMinimumDeposit": 1000u128 * 1_000_000_000_000u128, // 1000 DALLA with 12 decimals
         },
-        
+
         // Community pallet - Phase 5: Education Modules & Green Projects seed data
         "community": {
             "educationModules": vec![
@@ -378,12 +315,10 @@ fn mainnet_genesis() -> Result<serde_json::Value, String> {
     // with real, securely-generated validator keys.
     const MAINNET_KEYS_CONFIGURED: bool = false;
     if !MAINNET_KEYS_CONFIGURED {
-        return Err(
-            "SECURITY: Mainnet genesis still uses placeholder keys. \
+        return Err("SECURITY: Mainnet genesis still uses placeholder keys. \
              Generate real validator keys with `subkey generate`, replace \
              the entries below, and set MAINNET_KEYS_CONFIGURED = true."
-                .into(),
-        );
+            .into());
     }
 
     // Production validator keys — replace with output of `subkey generate`
@@ -437,10 +372,10 @@ fn mainnet_genesis() -> Result<serde_json::Value, String> {
         },
         "grandpa": {},
         // NOTE: Sudo pallet excluded — gated behind #[cfg(feature = "dev")] in runtime.
-        
+
         // BelizeChain custom pallet configurations
         // Note: Economy pallet doesn't have genesis config yet
-        
+
         "identity": {
             "operationFee": Some(50u128 * 1_000_000_000_000u128), // 50 DALLA for mainnet
             "ssnStandardVersion": 1u8,
@@ -457,7 +392,7 @@ fn mainnet_genesis() -> Result<serde_json::Value, String> {
             "rateLimitPassport": Some(100u32),
             "rateLimitBiometrics": Some(50u32),
         },
-        
+
         "governance": {
             // District council representatives (elected per Constitution)
             "councilMembers": vec![
@@ -471,26 +406,33 @@ fn mainnet_genesis() -> Result<serde_json::Value, String> {
     }))
 }
 
-/// Generate testnet chain spec from NetworkConfig
-/// Reserved for future public testnet deployment
+/// Generate a public-testnet template from NetworkConfig.
+///
+/// This template is intended for `build-spec` followed by manual review and
+/// editing. Real public testnet launches should use an explicit JSON/raw spec
+/// file generated from this template rather than a built-in chain alias.
+/// Use `build-spec --disable-default-bootnode` when exporting it, otherwise the
+/// CLI injects a loopback bootnode into the generated artifact.
 #[allow(dead_code)]
 pub(crate) fn public_testnet_config() -> Result<ChainSpec, String> {
     let config = NetworkConfig::public_testnet();
-    
-    let authorities: Vec<(AccountId, BabeId, GrandpaId)> = config.initial_authorities
+
+    let authorities: Vec<(AccountId, BabeId, GrandpaId)> = config
+        .initial_authorities
         .iter()
-        .map(|(babe_seed, grandpa_seed)| {
-            authority_keys_from_seed(&format!("{}{}", babe_seed, grandpa_seed))
+        .map(|(account_seed, grandpa_seed)| {
+            authority_keys_from_explicit_seeds(account_seed, account_seed, grandpa_seed)
         })
         .collect();
-    
-    let endowed_accounts: Vec<AccountId> = config.initial_allocation
+
+    let endowed_accounts: Vec<AccountId> = config
+        .initial_allocation
         .iter()
         .map(|(seed, _)| get_account_id_from_seed::<sr25519::Public>(seed))
         .collect();
-    
+
     let root_key = get_account_id_from_seed::<sr25519::Public>("treasury");
-    
+
     Ok(ChainSpec::builder(
         WASM_BINARY.ok_or_else(|| "Testnet wasm not available".to_string())?,
         Default::default(),
@@ -512,21 +454,23 @@ pub(crate) fn public_testnet_config() -> Result<ChainSpec, String> {
 #[allow(dead_code)]
 pub(crate) fn staging_config() -> Result<ChainSpec, String> {
     let config = NetworkConfig::staging();
-    
-    let authorities: Vec<(AccountId, BabeId, GrandpaId)> = config.initial_authorities
+
+    let authorities: Vec<(AccountId, BabeId, GrandpaId)> = config
+        .initial_authorities
         .iter()
-        .map(|(babe_seed, grandpa_seed)| {
-            authority_keys_from_seed(&format!("{}{}", babe_seed, grandpa_seed))
+        .map(|(account_seed, grandpa_seed)| {
+            authority_keys_from_explicit_seeds(account_seed, account_seed, grandpa_seed)
         })
         .collect();
-    
-    let endowed_accounts: Vec<AccountId> = config.initial_allocation
+
+    let endowed_accounts: Vec<AccountId> = config
+        .initial_allocation
         .iter()
         .map(|(seed, _)| get_account_id_from_seed::<sr25519::Public>(seed))
         .collect();
-    
+
     let root_key = get_account_id_from_seed::<sr25519::Public>("treasury");
-    
+
     Ok(ChainSpec::builder(
         WASM_BINARY.ok_or_else(|| "Staging wasm not available".to_string())?,
         Default::default(),
@@ -554,18 +498,36 @@ mod tests {
     fn test_authority_keys_from_seed_deterministic() {
         let keys1 = authority_keys_from_seed("Alice");
         let keys2 = authority_keys_from_seed("Alice");
-        assert_eq!(keys1.0, keys2.0, "AccountId must be deterministic for the same seed");
-        assert_eq!(keys1.1, keys2.1, "BabeId must be deterministic for the same seed");
-        assert_eq!(keys1.2, keys2.2, "GrandpaId must be deterministic for the same seed");
+        assert_eq!(
+            keys1.0, keys2.0,
+            "AccountId must be deterministic for the same seed"
+        );
+        assert_eq!(
+            keys1.1, keys2.1,
+            "BabeId must be deterministic for the same seed"
+        );
+        assert_eq!(
+            keys1.2, keys2.2,
+            "GrandpaId must be deterministic for the same seed"
+        );
     }
 
     #[test]
     fn test_authority_keys_from_seed_distinct_for_different_seeds() {
         let alice = authority_keys_from_seed("Alice");
         let bob = authority_keys_from_seed("Bob");
-        assert_ne!(alice.0, bob.0, "Different seeds must yield different AccountIds");
-        assert_ne!(alice.1, bob.1, "Different seeds must yield different BabeIds");
-        assert_ne!(alice.2, bob.2, "Different seeds must yield different GrandpaIds");
+        assert_ne!(
+            alice.0, bob.0,
+            "Different seeds must yield different AccountIds"
+        );
+        assert_ne!(
+            alice.1, bob.1,
+            "Different seeds must yield different BabeIds"
+        );
+        assert_ne!(
+            alice.2, bob.2,
+            "Different seeds must yield different GrandpaIds"
+        );
     }
 
     // ── get_account_id_from_seed ───────────────────────────────────────────
@@ -574,7 +536,10 @@ mod tests {
     fn test_get_account_id_from_seed_deterministic() {
         let id1 = get_account_id_from_seed::<sr25519::Public>("Alice");
         let id2 = get_account_id_from_seed::<sr25519::Public>("Alice");
-        assert_eq!(id1, id2, "Same seed must produce the same AccountId every time");
+        assert_eq!(
+            id1, id2,
+            "Same seed must produce the same AccountId every time"
+        );
     }
 
     #[test]
@@ -591,7 +556,10 @@ mod tests {
     fn test_stash_accounts_differ_from_base_accounts() {
         let alice = get_account_id_from_seed::<sr25519::Public>("Alice");
         let alice_stash = get_account_id_from_seed::<sr25519::Public>("Alice//stash");
-        assert_ne!(alice, alice_stash, "stash account must differ from the base account");
+        assert_ne!(
+            alice, alice_stash,
+            "stash account must differ from the base account"
+        );
     }
 
     // ── mainnet_genesis safety guard ───────────────────────────────────────
@@ -622,7 +590,10 @@ mod tests {
             vec![alice_acct],
             false,
         );
-        assert!(result.is_ok(), "testnet_genesis must succeed with valid inputs");
+        assert!(
+            result.is_ok(),
+            "testnet_genesis must succeed with valid inputs"
+        );
     }
 
     #[test]
@@ -658,7 +629,11 @@ mod tests {
         )
         .unwrap();
         let keys = genesis["session"]["keys"].as_array().unwrap();
-        assert_eq!(keys.len(), 2, "session must list exactly 2 validator key sets");
+        assert_eq!(
+            keys.len(),
+            2,
+            "session must list exactly 2 validator key sets"
+        );
     }
 
     #[test]
@@ -727,7 +702,10 @@ mod tests {
             false,
         )
         .unwrap();
-        assert!(!genesis["identity"].is_null(), "identity pallet genesis config must be present");
+        assert!(
+            !genesis["identity"].is_null(),
+            "identity pallet genesis config must be present"
+        );
         assert!(
             !genesis["identity"]["operationFee"].is_null(),
             "identity operationFee must be configured"
@@ -766,7 +744,11 @@ mod tests {
         )
         .unwrap();
         let modules = genesis["community"]["educationModules"].as_array().unwrap();
-        assert_eq!(modules.len(), 4, "testnet genesis must include exactly 4 education modules");
+        assert_eq!(
+            modules.len(),
+            4,
+            "testnet genesis must include exactly 4 education modules"
+        );
     }
 
     #[test]
@@ -780,7 +762,11 @@ mod tests {
         )
         .unwrap();
         let projects = genesis["community"]["greenProjects"].as_array().unwrap();
-        assert_eq!(projects.len(), 5, "testnet genesis must include exactly 5 green projects");
+        assert_eq!(
+            projects.len(),
+            5,
+            "testnet genesis must include exactly 5 green projects"
+        );
     }
 
     #[test]
@@ -831,21 +817,11 @@ mod tests {
 
     #[test]
     fn test_public_testnet_config_succeeds() {
-        public_testnet_config()
-            .expect("public_testnet_config must succeed in test build");
+        public_testnet_config().expect("public_testnet_config must succeed in test build");
     }
 
     #[test]
     fn test_staging_config_succeeds() {
-        staging_config()
-            .expect("staging_config must succeed in test build");
-    }
-
-    #[test]
-    fn test_belizechain_testnet_config_succeeds() {
-        let spec = belizechain_testnet_config()
-            .expect("belizechain_testnet_config must succeed in test build");
-        assert_eq!(spec.name(), "BelizeChain Testnet");
-        assert_eq!(spec.id(), "belizechain_testnet");
+        staging_config().expect("staging_config must succeed in test build");
     }
 }

@@ -1,4 +1,4 @@
-use frame_support::weights::{Weight, constants::RocksDbWeight};
+use frame_support::weights::{constants::RocksDbWeight, Weight};
 
 /// Weight functions needed for pallet_belize_moderation.
 pub trait WeightInfo {

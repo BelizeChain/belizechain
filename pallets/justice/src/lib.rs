@@ -38,21 +38,31 @@ mod benchmarking;
 
 #[frame_support::pallet]
 pub mod pallet {
+    use crate::weights::WeightInfo;
     use frame_support::{
         pallet_prelude::*,
-        traits::{Currency, ReservableCurrency, Get},
+        traits::{Currency, Get, ReservableCurrency},
         BoundedVec,
     };
     use frame_system::pallet_prelude::*;
     use sp_runtime::traits::Saturating;
     use sp_std::vec::Vec;
-    use crate::weights::WeightInfo;
 
     pub type BalanceOf<T> =
         <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
     // ── Dispute severity ──────────────────────────────────────────────────────
-    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+    #[derive(
+        Encode,
+        Decode,
+        codec::DecodeWithMemTracking,
+        Clone,
+        PartialEq,
+        Eq,
+        Debug,
+        TypeInfo,
+        MaxEncodedLen,
+    )]
     pub enum DisputeSeverity {
         /// Minor infractions — compulsory cooling-off only, no escrow.
         Minor,
@@ -74,7 +84,17 @@ pub mod pallet {
     }
 
     // ── Dispute status ────────────────────────────────────────────────────────
-    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+    #[derive(
+        Encode,
+        Decode,
+        codec::DecodeWithMemTracking,
+        Clone,
+        PartialEq,
+        Eq,
+        Debug,
+        TypeInfo,
+        MaxEncodedLen,
+    )]
     pub enum DisputeStatus {
         /// Freshly opened; awaiting mediator assignment.
         Pending,
@@ -89,7 +109,17 @@ pub mod pallet {
     }
 
     // ── Dispute resolution ────────────────────────────────────────────────────
-    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+    #[derive(
+        Encode,
+        Decode,
+        codec::DecodeWithMemTracking,
+        Clone,
+        PartialEq,
+        Eq,
+        Debug,
+        TypeInfo,
+        MaxEncodedLen,
+    )]
     pub enum DisputeResolution {
         /// Allegation dismissed; no penalty. Escrowed slash is refunded.
         Dismissed,
@@ -100,7 +130,17 @@ pub mod pallet {
     }
 
     // ── Rehabilitation status ─────────────────────────────────────────────────
-    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+    #[derive(
+        Encode,
+        Decode,
+        codec::DecodeWithMemTracking,
+        Clone,
+        PartialEq,
+        Eq,
+        Debug,
+        TypeInfo,
+        MaxEncodedLen,
+    )]
     pub enum RehabStatus {
         /// No active justice proceedings.
         Clean,
@@ -113,11 +153,23 @@ pub mod pallet {
     }
 
     impl Default for RehabStatus {
-        fn default() -> Self { Self::Clean }
+        fn default() -> Self {
+            Self::Clean
+        }
     }
 
     // ── DisputeRecord ─────────────────────────────────────────────────────────
-    #[derive(Encode, Decode, codec::DecodeWithMemTracking, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+    #[derive(
+        Encode,
+        Decode,
+        codec::DecodeWithMemTracking,
+        Clone,
+        PartialEq,
+        Eq,
+        Debug,
+        TypeInfo,
+        MaxEncodedLen,
+    )]
     #[scale_info(skip_type_params(T))]
     pub struct DisputeRecord<T: Config> {
         /// Account that filed the dispute (pays the bond).
@@ -181,62 +233,39 @@ pub mod pallet {
     /// All open and closed disputes.
     #[pallet::storage]
     #[pallet::getter(fn disputes)]
-    pub type Disputes<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat, u32,
-        DisputeRecord<T>,
-        OptionQuery,
-    >;
+    pub type Disputes<T: Config> =
+        StorageMap<_, Blake2_128Concat, u32, DisputeRecord<T>, OptionQuery>;
 
     /// Block at which a cooling-off period ends for an account.
     #[pallet::storage]
     #[pallet::getter(fn cooling_off_end)]
-    pub type CoolingOffEnd<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat, T::AccountId,
-        BlockNumberFor<T>,
-        OptionQuery,
-    >;
+    pub type CoolingOffEnd<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, BlockNumberFor<T>, OptionQuery>;
 
     /// Rehabilitation status per account.
     #[pallet::storage]
     #[pallet::getter(fn rehab_status)]
-    pub type RehabilitationStatus<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat, T::AccountId,
-        RehabStatus,
-        ValueQuery,
-    >;
+    pub type RehabilitationStatus<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, RehabStatus, ValueQuery>;
 
     /// Slash amounts held in escrow pending justice review.
     /// Set by external pallets (via the `escrow_slash` public function) before
     /// routing to a dispute.
     #[pallet::storage]
     #[pallet::getter(fn slash_pending)]
-    pub type SlashPendingJusticeReview<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat, T::AccountId,
-        BalanceOf<T>,
-        OptionQuery,
-    >;
+    pub type SlashPendingJusticeReview<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, BalanceOf<T>, OptionQuery>;
 
     /// Governance-appointed mediators.
     #[pallet::storage]
     #[pallet::getter(fn mediator_list)]
-    pub type MediatorList<T: Config> = StorageValue<
-        _,
-        BoundedVec<T::AccountId, T::MaxMediators>,
-        ValueQuery,
-    >;
+    pub type MediatorList<T: Config> =
+        StorageValue<_, BoundedVec<T::AccountId, T::MaxMediators>, ValueQuery>;
 
     /// Block number when a dispute was appealed (for appeal timeout).
     #[pallet::storage]
-    pub type AppealedAt<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat, u32,
-        BlockNumberFor<T>,
-        OptionQuery,
-    >;
+    pub type AppealedAt<T: Config> =
+        StorageMap<_, Blake2_128Concat, u32, BlockNumberFor<T>, OptionQuery>;
 
     // ── Events ────────────────────────────────────────────────────────────────
 
@@ -244,19 +273,35 @@ pub mod pallet {
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// A dispute was opened against `target`.
-        DisputeOpened { dispute_id: u32, disputant: T::AccountId, target: T::AccountId },
+        DisputeOpened {
+            dispute_id: u32,
+            disputant: T::AccountId,
+            target: T::AccountId,
+        },
         /// A mediator issued a ruling.
-        MediatorRulingIssued { dispute_id: u32, resolution: DisputeResolution },
+        MediatorRulingIssued {
+            dispute_id: u32,
+            resolution: DisputeResolution,
+        },
         /// The accused appealed a ruling.
         RulingAppealed { dispute_id: u32, by: T::AccountId },
         /// An account completed rehabilitation and was reinstated.
         AccountReinstated { account: T::AccountId },
         /// A slash was escrowed by an external pallet for justice review.
-        SlashEscrowed { account: T::AccountId, amount: BalanceOf<T> },
+        SlashEscrowed {
+            account: T::AccountId,
+            amount: BalanceOf<T>,
+        },
         /// An escrowed slash was executed after an Upheld ruling.
-        SlashExecuted { account: T::AccountId, amount: BalanceOf<T> },
+        SlashExecuted {
+            account: T::AccountId,
+            amount: BalanceOf<T>,
+        },
         /// An escrowed slash was refunded after a Dismissed ruling.
-        SlashRefunded { account: T::AccountId, amount: BalanceOf<T> },
+        SlashRefunded {
+            account: T::AccountId,
+            amount: BalanceOf<T>,
+        },
         /// Mediator added.
         MediatorAdded { mediator: T::AccountId },
         /// Mediator removed.
@@ -264,7 +309,10 @@ pub mod pallet {
         /// Appeal timed out — original ruling upheld.
         AppealTimedOut { dispute_id: u32 },
         /// AUDIT FIX (C-JUST-2): Disputant bond slashed for frivolous dispute.
-        DisputantBondSlashed { disputant: T::AccountId, amount: BalanceOf<T> },
+        DisputantBondSlashed {
+            disputant: T::AccountId,
+            amount: BalanceOf<T>,
+        },
     }
 
     // ── Errors ────────────────────────────────────────────────────────────────
@@ -311,7 +359,9 @@ pub mod pallet {
                 if used.any_gt(remaining_weight) {
                     break;
                 }
-                if to_close.len() >= 64 { break; }
+                if to_close.len() >= 64 {
+                    break;
+                }
                 if now >= appealed_block.saturating_add(timeout) {
                     to_close.push(dispute_id);
                 }
@@ -355,13 +405,15 @@ pub mod pallet {
         ) -> DispatchResult {
             let disputant = ensure_signed(origin)?;
 
-            let severity = DisputeSeverity::from_u8(severity)
-                .ok_or(Error::<T>::InvalidSeverity)?;
+            let severity = DisputeSeverity::from_u8(severity).ok_or(Error::<T>::InvalidSeverity)?;
 
             // Reserve the dispute bond
             T::Currency::reserve(&disputant, T::OpenDisputeBond::get())?;
 
-            let dispute_id = DisputeCounter::<T>::mutate(|c| { *c = c.saturating_add(1); *c });
+            let dispute_id = DisputeCounter::<T>::mutate(|c| {
+                *c = c.saturating_add(1);
+                *c
+            });
             let current_block = frame_system::Pallet::<T>::block_number();
 
             // Start cooling-off for the target
@@ -383,7 +435,11 @@ pub mod pallet {
 
             Disputes::<T>::insert(dispute_id, record);
 
-            Self::deposit_event(Event::DisputeOpened { dispute_id, disputant, target });
+            Self::deposit_event(Event::DisputeOpened {
+                dispute_id,
+                disputant,
+                target,
+            });
 
             Ok(())
         }
@@ -398,7 +454,7 @@ pub mod pallet {
             origin: OriginFor<T>,
             dispute_id: u32,
             resolution_code: u8, // 0=Dismissed, 1=Upheld, 2=Mediated
-            slash_bps: u32,       // only used when resolution_code == 2
+            slash_bps: u32,      // only used when resolution_code == 2
         ) -> DispatchResult {
             // J-02 FIX: Use single EnsureOrigin pattern to extract AccountId
             let mediator = T::MediatorOrigin::ensure_origin(origin)?;
@@ -407,11 +463,13 @@ pub mod pallet {
             let list = MediatorList::<T>::get();
             ensure!(list.contains(&mediator), Error::<T>::NotApprovedMediator);
 
-            let mut record = Disputes::<T>::get(dispute_id)
-                .ok_or(Error::<T>::DisputeNotFound)?;
+            let mut record = Disputes::<T>::get(dispute_id).ok_or(Error::<T>::DisputeNotFound)?;
 
             ensure!(
-                matches!(record.status, DisputeStatus::Pending | DisputeStatus::UnderReview),
+                matches!(
+                    record.status,
+                    DisputeStatus::Pending | DisputeStatus::UnderReview
+                ),
                 Error::<T>::InvalidDisputeStatus
             );
 
@@ -432,10 +490,14 @@ pub mod pallet {
                         // Unreserve back to target
                         T::Currency::unreserve(&record.target, escrowed);
                         Self::deposit_event(Event::SlashRefunded {
-                            account: record.target.clone(), amount: escrowed,
+                            account: record.target.clone(),
+                            amount: escrowed,
                         });
                         // Update rehab status
-                        RehabilitationStatus::<T>::insert(&record.target, RehabStatus::InRehabilitation);
+                        RehabilitationStatus::<T>::insert(
+                            &record.target,
+                            RehabStatus::InRehabilitation,
+                        );
                     }
                     DisputeResolution::Upheld => {
                         // AUDIT FIX (C-JUST-4): Use slash_reserved to atomically slash
@@ -443,30 +505,40 @@ pub mod pallet {
                         let (_, remainder) = T::Currency::slash_reserved(&record.target, escrowed);
                         let actually_slashed = escrowed.saturating_sub(remainder);
                         Self::deposit_event(Event::SlashExecuted {
-                            account: record.target.clone(), amount: actually_slashed,
+                            account: record.target.clone(),
+                            amount: actually_slashed,
                         });
-                        RehabilitationStatus::<T>::insert(&record.target, RehabStatus::InCoolingOff);
+                        RehabilitationStatus::<T>::insert(
+                            &record.target,
+                            RehabStatus::InCoolingOff,
+                        );
                     }
                     DisputeResolution::Mediated { slash_bps } => {
-                        let slash_amount = escrowed.saturating_mul((*slash_bps).into())
-                            / 10_000u32.into();
+                        let slash_amount =
+                            escrowed.saturating_mul((*slash_bps).into()) / 10_000u32.into();
                         let refund = escrowed.saturating_sub(slash_amount);
                         // AUDIT FIX (C-JUST-4): Slash reserved funds atomically
                         if slash_amount > BalanceOf::<T>::default() {
-                            let (_, remainder) = T::Currency::slash_reserved(&record.target, slash_amount);
+                            let (_, remainder) =
+                                T::Currency::slash_reserved(&record.target, slash_amount);
                             let actually_slashed = slash_amount.saturating_sub(remainder);
                             Self::deposit_event(Event::SlashExecuted {
-                                account: record.target.clone(), amount: actually_slashed,
+                                account: record.target.clone(),
+                                amount: actually_slashed,
                             });
                         }
                         // Unreserve only the refund portion
                         if refund > BalanceOf::<T>::default() {
                             T::Currency::unreserve(&record.target, refund);
                             Self::deposit_event(Event::SlashRefunded {
-                                account: record.target.clone(), amount: refund,
+                                account: record.target.clone(),
+                                amount: refund,
                             });
                         }
-                        RehabilitationStatus::<T>::insert(&record.target, RehabStatus::InRehabilitation);
+                        RehabilitationStatus::<T>::insert(
+                            &record.target,
+                            RehabStatus::InRehabilitation,
+                        );
                     }
                 }
             }
@@ -476,9 +548,11 @@ pub mod pallet {
             match &resolution {
                 DisputeResolution::Dismissed => {
                     // Frivolous dispute — slash the disputant's bond to deter abuse
-                    let (_, _remainder) = T::Currency::slash_reserved(&record.disputant, record.bond);
+                    let (_, _remainder) =
+                        T::Currency::slash_reserved(&record.disputant, record.bond);
                     Self::deposit_event(Event::DisputantBondSlashed {
-                        disputant: record.disputant.clone(), amount: record.bond,
+                        disputant: record.disputant.clone(),
+                        amount: record.bond,
                     });
                 }
                 DisputeResolution::Upheld | DisputeResolution::Mediated { .. } => {
@@ -491,7 +565,10 @@ pub mod pallet {
             record.status = DisputeStatus::Ruled;
             Disputes::<T>::insert(dispute_id, record);
 
-            Self::deposit_event(Event::MediatorRulingIssued { dispute_id, resolution });
+            Self::deposit_event(Event::MediatorRulingIssued {
+                dispute_id,
+                resolution,
+            });
 
             Ok(())
         }
@@ -509,22 +586,27 @@ pub mod pallet {
         ) -> DispatchResult {
             let caller = ensure_signed(origin)?;
 
-            let mut record = Disputes::<T>::get(dispute_id)
-                .ok_or(Error::<T>::DisputeNotFound)?;
+            let mut record = Disputes::<T>::get(dispute_id).ok_or(Error::<T>::DisputeNotFound)?;
 
             ensure!(caller == record.target, Error::<T>::NotDisputeTarget);
             ensure!(
                 matches!(record.status, DisputeStatus::Ruled),
                 Error::<T>::InvalidDisputeStatus
             );
-            ensure!(record.appeal_evidence.is_none(), Error::<T>::AlreadyAppealed);
+            ensure!(
+                record.appeal_evidence.is_none(),
+                Error::<T>::AlreadyAppealed
+            );
 
             record.appeal_evidence = Some(counter_evidence_hash);
             record.status = DisputeStatus::Appealed;
             Disputes::<T>::insert(dispute_id, record);
             AppealedAt::<T>::insert(dispute_id, <frame_system::Pallet<T>>::block_number());
 
-            Self::deposit_event(Event::RulingAppealed { dispute_id, by: caller });
+            Self::deposit_event(Event::RulingAppealed {
+                dispute_id,
+                by: caller,
+            });
 
             Ok(())
         }
@@ -567,10 +649,7 @@ pub mod pallet {
         /// Add a mediator (governance only).
         #[pallet::call_index(4)]
         #[pallet::weight(T::WeightInfo::add_mediator())]
-        pub fn add_mediator(
-            origin: OriginFor<T>,
-            mediator: T::AccountId,
-        ) -> DispatchResult {
+        pub fn add_mediator(origin: OriginFor<T>, mediator: T::AccountId) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
 
             MediatorList::<T>::try_mutate(|list| {
@@ -585,14 +664,13 @@ pub mod pallet {
         /// Remove a mediator (governance only).
         #[pallet::call_index(5)]
         #[pallet::weight(T::WeightInfo::remove_mediator())]
-        pub fn remove_mediator(
-            origin: OriginFor<T>,
-            mediator: T::AccountId,
-        ) -> DispatchResult {
+        pub fn remove_mediator(origin: OriginFor<T>, mediator: T::AccountId) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
 
             MediatorList::<T>::try_mutate(|list| {
-                let pos = list.iter().position(|a| a == &mediator)
+                let pos = list
+                    .iter()
+                    .position(|a| a == &mediator)
                     .ok_or(Error::<T>::MediatorNotFound)?;
                 list.remove(pos);
                 Ok::<(), Error<T>>(())
@@ -622,7 +700,10 @@ pub mod pallet {
                 let prev = existing.unwrap_or_default();
                 *existing = Some(prev.saturating_add(amount));
             });
-            Self::deposit_event(Event::SlashEscrowed { account: account.clone(), amount });
+            Self::deposit_event(Event::SlashEscrowed {
+                account: account.clone(),
+                amount,
+            });
             Ok(())
         }
 

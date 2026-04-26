@@ -43,7 +43,10 @@ fn submit_proposal_blocked_for_restricted_account() {
                 RuntimeOrigin::signed(999),
                 b"title".to_vec(),
                 b"desc".to_vec(),
-                1, 0, false, None,
+                1,
+                0,
+                false,
+                None,
             ),
             Error::<Test>::InsufficientCompliance
         );
@@ -76,7 +79,7 @@ fn submit_proposal_fails_with_invalid_threshold() {
                 RuntimeOrigin::signed(1),
                 b"title".to_vec(),
                 b"desc".to_vec(),
-                0, // Constitutional
+                0,  // Constitutional
                 99, // invalid threshold index
                 false,
                 None,
@@ -95,8 +98,8 @@ fn submit_district_local_proposal_requires_district() {
                 RuntimeOrigin::signed(1),
                 b"title".to_vec(),
                 b"desc".to_vec(),
-                7,    // DistrictLocal
-                0,    // SimpleMajority
+                7, // DistrictLocal
+                0, // SimpleMajority
                 false,
                 None, // no district
             ),
@@ -112,8 +115,8 @@ fn submit_district_local_proposal_with_valid_district() {
             RuntimeOrigin::signed(1),
             b"Local Budget Request".to_vec(),
             b"Allocate funds to Cayo district".to_vec(),
-            7,       // DistrictLocal
-            0,       // SimpleMajority
+            7, // DistrictLocal
+            0, // SimpleMajority
             false,
             Some(1), // Cayo district
         ));
@@ -128,7 +131,7 @@ fn submit_proposal_fails_with_invalid_district_index() {
                 RuntimeOrigin::signed(1),
                 b"title".to_vec(),
                 b"desc".to_vec(),
-                7,    // DistrictLocal
+                7, // DistrictLocal
                 0,
                 false,
                 Some(99), // invalid district index
@@ -253,7 +256,12 @@ fn cast_vote_fails_when_already_voted() {
         let proposal = BelizeGovernance::proposals(id).unwrap();
         run_to_block(proposal.voting_start + 1);
 
-        assert_ok!(BelizeGovernance::cast_vote(RuntimeOrigin::signed(2), id, 0, 1));
+        assert_ok!(BelizeGovernance::cast_vote(
+            RuntimeOrigin::signed(2),
+            id,
+            0,
+            1
+        ));
         assert_noop!(
             BelizeGovernance::cast_vote(RuntimeOrigin::signed(2), id, 0, 1),
             Error::<Test>::AlreadyVoted
@@ -297,9 +305,24 @@ fn finalize_proposal_approves_when_ayes_win() {
         run_to_block(proposal.voting_start + 1);
 
         // Accounts 1,2,3 all have community_rank set via genesis; vote Aye
-        assert_ok!(BelizeGovernance::cast_vote(RuntimeOrigin::signed(1), id, 0, 1));
-        assert_ok!(BelizeGovernance::cast_vote(RuntimeOrigin::signed(2), id, 0, 1));
-        assert_ok!(BelizeGovernance::cast_vote(RuntimeOrigin::signed(3), id, 1, 1)); // Nay
+        assert_ok!(BelizeGovernance::cast_vote(
+            RuntimeOrigin::signed(1),
+            id,
+            0,
+            1
+        ));
+        assert_ok!(BelizeGovernance::cast_vote(
+            RuntimeOrigin::signed(2),
+            id,
+            0,
+            1
+        ));
+        assert_ok!(BelizeGovernance::cast_vote(
+            RuntimeOrigin::signed(3),
+            id,
+            1,
+            1
+        )); // Nay
 
         run_to_block(proposal.voting_end + 1);
 
@@ -321,9 +344,24 @@ fn finalize_proposal_rejects_when_nays_win() {
         run_to_block(proposal.voting_start + 1);
 
         // Majority nay
-        assert_ok!(BelizeGovernance::cast_vote(RuntimeOrigin::signed(1), id, 1, 1)); // Nay
-        assert_ok!(BelizeGovernance::cast_vote(RuntimeOrigin::signed(2), id, 1, 1)); // Nay
-        assert_ok!(BelizeGovernance::cast_vote(RuntimeOrigin::signed(3), id, 0, 1)); // Aye
+        assert_ok!(BelizeGovernance::cast_vote(
+            RuntimeOrigin::signed(1),
+            id,
+            1,
+            1
+        )); // Nay
+        assert_ok!(BelizeGovernance::cast_vote(
+            RuntimeOrigin::signed(2),
+            id,
+            1,
+            1
+        )); // Nay
+        assert_ok!(BelizeGovernance::cast_vote(
+            RuntimeOrigin::signed(3),
+            id,
+            0,
+            1
+        )); // Aye
 
         run_to_block(proposal.voting_end + 1);
 
@@ -479,11 +517,7 @@ fn council_override_fails_for_non_emergency_proposal_outside_jaguar_mode() {
         let id = submit_standard_proposal(1);
         // Standard proposal, no emergency mode active — P0-18 requires JaguarMode
         assert_noop!(
-            BelizeGovernance::council_override(
-                RuntimeOrigin::root(),
-                id,
-                b"reason".to_vec(),
-            ),
+            BelizeGovernance::council_override(RuntimeOrigin::root(), id, b"reason".to_vec(),),
             Error::<Test>::NotInEmergencyMode
         );
     });
@@ -493,11 +527,7 @@ fn council_override_fails_for_non_emergency_proposal_outside_jaguar_mode() {
 fn council_override_fails_for_nonexistent_proposal() {
     new_test_ext().execute_with(|| {
         assert_noop!(
-            BelizeGovernance::council_override(
-                RuntimeOrigin::root(),
-                9999,
-                b"reason".to_vec(),
-            ),
+            BelizeGovernance::council_override(RuntimeOrigin::root(), 9999, b"reason".to_vec(),),
             Error::<Test>::ProposalNotFound
         );
     });
@@ -551,9 +581,9 @@ fn declare_emergency_works() {
     new_test_ext().execute_with(|| {
         assert_ok!(BelizeGovernance::declare_emergency(
             RuntimeOrigin::root(),
-            3,                              // SecurityThreat
+            3, // SecurityThreat
             b"Critical network threat".to_vec(),
-            24,                             // 24 hours
+            24, // 24 hours
         ));
         // CONS-029: emergency starts pending during veto window
         let mode = BelizeGovernance::emergency_status();
@@ -640,7 +670,11 @@ fn delegate_to_self_fails() {
 #[test]
 fn delegate_twice_fails() {
     new_test_ext().execute_with(|| {
-        assert_ok!(BelizeGovernance::delegate_vote(RuntimeOrigin::signed(4), 1, None));
+        assert_ok!(BelizeGovernance::delegate_vote(
+            RuntimeOrigin::signed(4),
+            1,
+            None
+        ));
         assert_noop!(
             BelizeGovernance::delegate_vote(RuntimeOrigin::signed(4), 2, None),
             Error::<Test>::DelegationAlreadyExists
@@ -651,8 +685,14 @@ fn delegate_twice_fails() {
 #[test]
 fn revoke_delegation_works() {
     new_test_ext().execute_with(|| {
-        assert_ok!(BelizeGovernance::delegate_vote(RuntimeOrigin::signed(4), 1, None));
-        assert_ok!(BelizeGovernance::revoke_delegation(RuntimeOrigin::signed(4)));
+        assert_ok!(BelizeGovernance::delegate_vote(
+            RuntimeOrigin::signed(4),
+            1,
+            None
+        ));
+        assert_ok!(BelizeGovernance::revoke_delegation(RuntimeOrigin::signed(
+            4
+        )));
     });
 }
 
@@ -692,12 +732,21 @@ fn cast_vote_emits_event() {
         let proposal = BelizeGovernance::proposals(id).unwrap();
         run_to_block(proposal.voting_start + 1);
 
-        assert_ok!(BelizeGovernance::cast_vote(RuntimeOrigin::signed(2), id, 0, 1));
+        assert_ok!(BelizeGovernance::cast_vote(
+            RuntimeOrigin::signed(2),
+            id,
+            0,
+            1
+        ));
         let events = System::events();
         assert!(
             events.iter().any(|r| matches!(
                 &r.event,
-                RuntimeEvent::BelizeGovernance(Event::VoteCast { proposal_id: 0, voter: 2, .. })
+                RuntimeEvent::BelizeGovernance(Event::VoteCast {
+                    proposal_id: 0,
+                    voter: 2,
+                    ..
+                })
             )),
             "VoteCast event expected"
         );
@@ -707,12 +756,19 @@ fn cast_vote_emits_event() {
 #[test]
 fn update_community_rank_emits_event() {
     new_test_ext().execute_with(|| {
-        assert_ok!(BelizeGovernance::update_community_rank(RuntimeOrigin::root(), 5, 77));
-        assert_eq!(last_event(), RuntimeEvent::BelizeGovernance(Event::CommunityRankUpdated {
-            account: 5,
-            old_rank: 0,
-            new_rank: 77,
-        }));
+        assert_ok!(BelizeGovernance::update_community_rank(
+            RuntimeOrigin::root(),
+            5,
+            77
+        ));
+        assert_eq!(
+            last_event(),
+            RuntimeEvent::BelizeGovernance(Event::CommunityRankUpdated {
+                account: 5,
+                old_rank: 0,
+                new_rank: 77,
+            })
+        );
     });
 }
 
@@ -733,7 +789,11 @@ fn add_board_member_works() {
         let events = System::events();
         assert!(events.iter().any(|r| matches!(
             &r.event,
-            RuntimeEvent::BelizeGovernance(Event::BoardMemberAdded { member: 10, role_index: 1, .. })
+            RuntimeEvent::BelizeGovernance(Event::BoardMemberAdded {
+                member: 10,
+                role_index: 1,
+                ..
+            })
         )));
     });
 }
@@ -762,7 +822,12 @@ fn add_board_member_invalid_role_fails() {
 fn remove_board_member_works() {
     new_test_ext().execute_with(|| {
         // Add first so we can remove
-        assert_ok!(BelizeGovernance::add_board_member(RuntimeOrigin::root(), 10u64, 1, 1));
+        assert_ok!(BelizeGovernance::add_board_member(
+            RuntimeOrigin::root(),
+            10u64,
+            1,
+            1
+        ));
         assert!(BelizeGovernance::council_members(10u64).is_some());
         assert_ok!(BelizeGovernance::remove_board_member(
             RuntimeOrigin::root(),
@@ -808,10 +873,17 @@ fn approve_treasury_spend_works() {
     new_test_ext().execute_with(|| {
         let amount: u128 = 1_000_000_000_000u128;
         assert_ok!(BelizeGovernance::propose_treasury_spend(
-            RuntimeOrigin::signed(1), 5u64, amount, b"Test".to_vec(), None,
+            RuntimeOrigin::signed(1),
+            5u64,
+            amount,
+            b"Test".to_vec(),
+            None,
         ));
         // Council member 2 approves
-        assert_ok!(BelizeGovernance::approve_treasury_spend(RuntimeOrigin::signed(2), 0));
+        assert_ok!(BelizeGovernance::approve_treasury_spend(
+            RuntimeOrigin::signed(2),
+            0
+        ));
         let proposal = crate::TreasurySpendProposals::<Test>::get(0).unwrap();
         assert_eq!(proposal.approvals.len(), 1);
     });
@@ -822,7 +894,11 @@ fn approve_treasury_spend_non_council_fails() {
     new_test_ext().execute_with(|| {
         let amount: u128 = 1_000_000_000_000u128;
         assert_ok!(BelizeGovernance::propose_treasury_spend(
-            RuntimeOrigin::signed(1), 5u64, amount, b"Test".to_vec(), None,
+            RuntimeOrigin::signed(1),
+            5u64,
+            amount,
+            b"Test".to_vec(),
+            None,
         ));
         // Account 4 is NOT a council member
         assert_noop!(
@@ -837,18 +913,32 @@ fn execute_treasury_proposal_works() {
     new_test_ext().execute_with(|| {
         let amount: u128 = 1_000_000_000_000u128; // 1K DALLA, threshold = 1
         assert_ok!(BelizeGovernance::propose_treasury_spend(
-            RuntimeOrigin::signed(1), 5u64, amount, b"Test".to_vec(), None,
+            RuntimeOrigin::signed(1),
+            5u64,
+            amount,
+            b"Test".to_vec(),
+            None,
         ));
         // Council member 1 approves — threshold = 1 so now ready
-        assert_ok!(BelizeGovernance::approve_treasury_spend(RuntimeOrigin::signed(1), 0));
+        assert_ok!(BelizeGovernance::approve_treasury_spend(
+            RuntimeOrigin::signed(1),
+            0
+        ));
 
         // Fund national treasury reserve and pallet account
         crate::NationalTreasuryReserve::<Test>::put(amount + 1);
         let treasury_account = BelizeGovernance::account_id();
-        assert_ok!(Balances::force_set_balance(RuntimeOrigin::root(), treasury_account, amount + 1_000_000));
+        assert_ok!(Balances::force_set_balance(
+            RuntimeOrigin::root(),
+            treasury_account,
+            amount + 1_000_000
+        ));
 
         let recipient_before = Balances::free_balance(5u64);
-        assert_ok!(BelizeGovernance::execute_treasury_proposal(RuntimeOrigin::signed(2), 0));
+        assert_ok!(BelizeGovernance::execute_treasury_proposal(
+            RuntimeOrigin::signed(2),
+            0
+        ));
         assert!(Balances::free_balance(5u64) > recipient_before);
         let proposal = crate::TreasurySpendProposals::<Test>::get(0).unwrap();
         assert!(proposal.executed);
@@ -880,12 +970,19 @@ fn vote_on_referendum_works() {
     new_test_ext().execute_with(|| {
         assert_ok!(BelizeGovernance::create_referendum(
             RuntimeOrigin::signed(1),
-            b"Park?".to_vec(), b"Build a park".to_vec(),
+            b"Park?".to_vec(),
+            b"Build a park".to_vec(),
             vec![b"Yes".to_vec(), b"No".to_vec()],
-            30, 100, None,
+            30,
+            100,
+            None,
         ));
         // Account 1 has community_rank=100, pouw=200 → weight=300
-        assert_ok!(BelizeGovernance::vote_on_referendum(RuntimeOrigin::signed(1), 0, 0));
+        assert_ok!(BelizeGovernance::vote_on_referendum(
+            RuntimeOrigin::signed(1),
+            0,
+            0
+        ));
         let referendum = crate::Referendums::<Test>::get(0).unwrap();
         assert_eq!(referendum.vote_counts[0], 300); // weight=300 for option 0
         assert_eq!(referendum.total_votes, 300);
@@ -899,16 +996,24 @@ fn finalize_referendum_passes_with_quorum() {
         // Set quorum= 30 so quorum is met
         assert_ok!(BelizeGovernance::create_referendum(
             RuntimeOrigin::signed(1),
-            b"Park?".to_vec(), b"Build a park".to_vec(),
+            b"Park?".to_vec(),
+            b"Build a park".to_vec(),
             vec![b"Yes".to_vec(), b"No".to_vec()],
             30, // 30% quorum
             10, // 10-block voting window
             None,
         ));
-        assert_ok!(BelizeGovernance::vote_on_referendum(RuntimeOrigin::signed(1), 0, 0));
+        assert_ok!(BelizeGovernance::vote_on_referendum(
+            RuntimeOrigin::signed(1),
+            0,
+            0
+        ));
         // Advance past voting_end (current_block > voting_start + 10 = 11)
         run_to_block(12);
-        assert_ok!(BelizeGovernance::finalize_referendum(RuntimeOrigin::signed(2), 0));
+        assert_ok!(BelizeGovernance::finalize_referendum(
+            RuntimeOrigin::signed(2),
+            0
+        ));
         let referendum = crate::Referendums::<Test>::get(0).unwrap();
         assert_eq!(referendum.status, crate::ReferendumStatus::Passed);
         assert_eq!(referendum.winning_option, Some(0));
@@ -922,14 +1027,23 @@ fn finalize_referendum_fails_without_quorum() {
         // 1/1000 = 0% participation < quorum=50 → fails
         assert_ok!(BelizeGovernance::create_referendum(
             RuntimeOrigin::signed(1),
-            b"Park?".to_vec(), b"Build a park".to_vec(),
+            b"Park?".to_vec(),
+            b"Build a park".to_vec(),
             vec![b"Yes".to_vec(), b"No".to_vec()],
             50, // 50% quorum — won't be met
-            10, None,
+            10,
+            None,
         ));
-        assert_ok!(BelizeGovernance::vote_on_referendum(RuntimeOrigin::signed(4), 0, 0));
+        assert_ok!(BelizeGovernance::vote_on_referendum(
+            RuntimeOrigin::signed(4),
+            0,
+            0
+        ));
         run_to_block(12);
-        assert_ok!(BelizeGovernance::finalize_referendum(RuntimeOrigin::signed(2), 0));
+        assert_ok!(BelizeGovernance::finalize_referendum(
+            RuntimeOrigin::signed(2),
+            0
+        ));
         let referendum = crate::Referendums::<Test>::get(0).unwrap();
         assert_eq!(referendum.status, crate::ReferendumStatus::Failed);
     });
@@ -940,9 +1054,12 @@ fn finalize_referendum_fails_before_voting_end() {
     new_test_ext().execute_with(|| {
         assert_ok!(BelizeGovernance::create_referendum(
             RuntimeOrigin::signed(1),
-            b"Park?".to_vec(), b"Build a park".to_vec(),
+            b"Park?".to_vec(),
+            b"Build a park".to_vec(),
             vec![b"Yes".to_vec(), b"No".to_vec()],
-            30, 100, None,
+            30,
+            100,
+            None,
         ));
         // Voting ends at block 101; we're at block 1
         assert_noop!(
@@ -986,7 +1103,10 @@ fn set_proposal_priority_works() {
         let events = System::events();
         assert!(events.iter().any(|r| matches!(
             &r.event,
-            RuntimeEvent::BelizeGovernance(Event::ProposalQueuedWithPriority { proposal_id: 0, priority_index: 3 })
+            RuntimeEvent::BelizeGovernance(Event::ProposalQueuedWithPriority {
+                proposal_id: 0,
+                priority_index: 3
+            })
         )));
     });
 }
@@ -1060,7 +1180,10 @@ fn claim_participation_reward_council_works() {
         ));
 
         let before = Balances::free_balance(1u64);
-        assert_ok!(BelizeGovernance::claim_participation_reward(RuntimeOrigin::signed(1), 2));
+        assert_ok!(BelizeGovernance::claim_participation_reward(
+            RuntimeOrigin::signed(1),
+            2
+        ));
         assert_eq!(Balances::free_balance(1u64), before + reward_amount);
     });
 }
@@ -1126,8 +1249,16 @@ fn submit_department_proposal_not_manager_fails() {
 fn approve_cross_department_works() {
     new_test_ext().execute_with(|| {
         // Finance (0) manager = 4, Education (1) manager = 5
-        assert_ok!(BelizeGovernance::set_department_manager(RuntimeOrigin::root(), 0u8, 4u64));
-        assert_ok!(BelizeGovernance::set_department_manager(RuntimeOrigin::root(), 1u8, 5u64));
+        assert_ok!(BelizeGovernance::set_department_manager(
+            RuntimeOrigin::root(),
+            0u8,
+            4u64
+        ));
+        assert_ok!(BelizeGovernance::set_department_manager(
+            RuntimeOrigin::root(),
+            1u8,
+            5u64
+        ));
         // Account 4 submits a proposal requiring cross-department approval
         assert_ok!(BelizeGovernance::submit_department_proposal(
             RuntimeOrigin::signed(4),
@@ -1141,8 +1272,8 @@ fn approve_cross_department_works() {
         // Account 5 (Education manager) approves the proposal
         assert_ok!(BelizeGovernance::approve_cross_department(
             RuntimeOrigin::signed(5),
-            0u32,  // proposal_id
-            1u8,   // Education = dept index 1
+            0u32, // proposal_id
+            1u8,  // Education = dept index 1
         ));
         let proposal = BelizeGovernance::proposals(0).unwrap();
         assert_eq!(proposal.cross_approved_by.len(), 1);
@@ -1208,8 +1339,8 @@ fn vote_for_delegate_works() {
 fn execute_proposal_works() {
     new_test_ext().execute_with(|| {
         use crate::{
-            GovernanceParameter, Proposal, ProposalAction, ProposalStatus, ProposalType,
-            VoteTally, VotingThreshold,
+            GovernanceParameter, Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally,
+            VotingThreshold,
         };
         // Inject an Approved proposal with a ParameterChange action directly into storage
         let proposal = Proposal {
@@ -1243,7 +1374,10 @@ fn execute_proposal_works() {
         };
         crate::Proposals::<Test>::insert(0u32, proposal);
         // Account 1 is a genesis council member — can execute
-        assert_ok!(BelizeGovernance::execute_proposal(RuntimeOrigin::signed(1), 0u32));
+        assert_ok!(BelizeGovernance::execute_proposal(
+            RuntimeOrigin::signed(1),
+            0u32
+        ));
         let updated = BelizeGovernance::proposals(0).unwrap();
         assert_eq!(updated.status, ProposalStatus::Executed);
     });
@@ -1258,12 +1392,14 @@ fn start_district_election_works() {
     new_test_ext().execute_with(|| {
         assert_ok!(BelizeGovernance::start_district_election(
             RuntimeOrigin::root(),
-            0u8,   // Belize district
-            2u32,  // 2 seats
+            0u8,  // Belize district
+            2u32, // 2 seats
             100u32,
             200u32,
         ));
-        assert!(crate::DistrictElections::<Test>::contains_key(crate::BelizeDistrict::Belize));
+        assert!(crate::DistrictElections::<Test>::contains_key(
+            crate::BelizeDistrict::Belize
+        ));
     });
 }
 
@@ -1271,7 +1407,11 @@ fn start_district_election_works() {
 fn start_district_election_duplicate_fails() {
     new_test_ext().execute_with(|| {
         assert_ok!(BelizeGovernance::start_district_election(
-            RuntimeOrigin::root(), 0, 2, 100, 200,
+            RuntimeOrigin::root(),
+            0,
+            2,
+            100,
+            200,
         ));
         assert_noop!(
             BelizeGovernance::start_district_election(RuntimeOrigin::root(), 0, 2, 100, 200),
@@ -1289,7 +1429,11 @@ fn register_candidate_works() {
     new_test_ext().execute_with(|| {
         // Election starts at block 1; registration_end = 1 + 100 = 101
         assert_ok!(BelizeGovernance::start_district_election(
-            RuntimeOrigin::root(), 0, 2, 100, 200,
+            RuntimeOrigin::root(),
+            0,
+            2,
+            100,
+            200,
         ));
         // Block 1 is within registration period (< 101)
         assert_ok!(BelizeGovernance::register_candidate(
@@ -1311,7 +1455,11 @@ fn vote_in_district_election_works() {
     new_test_ext().execute_with(|| {
         // Start election: reg_end=101, voting_start=101, voting_end=301
         assert_ok!(BelizeGovernance::start_district_election(
-            RuntimeOrigin::root(), 0, 2, 100, 200,
+            RuntimeOrigin::root(),
+            0,
+            2,
+            100,
+            200,
         ));
         assert_ok!(BelizeGovernance::register_candidate(
             RuntimeOrigin::signed(1),
@@ -1326,7 +1474,8 @@ fn vote_in_district_election_works() {
             0u8,
             1u64,
         ));
-        let election = crate::DistrictElections::<Test>::get(crate::BelizeDistrict::Belize).unwrap();
+        let election =
+            crate::DistrictElections::<Test>::get(crate::BelizeDistrict::Belize).unwrap();
         assert_eq!(election.total_votes, 1);
     });
 }
@@ -1340,7 +1489,11 @@ fn finalize_district_election_works() {
     new_test_ext().execute_with(|| {
         // Start election: reg_end=101, voting_start=101, voting_end=301
         assert_ok!(BelizeGovernance::start_district_election(
-            RuntimeOrigin::root(), 0, 2, 100, 200,
+            RuntimeOrigin::root(),
+            0,
+            2,
+            100,
+            200,
         ));
         assert_ok!(BelizeGovernance::register_candidate(
             RuntimeOrigin::signed(1),
@@ -1356,9 +1509,13 @@ fn finalize_district_election_works() {
         ));
         // Advance past voting_end
         System::set_block_number(302);
-        assert_ok!(BelizeGovernance::finalize_district_election(RuntimeOrigin::root(), 0u8));
+        assert_ok!(BelizeGovernance::finalize_district_election(
+            RuntimeOrigin::root(),
+            0u8
+        ));
         // Election status should be Finalized
-        let election = crate::DistrictElections::<Test>::get(crate::BelizeDistrict::Belize).unwrap();
+        let election =
+            crate::DistrictElections::<Test>::get(crate::BelizeDistrict::Belize).unwrap();
         assert_eq!(election.status, crate::ElectionStatus::Finalized);
     });
 }
@@ -1372,9 +1529,9 @@ fn allocate_district_budget_works() {
     new_test_ext().execute_with(|| {
         assert_ok!(BelizeGovernance::allocate_district_budget(
             RuntimeOrigin::root(),
-            0u8,             // Belize district
+            0u8, // Belize district
             1_000_000u128,
-            1_000u32,        // 1000 blocks fiscal year
+            1_000u32, // 1000 blocks fiscal year
         ));
         let budget = crate::DistrictBudgets::<Test>::get(crate::BelizeDistrict::Belize).unwrap();
         assert_eq!(budget.allocated, 1_000_000u128);
@@ -1386,11 +1543,17 @@ fn allocate_district_budget_works() {
 fn allocate_district_budget_duplicate_active_fails() {
     new_test_ext().execute_with(|| {
         assert_ok!(BelizeGovernance::allocate_district_budget(
-            RuntimeOrigin::root(), 0u8, 1_000_000u128, 100u32,
+            RuntimeOrigin::root(),
+            0u8,
+            1_000_000u128,
+            100u32,
         ));
         assert_noop!(
             BelizeGovernance::allocate_district_budget(
-                RuntimeOrigin::root(), 0u8, 500_000u128, 100u32,
+                RuntimeOrigin::root(),
+                0u8,
+                500_000u128,
+                100u32,
             ),
             Error::<Test>::DistrictBudgetAlreadyExists
         );
@@ -1406,7 +1569,10 @@ fn transfer_district_budget_works() {
     new_test_ext().execute_with(|| {
         // Allocate budget for Belize (0)
         assert_ok!(BelizeGovernance::allocate_district_budget(
-            RuntimeOrigin::root(), 0u8, 1_000_000u128, 1_000u32,
+            RuntimeOrigin::root(),
+            0u8,
+            1_000_000u128,
+            1_000u32,
         ));
         // Transfer 300_000 from Belize (0) to Cayo (1)
         assert_ok!(BelizeGovernance::transfer_district_budget(
@@ -1417,7 +1583,7 @@ fn transfer_district_budget_works() {
             b"Emergency reallocation to Cayo".to_vec(),
         ));
         let from_b = crate::DistrictBudgets::<Test>::get(crate::BelizeDistrict::Belize).unwrap();
-        let to_b   = crate::DistrictBudgets::<Test>::get(crate::BelizeDistrict::Cayo).unwrap();
+        let to_b = crate::DistrictBudgets::<Test>::get(crate::BelizeDistrict::Cayo).unwrap();
         assert_eq!(from_b.allocated, 700_000u128);
         assert_eq!(to_b.allocated, 300_000u128);
     });
@@ -1461,7 +1627,10 @@ fn execute_emergency_proposal_works() {
             executed_at: None,
         };
         crate::Proposals::<Test>::insert(5u32, proposal);
-        assert_ok!(BelizeGovernance::execute_emergency_proposal(RuntimeOrigin::root(), 5u32));
+        assert_ok!(BelizeGovernance::execute_emergency_proposal(
+            RuntimeOrigin::root(),
+            5u32
+        ));
         let updated = BelizeGovernance::proposals(5).unwrap();
         assert_eq!(updated.status, ProposalStatus::Executed);
     });
@@ -1488,7 +1657,10 @@ fn fast_track_referendum_works() {
         ));
         let before = crate::Referendums::<Test>::get(0u32).unwrap().voting_end;
         // Fast-track: reduces voting_end to current_block + 10_800
-        assert_ok!(BelizeGovernance::fast_track_referendum(RuntimeOrigin::root(), 0u32));
+        assert_ok!(BelizeGovernance::fast_track_referendum(
+            RuntimeOrigin::root(),
+            0u32
+        ));
         let after = crate::Referendums::<Test>::get(0u32).unwrap().voting_end;
         // New deadline must be earlier than original (10_800 < 10_000 + launch_period)
         let current = System::block_number();
@@ -1519,7 +1691,11 @@ fn emergency_override_proposal_works() {
             voting_start: 1u64,
             voting_end: 1_000u64,
             vote_tally: VoteTally {
-                ayes: 0, nays: 0, abstentions: 0, total_weight: 0, participation: 0,
+                ayes: 0,
+                nays: 0,
+                abstentions: 0,
+                total_weight: 0,
+                participation: 0,
             },
             status: ProposalStatus::Pending,
             is_emergency: false,
@@ -1564,7 +1740,10 @@ fn commit_vote_works() {
             proposal_id,
             commitment,
         ));
-        assert!(crate::VoteCommitments::<Test>::contains_key(proposal_id, 1u64));
+        assert!(crate::VoteCommitments::<Test>::contains_key(
+            proposal_id,
+            1u64
+        ));
     });
 }
 
@@ -1592,13 +1771,16 @@ fn reveal_vote_works() {
         assert_ok!(BelizeGovernance::reveal_vote(
             RuntimeOrigin::signed(1),
             proposal_id,
-            0u8,  // Aye
+            0u8, // Aye
             salt,
-            1u8,  // conviction = 1
+            1u8, // conviction = 1
         ));
         // Vote recorded; commitment removed
         assert!(crate::Votes::<Test>::contains_key(proposal_id, 1u64));
-        assert!(!crate::VoteCommitments::<Test>::contains_key(proposal_id, 1u64));
+        assert!(!crate::VoteCommitments::<Test>::contains_key(
+            proposal_id,
+            1u64
+        ));
     });
 }
 
@@ -1613,7 +1795,11 @@ fn submit_department_proposal_invalid_dept_fails() {
             BelizeGovernance::submit_department_proposal(
                 RuntimeOrigin::signed(4),
                 8u8, // invalid index
-                b"title".to_vec(), b"desc".to_vec(), 1, 0, false,
+                b"title".to_vec(),
+                b"desc".to_vec(),
+                1,
+                0,
+                false,
             ),
             Error::<Test>::InvalidDepartment
         );
@@ -1627,7 +1813,12 @@ fn submit_department_proposal_no_manager_set_fails() {
         assert_noop!(
             BelizeGovernance::submit_department_proposal(
                 RuntimeOrigin::signed(4),
-                0u8, b"title".to_vec(), b"desc".to_vec(), 1, 0, false,
+                0u8,
+                b"title".to_vec(),
+                b"desc".to_vec(),
+                1,
+                0,
+                false,
             ),
             Error::<Test>::DepartmentNotFound
         );
@@ -1637,11 +1828,20 @@ fn submit_department_proposal_no_manager_set_fails() {
 #[test]
 fn submit_department_proposal_invalid_proposal_type_fails() {
     new_test_ext().execute_with(|| {
-        assert_ok!(BelizeGovernance::set_department_manager(RuntimeOrigin::root(), 0, 4));
+        assert_ok!(BelizeGovernance::set_department_manager(
+            RuntimeOrigin::root(),
+            0,
+            4
+        ));
         assert_noop!(
             BelizeGovernance::submit_department_proposal(
                 RuntimeOrigin::signed(4),
-                0u8, b"title".to_vec(), b"desc".to_vec(), 99u8, 0, false,
+                0u8,
+                b"title".to_vec(),
+                b"desc".to_vec(),
+                99u8,
+                0,
+                false,
             ),
             Error::<Test>::InvalidProposalType
         );
@@ -1651,11 +1851,20 @@ fn submit_department_proposal_invalid_proposal_type_fails() {
 #[test]
 fn submit_department_proposal_invalid_threshold_fails() {
     new_test_ext().execute_with(|| {
-        assert_ok!(BelizeGovernance::set_department_manager(RuntimeOrigin::root(), 0, 4));
+        assert_ok!(BelizeGovernance::set_department_manager(
+            RuntimeOrigin::root(),
+            0,
+            4
+        ));
         assert_noop!(
             BelizeGovernance::submit_department_proposal(
                 RuntimeOrigin::signed(4),
-                0u8, b"title".to_vec(), b"desc".to_vec(), 1u8, 99u8, false,
+                0u8,
+                b"title".to_vec(),
+                b"desc".to_vec(),
+                1u8,
+                99u8,
+                false,
             ),
             Error::<Test>::InvalidThreshold
         );
@@ -1680,7 +1889,11 @@ fn approve_cross_department_dept_not_found_fails() {
 #[test]
 fn approve_cross_department_proposal_not_found_fails() {
     new_test_ext().execute_with(|| {
-        assert_ok!(BelizeGovernance::set_department_manager(RuntimeOrigin::root(), 1, 5));
+        assert_ok!(BelizeGovernance::set_department_manager(
+            RuntimeOrigin::root(),
+            1,
+            5
+        ));
         assert_noop!(
             BelizeGovernance::approve_cross_department(RuntimeOrigin::signed(5), 999u32, 1u8),
             Error::<Test>::ProposalNotFound
@@ -1691,11 +1904,25 @@ fn approve_cross_department_proposal_not_found_fails() {
 #[test]
 fn approve_cross_department_no_cross_approval_fails() {
     new_test_ext().execute_with(|| {
-        assert_ok!(BelizeGovernance::set_department_manager(RuntimeOrigin::root(), 0, 4));
-        assert_ok!(BelizeGovernance::set_department_manager(RuntimeOrigin::root(), 1, 5));
+        assert_ok!(BelizeGovernance::set_department_manager(
+            RuntimeOrigin::root(),
+            0,
+            4
+        ));
+        assert_ok!(BelizeGovernance::set_department_manager(
+            RuntimeOrigin::root(),
+            1,
+            5
+        ));
         // Submit WITHOUT requires_cross_approval
         assert_ok!(BelizeGovernance::submit_department_proposal(
-            RuntimeOrigin::signed(4), 0, b"t".to_vec(), b"d".to_vec(), 1, 0, false,
+            RuntimeOrigin::signed(4),
+            0,
+            b"t".to_vec(),
+            b"d".to_vec(),
+            1,
+            0,
+            false,
         ));
         assert_noop!(
             BelizeGovernance::approve_cross_department(RuntimeOrigin::signed(5), 0u32, 1u8),
@@ -1707,12 +1934,30 @@ fn approve_cross_department_no_cross_approval_fails() {
 #[test]
 fn approve_cross_department_already_approved_fails() {
     new_test_ext().execute_with(|| {
-        assert_ok!(BelizeGovernance::set_department_manager(RuntimeOrigin::root(), 0, 4));
-        assert_ok!(BelizeGovernance::set_department_manager(RuntimeOrigin::root(), 1, 5));
-        assert_ok!(BelizeGovernance::submit_department_proposal(
-            RuntimeOrigin::signed(4), 0, b"t".to_vec(), b"d".to_vec(), 1, 0, true,
+        assert_ok!(BelizeGovernance::set_department_manager(
+            RuntimeOrigin::root(),
+            0,
+            4
         ));
-        assert_ok!(BelizeGovernance::approve_cross_department(RuntimeOrigin::signed(5), 0, 1));
+        assert_ok!(BelizeGovernance::set_department_manager(
+            RuntimeOrigin::root(),
+            1,
+            5
+        ));
+        assert_ok!(BelizeGovernance::submit_department_proposal(
+            RuntimeOrigin::signed(4),
+            0,
+            b"t".to_vec(),
+            b"d".to_vec(),
+            1,
+            0,
+            true,
+        ));
+        assert_ok!(BelizeGovernance::approve_cross_department(
+            RuntimeOrigin::signed(5),
+            0,
+            1
+        ));
         assert_noop!(
             BelizeGovernance::approve_cross_department(RuntimeOrigin::signed(5), 0u32, 1u8),
             Error::<Test>::DepartmentAlreadyApproved
@@ -1750,16 +1995,30 @@ fn execute_proposal_not_approved_fails() {
     new_test_ext().execute_with(|| {
         use crate::{Proposal, ProposalStatus, ProposalType, VoteTally, VotingThreshold};
         let proposal = Proposal {
-            id: 0, proposer: 1, status: ProposalStatus::Pending,
+            id: 0,
+            proposer: 1,
+            status: ProposalStatus::Pending,
             title: b"t".to_vec().try_into().unwrap(),
             description: b"d".to_vec().try_into().unwrap(),
             proposal_type: ProposalType::Economic,
             threshold: VotingThreshold::SimpleMajority,
-            deposit: 0, voting_start: 1u64, voting_end: 1_000_000u64,
-            vote_tally: VoteTally { ayes: 0, nays: 0, abstentions: 0, total_weight: 0, participation: 0 },
-            is_emergency: false, department: None, district: None,
-            requires_cross_approval: false, cross_approved_by: Default::default(),
-            action: None, executed_at: None,
+            deposit: 0,
+            voting_start: 1u64,
+            voting_end: 1_000_000u64,
+            vote_tally: VoteTally {
+                ayes: 0,
+                nays: 0,
+                abstentions: 0,
+                total_weight: 0,
+                participation: 0,
+            },
+            is_emergency: false,
+            department: None,
+            district: None,
+            requires_cross_approval: false,
+            cross_approved_by: Default::default(),
+            action: None,
+            executed_at: None,
         };
         crate::Proposals::<Test>::insert(0u32, proposal);
         assert_noop!(
@@ -1774,15 +2033,28 @@ fn execute_proposal_no_action_defined_fails() {
     new_test_ext().execute_with(|| {
         use crate::{Proposal, ProposalStatus, ProposalType, VoteTally, VotingThreshold};
         let proposal = Proposal {
-            id: 0, proposer: 1, status: ProposalStatus::Approved,
+            id: 0,
+            proposer: 1,
+            status: ProposalStatus::Approved,
             title: b"t".to_vec().try_into().unwrap(),
             description: b"d".to_vec().try_into().unwrap(),
             proposal_type: ProposalType::Economic,
             threshold: VotingThreshold::SimpleMajority,
-            deposit: 0, voting_start: 1u64, voting_end: 1_000_000u64,
-            vote_tally: VoteTally { ayes: 100, nays: 0, abstentions: 0, total_weight: 100, participation: 100 },
-            is_emergency: false, department: None, district: None,
-            requires_cross_approval: false, cross_approved_by: Default::default(),
+            deposit: 0,
+            voting_start: 1u64,
+            voting_end: 1_000_000u64,
+            vote_tally: VoteTally {
+                ayes: 100,
+                nays: 0,
+                abstentions: 0,
+                total_weight: 100,
+                participation: 100,
+            },
+            is_emergency: false,
+            department: None,
+            district: None,
+            requires_cross_approval: false,
+            cross_approved_by: Default::default(),
             action: None, // no action
             executed_at: None,
         };
@@ -1799,15 +2071,28 @@ fn execute_proposal_already_executed_fails() {
     new_test_ext().execute_with(|| {
         use crate::{Proposal, ProposalStatus, ProposalType, VoteTally, VotingThreshold};
         let proposal = Proposal {
-            id: 0, proposer: 1, status: ProposalStatus::Executed,
+            id: 0,
+            proposer: 1,
+            status: ProposalStatus::Executed,
             title: b"t".to_vec().try_into().unwrap(),
             description: b"d".to_vec().try_into().unwrap(),
             proposal_type: ProposalType::Economic,
             threshold: VotingThreshold::SimpleMajority,
-            deposit: 0, voting_start: 1u64, voting_end: 1_000_000u64,
-            vote_tally: VoteTally { ayes: 100, nays: 0, abstentions: 0, total_weight: 100, participation: 100 },
-            is_emergency: false, department: None, district: None,
-            requires_cross_approval: false, cross_approved_by: Default::default(),
+            deposit: 0,
+            voting_start: 1u64,
+            voting_end: 1_000_000u64,
+            vote_tally: VoteTally {
+                ayes: 100,
+                nays: 0,
+                abstentions: 0,
+                total_weight: 100,
+                participation: 100,
+            },
+            is_emergency: false,
+            department: None,
+            district: None,
+            requires_cross_approval: false,
+            cross_approved_by: Default::default(),
             action: None,
             executed_at: Some(1u64), // already executed
         };
@@ -1840,11 +2125,21 @@ fn start_district_election_invalid_district_fails() {
 #[test]
 fn register_candidate_past_registration_fails() {
     new_test_ext().execute_with(|| {
-        assert_ok!(BelizeGovernance::start_district_election(RuntimeOrigin::root(), 0, 2, 100, 200));
+        assert_ok!(BelizeGovernance::start_district_election(
+            RuntimeOrigin::root(),
+            0,
+            2,
+            100,
+            200
+        ));
         // Advance past registration_end (1 + 100 = 101)
         System::set_block_number(105);
         assert_noop!(
-            BelizeGovernance::register_candidate(RuntimeOrigin::signed(1), 0u8, b"platform".to_vec()),
+            BelizeGovernance::register_candidate(
+                RuntimeOrigin::signed(1),
+                0u8,
+                b"platform".to_vec()
+            ),
             Error::<Test>::NotInRegistrationPhase
         );
     });
@@ -1853,10 +2148,24 @@ fn register_candidate_past_registration_fails() {
 #[test]
 fn register_candidate_duplicate_fails() {
     new_test_ext().execute_with(|| {
-        assert_ok!(BelizeGovernance::start_district_election(RuntimeOrigin::root(), 0, 2, 100, 200));
-        assert_ok!(BelizeGovernance::register_candidate(RuntimeOrigin::signed(1), 0u8, b"platform".to_vec()));
+        assert_ok!(BelizeGovernance::start_district_election(
+            RuntimeOrigin::root(),
+            0,
+            2,
+            100,
+            200
+        ));
+        assert_ok!(BelizeGovernance::register_candidate(
+            RuntimeOrigin::signed(1),
+            0u8,
+            b"platform".to_vec()
+        ));
         assert_noop!(
-            BelizeGovernance::register_candidate(RuntimeOrigin::signed(1), 0u8, b"platform2".to_vec()),
+            BelizeGovernance::register_candidate(
+                RuntimeOrigin::signed(1),
+                0u8,
+                b"platform2".to_vec()
+            ),
             Error::<Test>::CandidateAlreadyRegistered
         );
     });
@@ -1869,7 +2178,13 @@ fn register_candidate_duplicate_fails() {
 #[test]
 fn vote_in_district_election_registration_phase_fails() {
     new_test_ext().execute_with(|| {
-        assert_ok!(BelizeGovernance::start_district_election(RuntimeOrigin::root(), 0, 2, 100, 200));
+        assert_ok!(BelizeGovernance::start_district_election(
+            RuntimeOrigin::root(),
+            0,
+            2,
+            100,
+            200
+        ));
         // Block 1 < registration_end (101) → still in Registration phase
         assert_noop!(
             BelizeGovernance::vote_in_district_election(RuntimeOrigin::signed(2), 0u8, 1u64),
@@ -1885,7 +2200,13 @@ fn vote_in_district_election_registration_phase_fails() {
 #[test]
 fn finalize_district_election_too_early_fails() {
     new_test_ext().execute_with(|| {
-        assert_ok!(BelizeGovernance::start_district_election(RuntimeOrigin::root(), 0, 2, 100, 200));
+        assert_ok!(BelizeGovernance::start_district_election(
+            RuntimeOrigin::root(),
+            0,
+            2,
+            100,
+            200
+        ));
         // voting_end = 1 + 100 + 200 = 301; still at block 1
         assert_noop!(
             BelizeGovernance::finalize_district_election(RuntimeOrigin::root(), 0u8),
@@ -1897,7 +2218,13 @@ fn finalize_district_election_too_early_fails() {
 #[test]
 fn finalize_district_election_no_candidates_fails() {
     new_test_ext().execute_with(|| {
-        assert_ok!(BelizeGovernance::start_district_election(RuntimeOrigin::root(), 0, 2, 100, 200));
+        assert_ok!(BelizeGovernance::start_district_election(
+            RuntimeOrigin::root(),
+            0,
+            2,
+            100,
+            200
+        ));
         System::set_block_number(302); // past voting_end
         assert_noop!(
             BelizeGovernance::finalize_district_election(RuntimeOrigin::root(), 0u8),
@@ -1929,7 +2256,11 @@ fn commit_vote_already_committed_fails() {
         let proposal_id = submit_standard_proposal(1);
         System::set_block_number(28_801);
         let commitment = [1u8; 32];
-        assert_ok!(BelizeGovernance::commit_vote(RuntimeOrigin::signed(1), proposal_id, commitment));
+        assert_ok!(BelizeGovernance::commit_vote(
+            RuntimeOrigin::signed(1),
+            proposal_id,
+            commitment
+        ));
         assert_noop!(
             BelizeGovernance::commit_vote(RuntimeOrigin::signed(1), proposal_id, commitment),
             Error::<Test>::VoteAlreadyCommitted
@@ -1949,7 +2280,11 @@ fn reveal_vote_no_commitment_fails() {
         // No commit made → NoCommitmentFound
         assert_noop!(
             BelizeGovernance::reveal_vote(
-                RuntimeOrigin::signed(1), proposal_id, 0u8, [0u8; 32], 1u8,
+                RuntimeOrigin::signed(1),
+                proposal_id,
+                0u8,
+                [0u8; 32],
+                1u8,
             ),
             Error::<Test>::NoCommitmentFound
         );
@@ -1967,11 +2302,19 @@ fn reveal_vote_wrong_hash_fails() {
         preimage[0] = 0u8;
         preimage[1..].copy_from_slice(&correct_salt);
         let commitment = sp_io::hashing::blake2_256(&preimage);
-        assert_ok!(BelizeGovernance::commit_vote(RuntimeOrigin::signed(1), proposal_id, commitment));
+        assert_ok!(BelizeGovernance::commit_vote(
+            RuntimeOrigin::signed(1),
+            proposal_id,
+            commitment
+        ));
         // Reveal with WRONG salt
         assert_noop!(
             BelizeGovernance::reveal_vote(
-                RuntimeOrigin::signed(1), proposal_id, 0u8, [9u8; 32], 1u8,
+                RuntimeOrigin::signed(1),
+                proposal_id,
+                0u8,
+                [9u8; 32],
+                1u8,
             ),
             Error::<Test>::CommitmentHashMismatch
         );
@@ -1987,7 +2330,8 @@ fn apply_pending_runtime_upgrade_no_pending_fails() {
     new_test_ext().execute_with(|| {
         assert_noop!(
             BelizeGovernance::apply_pending_runtime_upgrade(
-                RuntimeOrigin::root(), b"some_code".to_vec(),
+                RuntimeOrigin::root(),
+                b"some_code".to_vec(),
             ),
             Error::<Test>::RuntimeUpgradeNotPending
         );
@@ -2001,7 +2345,8 @@ fn apply_pending_runtime_upgrade_hash_mismatch_fails() {
         crate::PendingRuntimeUpgrade::<Test>::put([1u8; 32]);
         assert_noop!(
             BelizeGovernance::apply_pending_runtime_upgrade(
-                RuntimeOrigin::root(), b"wrong_code".to_vec(),
+                RuntimeOrigin::root(),
+                b"wrong_code".to_vec(),
             ),
             Error::<Test>::RuntimeCodeHashMismatch
         );
@@ -2017,7 +2362,10 @@ fn allocate_district_budget_zero_fiscal_year_fails() {
     new_test_ext().execute_with(|| {
         assert_noop!(
             BelizeGovernance::allocate_district_budget(
-                RuntimeOrigin::root(), 0u8, 1_000_000u128, 0u32,
+                RuntimeOrigin::root(),
+                0u8,
+                1_000_000u128,
+                0u32,
             ),
             Error::<Test>::InvalidFiscalYearPeriod
         );
@@ -2034,7 +2382,11 @@ fn transfer_district_budget_no_source_fails() {
         // Belize (0) has no budget → DistrictBudgetNotFound
         assert_noop!(
             BelizeGovernance::transfer_district_budget(
-                RuntimeOrigin::root(), 0u8, 1u8, 100u128, b"realloc".to_vec(),
+                RuntimeOrigin::root(),
+                0u8,
+                1u8,
+                100u128,
+                b"realloc".to_vec(),
             ),
             Error::<Test>::DistrictBudgetNotFound
         );
@@ -2044,11 +2396,20 @@ fn transfer_district_budget_no_source_fails() {
 #[test]
 fn transfer_district_budget_insufficient_fails() {
     new_test_ext().execute_with(|| {
-        assert_ok!(BelizeGovernance::allocate_district_budget(RuntimeOrigin::root(), 0, 100u128, 1000));
+        assert_ok!(BelizeGovernance::allocate_district_budget(
+            RuntimeOrigin::root(),
+            0,
+            100u128,
+            1000
+        ));
         // Try to transfer 200 from Belize (0) which only has 100 allocated
         assert_noop!(
             BelizeGovernance::transfer_district_budget(
-                RuntimeOrigin::root(), 0u8, 1u8, 200u128, b"too much".to_vec(),
+                RuntimeOrigin::root(),
+                0u8,
+                1u8,
+                200u128,
+                b"too much".to_vec(),
             ),
             Error::<Test>::TransferExceedsSourceBudget
         );
@@ -2065,12 +2426,24 @@ fn claim_participation_reward_vote_type_works() {
         let proposal_id = submit_standard_proposal(1);
         // Advance to voting_start and cast a vote from account 4
         System::set_block_number(28_801);
-        assert_ok!(BelizeGovernance::cast_vote(RuntimeOrigin::signed(4), proposal_id, 0u8, 1u8));
+        assert_ok!(BelizeGovernance::cast_vote(
+            RuntimeOrigin::signed(4),
+            proposal_id,
+            0u8,
+            1u8
+        ));
         let reward: u128 = 10_000_000_000_000;
         let treasury = BelizeGovernance::account_id();
-        assert_ok!(Balances::force_set_balance(RuntimeOrigin::root(), treasury, reward + 1_000));
+        assert_ok!(Balances::force_set_balance(
+            RuntimeOrigin::root(),
+            treasury,
+            reward + 1_000
+        ));
         let before = Balances::free_balance(4u64);
-        assert_ok!(BelizeGovernance::claim_participation_reward(RuntimeOrigin::signed(4), 0u8));
+        assert_ok!(BelizeGovernance::claim_participation_reward(
+            RuntimeOrigin::signed(4),
+            0u8
+        ));
         assert_eq!(Balances::free_balance(4u64), before + reward);
     });
 }
@@ -2081,9 +2454,16 @@ fn claim_participation_reward_proposal_type_works() {
         submit_standard_proposal(4); // account 4 submits a proposal
         let reward: u128 = 100_000_000_000_000;
         let treasury = BelizeGovernance::account_id();
-        assert_ok!(Balances::force_set_balance(RuntimeOrigin::root(), treasury, reward + 1_000));
+        assert_ok!(Balances::force_set_balance(
+            RuntimeOrigin::root(),
+            treasury,
+            reward + 1_000
+        ));
         let before = Balances::free_balance(4u64);
-        assert_ok!(BelizeGovernance::claim_participation_reward(RuntimeOrigin::signed(4), 1u8));
+        assert_ok!(BelizeGovernance::claim_participation_reward(
+            RuntimeOrigin::signed(4),
+            1u8
+        ));
         assert_eq!(Balances::free_balance(4u64), before + reward);
     });
 }
@@ -2124,8 +2504,14 @@ fn vote_for_delegate_nominee_not_found_fails() {
 fn vote_for_delegate_already_voted_fails() {
     new_test_ext().execute_with(|| {
         crate::CurrentElection::<Test>::put(1u64);
-        assert_ok!(BelizeGovernance::nominate_for_delegate(RuntimeOrigin::signed(1), 4u64));
-        assert_ok!(BelizeGovernance::vote_for_delegate(RuntimeOrigin::signed(2), 4u64));
+        assert_ok!(BelizeGovernance::nominate_for_delegate(
+            RuntimeOrigin::signed(1),
+            4u64
+        ));
+        assert_ok!(BelizeGovernance::vote_for_delegate(
+            RuntimeOrigin::signed(2),
+            4u64
+        ));
         assert_noop!(
             BelizeGovernance::vote_for_delegate(RuntimeOrigin::signed(2), 4u64),
             Error::<Test>::AlreadyVotedInElection
@@ -2140,27 +2526,51 @@ fn vote_for_delegate_already_voted_fails() {
 #[test]
 fn execute_proposal_treasury_spend_works() {
     new_test_ext().execute_with(|| {
-        use crate::{Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally, VotingThreshold};
+        use crate::{
+            Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally, VotingThreshold,
+        };
         let treasury_acct = BelizeGovernance::account_id();
-        assert_ok!(Balances::force_set_balance(RuntimeOrigin::root(), treasury_acct, 10_000_000_000u128));
+        assert_ok!(Balances::force_set_balance(
+            RuntimeOrigin::root(),
+            treasury_acct,
+            10_000_000_000u128
+        ));
         let before = Balances::free_balance(5u64);
         let spend_amount: u128 = 1_000u128;
         let proposal = Proposal {
-            id: 0u32, proposer: 1u64,
+            id: 0u32,
+            proposer: 1u64,
             title: b"Treasury".to_vec().try_into().unwrap(),
             description: b"d".to_vec().try_into().unwrap(),
             proposal_type: ProposalType::Economic,
             threshold: VotingThreshold::SimpleMajority,
-            deposit: 0u128, voting_start: 1u64, voting_end: 1_000_000u64,
-            vote_tally: VoteTally { ayes: 100, nays: 0, abstentions: 0, total_weight: 100, participation: 100 },
+            deposit: 0u128,
+            voting_start: 1u64,
+            voting_end: 1_000_000u64,
+            vote_tally: VoteTally {
+                ayes: 100,
+                nays: 0,
+                abstentions: 0,
+                total_weight: 100,
+                participation: 100,
+            },
             status: ProposalStatus::Approved,
-            is_emergency: false, department: None, district: None,
-            requires_cross_approval: false, cross_approved_by: Default::default(),
-            action: Some(ProposalAction::TreasurySpend { recipient: 5u64, amount: spend_amount }),
+            is_emergency: false,
+            department: None,
+            district: None,
+            requires_cross_approval: false,
+            cross_approved_by: Default::default(),
+            action: Some(ProposalAction::TreasurySpend {
+                recipient: 5u64,
+                amount: spend_amount,
+            }),
             executed_at: None,
         };
         crate::Proposals::<Test>::insert(0u32, proposal);
-        assert_ok!(BelizeGovernance::execute_proposal(RuntimeOrigin::signed(1), 0u32));
+        assert_ok!(BelizeGovernance::execute_proposal(
+            RuntimeOrigin::signed(1),
+            0u32
+        ));
         assert!(Balances::free_balance(5u64) > before);
         let updated = BelizeGovernance::proposals(0).unwrap();
         assert_eq!(updated.status, crate::ProposalStatus::Executed);
@@ -2170,20 +2580,37 @@ fn execute_proposal_treasury_spend_works() {
 #[test]
 fn execute_proposal_treasury_spend_insufficient_balance_fails() {
     new_test_ext().execute_with(|| {
-        use crate::{Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally, VotingThreshold};
+        use crate::{
+            Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally, VotingThreshold,
+        };
         // Don't fund the treasury — balance is 0
         let proposal = Proposal {
-            id: 0u32, proposer: 1u64,
+            id: 0u32,
+            proposer: 1u64,
             title: b"T".to_vec().try_into().unwrap(),
             description: b"d".to_vec().try_into().unwrap(),
             proposal_type: ProposalType::Economic,
             threshold: VotingThreshold::SimpleMajority,
-            deposit: 0u128, voting_start: 1u64, voting_end: 1_000_000u64,
-            vote_tally: VoteTally { ayes: 100, nays: 0, abstentions: 0, total_weight: 100, participation: 100 },
+            deposit: 0u128,
+            voting_start: 1u64,
+            voting_end: 1_000_000u64,
+            vote_tally: VoteTally {
+                ayes: 100,
+                nays: 0,
+                abstentions: 0,
+                total_weight: 100,
+                participation: 100,
+            },
             status: ProposalStatus::Approved,
-            is_emergency: false, department: None, district: None,
-            requires_cross_approval: false, cross_approved_by: Default::default(),
-            action: Some(ProposalAction::TreasurySpend { recipient: 5u64, amount: 999_999_999_999u128 }),
+            is_emergency: false,
+            department: None,
+            district: None,
+            requires_cross_approval: false,
+            cross_approved_by: Default::default(),
+            action: Some(ProposalAction::TreasurySpend {
+                recipient: 5u64,
+                amount: 999_999_999_999u128,
+            }),
             executed_at: None,
         };
         crate::Proposals::<Test>::insert(0u32, proposal);
@@ -2197,25 +2624,42 @@ fn execute_proposal_treasury_spend_insufficient_balance_fails() {
 #[test]
 fn execute_proposal_runtime_upgrade_works() {
     new_test_ext().execute_with(|| {
-        use crate::{Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally, VotingThreshold};
+        use crate::{
+            Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally, VotingThreshold,
+        };
         let code_hash: frame_support::BoundedVec<u8, frame_support::traits::ConstU32<32>> =
             [2u8; 32].to_vec().try_into().unwrap();
         let proposal = Proposal {
-            id: 0u32, proposer: 1u64,
+            id: 0u32,
+            proposer: 1u64,
             title: b"Upgrade".to_vec().try_into().unwrap(),
             description: b"d".to_vec().try_into().unwrap(),
             proposal_type: ProposalType::Technical,
             threshold: VotingThreshold::Supermajority,
-            deposit: 0u128, voting_start: 1u64, voting_end: 1_000_000u64,
-            vote_tally: VoteTally { ayes: 100, nays: 0, abstentions: 0, total_weight: 100, participation: 100 },
+            deposit: 0u128,
+            voting_start: 1u64,
+            voting_end: 1_000_000u64,
+            vote_tally: VoteTally {
+                ayes: 100,
+                nays: 0,
+                abstentions: 0,
+                total_weight: 100,
+                participation: 100,
+            },
             status: ProposalStatus::Approved,
-            is_emergency: false, department: None, district: None,
-            requires_cross_approval: false, cross_approved_by: Default::default(),
+            is_emergency: false,
+            department: None,
+            district: None,
+            requires_cross_approval: false,
+            cross_approved_by: Default::default(),
             action: Some(ProposalAction::RuntimeUpgrade { code_hash }),
             executed_at: None,
         };
         crate::Proposals::<Test>::insert(0u32, proposal);
-        assert_ok!(BelizeGovernance::execute_proposal(RuntimeOrigin::signed(1), 0u32));
+        assert_ok!(BelizeGovernance::execute_proposal(
+            RuntimeOrigin::signed(1),
+            0u32
+        ));
         let pending = crate::PendingRuntimeUpgrade::<Test>::get();
         assert!(pending.is_some());
         assert_eq!(pending.unwrap(), [2u8; 32]);
@@ -2225,21 +2669,35 @@ fn execute_proposal_runtime_upgrade_works() {
 #[test]
 fn execute_proposal_runtime_upgrade_bad_hash_size_fails() {
     new_test_ext().execute_with(|| {
-        use crate::{Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally, VotingThreshold};
+        use crate::{
+            Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally, VotingThreshold,
+        };
         // 16 bytes — not 32; execute_runtime_upgrade checks len == 32
         let code_hash: frame_support::BoundedVec<u8, frame_support::traits::ConstU32<32>> =
             [9u8; 16].to_vec().try_into().unwrap();
         let proposal = Proposal {
-            id: 0u32, proposer: 1u64,
+            id: 0u32,
+            proposer: 1u64,
             title: b"Upgrade".to_vec().try_into().unwrap(),
             description: b"d".to_vec().try_into().unwrap(),
             proposal_type: ProposalType::Technical,
             threshold: VotingThreshold::Supermajority,
-            deposit: 0u128, voting_start: 1u64, voting_end: 1_000_000u64,
-            vote_tally: VoteTally { ayes: 100, nays: 0, abstentions: 0, total_weight: 100, participation: 100 },
+            deposit: 0u128,
+            voting_start: 1u64,
+            voting_end: 1_000_000u64,
+            vote_tally: VoteTally {
+                ayes: 100,
+                nays: 0,
+                abstentions: 0,
+                total_weight: 100,
+                participation: 100,
+            },
             status: ProposalStatus::Approved,
-            is_emergency: false, department: None, district: None,
-            requires_cross_approval: false, cross_approved_by: Default::default(),
+            is_emergency: false,
+            department: None,
+            district: None,
+            requires_cross_approval: false,
+            cross_approved_by: Default::default(),
             action: Some(ProposalAction::RuntimeUpgrade { code_hash }),
             executed_at: None,
         };
@@ -2254,111 +2712,200 @@ fn execute_proposal_runtime_upgrade_bad_hash_size_fails() {
 #[test]
 fn execute_proposal_department_action_noop_works() {
     new_test_ext().execute_with(|| {
-        use crate::{Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally, VotingThreshold, Department};
+        use crate::{
+            Department, Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally,
+            VotingThreshold,
+        };
         use codec::Encode as _;
         let dept_call = crate::GovDepartmentCall::<u64, u128>::NoOp;
         let call_data: frame_support::BoundedVec<u8, frame_support::traits::ConstU32<1024>> =
             dept_call.encode().try_into().unwrap();
         let proposal = Proposal {
-            id: 0u32, proposer: 1u64,
+            id: 0u32,
+            proposer: 1u64,
             title: b"DeptNoOp".to_vec().try_into().unwrap(),
             description: b"d".to_vec().try_into().unwrap(),
             proposal_type: ProposalType::Economic,
             threshold: VotingThreshold::SimpleMajority,
-            deposit: 0u128, voting_start: 1u64, voting_end: 1_000_000u64,
-            vote_tally: VoteTally { ayes: 100, nays: 0, abstentions: 0, total_weight: 100, participation: 100 },
+            deposit: 0u128,
+            voting_start: 1u64,
+            voting_end: 1_000_000u64,
+            vote_tally: VoteTally {
+                ayes: 100,
+                nays: 0,
+                abstentions: 0,
+                total_weight: 100,
+                participation: 100,
+            },
             status: ProposalStatus::Approved,
-            is_emergency: false, department: Some(Department::Finance), district: None,
-            requires_cross_approval: false, cross_approved_by: Default::default(),
-            action: Some(ProposalAction::DepartmentAction { department: Department::Finance, call_data }),
+            is_emergency: false,
+            department: Some(Department::Finance),
+            district: None,
+            requires_cross_approval: false,
+            cross_approved_by: Default::default(),
+            action: Some(ProposalAction::DepartmentAction {
+                department: Department::Finance,
+                call_data,
+            }),
             executed_at: None,
         };
         crate::Proposals::<Test>::insert(0u32, proposal);
-        assert_ok!(BelizeGovernance::execute_proposal(RuntimeOrigin::signed(1), 0u32));
+        assert_ok!(BelizeGovernance::execute_proposal(
+            RuntimeOrigin::signed(1),
+            0u32
+        ));
     });
 }
 
 #[test]
 fn execute_proposal_department_action_update_policy_works() {
     new_test_ext().execute_with(|| {
-        use crate::{Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally, VotingThreshold, Department};
+        use crate::{
+            Department, Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally,
+            VotingThreshold,
+        };
         use codec::Encode as _;
         let policy_key: frame_support::BoundedVec<u8, frame_support::traits::ConstU32<64>> =
             b"max_budget".to_vec().try_into().unwrap();
         let policy_val: frame_support::BoundedVec<u8, frame_support::traits::ConstU32<256>> =
             b"1000000".to_vec().try_into().unwrap();
         let dept_call = crate::GovDepartmentCall::<u64, u128>::UpdatePolicy {
-            policy_key, policy_value: policy_val,
+            policy_key,
+            policy_value: policy_val,
         };
         let call_data: frame_support::BoundedVec<u8, frame_support::traits::ConstU32<1024>> =
             dept_call.encode().try_into().unwrap();
         let proposal = Proposal {
-            id: 0u32, proposer: 1u64,
+            id: 0u32,
+            proposer: 1u64,
             title: b"Policy".to_vec().try_into().unwrap(),
             description: b"d".to_vec().try_into().unwrap(),
             proposal_type: ProposalType::Economic,
             threshold: VotingThreshold::SimpleMajority,
-            deposit: 0u128, voting_start: 1u64, voting_end: 1_000_000u64,
-            vote_tally: VoteTally { ayes: 100, nays: 0, abstentions: 0, total_weight: 100, participation: 100 },
+            deposit: 0u128,
+            voting_start: 1u64,
+            voting_end: 1_000_000u64,
+            vote_tally: VoteTally {
+                ayes: 100,
+                nays: 0,
+                abstentions: 0,
+                total_weight: 100,
+                participation: 100,
+            },
             status: ProposalStatus::Approved,
-            is_emergency: false, department: Some(Department::Education), district: None,
-            requires_cross_approval: false, cross_approved_by: Default::default(),
-            action: Some(ProposalAction::DepartmentAction { department: Department::Education, call_data }),
+            is_emergency: false,
+            department: Some(Department::Education),
+            district: None,
+            requires_cross_approval: false,
+            cross_approved_by: Default::default(),
+            action: Some(ProposalAction::DepartmentAction {
+                department: Department::Education,
+                call_data,
+            }),
             executed_at: None,
         };
         crate::Proposals::<Test>::insert(0u32, proposal);
-        assert_ok!(BelizeGovernance::execute_proposal(RuntimeOrigin::signed(1), 0u32));
+        assert_ok!(BelizeGovernance::execute_proposal(
+            RuntimeOrigin::signed(1),
+            0u32
+        ));
     });
 }
 
 #[test]
 fn execute_proposal_department_action_spend_budget_works() {
     new_test_ext().execute_with(|| {
-        use crate::{Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally, VotingThreshold, Department};
+        use crate::{
+            Department, Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally,
+            VotingThreshold,
+        };
         use codec::Encode as _;
         let treasury_acct = BelizeGovernance::account_id();
-        assert_ok!(Balances::force_set_balance(RuntimeOrigin::root(), treasury_acct, 10_000_000_000u128));
-        let dept_call = crate::GovDepartmentCall::<u64, u128>::SpendBudget { recipient: 5u64, amount: 500u128 };
+        assert_ok!(Balances::force_set_balance(
+            RuntimeOrigin::root(),
+            treasury_acct,
+            10_000_000_000u128
+        ));
+        let dept_call = crate::GovDepartmentCall::<u64, u128>::SpendBudget {
+            recipient: 5u64,
+            amount: 500u128,
+        };
         let call_data: frame_support::BoundedVec<u8, frame_support::traits::ConstU32<1024>> =
             dept_call.encode().try_into().unwrap();
         let proposal = Proposal {
-            id: 0u32, proposer: 1u64,
+            id: 0u32,
+            proposer: 1u64,
             title: b"SpendBudget".to_vec().try_into().unwrap(),
             description: b"d".to_vec().try_into().unwrap(),
             proposal_type: ProposalType::Economic,
             threshold: VotingThreshold::SimpleMajority,
-            deposit: 0u128, voting_start: 1u64, voting_end: 1_000_000u64,
-            vote_tally: VoteTally { ayes: 100, nays: 0, abstentions: 0, total_weight: 100, participation: 100 },
+            deposit: 0u128,
+            voting_start: 1u64,
+            voting_end: 1_000_000u64,
+            vote_tally: VoteTally {
+                ayes: 100,
+                nays: 0,
+                abstentions: 0,
+                total_weight: 100,
+                participation: 100,
+            },
             status: ProposalStatus::Approved,
-            is_emergency: false, department: Some(Department::Finance), district: None,
-            requires_cross_approval: false, cross_approved_by: Default::default(),
-            action: Some(ProposalAction::DepartmentAction { department: Department::Finance, call_data }),
+            is_emergency: false,
+            department: Some(Department::Finance),
+            district: None,
+            requires_cross_approval: false,
+            cross_approved_by: Default::default(),
+            action: Some(ProposalAction::DepartmentAction {
+                department: Department::Finance,
+                call_data,
+            }),
             executed_at: None,
         };
         crate::Proposals::<Test>::insert(0u32, proposal);
-        assert_ok!(BelizeGovernance::execute_proposal(RuntimeOrigin::signed(1), 0u32));
+        assert_ok!(BelizeGovernance::execute_proposal(
+            RuntimeOrigin::signed(1),
+            0u32
+        ));
     });
 }
 
 #[test]
 fn execute_proposal_department_action_invalid_call_data_fails() {
     new_test_ext().execute_with(|| {
-        use crate::{Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally, VotingThreshold, Department};
+        use crate::{
+            Department, Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally,
+            VotingThreshold,
+        };
         // 4 bytes of 0xFF cannot be SCALE-decoded as a valid DepartmentCall
         let call_data: frame_support::BoundedVec<u8, frame_support::traits::ConstU32<1024>> =
             vec![0xFF, 0xFF, 0xFF, 0xFF].try_into().unwrap();
         let proposal = Proposal {
-            id: 0u32, proposer: 1u64,
+            id: 0u32,
+            proposer: 1u64,
             title: b"T".to_vec().try_into().unwrap(),
             description: b"d".to_vec().try_into().unwrap(),
             proposal_type: ProposalType::Economic,
             threshold: VotingThreshold::SimpleMajority,
-            deposit: 0u128, voting_start: 1u64, voting_end: 1_000_000u64,
-            vote_tally: VoteTally { ayes: 100, nays: 0, abstentions: 0, total_weight: 100, participation: 100 },
+            deposit: 0u128,
+            voting_start: 1u64,
+            voting_end: 1_000_000u64,
+            vote_tally: VoteTally {
+                ayes: 100,
+                nays: 0,
+                abstentions: 0,
+                total_weight: 100,
+                participation: 100,
+            },
             status: ProposalStatus::Approved,
-            is_emergency: false, department: Some(Department::Finance), district: None,
-            requires_cross_approval: false, cross_approved_by: Default::default(),
-            action: Some(ProposalAction::DepartmentAction { department: Department::Finance, call_data }),
+            is_emergency: false,
+            department: Some(Department::Finance),
+            district: None,
+            requires_cross_approval: false,
+            cross_approved_by: Default::default(),
+            action: Some(ProposalAction::DepartmentAction {
+                department: Department::Finance,
+                call_data,
+            }),
             executed_at: None,
         };
         crate::Proposals::<Test>::insert(0u32, proposal);
@@ -2372,23 +2919,43 @@ fn execute_proposal_department_action_invalid_call_data_fails() {
 #[test]
 fn execute_proposal_emergency_activate_works() {
     new_test_ext().execute_with(|| {
-        use crate::{Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally, VotingThreshold, EmergencyActionType};
+        use crate::{
+            EmergencyActionType, Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally,
+            VotingThreshold,
+        };
         let proposal = Proposal {
-            id: 0u32, proposer: 1u64,
+            id: 0u32,
+            proposer: 1u64,
             title: b"E".to_vec().try_into().unwrap(),
             description: b"d".to_vec().try_into().unwrap(),
             proposal_type: ProposalType::Emergency,
             threshold: VotingThreshold::Supermajority,
-            deposit: 0u128, voting_start: 1u64, voting_end: 1_000_000u64,
-            vote_tally: VoteTally { ayes: 100, nays: 0, abstentions: 0, total_weight: 100, participation: 100 },
+            deposit: 0u128,
+            voting_start: 1u64,
+            voting_end: 1_000_000u64,
+            vote_tally: VoteTally {
+                ayes: 100,
+                nays: 0,
+                abstentions: 0,
+                total_weight: 100,
+                participation: 100,
+            },
             status: ProposalStatus::Approved,
-            is_emergency: true, department: None, district: None,
-            requires_cross_approval: false, cross_approved_by: Default::default(),
-            action: Some(ProposalAction::EmergencyAction { action_type: EmergencyActionType::ActivateEmergency }),
+            is_emergency: true,
+            department: None,
+            district: None,
+            requires_cross_approval: false,
+            cross_approved_by: Default::default(),
+            action: Some(ProposalAction::EmergencyAction {
+                action_type: EmergencyActionType::ActivateEmergency,
+            }),
             executed_at: None,
         };
         crate::Proposals::<Test>::insert(0u32, proposal);
-        assert_ok!(BelizeGovernance::execute_proposal(RuntimeOrigin::signed(1), 0u32));
+        assert_ok!(BelizeGovernance::execute_proposal(
+            RuntimeOrigin::signed(1),
+            0u32
+        ));
         assert!(crate::JaguarMode::<Test>::get().is_some());
     });
 }
@@ -2396,26 +2963,51 @@ fn execute_proposal_emergency_activate_works() {
 #[test]
 fn execute_proposal_emergency_deactivate_works() {
     new_test_ext().execute_with(|| {
-        use crate::{Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally, VotingThreshold, EmergencyActionType};
+        use crate::{
+            EmergencyActionType, Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally,
+            VotingThreshold,
+        };
         // Pre-set JaguarMode
-        assert_ok!(BelizeGovernance::declare_emergency(RuntimeOrigin::root(), 0u8, b"test".to_vec(), 24u32));
+        assert_ok!(BelizeGovernance::declare_emergency(
+            RuntimeOrigin::root(),
+            0u8,
+            b"test".to_vec(),
+            24u32
+        ));
         assert!(crate::JaguarMode::<Test>::get().is_some());
         let proposal = Proposal {
-            id: 0u32, proposer: 1u64,
+            id: 0u32,
+            proposer: 1u64,
             title: b"E".to_vec().try_into().unwrap(),
             description: b"d".to_vec().try_into().unwrap(),
             proposal_type: ProposalType::Emergency,
             threshold: VotingThreshold::Supermajority,
-            deposit: 0u128, voting_start: 1u64, voting_end: 1_000_000u64,
-            vote_tally: VoteTally { ayes: 100, nays: 0, abstentions: 0, total_weight: 100, participation: 100 },
+            deposit: 0u128,
+            voting_start: 1u64,
+            voting_end: 1_000_000u64,
+            vote_tally: VoteTally {
+                ayes: 100,
+                nays: 0,
+                abstentions: 0,
+                total_weight: 100,
+                participation: 100,
+            },
             status: ProposalStatus::Approved,
-            is_emergency: true, department: None, district: None,
-            requires_cross_approval: false, cross_approved_by: Default::default(),
-            action: Some(ProposalAction::EmergencyAction { action_type: EmergencyActionType::DeactivateEmergency }),
+            is_emergency: true,
+            department: None,
+            district: None,
+            requires_cross_approval: false,
+            cross_approved_by: Default::default(),
+            action: Some(ProposalAction::EmergencyAction {
+                action_type: EmergencyActionType::DeactivateEmergency,
+            }),
             executed_at: None,
         };
         crate::Proposals::<Test>::insert(0u32, proposal);
-        assert_ok!(BelizeGovernance::execute_proposal(RuntimeOrigin::signed(1), 0u32));
+        assert_ok!(BelizeGovernance::execute_proposal(
+            RuntimeOrigin::signed(1),
+            0u32
+        ));
         assert!(crate::JaguarMode::<Test>::get().is_none());
     });
 }
@@ -2423,73 +3015,144 @@ fn execute_proposal_emergency_deactivate_works() {
 #[test]
 fn execute_proposal_emergency_freeze_account_works() {
     new_test_ext().execute_with(|| {
-        use crate::{Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally, VotingThreshold, EmergencyActionType};
+        use crate::{
+            EmergencyActionType, Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally,
+            VotingThreshold,
+        };
         let proposal = Proposal {
-            id: 0u32, proposer: 1u64,
+            id: 0u32,
+            proposer: 1u64,
             title: b"F".to_vec().try_into().unwrap(),
             description: b"d".to_vec().try_into().unwrap(),
             proposal_type: ProposalType::Emergency,
             threshold: VotingThreshold::Supermajority,
-            deposit: 0u128, voting_start: 1u64, voting_end: 1_000_000u64,
-            vote_tally: VoteTally { ayes: 100, nays: 0, abstentions: 0, total_weight: 100, participation: 100 },
+            deposit: 0u128,
+            voting_start: 1u64,
+            voting_end: 1_000_000u64,
+            vote_tally: VoteTally {
+                ayes: 100,
+                nays: 0,
+                abstentions: 0,
+                total_weight: 100,
+                participation: 100,
+            },
             status: ProposalStatus::Approved,
-            is_emergency: true, department: None, district: None,
-            requires_cross_approval: false, cross_approved_by: Default::default(),
-            action: Some(ProposalAction::EmergencyAction { action_type: EmergencyActionType::FreezeAccount }),
+            is_emergency: true,
+            department: None,
+            district: None,
+            requires_cross_approval: false,
+            cross_approved_by: Default::default(),
+            action: Some(ProposalAction::EmergencyAction {
+                action_type: EmergencyActionType::FreezeAccount,
+            }),
             executed_at: None,
         };
         crate::Proposals::<Test>::insert(0u32, proposal);
-        assert_ok!(BelizeGovernance::execute_proposal(RuntimeOrigin::signed(1), 0u32));
+        assert_ok!(BelizeGovernance::execute_proposal(
+            RuntimeOrigin::signed(1),
+            0u32
+        ));
     });
 }
 
 #[test]
 fn execute_proposal_emergency_halt_and_resume_works() {
     new_test_ext().execute_with(|| {
-        use crate::{Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally, VotingThreshold, EmergencyActionType};
+        use crate::{
+            EmergencyActionType, Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally,
+            VotingThreshold,
+        };
         let make_proposal = |id: u32, action_type: EmergencyActionType| Proposal {
-            id, proposer: 1u64,
+            id,
+            proposer: 1u64,
             title: b"H".to_vec().try_into().unwrap(),
             description: b"d".to_vec().try_into().unwrap(),
             proposal_type: ProposalType::Emergency,
             threshold: VotingThreshold::Supermajority,
-            deposit: 0u128, voting_start: 1u64, voting_end: 1_000_000u64,
-            vote_tally: VoteTally { ayes: 100, nays: 0, abstentions: 0, total_weight: 100, participation: 100 },
+            deposit: 0u128,
+            voting_start: 1u64,
+            voting_end: 1_000_000u64,
+            vote_tally: VoteTally {
+                ayes: 100,
+                nays: 0,
+                abstentions: 0,
+                total_weight: 100,
+                participation: 100,
+            },
             status: ProposalStatus::Approved,
-            is_emergency: true, department: None, district: None,
-            requires_cross_approval: false, cross_approved_by: Default::default(),
+            is_emergency: true,
+            department: None,
+            district: None,
+            requires_cross_approval: false,
+            cross_approved_by: Default::default(),
             action: Some(ProposalAction::EmergencyAction { action_type }),
             executed_at: None,
         };
         // HaltGovernance
-        crate::Proposals::<Test>::insert(0u32, make_proposal(0, EmergencyActionType::HaltGovernance));
-        assert_ok!(BelizeGovernance::execute_proposal(RuntimeOrigin::signed(1), 0u32));
+        crate::Proposals::<Test>::insert(
+            0u32,
+            make_proposal(0, EmergencyActionType::HaltGovernance),
+        );
+        assert_ok!(BelizeGovernance::execute_proposal(
+            RuntimeOrigin::signed(1),
+            0u32
+        ));
         // ResumeGovernance
-        crate::Proposals::<Test>::insert(1u32, make_proposal(1, EmergencyActionType::ResumeGovernance));
-        assert_ok!(BelizeGovernance::execute_proposal(RuntimeOrigin::signed(1), 1u32));
+        crate::Proposals::<Test>::insert(
+            1u32,
+            make_proposal(1, EmergencyActionType::ResumeGovernance),
+        );
+        assert_ok!(BelizeGovernance::execute_proposal(
+            RuntimeOrigin::signed(1),
+            1u32
+        ));
         // UnfreezeAccount
-        crate::Proposals::<Test>::insert(2u32, make_proposal(2, EmergencyActionType::UnfreezeAccount));
-        assert_ok!(BelizeGovernance::execute_proposal(RuntimeOrigin::signed(1), 2u32));
+        crate::Proposals::<Test>::insert(
+            2u32,
+            make_proposal(2, EmergencyActionType::UnfreezeAccount),
+        );
+        assert_ok!(BelizeGovernance::execute_proposal(
+            RuntimeOrigin::signed(1),
+            2u32
+        ));
     });
 }
 
 #[test]
 fn execute_proposal_parameter_change_invalid_value_fails() {
     new_test_ext().execute_with(|| {
-        use crate::{Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally, VotingThreshold, GovernanceParameter};
+        use crate::{
+            GovernanceParameter, Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally,
+            VotingThreshold,
+        };
         // VotingPeriod valid range: 3600..=604800 — use 100 (out of range)
         let proposal = Proposal {
-            id: 0u32, proposer: 1u64,
+            id: 0u32,
+            proposer: 1u64,
             title: b"P".to_vec().try_into().unwrap(),
             description: b"d".to_vec().try_into().unwrap(),
             proposal_type: ProposalType::Economic,
             threshold: VotingThreshold::SimpleMajority,
-            deposit: 0u128, voting_start: 1u64, voting_end: 1_000_000u64,
-            vote_tally: VoteTally { ayes: 100, nays: 0, abstentions: 0, total_weight: 100, participation: 100 },
+            deposit: 0u128,
+            voting_start: 1u64,
+            voting_end: 1_000_000u64,
+            vote_tally: VoteTally {
+                ayes: 100,
+                nays: 0,
+                abstentions: 0,
+                total_weight: 100,
+                participation: 100,
+            },
             status: ProposalStatus::Approved,
-            is_emergency: false, department: None, district: None,
-            requires_cross_approval: false, cross_approved_by: Default::default(),
-            action: Some(ProposalAction::ParameterChange { parameter: GovernanceParameter::VotingPeriod, new_value: 100u32 }),
+            is_emergency: false,
+            department: None,
+            district: None,
+            requires_cross_approval: false,
+            cross_approved_by: Default::default(),
+            action: Some(ProposalAction::ParameterChange {
+                parameter: GovernanceParameter::VotingPeriod,
+                new_value: 100u32,
+            }),
             executed_at: None,
         };
         crate::Proposals::<Test>::insert(0u32, proposal);
@@ -2503,36 +3166,85 @@ fn execute_proposal_parameter_change_invalid_value_fails() {
 #[test]
 fn execute_proposal_all_parameter_types_work() {
     new_test_ext().execute_with(|| {
-        use crate::{Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally, VotingThreshold, GovernanceParameter};
-        let make_param_proposal = |id: u32, parameter: GovernanceParameter, new_value: u32| Proposal {
-            id, proposer: 1u64,
-            title: b"P".to_vec().try_into().unwrap(),
-            description: b"d".to_vec().try_into().unwrap(),
-            proposal_type: ProposalType::Economic,
-            threshold: VotingThreshold::SimpleMajority,
-            deposit: 0u128, voting_start: 1u64, voting_end: 1_000_000u64,
-            vote_tally: VoteTally { ayes: 100, nays: 0, abstentions: 0, total_weight: 100, participation: 100 },
-            status: ProposalStatus::Approved,
-            is_emergency: false, department: None, district: None,
-            requires_cross_approval: false, cross_approved_by: Default::default(),
-            action: Some(ProposalAction::ParameterChange { parameter, new_value }),
-            executed_at: None,
+        use crate::{
+            GovernanceParameter, Proposal, ProposalAction, ProposalStatus, ProposalType, VoteTally,
+            VotingThreshold,
         };
+        let make_param_proposal =
+            |id: u32, parameter: GovernanceParameter, new_value: u32| Proposal {
+                id,
+                proposer: 1u64,
+                title: b"P".to_vec().try_into().unwrap(),
+                description: b"d".to_vec().try_into().unwrap(),
+                proposal_type: ProposalType::Economic,
+                threshold: VotingThreshold::SimpleMajority,
+                deposit: 0u128,
+                voting_start: 1u64,
+                voting_end: 1_000_000u64,
+                vote_tally: VoteTally {
+                    ayes: 100,
+                    nays: 0,
+                    abstentions: 0,
+                    total_weight: 100,
+                    participation: 100,
+                },
+                status: ProposalStatus::Approved,
+                is_emergency: false,
+                department: None,
+                district: None,
+                requires_cross_approval: false,
+                cross_approved_by: Default::default(),
+                action: Some(ProposalAction::ParameterChange {
+                    parameter,
+                    new_value,
+                }),
+                executed_at: None,
+            };
         // LaunchPeriod: valid range 1800..=86400
-        crate::Proposals::<Test>::insert(0u32, make_param_proposal(0, GovernanceParameter::LaunchPeriod, 3600u32));
-        assert_ok!(BelizeGovernance::execute_proposal(RuntimeOrigin::signed(1), 0u32));
+        crate::Proposals::<Test>::insert(
+            0u32,
+            make_param_proposal(0, GovernanceParameter::LaunchPeriod, 3600u32),
+        );
+        assert_ok!(BelizeGovernance::execute_proposal(
+            RuntimeOrigin::signed(1),
+            0u32
+        ));
         // MinimumDeposit: valid range 100..=1000000
-        crate::Proposals::<Test>::insert(1u32, make_param_proposal(1, GovernanceParameter::MinimumDeposit, 500u32));
-        assert_ok!(BelizeGovernance::execute_proposal(RuntimeOrigin::signed(1), 1u32));
+        crate::Proposals::<Test>::insert(
+            1u32,
+            make_param_proposal(1, GovernanceParameter::MinimumDeposit, 500u32),
+        );
+        assert_ok!(BelizeGovernance::execute_proposal(
+            RuntimeOrigin::signed(1),
+            1u32
+        ));
         // SupermajorityThreshold: valid range 51..=100
-        crate::Proposals::<Test>::insert(2u32, make_param_proposal(2, GovernanceParameter::SupermajorityThreshold, 66u32));
-        assert_ok!(BelizeGovernance::execute_proposal(RuntimeOrigin::signed(1), 2u32));
+        crate::Proposals::<Test>::insert(
+            2u32,
+            make_param_proposal(2, GovernanceParameter::SupermajorityThreshold, 66u32),
+        );
+        assert_ok!(BelizeGovernance::execute_proposal(
+            RuntimeOrigin::signed(1),
+            2u32
+        ));
         // CouncilSize: valid range 5..=50
-        crate::Proposals::<Test>::insert(3u32, make_param_proposal(3, GovernanceParameter::CouncilSize, 10u32));
-        assert_ok!(BelizeGovernance::execute_proposal(RuntimeOrigin::signed(1), 3u32));
+        crate::Proposals::<Test>::insert(
+            3u32,
+            make_param_proposal(3, GovernanceParameter::CouncilSize, 10u32),
+        );
+        assert_ok!(BelizeGovernance::execute_proposal(
+            RuntimeOrigin::signed(1),
+            3u32
+        ));
         // EmergencyTimeout: valid range 3600..=604800
-        crate::Proposals::<Test>::insert(4u32, make_param_proposal(4, GovernanceParameter::EmergencyTimeout, 7200u32));
-        assert_ok!(BelizeGovernance::execute_proposal(RuntimeOrigin::signed(1), 4u32));
+        crate::Proposals::<Test>::insert(
+            4u32,
+            make_param_proposal(4, GovernanceParameter::EmergencyTimeout, 7200u32),
+        );
+        assert_ok!(BelizeGovernance::execute_proposal(
+            RuntimeOrigin::signed(1),
+            4u32
+        ));
     });
 }
 
@@ -2545,7 +3257,7 @@ fn cast_vote_invalid_choice_index_fails() {
     new_test_ext().execute_with(|| {
         let id = submit_standard_proposal(1);
         run_to_block(28_801); // past LaunchPeriod, voting active
-        // Index 3 is invalid (valid: 0=Aye, 1=Nay, 2=Abstain)
+                              // Index 3 is invalid (valid: 0=Aye, 1=Nay, 2=Abstain)
         assert_noop!(
             BelizeGovernance::cast_vote(RuntimeOrigin::signed(2), id, 3u8, 0u8),
             Error::<Test>::InvalidThreshold
@@ -2561,15 +3273,45 @@ fn cast_vote_invalid_choice_index_fails() {
 fn start_district_election_all_districts_work() {
     new_test_ext().execute_with(|| {
         // District 1 = Cayo (2 seats)
-        assert_ok!(BelizeGovernance::start_district_election(RuntimeOrigin::root(), 1u8, 2u32, 50u32, 100u32));
+        assert_ok!(BelizeGovernance::start_district_election(
+            RuntimeOrigin::root(),
+            1u8,
+            2u32,
+            50u32,
+            100u32
+        ));
         // District 2 = Corozal (1 seat)
-        assert_ok!(BelizeGovernance::start_district_election(RuntimeOrigin::root(), 2u8, 1u32, 50u32, 100u32));
+        assert_ok!(BelizeGovernance::start_district_election(
+            RuntimeOrigin::root(),
+            2u8,
+            1u32,
+            50u32,
+            100u32
+        ));
         // District 3 = OrangeWalk (2 seats)
-        assert_ok!(BelizeGovernance::start_district_election(RuntimeOrigin::root(), 3u8, 2u32, 50u32, 100u32));
+        assert_ok!(BelizeGovernance::start_district_election(
+            RuntimeOrigin::root(),
+            3u8,
+            2u32,
+            50u32,
+            100u32
+        ));
         // District 4 = StannCreek (2 seats)
-        assert_ok!(BelizeGovernance::start_district_election(RuntimeOrigin::root(), 4u8, 2u32, 50u32, 100u32));
+        assert_ok!(BelizeGovernance::start_district_election(
+            RuntimeOrigin::root(),
+            4u8,
+            2u32,
+            50u32,
+            100u32
+        ));
         // District 5 = Toledo (2 seats)
-        assert_ok!(BelizeGovernance::start_district_election(RuntimeOrigin::root(), 5u8, 2u32, 50u32, 100u32));
+        assert_ok!(BelizeGovernance::start_district_election(
+            RuntimeOrigin::root(),
+            5u8,
+            2u32,
+            50u32,
+            100u32
+        ));
     });
 }
 
@@ -2578,7 +3320,13 @@ fn start_district_election_too_many_seats_fails() {
     new_test_ext().execute_with(|| {
         // Corozal only has 1 seat; request 5 → InvalidDistrict
         assert_noop!(
-            BelizeGovernance::start_district_election(RuntimeOrigin::root(), 2u8, 5u32, 50u32, 100u32),
+            BelizeGovernance::start_district_election(
+                RuntimeOrigin::root(),
+                2u8,
+                5u32,
+                50u32,
+                100u32
+            ),
             Error::<Test>::InvalidDistrict
         );
     });
@@ -2621,7 +3369,10 @@ fn board_role_enum_methods_work() {
         assert_eq!(BoardRole::BTBDelegate.name(), "BTB Delegate");
         assert_eq!(BoardRole::CitizenDelegate.name(), "Citizen Delegate");
         assert_eq!(BoardRole::SecurityAuditor.name(), "Security Auditor");
-        assert_eq!(BoardRole::CultureEthicsAdvisor.name(), "Culture & Ethics Advisor");
+        assert_eq!(
+            BoardRole::CultureEthicsAdvisor.name(),
+            "Culture & Ethics Advisor"
+        );
         // All roles now rotate (term limits apply to all)
         assert!(BoardRole::Founder.is_rotating());
         assert!(BoardRole::TechnicalSteward.is_rotating());
@@ -2659,8 +3410,14 @@ fn belize_district_enum_methods_work() {
         assert_eq!(BelizeDistrict::from_index(0), Some(BelizeDistrict::Belize));
         assert_eq!(BelizeDistrict::from_index(1), Some(BelizeDistrict::Cayo));
         assert_eq!(BelizeDistrict::from_index(2), Some(BelizeDistrict::Corozal));
-        assert_eq!(BelizeDistrict::from_index(3), Some(BelizeDistrict::OrangeWalk));
-        assert_eq!(BelizeDistrict::from_index(4), Some(BelizeDistrict::StannCreek));
+        assert_eq!(
+            BelizeDistrict::from_index(3),
+            Some(BelizeDistrict::OrangeWalk)
+        );
+        assert_eq!(
+            BelizeDistrict::from_index(4),
+            Some(BelizeDistrict::StannCreek)
+        );
         assert_eq!(BelizeDistrict::from_index(5), Some(BelizeDistrict::Toledo));
         assert_eq!(BelizeDistrict::from_index(6), None);
     });
@@ -2673,7 +3430,10 @@ fn belize_district_enum_methods_work() {
 #[test]
 fn helper_index_functions_work() {
     new_test_ext().execute_with(|| {
-        use crate::{Department, BelizeDistrict, GovernanceParameter, EmergencyActionType, ElectionStatus, ProposalAction};
+        use crate::{
+            BelizeDistrict, Department, ElectionStatus, EmergencyActionType, GovernanceParameter,
+            ProposalAction,
+        };
         // department_index all variants
         assert_eq!(BelizeGovernance::department_index(Department::Finance), 0);
         assert_eq!(BelizeGovernance::department_index(Department::Education), 1);
@@ -2681,72 +3441,181 @@ fn helper_index_functions_work() {
         assert_eq!(BelizeGovernance::department_index(Department::Works), 3);
         assert_eq!(BelizeGovernance::department_index(Department::Justice), 4);
         assert_eq!(BelizeGovernance::department_index(Department::Tourism), 5);
-        assert_eq!(BelizeGovernance::department_index(Department::Agriculture), 6);
+        assert_eq!(
+            BelizeGovernance::department_index(Department::Agriculture),
+            6
+        );
         assert_eq!(BelizeGovernance::department_index(Department::Defense), 7);
         // district_index all variants
         assert_eq!(BelizeGovernance::district_index(BelizeDistrict::Belize), 0);
         assert_eq!(BelizeGovernance::district_index(BelizeDistrict::Cayo), 1);
         assert_eq!(BelizeGovernance::district_index(BelizeDistrict::Corozal), 2);
-        assert_eq!(BelizeGovernance::district_index(BelizeDistrict::OrangeWalk), 3);
-        assert_eq!(BelizeGovernance::district_index(BelizeDistrict::StannCreek), 4);
+        assert_eq!(
+            BelizeGovernance::district_index(BelizeDistrict::OrangeWalk),
+            3
+        );
+        assert_eq!(
+            BelizeGovernance::district_index(BelizeDistrict::StannCreek),
+            4
+        );
         assert_eq!(BelizeGovernance::district_index(BelizeDistrict::Toledo), 5);
         // governance_parameter_index all variants
-        assert_eq!(BelizeGovernance::governance_parameter_index(GovernanceParameter::VotingPeriod), 0);
-        assert_eq!(BelizeGovernance::governance_parameter_index(GovernanceParameter::LaunchPeriod), 1);
-        assert_eq!(BelizeGovernance::governance_parameter_index(GovernanceParameter::MinimumDeposit), 2);
-        assert_eq!(BelizeGovernance::governance_parameter_index(GovernanceParameter::SupermajorityThreshold), 3);
-        assert_eq!(BelizeGovernance::governance_parameter_index(GovernanceParameter::CouncilSize), 4);
-        assert_eq!(BelizeGovernance::governance_parameter_index(GovernanceParameter::EmergencyTimeout), 5);
+        assert_eq!(
+            BelizeGovernance::governance_parameter_index(GovernanceParameter::VotingPeriod),
+            0
+        );
+        assert_eq!(
+            BelizeGovernance::governance_parameter_index(GovernanceParameter::LaunchPeriod),
+            1
+        );
+        assert_eq!(
+            BelizeGovernance::governance_parameter_index(GovernanceParameter::MinimumDeposit),
+            2
+        );
+        assert_eq!(
+            BelizeGovernance::governance_parameter_index(
+                GovernanceParameter::SupermajorityThreshold
+            ),
+            3
+        );
+        assert_eq!(
+            BelizeGovernance::governance_parameter_index(GovernanceParameter::CouncilSize),
+            4
+        );
+        assert_eq!(
+            BelizeGovernance::governance_parameter_index(GovernanceParameter::EmergencyTimeout),
+            5
+        );
         // emergency_action_type_index all variants
-        assert_eq!(BelizeGovernance::emergency_action_type_index(EmergencyActionType::ActivateEmergency), 0);
-        assert_eq!(BelizeGovernance::emergency_action_type_index(EmergencyActionType::DeactivateEmergency), 1);
-        assert_eq!(BelizeGovernance::emergency_action_type_index(EmergencyActionType::FreezeAccount), 2);
-        assert_eq!(BelizeGovernance::emergency_action_type_index(EmergencyActionType::UnfreezeAccount), 3);
-        assert_eq!(BelizeGovernance::emergency_action_type_index(EmergencyActionType::HaltGovernance), 4);
-        assert_eq!(BelizeGovernance::emergency_action_type_index(EmergencyActionType::ResumeGovernance), 5);
+        assert_eq!(
+            BelizeGovernance::emergency_action_type_index(EmergencyActionType::ActivateEmergency),
+            0
+        );
+        assert_eq!(
+            BelizeGovernance::emergency_action_type_index(EmergencyActionType::DeactivateEmergency),
+            1
+        );
+        assert_eq!(
+            BelizeGovernance::emergency_action_type_index(EmergencyActionType::FreezeAccount),
+            2
+        );
+        assert_eq!(
+            BelizeGovernance::emergency_action_type_index(EmergencyActionType::UnfreezeAccount),
+            3
+        );
+        assert_eq!(
+            BelizeGovernance::emergency_action_type_index(EmergencyActionType::HaltGovernance),
+            4
+        );
+        assert_eq!(
+            BelizeGovernance::emergency_action_type_index(EmergencyActionType::ResumeGovernance),
+            5
+        );
         // election_status_index all variants
-        assert_eq!(BelizeGovernance::election_status_index(ElectionStatus::Registration), 0);
-        assert_eq!(BelizeGovernance::election_status_index(ElectionStatus::Voting), 1);
-        assert_eq!(BelizeGovernance::election_status_index(ElectionStatus::Finalized), 2);
-        assert_eq!(BelizeGovernance::election_status_index(ElectionStatus::Cancelled), 3);
+        assert_eq!(
+            BelizeGovernance::election_status_index(ElectionStatus::Registration),
+            0
+        );
+        assert_eq!(
+            BelizeGovernance::election_status_index(ElectionStatus::Voting),
+            1
+        );
+        assert_eq!(
+            BelizeGovernance::election_status_index(ElectionStatus::Finalized),
+            2
+        );
+        assert_eq!(
+            BelizeGovernance::election_status_index(ElectionStatus::Cancelled),
+            3
+        );
         // get_action_type_index all variants
-        assert_eq!(BelizeGovernance::get_action_type_index(&ProposalAction::TreasurySpend { recipient: 1u64, amount: 0u128 }), 0);
-        let ch: frame_support::BoundedVec<u8, frame_support::traits::ConstU32<32>> = [0u8; 32].to_vec().try_into().unwrap();
-        assert_eq!(BelizeGovernance::get_action_type_index(&ProposalAction::RuntimeUpgrade { code_hash: ch }), 1);
-        assert_eq!(BelizeGovernance::get_action_type_index(&ProposalAction::ParameterChange { parameter: GovernanceParameter::VotingPeriod, new_value: 0 }), 2);
-        let cd: frame_support::BoundedVec<u8, frame_support::traits::ConstU32<1024>> = vec![].try_into().unwrap();
-        assert_eq!(BelizeGovernance::get_action_type_index(&ProposalAction::DepartmentAction { department: Department::Finance, call_data: cd }), 3);
-        assert_eq!(BelizeGovernance::get_action_type_index(&ProposalAction::EmergencyAction { action_type: EmergencyActionType::ActivateEmergency }), 4);
+        assert_eq!(
+            BelizeGovernance::get_action_type_index(&ProposalAction::TreasurySpend {
+                recipient: 1u64,
+                amount: 0u128
+            }),
+            0
+        );
+        let ch: frame_support::BoundedVec<u8, frame_support::traits::ConstU32<32>> =
+            [0u8; 32].to_vec().try_into().unwrap();
+        assert_eq!(
+            BelizeGovernance::get_action_type_index(&ProposalAction::RuntimeUpgrade {
+                code_hash: ch
+            }),
+            1
+        );
+        assert_eq!(
+            BelizeGovernance::get_action_type_index(&ProposalAction::ParameterChange {
+                parameter: GovernanceParameter::VotingPeriod,
+                new_value: 0
+            }),
+            2
+        );
+        let cd: frame_support::BoundedVec<u8, frame_support::traits::ConstU32<1024>> =
+            vec![].try_into().unwrap();
+        assert_eq!(
+            BelizeGovernance::get_action_type_index(&ProposalAction::DepartmentAction {
+                department: Department::Finance,
+                call_data: cd
+            }),
+            3
+        );
+        assert_eq!(
+            BelizeGovernance::get_action_type_index(&ProposalAction::EmergencyAction {
+                action_type: EmergencyActionType::ActivateEmergency
+            }),
+            4
+        );
     });
 }
 
 #[test]
 fn helper_getter_functions_work() {
     new_test_ext().execute_with(|| {
-        use crate::{GovernanceParameter, BelizeDistrict, Department, ProposalPriority};
+        use crate::{BelizeDistrict, Department, GovernanceParameter, ProposalPriority};
         let aid = BelizeGovernance::account_id();
         assert_ne!(aid, 0u64);
         let vp = BelizeGovernance::get_parameter(GovernanceParameter::VotingPeriod);
         assert!(vp > 0);
-        assert_eq!(BelizeGovernance::department_treasury_balance(Department::Finance), 0u128);
+        assert_eq!(
+            BelizeGovernance::department_treasury_balance(Department::Finance),
+            0u128
+        );
         assert_eq!(BelizeGovernance::council_size(), 3u32);
-        assert_eq!(BelizeGovernance::board_composition(crate::BoardRole::Founder), 0u32);
+        assert_eq!(
+            BelizeGovernance::board_composition(crate::BoardRole::Founder),
+            0u32
+        );
         assert_eq!(BelizeGovernance::delegate_nominees(42u64), 0u32);
         assert!(BelizeGovernance::current_election().is_none());
         assert!(!BelizeGovernance::has_voted_in_election(1u64, &42u64));
         assert!(BelizeGovernance::get_district_election(BelizeDistrict::Belize).is_none());
         assert!(BelizeGovernance::get_district_representatives(BelizeDistrict::Belize).is_empty());
-        assert!(!BelizeGovernance::has_voted_in_district_election(1u64, &42u64));
+        assert!(!BelizeGovernance::has_voted_in_district_election(
+            1u64, &42u64
+        ));
         assert!(BelizeGovernance::get_priority_queue(ProposalPriority::Low).is_empty());
         assert!(BelizeGovernance::get_priority_queue(ProposalPriority::Normal).is_empty());
         assert!(BelizeGovernance::get_priority_queue(ProposalPriority::High).is_empty());
         assert!(BelizeGovernance::get_priority_queue(ProposalPriority::Critical).is_empty());
         assert_eq!(BelizeGovernance::get_rewards_claimed(&42u64), 0u128);
         assert_eq!(BelizeGovernance::get_total_rewards_distributed(), 0u128);
-        assert_eq!(BelizeGovernance::proposal_priority_index(ProposalPriority::Low), 1u8);
-        assert_eq!(BelizeGovernance::proposal_priority_index(ProposalPriority::Normal), 2u8);
-        assert_eq!(BelizeGovernance::proposal_priority_index(ProposalPriority::High), 3u8);
-        assert_eq!(BelizeGovernance::proposal_priority_index(ProposalPriority::Critical), 4u8);
+        assert_eq!(
+            BelizeGovernance::proposal_priority_index(ProposalPriority::Low),
+            1u8
+        );
+        assert_eq!(
+            BelizeGovernance::proposal_priority_index(ProposalPriority::Normal),
+            2u8
+        );
+        assert_eq!(
+            BelizeGovernance::proposal_priority_index(ProposalPriority::High),
+            3u8
+        );
+        assert_eq!(
+            BelizeGovernance::proposal_priority_index(ProposalPriority::Critical),
+            4u8
+        );
     });
 }
 
@@ -2757,7 +3626,11 @@ fn helper_delegation_functions_work() {
         assert!(!BelizeGovernance::is_delegation_active(&1u64));
         assert!(BelizeGovernance::get_delegation_info(&1u64).is_none());
         // After delegate_vote: account 4 delegates to account 1
-        assert_ok!(BelizeGovernance::delegate_vote(RuntimeOrigin::signed(4), 1u64, Some(1_000_000u64)));
+        assert_ok!(BelizeGovernance::delegate_vote(
+            RuntimeOrigin::signed(4),
+            1u64,
+            Some(1_000_000u64)
+        ));
         assert_eq!(BelizeGovernance::count_delegated_votes(&1u64), 1u32);
         assert!(BelizeGovernance::is_delegation_active(&4u64));
         assert!(BelizeGovernance::get_delegation_info(&4u64).is_some());
@@ -2769,7 +3642,11 @@ fn helper_delegation_functions_work() {
 #[test]
 fn helper_is_delegation_active_expired_works() {
     new_test_ext().execute_with(|| {
-        assert_ok!(BelizeGovernance::delegate_vote(RuntimeOrigin::signed(4), 1u64, Some(5u64)));
+        assert_ok!(BelizeGovernance::delegate_vote(
+            RuntimeOrigin::signed(4),
+            1u64,
+            Some(5u64)
+        ));
         run_to_block(10); // Past expiry of block 5
         assert!(!BelizeGovernance::is_delegation_active(&4u64));
     });
@@ -2782,17 +3659,30 @@ fn helper_proposal_amendment_functions_work() {
         assert!(BelizeGovernance::get_proposal_amendment(0u32).is_none());
         assert!(!BelizeGovernance::is_amendment_allowed(99u32));
         let proposal = Proposal {
-            id: 0u32, proposer: 1u64,
+            id: 0u32,
+            proposer: 1u64,
             title: b"t".to_vec().try_into().unwrap(),
             description: b"d".to_vec().try_into().unwrap(),
             proposal_type: ProposalType::Economic,
             threshold: VotingThreshold::SimpleMajority,
-            deposit: 0u128, voting_start: 100u64, voting_end: 1_000_000u64,
-            vote_tally: VoteTally { ayes: 0, nays: 0, abstentions: 0, total_weight: 0, participation: 0 },
+            deposit: 0u128,
+            voting_start: 100u64,
+            voting_end: 1_000_000u64,
+            vote_tally: VoteTally {
+                ayes: 0,
+                nays: 0,
+                abstentions: 0,
+                total_weight: 0,
+                participation: 0,
+            },
             status: ProposalStatus::Pending,
-            is_emergency: false, department: None, district: None,
-            requires_cross_approval: false, cross_approved_by: Default::default(),
-            action: None, executed_at: None,
+            is_emergency: false,
+            department: None,
+            district: None,
+            requires_cross_approval: false,
+            cross_approved_by: Default::default(),
+            action: None,
+            executed_at: None,
         };
         crate::Proposals::<Test>::insert(0u32, proposal);
         // At block 1 (before voting_start=100), amendment is allowed
@@ -2806,17 +3696,37 @@ fn helper_proposal_amendment_functions_work() {
 #[test]
 fn helper_allocate_to_department_works() {
     new_test_ext().execute_with(|| {
-        assert_eq!(BelizeGovernance::department_treasury_balance(crate::Department::Education), 0u128);
-        assert_ok!(BelizeGovernance::allocate_to_department(crate::Department::Education, 5_000u128, 0u32));
-        assert_eq!(BelizeGovernance::department_treasury_balance(crate::Department::Education), 5_000u128);
+        assert_eq!(
+            BelizeGovernance::department_treasury_balance(crate::Department::Education),
+            0u128
+        );
+        assert_ok!(BelizeGovernance::allocate_to_department(
+            crate::Department::Education,
+            5_000u128,
+            0u32
+        ));
+        assert_eq!(
+            BelizeGovernance::department_treasury_balance(crate::Department::Education),
+            5_000u128
+        );
     });
 }
 
 #[test]
 fn helper_get_election_candidate_works() {
     new_test_ext().execute_with(|| {
-        assert_ok!(BelizeGovernance::start_district_election(RuntimeOrigin::root(), 0u8, 2u32, 100u32, 200u32));
-        assert_ok!(BelizeGovernance::register_candidate(RuntimeOrigin::signed(4), 0u8, b"Platform for Belize City".to_vec()));
+        assert_ok!(BelizeGovernance::start_district_election(
+            RuntimeOrigin::root(),
+            0u8,
+            2u32,
+            100u32,
+            200u32
+        ));
+        assert_ok!(BelizeGovernance::register_candidate(
+            RuntimeOrigin::signed(4),
+            0u8,
+            b"Platform for Belize City".to_vec()
+        ));
         // Election ID = block number when election was started (block 1)
         let candidate = BelizeGovernance::get_election_candidate(1u64, 4u64);
         assert!(candidate.is_some());
@@ -2833,12 +3743,20 @@ fn propose_treasury_spend_large_amounts_work() {
         // Medium amount (10K–100K DALLA → threshold=3)
         let medium: u128 = 50_000_000_000_000u128;
         assert_ok!(BelizeGovernance::propose_treasury_spend(
-            RuntimeOrigin::signed(1), 5u64, medium, b"medium spend".to_vec(), None,
+            RuntimeOrigin::signed(1),
+            5u64,
+            medium,
+            b"medium spend".to_vec(),
+            None,
         ));
         // Large amount (>100K DALLA → threshold=4)
         let large: u128 = 200_000_000_000_000u128;
         assert_ok!(BelizeGovernance::propose_treasury_spend(
-            RuntimeOrigin::signed(1), 5u64, large, b"large spend".to_vec(), None,
+            RuntimeOrigin::signed(1),
+            5u64,
+            large,
+            b"large spend".to_vec(),
+            None,
         ));
     });
 }
@@ -2848,7 +3766,11 @@ fn propose_treasury_spend_invalid_district_fails() {
     new_test_ext().execute_with(|| {
         assert_noop!(
             BelizeGovernance::propose_treasury_spend(
-                RuntimeOrigin::signed(1), 5u64, 1_000u128, b"d".to_vec(), Some(99u8),
+                RuntimeOrigin::signed(1),
+                5u64,
+                1_000u128,
+                b"d".to_vec(),
+                Some(99u8),
             ),
             Error::<Test>::InvalidDistrict
         );
@@ -2861,7 +3783,11 @@ fn propose_treasury_spend_description_too_long_fails() {
         let long_desc = vec![b'x'; 513]; // > 512 bytes
         assert_noop!(
             BelizeGovernance::propose_treasury_spend(
-                RuntimeOrigin::signed(1), 5u64, 1_000u128, long_desc, None,
+                RuntimeOrigin::signed(1),
+                5u64,
+                1_000u128,
+                long_desc,
+                None,
             ),
             Error::<Test>::TreasuryDescriptionTooLong
         );

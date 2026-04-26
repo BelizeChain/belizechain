@@ -934,7 +934,7 @@ fn test_kyc_tier_restricts_voting() { ... }
 
 ## Future Enhancements
 
-### Planned Features (stable2512+)
+### Planned Features (stable2603+)
 - [ ] **Quadratic Voting**: Prevent whale dominance (sqrt(stake) voting power)
 - [ ] **Liquid Democracy**: Multi-level delegation chains
 - [ ] **Reputation System**: Weight votes by past participation quality
@@ -998,9 +998,9 @@ fn test_kyc_tier_restricts_voting() { ... }
 
 ---
 
-**Status**: ✅ Production-Ready (stable2512)  
-**Last Audit**: January 2026  
-**Lines of Code**: 9,634 (lib: 5,843, mock: 175, tests: 3,616 across 6 files)  
-**Test Coverage**: 91% (unit tests across 6 phases)  
-**Clippy Warnings**: 0 (pallet-specific)  
+**Status**: ✅ Production-Ready (stable2603)
+**Last Audit**: January 2026
+**Lines of Code**: 9,634 (lib: 5,843, mock: 175, tests: 3,616 across 6 files)
+**Test Coverage**: 91% (unit tests across 6 phases)
+**Clippy Warnings**: 0 (pallet-specific)
 **Complexity**: HIGH (multi-tiered democratic system, 3 governance layers, 8 departments)

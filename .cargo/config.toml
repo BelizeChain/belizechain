@@ -1,6 +1,9 @@
 [env]
 CXX = "g++"
 CXXFLAGS = "-std=c++17 -include cstdint"
+LLVM_CONFIG_PATH = "/usr/bin/llvm-config-20"
+LIBCLANG_PATH = "/usr/lib/llvm-20/lib"
+TMPDIR = "/home/wicked/.cache/belizechain-tmp"
 
 [build]
 # Limit parallel rustc jobs to prevent OOM on 14GB RAM systems

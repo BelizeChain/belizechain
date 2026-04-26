@@ -18,7 +18,7 @@
 //! ## Features
 //!
 //! ### Social Responsibility Score (SRS)
-//! 
+//!
 //! Every verified citizen receives an SRS (0-10,000 scale) based on:
 //! - Governance participation (25%)
 //! - Education completion (15%)
@@ -88,9 +88,9 @@ use alloc::vec::Vec;
 
 pub use pallet::*;
 pub use types::{
-    SRSTier, ActivityType, ParticipationRecord, ProposalStatus, CommunityProposalType, 
-    EndorsementType, SRSData, ProposalStats, FeeExemptionData, CommunityProposal, 
-    Vote, EthicsConfig, SanctionStatus, EducationModule, CompletionData, GreenProject
+    ActivityType, CommunityProposal, CommunityProposalType, CompletionData, EducationModule,
+    EndorsementType, EthicsConfig, FeeExemptionData, GreenProject, ParticipationRecord,
+    ProposalStats, ProposalStatus, SRSData, SRSTier, SanctionStatus, Vote,
 }; // Export for traits
 
 // Additional imports for genesis config
@@ -114,15 +114,16 @@ pub mod pallet {
     use super::*;
     use frame_support::{
         pallet_prelude::*,
-        traits::{Currency, ReservableCurrency, Get},
+        traits::{Currency, Get, ReservableCurrency},
     };
     use frame_system::pallet_prelude::*;
-    use sp_runtime::traits::{SaturatedConversion, Saturating, CheckedAdd, Zero};
-    
+    use sp_runtime::traits::{CheckedAdd, SaturatedConversion, Saturating, Zero};
+
     use crate::weights::WeightInfo;
     use pallet_belize_identity::BelizeKyc as BelizeKycTrait;
 
-    pub type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+    pub type BalanceOf<T> =
+        <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -212,13 +213,8 @@ pub mod pallet {
     /// Maps AccountId -> SRSData
     #[pallet::storage]
     #[pallet::getter(fn srs_scores)]
-    pub type SocialResponsibilityScores<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        SRSData<BlockNumberFor<T>>,
-        OptionQuery,
-    >;
+    pub type SocialResponsibilityScores<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, SRSData<BlockNumberFor<T>>, OptionQuery>;
 
     /// Participation history for SRS calculation
     /// Maps AccountId -> BoundedVec<ParticipationRecord>
@@ -236,13 +232,8 @@ pub mod pallet {
     /// Maps AccountId -> u32
     #[pallet::storage]
     #[pallet::getter(fn peer_endorsements)]
-    pub type PeerEndorsements<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        u32,
-        ValueQuery,
-    >;
+    pub type PeerEndorsements<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, u32, ValueQuery>;
 
     /// Last endorsement timestamp between two accounts
     /// Maps (Endorser, Endorsee) -> BlockNumber
@@ -258,25 +249,15 @@ pub mod pallet {
 
     /// C-1/X-1: Last block at which update_srs was called for each account
     #[pallet::storage]
-    pub type LastSrsUpdate<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        BlockNumberFor<T>,
-        ValueQuery,
-    >;
+    pub type LastSrsUpdate<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, BlockNumberFor<T>, ValueQuery>;
 
     /// User proposal statistics for honesty score
     /// Maps AccountId -> ProposalStats
     #[pallet::storage]
     #[pallet::getter(fn user_proposals)]
-    pub type UserProposals<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        ProposalStats,
-        ValueQuery,
-    >;
+    pub type UserProposals<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, ProposalStats, ValueQuery>;
 
     // ================================
     // Storage Items - Phase 2: Zero-Fee Protocol
@@ -336,22 +317,14 @@ pub mod pallet {
     /// Ethics filter configuration
     #[pallet::storage]
     #[pallet::getter(fn ethics_filter_config)]
-    pub type EthicsFilterConfig<T: Config> = StorageValue<
-        _,
-        EthicsConfig<T::AccountId>,
-        ValueQuery,
-    >;
+    pub type EthicsFilterConfig<T: Config> =
+        StorageValue<_, EthicsConfig<T::AccountId>, ValueQuery>;
 
     /// Sanctioned accounts (cannot receive community funds)
     #[pallet::storage]
     #[pallet::getter(fn is_sanctioned)]
-    pub type SanctionedAccounts<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        SanctionStatus,
-        OptionQuery,
-    >;
+    pub type SanctionedAccounts<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, SanctionStatus, OptionQuery>;
 
     /// Ethics council votes on proposals
     #[pallet::storage]
@@ -362,7 +335,7 @@ pub mod pallet {
         u32, // Proposal ID
         Blake2_128Concat,
         T::AccountId, // Council member
-        bool, // Approve/reject
+        bool,         // Approve/reject
         OptionQuery,
     >;
 
@@ -419,17 +392,13 @@ pub mod pallet {
     /// Referral tracking data per account
     #[pallet::storage]
     #[pallet::getter(fn referral_data)]
-    pub type ReferralData<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        crate::types::ReferralData,
-        ValueQuery,
-    >;
+    pub type ReferralData<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, crate::types::ReferralData, ValueQuery>;
 
     /// AUDIT FIX (CRIT-4): Track whether a referee already has ANY referrer (one-referrer-per-user)
     #[pallet::storage]
-    pub type RefereeHasReferrer<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, bool, ValueQuery>;
+    pub type RefereeHasReferrer<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, bool, ValueQuery>;
 
     /// Track if referral has been claimed (referee → referrer mapping)
     #[pallet::storage]
@@ -453,8 +422,10 @@ pub mod pallet {
     #[pallet::storage]
     pub type PendingAttestations<T: Config> = StorageDoubleMap<
         _,
-        Blake2_128Concat, (T::AccountId, u8),  // (subject, activity_code)
-        Blake2_128Concat, T::AccountId,         // oracle
+        Blake2_128Concat,
+        (T::AccountId, u8), // (subject, activity_code)
+        Blake2_128Concat,
+        T::AccountId, // oracle
         bool,
         OptionQuery,
     >;
@@ -465,7 +436,8 @@ pub mod pallet {
     #[pallet::storage]
     pub type AttestedActivities<T: Config> = StorageMap<
         _,
-        Blake2_128Concat, (T::AccountId, u8),  // (subject, activity_code)
+        Blake2_128Concat,
+        (T::AccountId, u8), // (subject, activity_code)
         bool,
         ValueQuery,
     >;
@@ -474,30 +446,18 @@ pub mod pallet {
 
     /// O(1) counter for pending attestation votes per (subject, activity_code).
     #[pallet::storage]
-    pub type AttestationCount<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat, (T::AccountId, u8),
-        u32,
-        ValueQuery,
-    >;
+    pub type AttestationCount<T: Config> =
+        StorageMap<_, Blake2_128Concat, (T::AccountId, u8), u32, ValueQuery>;
 
     /// O(1) counter for completed education modules per account.
     #[pallet::storage]
-    pub type CompletedEducationCount<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat, T::AccountId,
-        u32,
-        ValueQuery,
-    >;
+    pub type CompletedEducationCount<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, u32, ValueQuery>;
 
     /// O(1) aggregate for green contributions per account: (total_amount, project_count).
     #[pallet::storage]
-    pub type GreenContributionStats<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat, T::AccountId,
-        (u64, u32),
-        ValueQuery,
-    >;
+    pub type GreenContributionStats<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, (u64, u32), ValueQuery>;
 
     // ================================
     // Events
@@ -511,20 +471,20 @@ pub mod pallet {
             account: T::AccountId,
             old_score: u32,
             new_score: u32,
-            old_tier: u8,  // 0=Bronze, 1=Silver, 2=Gold, 3=Platinum, 4=Diamond
+            old_tier: u8, // 0=Bronze, 1=Silver, 2=Gold, 3=Platinum, 4=Diamond
             new_tier: u8,
         },
         /// Participation activity recorded
         ParticipationRecorded {
             account: T::AccountId,
-            activity_type: u8,  // Activity type code
+            activity_type: u8, // Activity type code
             block_number: BlockNumberFor<T>,
         },
         /// Peer endorsed another account
         PeerEndorsed {
             endorser: T::AccountId,
             endorsee: T::AccountId,
-            endorsement_type: u8,  // Endorsement type code
+            endorsement_type: u8, // Endorsement type code
         },
         /// SRS privacy settings updated
         SRSPrivacyUpdated {
@@ -533,17 +493,14 @@ pub mod pallet {
         },
         // FeeExemptionApplied, FeeExemptionLimitReached removed (E-7): orphaned, never emitted.
         /// Fee exemption usage reset (new month)
-        FeeExemptionReset {
-            account: T::AccountId,
-        },
+        FeeExemptionReset { account: T::AccountId },
 
         // === Phase 3: Community Fund Events ===
-        
         /// Community proposal submitted
         ProposalSubmitted {
             proposal_id: u32,
             proposer: T::AccountId,
-            proposal_type: u8,  // Proposal type code
+            proposal_type: u8, // Proposal type code
             amount: BalanceOf<T>,
             deposit: BalanceOf<T>,
         },
@@ -585,7 +542,6 @@ pub mod pallet {
         },
 
         // === Phase 4: Ethics Filter Events ===
-        
         /// Proposal flagged for ethics review
         ProposalFlaggedForReview {
             proposal_id: u32,
@@ -614,12 +570,9 @@ pub mod pallet {
         },
 
         /// Account sanction lifted
-        SanctionLifted {
-            account: T::AccountId,
-        },
+        SanctionLifted { account: T::AccountId },
 
         // === Phase 5: Incentive Programs Events ===
-
         /// Education module completed
         EducationModuleCompleted {
             account: T::AccountId,
@@ -707,7 +660,6 @@ pub mod pallet {
         InvalidProposalType,
 
         // === Phase 3: Community Fund Errors ===
-        
         /// Proposal not found
         ProposalNotFound,
         /// Already voted on this proposal
@@ -724,7 +676,6 @@ pub mod pallet {
         DescriptionTooLong,
 
         // === Phase 4: Ethics Filter Errors ===
-        
         /// Account is sanctioned
         AccountSanctioned,
         /// Beneficiary not verified
@@ -739,7 +690,6 @@ pub mod pallet {
         AlreadyVotedInCouncil,
 
         // === Phase 5: Incentive Programs Errors ===
-
         /// Education module not found
         ModuleNotFound,
         /// Education module is inactive
@@ -781,9 +731,9 @@ pub mod pallet {
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// Record participation activity (called by other pallets or root)
-        /// 
+        ///
         /// Updates the participation history for an account and triggers SRS recalculation.
-        /// 
+        ///
         /// # Arguments
         /// * `origin` - Root or the account itself
         /// * `account` - The account to record participation for
@@ -804,8 +754,8 @@ pub mod pallet {
             }
 
             // Convert u8 code to ActivityType enum
-            let activity = ActivityType::from_u8(activity_code)
-                .ok_or(Error::<T>::InvalidActivityType)?;
+            let activity =
+                ActivityType::from_u8(activity_code).ok_or(Error::<T>::InvalidActivityType)?;
 
             // Phase 3B: self-reporting of high-value activities requires prior oracle
             // attestation (MinAttestationsRequired distinct oracle operators must attest).
@@ -824,10 +774,14 @@ pub mod pallet {
 
             // Verify account is BelizeID verified
             ensure!(
-                T::BelizeKyc::is_kyc_verified(&account, pallet_belize_identity::KycLevel::L0, current_block),
+                T::BelizeKyc::is_kyc_verified(
+                    &account,
+                    pallet_belize_identity::KycLevel::L0,
+                    current_block
+                ),
                 Error::<T>::NotVerified
             );
-            
+
             let record = ParticipationRecord {
                 activity_type: activity.clone(),
                 block_number: current_block,
@@ -836,7 +790,8 @@ pub mod pallet {
 
             // Add to participation history
             ParticipationHistory::<T>::try_mutate(&account, |history| {
-                history.try_push(record)
+                history
+                    .try_push(record)
                     .map_err(|_| Error::<T>::ParticipationHistoryFull)?;
                 Ok::<(), DispatchError>(())
             })?;
@@ -847,13 +802,13 @@ pub mod pallet {
                     UserProposals::<T>::mutate(&account, |stats| {
                         stats.total = stats.total.saturating_add(1);
                     });
-                },
+                }
                 ActivityType::ProposalApproved => {
                     UserProposals::<T>::mutate(&account, |stats| {
                         stats.approved = stats.approved.saturating_add(1);
                     });
-                },
-                _ => {},
+                }
+                _ => {}
             }
 
             // Trigger SRS update
@@ -869,21 +824,18 @@ pub mod pallet {
         }
 
         /// Update SRS for an account
-        /// 
+        ///
         /// Recalculates the complete SRS based on all participation factors.
         /// Can be called by anyone (permissionless) as calculation is deterministic.
-        /// 
+        ///
         /// # Arguments
         /// * `origin` - Any signed account
         /// * `account` - The account to update SRS for
         #[pallet::call_index(1)]
         #[pallet::weight(T::WeightInfo::update_srs())]
-        pub fn update_srs(
-            origin: OriginFor<T>,
-            account: T::AccountId,
-        ) -> DispatchResult {
+        pub fn update_srs(origin: OriginFor<T>, account: T::AccountId) -> DispatchResult {
             ensure_signed(origin)?;
-            
+
             let current_block = frame_system::Pallet::<T>::block_number();
 
             // C-1/X-1: Rate-limit — enforce cooldown between recalculations
@@ -893,24 +845,28 @@ pub mod pallet {
                 current_block >= last_update.saturating_add(cooldown),
                 Error::<T>::SrsUpdateTooFrequent
             );
-            
+
             // Verify account is BelizeID verified
             ensure!(
-                T::BelizeKyc::is_kyc_verified(&account, pallet_belize_identity::KycLevel::L0, current_block),
+                T::BelizeKyc::is_kyc_verified(
+                    &account,
+                    pallet_belize_identity::KycLevel::L0,
+                    current_block
+                ),
                 Error::<T>::NotVerified
             );
-            
+
             Self::update_srs_internal(&account)?;
             LastSrsUpdate::<T>::insert(&account, current_block);
-            
+
             Ok(())
         }
 
         /// Endorse a peer for positive contributions
-        /// 
+        ///
         /// Allows verified citizens with Silver+ tier to endorse others.
         /// Limited to once per month per endorser-endorsee pair.
-        /// 
+        ///
         /// # Arguments
         /// * `origin` - Signed account (endorser)
         /// * `endorsee` - Account being endorsed
@@ -923,20 +879,28 @@ pub mod pallet {
             endorsement_code: u8,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            
+
             // Convert u8 code to EndorsementType enum
             let endorsement_type = EndorsementType::from_u8(endorsement_code)
                 .ok_or(Error::<T>::InvalidEndorsementType)?;
-            
+
             let current_block = frame_system::Pallet::<T>::block_number();
 
             // Both must be verified
             ensure!(
-                T::BelizeKyc::is_kyc_verified(&who, pallet_belize_identity::KycLevel::L0, current_block),
+                T::BelizeKyc::is_kyc_verified(
+                    &who,
+                    pallet_belize_identity::KycLevel::L0,
+                    current_block
+                ),
                 Error::<T>::NotVerified
             );
             ensure!(
-                T::BelizeKyc::is_kyc_verified(&endorsee, pallet_belize_identity::KycLevel::L0, current_block),
+                T::BelizeKyc::is_kyc_verified(
+                    &endorsee,
+                    pallet_belize_identity::KycLevel::L0,
+                    current_block
+                ),
                 Error::<T>::NotVerified
             );
 
@@ -955,7 +919,7 @@ pub mod pallet {
             let last_endorsement = LastEndorsement::<T>::get(&key);
             // #79 FIX: Consistent block time - 6s blocks, 1 month = 432,000 blocks
             let blocks_per_month: u32 = 30 * 24 * 60 * 10; // 432,000 blocks (~30 days at 6s)
-            
+
             // If last_endorsement is 0 (never endorsed), allow it
             if last_endorsement != BlockNumberFor::<T>::from(0u32) {
                 let current_u64: u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0);
@@ -985,36 +949,38 @@ pub mod pallet {
         }
 
         /// Toggle SRS public display
-        /// 
+        ///
         /// Allows users to control whether their SRS is publicly visible
         /// or shown as an anonymous hash.
-        /// 
+        ///
         /// # Arguments
         /// * `origin` - Signed account
         /// * `public` - Whether to make SRS publicly visible
         #[pallet::call_index(3)]
         #[pallet::weight(T::WeightInfo::set_srs_privacy())]
-        pub fn set_srs_privacy(
-            origin: OriginFor<T>,
-            public: bool,
-        ) -> DispatchResult {
+        pub fn set_srs_privacy(origin: OriginFor<T>, public: bool) -> DispatchResult {
             let who = ensure_signed(origin)?;
             let current_block = frame_system::Pallet::<T>::block_number();
 
             // Verify account is BelizeID verified
             ensure!(
-                T::BelizeKyc::is_kyc_verified(&who, pallet_belize_identity::KycLevel::L0, current_block),
+                T::BelizeKyc::is_kyc_verified(
+                    &who,
+                    pallet_belize_identity::KycLevel::L0,
+                    current_block
+                ),
                 Error::<T>::NotVerified
             );
 
             SocialResponsibilityScores::<T>::mutate(&who, |maybe_srs| {
                 if let Some(ref mut srs) = maybe_srs {
                     srs.public_display = public;
-                    
+
                     // Generate anonymous hash if not public
                     if !public {
                         let hash_input = (who.clone(), srs.score);
-                        srs.anonymous_hash = Some(sp_io::hashing::blake2_256(&hash_input.encode()).into());
+                        srs.anonymous_hash =
+                            Some(sp_io::hashing::blake2_256(&hash_input.encode()).into());
                     } else {
                         srs.anonymous_hash = None;
                     }
@@ -1045,7 +1011,7 @@ pub mod pallet {
             description: BoundedVec<u8, ConstU32<1024>>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            
+
             // Convert u8 code to CommunityProposalType enum
             let proposal_type = CommunityProposalType::from_u8(proposal_type_code)
                 .ok_or(Error::<T>::InvalidProposalType)?;
@@ -1054,21 +1020,27 @@ pub mod pallet {
 
             // Verify account is BelizeID verified
             ensure!(
-                T::BelizeKyc::is_kyc_verified(&who, pallet_belize_identity::KycLevel::L0, current_block),
+                T::BelizeKyc::is_kyc_verified(
+                    &who,
+                    pallet_belize_identity::KycLevel::L0,
+                    current_block
+                ),
                 Error::<T>::NotVerified
             );
 
             // Calculate deposit using configurable percentage (basis points /10000)
             let pct = T::ProposalDepositPercentage::get();
             let deposit = amount * pct.into() / 10_000u32.into();
-            
+
             // Reserve deposit from proposer
             T::Currency::reserve(&who, deposit)?;
 
             // Get next proposal ID — checked to prevent ID collision at u32::MAX
             let proposal_id = ProposalCount::<T>::try_mutate(|c| {
                 let id = *c;
-                *c = c.checked_add(1).ok_or(Error::<T>::ProposalCounterOverflow)?;
+                *c = c
+                    .checked_add(1)
+                    .ok_or(Error::<T>::ProposalCounterOverflow)?;
                 Ok::<u32, Error<T>>(id)
             })?;
 
@@ -1138,19 +1110,29 @@ pub mod pallet {
 
             // Verify account is BelizeID verified
             ensure!(
-                T::BelizeKyc::is_kyc_verified(&who, pallet_belize_identity::KycLevel::L0, current_block),
+                T::BelizeKyc::is_kyc_verified(
+                    &who,
+                    pallet_belize_identity::KycLevel::L0,
+                    current_block
+                ),
                 Error::<T>::NotVerified
             );
 
             // Get proposal
-            let mut proposal = CommunityProposals::<T>::get(proposal_id)
-                .ok_or(Error::<T>::ProposalNotFound)?;
+            let mut proposal =
+                CommunityProposals::<T>::get(proposal_id).ok_or(Error::<T>::ProposalNotFound)?;
 
             // Check proposal is active
-            ensure!(proposal.status == ProposalStatus::Active, Error::<T>::InvalidProposalStatus);
+            ensure!(
+                proposal.status == ProposalStatus::Active,
+                Error::<T>::InvalidProposalStatus
+            );
 
             // Check voting period hasn't ended
-            ensure!(current_block <= proposal.voting_deadline, Error::<T>::VotingPeriodEnded);
+            ensure!(
+                current_block <= proposal.voting_deadline,
+                Error::<T>::VotingPeriodEnded
+            );
 
             // Check hasn't already voted
             ensure!(
@@ -1199,15 +1181,21 @@ pub mod pallet {
             ensure_signed(origin)?;
 
             // Get proposal
-            let mut proposal = CommunityProposals::<T>::get(proposal_id)
-                .ok_or(Error::<T>::ProposalNotFound)?;
+            let mut proposal =
+                CommunityProposals::<T>::get(proposal_id).ok_or(Error::<T>::ProposalNotFound)?;
 
             // Check proposal is active
-            ensure!(proposal.status == ProposalStatus::Active, Error::<T>::InvalidProposalStatus);
+            ensure!(
+                proposal.status == ProposalStatus::Active,
+                Error::<T>::InvalidProposalStatus
+            );
 
             // Check voting period has ended
             let current_block = frame_system::Pallet::<T>::block_number();
-            ensure!(current_block > proposal.voting_deadline, Error::<T>::VotingPeriodEnded);
+            ensure!(
+                current_block > proposal.voting_deadline,
+                Error::<T>::VotingPeriodEnded
+            );
 
             // AUDIT FIX: Enforce minimum quorum — prevents 1-vote majority attacks
             ensure!(
@@ -1252,7 +1240,7 @@ pub mod pallet {
                         // Treasury transfer failed - mark as rejected and slash deposit
                         proposal.status = ProposalStatus::Rejected;
                         let _ = T::Currency::slash_reserved(&proposal.proposer, proposal.deposit);
-                        
+
                         let reason: BoundedVec<u8, ConstU32<64>> = b"Treasury transfer failed"
                             .to_vec()
                             .try_into()
@@ -1323,10 +1311,7 @@ pub mod pallet {
 
             SanctionedAccounts::<T>::insert(&account, sanction);
 
-            Self::deposit_event(Event::AccountSanctioned {
-                account,
-                reason,
-            });
+            Self::deposit_event(Event::AccountSanctioned { account, reason });
 
             Ok(())
         }
@@ -1334,17 +1319,12 @@ pub mod pallet {
         /// Lift sanction from an account (governance/council only)
         #[pallet::call_index(8)]
         #[pallet::weight(T::WeightInfo::lift_sanction())]
-        pub fn lift_sanction(
-            origin: OriginFor<T>,
-            account: T::AccountId,
-        ) -> DispatchResult {
+        pub fn lift_sanction(origin: OriginFor<T>, account: T::AccountId) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
 
             SanctionedAccounts::<T>::remove(&account);
 
-            Self::deposit_event(Event::SanctionLifted {
-                account,
-            });
+            Self::deposit_event(Event::SanctionLifted { account });
 
             Ok(())
         }
@@ -1367,8 +1347,8 @@ pub mod pallet {
             );
 
             // Get proposal
-            let proposal = CommunityProposals::<T>::get(proposal_id)
-                .ok_or(Error::<T>::ProposalNotFound)?;
+            let proposal =
+                CommunityProposals::<T>::get(proposal_id).ok_or(Error::<T>::ProposalNotFound)?;
 
             // Only vote on proposals in EthicsReview status
             ensure!(
@@ -1417,8 +1397,8 @@ pub mod pallet {
             ensure!(!completion_proof.is_empty(), Error::<T>::ModuleNotFound);
 
             // Get module
-            let mut module = EducationModules::<T>::get(module_id)
-                .ok_or(Error::<T>::ModuleNotFound)?;
+            let mut module =
+                EducationModules::<T>::get(module_id).ok_or(Error::<T>::ModuleNotFound)?;
 
             // Check if module is active
             ensure!(module.active, Error::<T>::ModuleInactive);
@@ -1465,7 +1445,9 @@ pub mod pallet {
                 // CM-1 FIX: Enforce supply cap before minting
                 let current_issuance = T::Currency::total_issuance();
                 ensure!(
-                    current_issuance.checked_add(&capped_reward).is_some_and(|total| total <= T::MaxSupply::get()),
+                    current_issuance
+                        .checked_add(&capped_reward)
+                        .is_some_and(|total| total <= T::MaxSupply::get()),
                     Error::<T>::SupplyCapExceeded
                 );
                 let _ = T::Currency::deposit_creating(&who, capped_reward);
@@ -1497,8 +1479,8 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
 
             // Get project
-            let mut project = GreenProjects::<T>::get(project_id)
-                .ok_or(Error::<T>::ProjectNotFound)?;
+            let mut project =
+                GreenProjects::<T>::get(project_id).ok_or(Error::<T>::ProjectNotFound)?;
 
             // Check if project is active
             ensure!(project.active, Error::<T>::ProjectInactive);
@@ -1529,7 +1511,7 @@ pub mod pallet {
             // Update project totals
             let old_amount = project.amount_contributed;
             project.amount_contributed = project.amount_contributed.saturating_add(amount);
-            
+
             // Increment contributor count if this is first contribution
             if current_contribution == 0 {
                 project.total_contributors = project.total_contributors.saturating_add(1);
@@ -1550,7 +1532,7 @@ pub mod pallet {
             // Check for milestones (every 100,000 units)
             let old_milestone = old_amount / 100_000;
             let new_milestone = project.amount_contributed / 100_000;
-            
+
             if new_milestone > old_milestone {
                 Self::deposit_event(Event::GreenMilestoneReached {
                     project_id,
@@ -1577,11 +1559,19 @@ pub mod pallet {
 
             // AUDIT FIX (CRIT-3): Require KYC on both referrer and referee
             ensure!(
-                T::BelizeKyc::is_kyc_verified(&referrer, pallet_belize_identity::KycLevel::L0, current_block),
+                T::BelizeKyc::is_kyc_verified(
+                    &referrer,
+                    pallet_belize_identity::KycLevel::L0,
+                    current_block
+                ),
                 Error::<T>::NotVerified
             );
             ensure!(
-                T::BelizeKyc::is_kyc_verified(&referee, pallet_belize_identity::KycLevel::L0, current_block),
+                T::BelizeKyc::is_kyc_verified(
+                    &referee,
+                    pallet_belize_identity::KycLevel::L0,
+                    current_block
+                ),
                 Error::<T>::BeneficiaryNotVerified
             );
 
@@ -1610,13 +1600,14 @@ pub mod pallet {
             // Update referrer data
             let mut referral_data = ReferralData::<T>::get(&referrer);
             referral_data.total_referrals = referral_data.total_referrals.saturating_add(1);
-            
+
             // Reward calculation: 1000 base + 100 per existing referral
             let reward = 1000u64.saturating_add(
-                (referral_data.total_referrals.saturating_sub(1) as u64).saturating_mul(100)
+                (referral_data.total_referrals.saturating_sub(1) as u64).saturating_mul(100),
             );
-            
-            referral_data.total_rewards_earned = referral_data.total_rewards_earned.saturating_add(reward);
+
+            referral_data.total_rewards_earned =
+                referral_data.total_rewards_earned.saturating_add(reward);
             ReferralData::<T>::insert(&referrer, referral_data.clone());
 
             // Mint referral reward to the referrer (capped at configured max)
@@ -1628,7 +1619,9 @@ pub mod pallet {
                 // CM-2 FIX: Enforce supply cap before minting
                 let current_issuance = T::Currency::total_issuance();
                 ensure!(
-                    current_issuance.checked_add(&capped_reward).is_some_and(|total| total <= T::MaxSupply::get()),
+                    current_issuance
+                        .checked_add(&capped_reward)
+                        .is_some_and(|total| total <= T::MaxSupply::get()),
                     Error::<T>::SupplyCapExceeded
                 );
                 let _ = T::Currency::deposit_creating(&referrer, capped_reward);
@@ -1726,11 +1719,14 @@ pub mod pallet {
         fn update_srs_internal(account: &T::AccountId) -> DispatchResult {
             let old_srs = Self::get_srs(account);
             let old_score = old_srs.as_ref().map(|s| s.score).unwrap_or(0);
-            let old_tier = old_srs.as_ref().map(|s| s.tier.clone()).unwrap_or(SRSTier::Bronze);
+            let old_tier = old_srs
+                .as_ref()
+                .map(|s| s.tier.clone())
+                .unwrap_or(SRSTier::Bronze);
 
             let new_score = Self::calculate_srs(account);
             let new_tier = Self::score_to_tier(new_score);
-            
+
             let current_block = frame_system::Pallet::<T>::block_number();
 
             let governance_score = Self::calculate_governance_score(account);
@@ -1806,11 +1802,12 @@ pub mod pallet {
                 // Time decay: 10% bonus per 6 months of sustained activity
                 let current_u64: u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0);
                 let record_u64: u64 = TryInto::<u64>::try_into(record.block_number).unwrap_or(0);
-                let blocks_ago_u32: u32 = current_u64.saturating_sub(record_u64).min(u32::MAX as u64) as u32;
+                let blocks_ago_u32: u32 =
+                    current_u64.saturating_sub(record_u64).min(u32::MAX as u64) as u32;
                 // #79 FIX: Consistent block time - 6s blocks, 6 months = 2,592,000 blocks
                 let blocks_per_6_months: u32 = 30 * 24 * 60 * 10 * 6; // 2,592,000 blocks
                 let months_6: u32 = blocks_ago_u32 / blocks_per_6_months;
-                
+
                 if months_6 >= 1u32 {
                     score = score.saturating_add(base_points / 10); // 10% bonus after 6 months
                 }
@@ -1846,17 +1843,17 @@ pub mod pallet {
         fn calculate_education_score(account: &T::AccountId) -> u32 {
             // P0-20 FIX: O(1) counter instead of unbounded iter_prefix().count()
             let completed_count = CompletedEducationCount::<T>::get(account);
-            
+
             // Base points: 100 per module
             let base_score = completed_count.saturating_mul(100);
-            
+
             // Bonus for consistent learning (5+ modules = +500, 10+ = +1000)
             let bonus = match completed_count {
                 0..=4 => 0,
                 5..=9 => 500,
                 _ => 1_000,
             };
-            
+
             base_score.saturating_add(bonus).min(2_000)
         }
 
@@ -1864,13 +1861,13 @@ pub mod pallet {
         fn calculate_sustainability_score(account: &T::AccountId) -> u32 {
             // P0-20 FIX: O(1) aggregate instead of unbounded iter_prefix()
             let (total_contributed, project_count) = GreenContributionStats::<T>::get(account);
-            
+
             // Base score: 1 point per 100 units contributed (compute in u64 to avoid truncation)
             let amount_score = total_contributed / 100;
-            
+
             // Diversity bonus: 100 points per unique project
             let diversity_bonus = project_count.saturating_mul(100) as u64;
-            
+
             amount_score.saturating_add(diversity_bonus).min(1_500) as u32
         }
 
@@ -1891,7 +1888,10 @@ pub mod pallet {
 
         /// Calculate effective fee after SRS-based discount
         /// Returns (discounted_fee, discount_percentage)
-        pub fn calculate_fee_discount(account: &T::AccountId, original_fee: BalanceOf<T>) -> (BalanceOf<T>, u32) {
+        pub fn calculate_fee_discount(
+            account: &T::AccountId,
+            original_fee: BalanceOf<T>,
+        ) -> (BalanceOf<T>, u32) {
             // Get SRS tier
             let tier = match SocialResponsibilityScores::<T>::get(account) {
                 Some(srs) => srs.tier,
@@ -1924,17 +1924,19 @@ pub mod pallet {
 
         /// Check if account can use fee exemption (within monthly limit)
         /// Returns true if within limit, false if exceeded
-        pub fn check_fee_exemption_limit(account: &T::AccountId, exemption_amount: BalanceOf<T>) -> bool {
+        pub fn check_fee_exemption_limit(
+            account: &T::AccountId,
+            exemption_amount: BalanceOf<T>,
+        ) -> bool {
             let current_block = frame_system::Pallet::<T>::block_number();
             let monthly_limit: BalanceOf<T> = T::FeeExemptionMonthlyLimit::get().into();
 
             // Get or create fee exemption data
-            let mut fee_data = FeeExemptionUsage::<T>::get(account).unwrap_or_else(|| {
-                FeeExemptionData {
+            let mut fee_data =
+                FeeExemptionUsage::<T>::get(account).unwrap_or_else(|| FeeExemptionData {
                     used_this_month: 0u32.into(),
                     last_reset_block: current_block,
-                }
-            });
+                });
 
             // Check if month has passed (30 days = ~30 * 24 * 60 * 10 blocks)
             let blocks_per_month: u32 = 30 * 24 * 60 * 10;
@@ -1947,7 +1949,7 @@ pub mod pallet {
                 fee_data.used_this_month = 0u32.into();
                 fee_data.last_reset_block = current_block;
                 FeeExemptionUsage::<T>::insert(account, fee_data.clone());
-                
+
                 Self::deposit_event(Event::FeeExemptionReset {
                     account: account.clone(),
                 });
@@ -1974,15 +1976,17 @@ pub mod pallet {
             };
 
             // Get or create fee exemption data
-            let mut fee_data = FeeExemptionUsage::<T>::get(account).unwrap_or_else(|| {
-                FeeExemptionData {
+            let mut fee_data =
+                FeeExemptionUsage::<T>::get(account).unwrap_or_else(|| FeeExemptionData {
                     used_this_month: 0u32.into(),
                     last_reset_block: current_block,
-                }
-            });
+                });
 
             // Update usage
-            fee_data.used_this_month = fee_data.used_this_month.checked_add(&exemption_amount).unwrap_or(fee_data.used_this_month);
+            fee_data.used_this_month = fee_data
+                .used_this_month
+                .checked_add(&exemption_amount)
+                .unwrap_or(fee_data.used_this_month);
             FeeExemptionUsage::<T>::insert(account, fee_data);
 
             Ok(())
@@ -2010,7 +2014,11 @@ pub mod pallet {
 
             // Check if beneficiary is verified
             ensure!(
-                T::BelizeKyc::is_kyc_verified(beneficiary, pallet_belize_identity::KycLevel::L0, current_block),
+                T::BelizeKyc::is_kyc_verified(
+                    beneficiary,
+                    pallet_belize_identity::KycLevel::L0,
+                    current_block
+                ),
                 Error::<T>::BeneficiaryNotVerified
             );
 
@@ -2029,8 +2037,8 @@ pub mod pallet {
         /// Try to finalize ethics review if enough votes
         fn try_finalize_ethics_review(proposal_id: u32) -> DispatchResult {
             let config = EthicsFilterConfig::<T>::get();
-            let mut proposal = CommunityProposals::<T>::get(proposal_id)
-                .ok_or(Error::<T>::ProposalNotFound)?;
+            let mut proposal =
+                CommunityProposals::<T>::get(proposal_id).ok_or(Error::<T>::ProposalNotFound)?;
 
             // Count votes
             let mut votes_for = 0u32;
@@ -2084,11 +2092,14 @@ pub mod pallet {
             // Recalculate SRS with new education score
             let old_srs = Self::get_srs(account);
             let old_score = old_srs.as_ref().map(|s| s.score).unwrap_or(0);
-            let old_tier = old_srs.as_ref().map(|s| s.tier.clone()).unwrap_or(SRSTier::Bronze);
+            let old_tier = old_srs
+                .as_ref()
+                .map(|s| s.tier.clone())
+                .unwrap_or(SRSTier::Bronze);
 
             let new_score = Self::calculate_srs(account);
             let new_tier = Self::score_to_tier(new_score);
-            
+
             let current_block = frame_system::Pallet::<T>::block_number();
 
             let governance_score = Self::calculate_governance_score(account);
@@ -2141,44 +2152,47 @@ pub mod pallet {
     pub struct GenesisConfig<T: Config> {
         /// Initial education modules (Phase 5)
         pub education_modules: Vec<(
-            u32,                                    // module_id
-            Vec<u8>,                                // title
-            Vec<u8>,                                // description
-            BalanceOf<T>,                           // reward_amount
-            u32,                                    // capacity
-            bool,                                   // is_active
+            u32,          // module_id
+            Vec<u8>,      // title
+            Vec<u8>,      // description
+            BalanceOf<T>, // reward_amount
+            u32,          // capacity
+            bool,         // is_active
         )>,
         /// Initial green projects (Phase 5)
         pub green_projects: Vec<(
-            u32,                                    // project_id
-            Vec<u8>,                                // title
-            Vec<u8>,                                // description
-            BalanceOf<T>,                           // funding_goal
-            BalanceOf<T>,                           // current_funding
-            bool,                                   // is_active
+            u32,          // project_id
+            Vec<u8>,      // title
+            Vec<u8>,      // description
+            BalanceOf<T>, // funding_goal
+            BalanceOf<T>, // current_funding
+            bool,         // is_active
         )>,
     }
 
     #[pallet::genesis_build]
     impl<T: Config> BuildGenesisConfig for GenesisConfig<T> {
         fn build(&self) {
+            use crate::types::{EducationModule, GreenProject, ProjectType};
             use frame_support::BoundedVec;
             use sp_core::ConstU32;
-            use crate::types::{EducationModule, GreenProject, ProjectType};
-            
+
             // Initialize education modules
-            for (module_id, title, description, reward_amount, capacity, is_active) in &self.education_modules {
-                let bounded_title: BoundedVec<u8, ConstU32<128>> = title.clone()
+            for (module_id, title, description, reward_amount, capacity, is_active) in
+                &self.education_modules
+            {
+                let bounded_title: BoundedVec<u8, ConstU32<128>> = title
+                    .clone()
                     .try_into()
                     .expect("Title too long for BoundedVec<128>");
-                let bounded_description: BoundedVec<u8, ConstU32<256>> = description.clone()
+                let bounded_description: BoundedVec<u8, ConstU32<256>> = description
+                    .clone()
                     .try_into()
                     .expect("Description too long for BoundedVec<256>");
-                
+
                 // Convert BalanceOf<T> to u64 for storage
-                let reward_u64: u64 = (*reward_amount).try_into()
-                    .unwrap_or(0u64);
-                
+                let reward_u64: u64 = (*reward_amount).try_into().unwrap_or(0u64);
+
                 let module = EducationModule {
                     id: *module_id,
                     title: bounded_title,
@@ -2190,17 +2204,19 @@ pub mod pallet {
                 };
                 EducationModules::<T>::insert(module_id, module);
             }
-            
+
             // Initialize green projects
-            for (project_id, title, _description, _funding_goal, current_funding, is_active) in &self.green_projects {
-                let bounded_title: BoundedVec<u8, ConstU32<128>> = title.clone()
+            for (project_id, title, _description, _funding_goal, current_funding, is_active) in
+                &self.green_projects
+            {
+                let bounded_title: BoundedVec<u8, ConstU32<128>> = title
+                    .clone()
                     .try_into()
                     .expect("Title too long for BoundedVec<128>");
-                
+
                 // Convert BalanceOf<T> to u64 for storage
-                let current_u64: u64 = (*current_funding).try_into()
-                    .unwrap_or(0u64);
-                
+                let current_u64: u64 = (*current_funding).try_into().unwrap_or(0u64);
+
                 let project = GreenProject {
                     id: *project_id,
                     title: bounded_title,
@@ -2235,9 +2251,9 @@ impl<T: pallet::Config> CommunityRank<T::AccountId> for pallet::Pallet<T> {
             Some(data) => match data.tier {
                 SRSTier::Bronze => 100,
                 SRSTier::Silver => 175,   // was 200 (1.75x instead of 2x)
-                SRSTier::Gold => 250,     // was 400 (2.5x instead of 4x) 
-                SRSTier::Platinum => 325,  // was 700 (3.25x instead of 7x)
-                SRSTier::Diamond => 400,   // was 1000 (4x instead of 10x)
+                SRSTier::Gold => 250,     // was 400 (2.5x instead of 4x)
+                SRSTier::Platinum => 325, // was 700 (3.25x instead of 7x)
+                SRSTier::Diamond => 400,  // was 1000 (4x instead of 10x)
             },
             None => 0, // No SRS record
         }
@@ -2255,15 +2271,23 @@ pub trait FeeCalculator<AccountId, Balance> {
     /// Calculate effective fee after applying SRS tier discount
     /// Returns (discounted_fee, discount_percentage, within_limit)
     fn calculate_effective_fee(account: &AccountId, original_fee: Balance) -> (Balance, u32, bool);
-    
+
     /// Apply fee discount and track usage
-    fn apply_fee_discount(account: &AccountId, original_fee: Balance, discounted_fee: Balance) -> Result<(), &'static str>;
+    fn apply_fee_discount(
+        account: &AccountId,
+        original_fee: Balance,
+        discounted_fee: Balance,
+    ) -> Result<(), &'static str>;
 }
 
 impl<T: Config> FeeCalculator<T::AccountId, BalanceOf<T>> for Pallet<T> {
-    fn calculate_effective_fee(account: &T::AccountId, original_fee: BalanceOf<T>) -> (BalanceOf<T>, u32, bool) {
-        let (discounted_fee, discount_percentage) = Self::calculate_fee_discount(account, original_fee);
-        
+    fn calculate_effective_fee(
+        account: &T::AccountId,
+        original_fee: BalanceOf<T>,
+    ) -> (BalanceOf<T>, u32, bool) {
+        let (discounted_fee, discount_percentage) =
+            Self::calculate_fee_discount(account, original_fee);
+
         if discount_percentage == 0 {
             // No discount, so no limit check needed
             return (original_fee, 0, true);
@@ -2311,7 +2335,7 @@ pub trait PoUWContributor<AccountId> {
         timeliness_score: u32,
         honesty_score: u32,
     ) -> Result<(), &'static str>;
-    
+
     /// Get current PoUW contribution for an account
     fn get_pouw_score(account: &AccountId) -> u32;
 }
@@ -2327,28 +2351,29 @@ impl<T: Config> PoUWContributor<T::AccountId> for Pallet<T> {
         let weighted_score = (quality_score.saturating_mul(40) / 100)
             .saturating_add(timeliness_score.saturating_mul(30) / 100)
             .saturating_add(honesty_score.saturating_mul(30) / 100);
-        
+
         // Record as participation activity
         let current_block = frame_system::Pallet::<T>::block_number();
-        
+
         let record = ParticipationRecord {
             activity_type: ActivityType::PoUWContribution(weighted_score),
             block_number: current_block,
             value: weighted_score,
         };
-        
+
         // Add to participation history
         ParticipationHistory::<T>::try_mutate(account, |history| {
-            history.try_push(record)
+            history
+                .try_push(record)
                 .map_err(|_| "Participation history full")?;
             Ok::<(), &'static str>(())
         })?;
-        
+
         // Note: SRS will be recalculated next time it's queried or updated
-        
+
         Ok(())
     }
-    
+
     fn get_pouw_score(account: &T::AccountId) -> u32 {
         // Extract PoUW-specific participation records
         let history = ParticipationHistory::<T>::get(account);
@@ -2356,11 +2381,11 @@ impl<T: Config> PoUWContributor<T::AccountId> for Pallet<T> {
             .iter()
             .filter(|r| matches!(r.activity_type, ActivityType::PoUWContribution(_)))
             .collect();
-        
+
         if pouw_records.is_empty() {
             return 0;
         }
-        
+
         // Average of recent PoUW contributions (up to last 10)
         let recent: Vec<_> = pouw_records.iter().rev().take(10).collect();
         let total: u32 = recent.iter().map(|r| r.value).sum();
@@ -2372,13 +2397,13 @@ impl<T: Config> PoUWContributor<T::AccountId> for Pallet<T> {
 pub trait GovernanceParticipation<AccountId> {
     /// Record proposal submission in governance
     fn record_proposal_submission(account: &AccountId) -> Result<(), &'static str>;
-    
+
     /// Record vote cast in governance
     fn record_vote_cast(account: &AccountId) -> Result<(), &'static str>;
-    
+
     /// Record proposal approval (proposal passed)
     fn record_proposal_approval(account: &AccountId) -> Result<(), &'static str>;
-    
+
     /// Record council membership activity
     fn record_council_activity(account: &AccountId) -> Result<(), &'static str>;
 }
@@ -2386,83 +2411,87 @@ pub trait GovernanceParticipation<AccountId> {
 impl<T: Config> GovernanceParticipation<T::AccountId> for Pallet<T> {
     fn record_proposal_submission(account: &T::AccountId) -> Result<(), &'static str> {
         let current_block = frame_system::Pallet::<T>::block_number();
-        
+
         let record = ParticipationRecord {
             activity_type: ActivityType::ProposalSubmission,
             block_number: current_block,
             value: 100, // Base score for proposal submission
         };
-        
+
         ParticipationHistory::<T>::try_mutate(account, |history| {
-            history.try_push(record)
+            history
+                .try_push(record)
                 .map_err(|_| "Participation history full")?;
             Ok::<(), &'static str>(())
         })?;
-        
+
         // Update proposal stats
         UserProposals::<T>::mutate(account, |stats| {
             stats.total = stats.total.saturating_add(1);
         });
-        
+
         Ok(())
     }
-    
+
     fn record_vote_cast(account: &T::AccountId) -> Result<(), &'static str> {
         let current_block = frame_system::Pallet::<T>::block_number();
-        
+
         let record = ParticipationRecord {
             activity_type: ActivityType::VoteCast,
             block_number: current_block,
             value: 25, // Base score for voting
         };
-        
+
         ParticipationHistory::<T>::try_mutate(account, |history| {
-            history.try_push(record)
+            history
+                .try_push(record)
                 .map_err(|_| "Participation history full")?;
             Ok::<(), &'static str>(())
         })?;
-        
+
         Ok(())
     }
-    
+
     fn record_proposal_approval(account: &T::AccountId) -> Result<(), &'static str> {
         let current_block = frame_system::Pallet::<T>::block_number();
-        
+
         let record = ParticipationRecord {
             activity_type: ActivityType::ProposalApproved,
             block_number: current_block,
             value: 200, // High score for successful proposal
         };
-        
+
         ParticipationHistory::<T>::try_mutate(account, |history| {
-            history.try_push(record)
+            history
+                .try_push(record)
                 .map_err(|_| "Participation history full")?;
             Ok::<(), &'static str>(())
         })?;
-        
+
         // Update proposal stats
         UserProposals::<T>::mutate(account, |stats| {
             stats.approved = stats.approved.saturating_add(1);
         });
-        
+
         Ok(())
     }
-    
+
     fn record_council_activity(account: &T::AccountId) -> Result<(), &'static str> {
         let current_block = frame_system::Pallet::<T>::block_number();
-        
+
         let record = ParticipationRecord {
             activity_type: ActivityType::CouncilMembership,
             block_number: current_block,
             value: 500, // Score for council activity to align with governance weighting
         };
-        
+
         ParticipationHistory::<T>::try_mutate(account, |history| {
-            history.try_push(record)
+            history
+                .try_push(record)
                 .map_err(|_| "Participation history full")?;
             Ok::<(), &'static str>(())
         })?;
-        
+
         Ok(())
     }
 }

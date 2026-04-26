@@ -232,13 +232,13 @@ Output:
 ### 2. Deploy via CLI
 ```bash
 cargo contract upload --suri //Alice \
-    --url wss://testnet.belizechain.org
+    --url wss://<current-public-testnet-rpc>
 
 cargo contract instantiate \
     --suri //Alice \
     --constructor new \
     --args 21000000000000000000 \ # 21M DALLA initial supply
-    --url wss://testnet.belizechain.org
+    --url wss://<current-public-testnet-rpc>
 ```
 
 ### 3. Deploy via SDK
@@ -246,7 +246,7 @@ cargo contract instantiate \
 const fs = require('fs');
 const { GemSDK } = require('@belizechain/gem-sdk');
 
-const sdk = new GemSDK('wss://testnet.belizechain.org');
+const sdk = new GemSDK('wss://<current-public-testnet-rpc>');
 await sdk.connect();
 
 const wasm = fs.readFileSync('dalla_token.wasm');
