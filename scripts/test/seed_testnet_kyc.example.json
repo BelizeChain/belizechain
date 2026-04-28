@@ -1,0 +1,24 @@
+{
+  "targets": [
+    {
+      "suri": "//Alice",
+      "name": "Alice Testnet",
+      "verification_level": 4,
+      "risk_level": 1,
+      "ssn_hash": "0x1111111111111111111111111111111111111111111111111111111111111111",
+      "ssn_anchor": "ceiba-testnet:ssn:alice",
+      "passport_hash": "0x2222222222222222222222222222222222222222222222222222222222222222",
+      "passport_anchor": "ceiba-testnet:passport:alice"
+    },
+    {
+      "suri": "//Bob",
+      "name": "Bob Testnet",
+      "verification_level": 4,
+      "risk_level": 1,
+      "ssn_hash": "0x3333333333333333333333333333333333333333333333333333333333333333",
+      "ssn_anchor": "ceiba-testnet:ssn:bob",
+      "passport_hash": "0x4444444444444444444444444444444444444444444444444444444444444444",
+      "passport_anchor": "ceiba-testnet:passport:bob"
+    }
+  ]
+}
