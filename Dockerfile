@@ -7,11 +7,21 @@ FROM paritytech/ci-linux:production AS builder
 
 WORKDIR /build
 
+# The local workspace carries host-specific Cargo env overrides.
+RUN mkdir -p /tmp/belizechain-tmp
+
 # Copy entire workspace (filtered by .dockerignore)
 COPY . .
 
 # Build optimised release binary
-RUN cargo build --release --package belizechain-node && \
+RUN if [ -f .cargo/config.toml ]; then \
+        sed -i \
+            -e 's#/usr/bin/llvm-config-20#/usr/bin/llvm-config-14#g' \
+            -e 's#/usr/lib/llvm-20/lib#/usr/lib/llvm-14/lib#g' \
+            -e 's#/home/wicked/.cache/belizechain-tmp#/tmp/belizechain-tmp#g' \
+            .cargo/config.toml; \
+    fi && \
+    cargo build --release --package belizechain-node && \
     # Strip debug symbols to shrink binary (~50 %)
     strip /build/target/release/belizechain-node
 

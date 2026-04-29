@@ -11,6 +11,9 @@ Goal: Bring sibling services online on Ceiba with deterministic rollback steps.
 - kinich-quantum
 - gem
 
+Current frontend contract note:
+- `infra/docker-compose.ceiba.yml` now uses `belizechain/blue-hole-portal:latest` for the single public `ui` slot on Ceiba; exposing Maya Wallet as a separate public frontend still requires an explicit infra and routing change.
+
 ## Deployment Order
 
 1. Shared dependencies: postgres, redis, reverse proxy, base networks/volumes

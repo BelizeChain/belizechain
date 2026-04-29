@@ -40,7 +40,6 @@ belizechain_federated_training.log
 .cargo/
 
 # Docker
-.dockerignore
 belizechain_*.log
 *_federated_training.log
 
