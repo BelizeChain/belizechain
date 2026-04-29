@@ -14,6 +14,9 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  TMPDIR: /tmp
+
 jobs:
   lint:
     name: Formatting and Lint
@@ -31,7 +34,13 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y protobuf-compiler libclang-dev
+          sudo apt-get install -y protobuf-compiler libclang-dev llvm-dev
+
+      - name: Configure portable LLVM paths
+        run: |
+          LLVM_CONFIG_BIN="$(command -v llvm-config)"
+          echo "LLVM_CONFIG_PATH=${LLVM_CONFIG_BIN}" >> "$GITHUB_ENV"
+          echo "LIBCLANG_PATH=$(${LLVM_CONFIG_BIN} --libdir)" >> "$GITHUB_ENV"
 
       - name: Cache cargo registry and build output
         uses: actions/cache@v4
@@ -64,7 +73,13 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y protobuf-compiler libclang-dev
+          sudo apt-get install -y protobuf-compiler libclang-dev llvm-dev
+
+      - name: Configure portable LLVM paths
+        run: |
+          LLVM_CONFIG_BIN="$(command -v llvm-config)"
+          echo "LLVM_CONFIG_PATH=${LLVM_CONFIG_BIN}" >> "$GITHUB_ENV"
+          echo "LIBCLANG_PATH=$(${LLVM_CONFIG_BIN} --libdir)" >> "$GITHUB_ENV"
 
       - name: Cache cargo registry and build output
         uses: actions/cache@v4
@@ -140,7 +155,13 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y protobuf-compiler libclang-dev
+          sudo apt-get install -y protobuf-compiler libclang-dev llvm-dev
+
+      - name: Configure portable LLVM paths
+        run: |
+          LLVM_CONFIG_BIN="$(command -v llvm-config)"
+          echo "LLVM_CONFIG_PATH=${LLVM_CONFIG_BIN}" >> "$GITHUB_ENV"
+          echo "LIBCLANG_PATH=$(${LLVM_CONFIG_BIN} --libdir)" >> "$GITHUB_ENV"
 
       - name: Cache cargo registry and build output
         uses: actions/cache@v4
@@ -153,7 +174,7 @@ jobs:
           restore-keys: cargo-cov-
 
       - name: Install cargo-tarpaulin
-        run: cargo install cargo-tarpaulin --locked
+        run: cargo install cargo-tarpaulin --version 0.35.2 --locked
 
       - name: Run coverage (enforce configured threshold)
         run: cargo tarpaulin
@@ -180,7 +201,13 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y protobuf-compiler libclang-dev
+          sudo apt-get install -y protobuf-compiler libclang-dev llvm-dev
+
+      - name: Configure portable LLVM paths
+        run: |
+          LLVM_CONFIG_BIN="$(command -v llvm-config)"
+          echo "LLVM_CONFIG_PATH=${LLVM_CONFIG_BIN}" >> "$GITHUB_ENV"
+          echo "LIBCLANG_PATH=$(${LLVM_CONFIG_BIN} --libdir)" >> "$GITHUB_ENV"
 
       - name: Cache cargo registry and build output
         uses: actions/cache@v4
