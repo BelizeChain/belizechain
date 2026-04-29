@@ -11,12 +11,12 @@ BelizeChain uses a multi-repository architecture for independent development, de
 | Repository | Purpose | Language | Size | Status |
 |------------|---------|----------|------|--------|
 | **belizechain/belizechain** | Core blockchain (18 Belize-specific pallets + runtime) | Rust | ~500 MB | Active on Ceiba |
-| **belizechain/kinich-quantum** | Quantum computing integration | Python | ~50 MB | Phase 2 Ceiba rollout |
-| **belizechain/nawal-ai** | Federated learning AI | Python | ~120 MB | Phase 2 Ceiba rollout |
-| **belizechain/pakit-storage** | DAG storage system | Python | ~80 MB | Phase 2 Ceiba rollout |
-| **belizechain/gem** | ink! smart contracts platform | Rust | ~30 MB | Phase 2 Ceiba rollout |
-| **belizechain/ui** | Maya Wallet + Blue Hole Portal | TypeScript | ~200 MB | Phase 2 Ceiba rollout |
-| **belizechain/infra** | Infrastructure as Code | YAML/HCL | ~10 MB | Supports Ceiba rollout |
+| **belizechain/kinich-quantum** | Quantum computing integration | Python | ~50 MB | Live on Ceiba; activation workflows pending |
+| **belizechain/nawal-ai** | Federated learning AI | Python | ~120 MB | Live on Ceiba; FL workload and Prometheus metrics pending |
+| **belizechain/pakit-storage** | DAG storage system | Python | ~80 MB | Live on Ceiba; DAG activation workflows pending |
+| **belizechain/gem** | ink! smart contracts platform | Rust | ~30 MB | Contracts repo active; Ceiba address wiring pending |
+| **belizechain/ui** | Maya Wallet + Blue Hole Portal | TypeScript | ~200 MB | Blue Hole Portal live on Ceiba |
+| **belizechain/infra** | Infrastructure as Code | YAML/HCL | ~10 MB | Active Ceiba compose source |
 
 ---
 
@@ -26,14 +26,14 @@ BelizeChain uses a multi-repository architecture for independent development, de
 ┌─────────────────────────────────────────────────────────┐
 │                    BelizeChain Core                      │
 │  Substrate Runtime + 18 Belize Pallets (Rust)           │
-│  ws://localhost:9944                                     │
+│  Ceiba RPC: http://100.81.45.25:9944                     │
 └──────┬────────┬────────┬────────┬────────┬─────────────┘
        │        │        │        │        │
        ↓        ↓        ↓        ↓        ↓
 ┌──────────┐ ┌─────┐ ┌──────┐ ┌─────┐ ┌─────────┐
 │  Nawal   │ │Kinich│ │Pakit │ │ GEM │ │   UI    │
 │ AI (FL)  │ │Quantum│ │ DAG  │ │ink! │ │Wallets  │
-│:8889     │ │:8888 │ │:8890 │ │:3000│ │:3001-06 │
+│:8080     │ │:8888 │ │:8001 │ │contracts│ │:3000 │
 └──────────┘ └─────┘ └──────┘ └─────┘ └─────────┘
 ```
 
@@ -94,21 +94,22 @@ cd ../ui && npm run dev:all
 
 ### Production (Ceiba Self-Hosted)
 ```bash
-# Core node is currently operated via Docker Compose on Ceiba.
+# Core node and sibling services are operated via Docker Compose on Ceiba.
 cd /opt/belizechain
-docker compose ps ceiba-node
+docker compose ps
 docker logs --tail 100 ceiba-node
 
-# Sibling services follow the Phase 2 rollout plan:
-# docs/deployment/PHASE2_CEIBA_SERVICES_PLAN.md
+# Dated baseline snapshot:
+# docs/operations/CEIBA_BASELINE_2026-04-29.md
 ```
 
 ### Host Allocation (Ceiba)
-- **Blockchain Node**: primary runtime process on Ceiba
-- **Nawal AI**: planned during Phase 2 rollout
-- **Kinich Quantum**: planned during Phase 2 rollout
-- **Pakit Storage**: planned during Phase 2 rollout
-- **UI**: planned during Phase 2 rollout behind reverse proxy
+- **Blockchain Node**: live single-validator testnet process on Ceiba
+- **Nawal AI**: live CPU federated-learning API behind `/api/nawal`
+- **Kinich Quantum**: live quantum API behind `/api/kinich`
+- **Pakit Storage**: live DAG storage API behind `/api/pakit`
+- **UI**: Blue Hole Portal live behind Nginx; Maya Wallet public exposure requires a separate routing decision
+- **GEM**: contract deployment and address wiring pending
 
 ---
 

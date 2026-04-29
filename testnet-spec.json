@@ -2,9 +2,7 @@
   "name": "BelizeChain Testnet",
   "id": "belizechain_testnet",
   "chainType": "Live",
-  "bootNodes": [
-    "/ip4/127.0.0.1/tcp/30333/p2p/12D3KooWJDStdScj6MzMmCihTN9RHeDmHsRweqGGGUfCkJKKDJ6U"
-  ],
+  "bootNodes": [],
   "telemetryEndpoints": null,
   "protocolId": null,
   "properties": null,
@@ -16,7 +14,7 @@
         "babe": {
           "authorities": [
             [
-              "5Dk6wqPb2wzD1DscaBqNemv1xrETVQnmqXpjk2z6oHpQgjx8",
+              "5HGrvAhz7oghrAM6m8x6EjscUsnrdwU6FR2p9wwnNtneU2Qo",
               1
             ]
           ],
@@ -51,7 +49,7 @@
         "grandpa": {
           "authorities": [
             [
-              "5FsJu5aQCFsz2kEB2pdYpXF7JD2Jfr1qWUXhzz81uMThSGcw",
+              "5Ebravkqw9JLLGnyB6Qae6xXaFzhJYpzdavGnbKZmKzXvJCF",
               1
             ]
           ]

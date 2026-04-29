@@ -79,6 +79,9 @@ jobs:
       - name: Run tests
         run: cargo test --release --workspace
 
+      - name: Validate checked-in testnet spec
+        run: bash ./scripts/deploy/validate_chain_spec.sh ./testnet-spec.json
+
       - name: Build release node for explicit-spec smoke test
         run: cargo build --release -p belizechain-node
 

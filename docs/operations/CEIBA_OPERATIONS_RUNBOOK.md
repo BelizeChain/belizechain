@@ -10,51 +10,187 @@ Scope: BelizeChain self-hosted runtime on Ceiba
 
 ## Runtime Baseline
 
-- Runtime: Docker container `ceiba-node`
-- Compose working directory: /opt/belizechain
-- Command: belizechain-node --dev --base-path /data/chain --port 30333 --rpc-port 9944 --prometheus-port 9615 --prometheus-external --rpc-cors all --rpc-external --rpc-methods Safe --name Ceiba-Node-1
-- P2P: 30333
-- RPC: 9944 (bound to 100.81.45.25)
-- Prometheus: 9615
+Dated baseline snapshot:
+[CEIBA_BASELINE_2026-04-29.md](CEIBA_BASELINE_2026-04-29.md).
 
-## Health Checks
+- Runtime: Docker Compose stack in `/opt/belizechain`
+- Core container: `ceiba-node`
+- Active chain spec: `/data/chain/testnet-spec.json`
+- Active chain data: `/data/chain/chains/belizechain_testnet`
+- Command shape: `belizechain-node --chain /data/chain/testnet-spec.json --base-path /data/chain --port 30333 --rpc-port 9944 --prometheus-port 9615 --prometheus-external --rpc-cors all --unsafe-rpc-external --rpc-methods Safe --name Ceiba-Node-1 --validator`
+- P2P: 30333 (public)
+- RPC: 9944 (bound to Ceiba's Tailscale address)
+- Prometheus: 9615 (bound to Ceiba's Tailscale address)
 
-Run these on Ceiba:
+Validator mode requires `--unsafe-rpc-external` instead of `--rpc-external`.
+Keep `--rpc-methods Safe` and the host binding on Ceiba's Tailscale address.
+When `ceiba-node` is recreated, restart `ceiba-nginx` afterward so Nginx
+refreshes the node's Docker-network address. Validate `/rpc` with a JSON-RPC
+POST request; a plain GET may return `405` even when RPC is healthy.
+
+## Disposable Public Testnet Reset Plan
+
+Use this only after choosing to abandon the current Ceiba public-testnet state.
+It changes the testnet genesis authority keys and clears the local
+`belizechain_testnet` database so the single Ceiba node can author from a fresh
+genesis.
+
+Do not insert the repo placeholder seeds (`validator1`, `validator2`,
+`validator3`) into the current live spec. Their derived public keys do not match
+the active Ceiba authority keys.
+
+### Scope And Blast Radius
+
+- Target host: Ceiba (`ssh wicked@100.81.45.25`).
+- Target stack: `/opt/belizechain` Docker Compose.
+- Target chain data: `/data/chain/chains/belizechain_testnet`.
+- Target spec: `/data/chain/testnet-spec.json`.
+- Blast radius: stops `ceiba-node`, abandons the current testnet genesis/state,
+  changes the genesis hash, temporarily interrupts direct RPC and proxied
+  `/rpc`, and requires downstream clients to reconnect to the new chain.
+- Not in scope: Postgres, Redis, Pakit, Nawal, Kinich, UI data, IPFS repo data,
+  or public HTTP/HTTPS proxy routing except for a short Nginx restart.
+
+### Required Gates Before Reset
 
 ```bash
 cd /opt/belizechain
-docker compose ps
-docker ps --filter name=ceiba-node
-docker logs --tail 100 ceiba-node
-ss -ltnp | grep -E "30333|9944|9615"
+grep -E '^(CHAIN|VALIDATOR|NODE_NAME|TAILSCALE_IP)=' .env
+docker compose -f docker-compose.ceiba.yml --env-file .env ps
+curl -sS -H "Content-Type: application/json" \
+  -d '{"id":1,"jsonrpc":"2.0","method":"chain_getHeader","params":[]}' \
+  http://100.81.45.25:9944
+find /data/chain/chains/belizechain_testnet/keystore -maxdepth 1 -type f | wc -l
+jq -c '.genesis.runtimeGenesis.patch | {babe,grandpa}' /data/chain/testnet-spec.json
+```
+
+Proceed only when the reset decision is explicit, the backup commands below
+complete, and the new BABE/GRANDPA public keys are written into the replacement
+spec before the node restarts.
+
+### Backup And Rollback Anchor
+
+```bash
+cd /opt/belizechain
+stamp=$(date +%Y%m%d-%H%M%S)
+mkdir -p backups
+
+cp .env "backups/.env.pre-testnet-reset-$stamp"
+cp docker-compose.ceiba.yml "backups/docker-compose.ceiba.yml.pre-testnet-reset-$stamp"
+cp /data/chain/testnet-spec.json "backups/testnet-spec.pre-testnet-reset-$stamp.json"
+sha256sum "backups/testnet-spec.pre-testnet-reset-$stamp.json"
+du -sh /data/chain/chains/belizechain_testnet
+```
+
+Keep the `stamp` value for rollback and validation notes. The pre-reset chain
+database is preserved by moving it to
+`/data/chain/chains/belizechain_testnet.pre-reset-$stamp` in the clear step
+below; avoid a full compressed chain archive during the maintenance window.
+
+### Generate Replacement Authority Material
+
+These commands store the new secret phrases on Ceiba under a `0700` directory.
+Do not paste the JSON files into chat, tickets, logs, or documentation.
+
+```bash
+cd /opt/belizechain
+umask 077
+mkdir -p "backups/authority-keys-$stamp"
+
+docker exec ceiba-node belizechain-node key generate \
+  --scheme Sr25519 --output-type json \
+  > "backups/authority-keys-$stamp/babe.sr25519.json"
+docker exec ceiba-node belizechain-node key generate \
+  --scheme Ed25519 --output-type json \
+  > "backups/authority-keys-$stamp/grandpa.ed25519.json"
+
+BABE_SS58=$(jq -r .ss58Address "backups/authority-keys-$stamp/babe.sr25519.json")
+GRANDPA_SS58=$(jq -r .ss58Address "backups/authority-keys-$stamp/grandpa.ed25519.json")
+printf 'new_babe=%s\nnew_grandpa=%s\n' "$BABE_SS58" "$GRANDPA_SS58"
+```
+
+### Build Replacement Testnet Spec
+
+```bash
+cd /opt/belizechain
+jq --arg babe "$BABE_SS58" --arg grandpa "$GRANDPA_SS58" '
+  .bootNodes = [] |
+  .genesis.runtimeGenesis.patch.babe.authorities = [[$babe, 1]] |
+  .genesis.runtimeGenesis.patch.grandpa.authorities = [[$grandpa, 1]]
+' /data/chain/testnet-spec.json > "/data/chain/testnet-spec.$stamp.json"
+
+jq empty "/data/chain/testnet-spec.$stamp.json"
+cp "/data/chain/testnet-spec.$stamp.json" /data/chain/testnet-spec.json
+```
+
+### Clear Testnet State And Insert Keys
+
+```bash
+cd /opt/belizechain
+docker compose -f docker-compose.ceiba.yml --env-file .env stop ceiba-node
+mv /data/chain/chains/belizechain_testnet "/data/chain/chains/belizechain_testnet.pre-reset-$stamp"
+mkdir -p /data/chain/chains/belizechain_testnet/network
+cp "/data/chain/chains/belizechain_testnet.pre-reset-$stamp/network/secret_ed25519" \
+  /data/chain/chains/belizechain_testnet/network/secret_ed25519
+chmod 600 /data/chain/chains/belizechain_testnet/network/secret_ed25519
+
+mkdir -p "/data/chain/authority-keys-$stamp"
+jq -r .secretPhrase "backups/authority-keys-$stamp/babe.sr25519.json" \
+  > "/data/chain/authority-keys-$stamp/babe.suri"
+jq -r .secretPhrase "backups/authority-keys-$stamp/grandpa.ed25519.json" \
+  > "/data/chain/authority-keys-$stamp/grandpa.suri"
+chmod 600 "/data/chain/authority-keys-$stamp"/*.suri
+
+docker compose -f docker-compose.ceiba.yml --env-file .env run --rm --no-deps ceiba-node \
+  key insert --base-path /data/chain --chain /data/chain/testnet-spec.json \
+  --scheme Sr25519 --suri "/data/chain/authority-keys-$stamp/babe.suri" --key-type babe
+docker compose -f docker-compose.ceiba.yml --env-file .env run --rm --no-deps ceiba-node \
+  key insert --base-path /data/chain --chain /data/chain/testnet-spec.json \
+  --scheme Ed25519 --suri "/data/chain/authority-keys-$stamp/grandpa.suri" --key-type gran
+
+find /data/chain/chains/belizechain_testnet/keystore -maxdepth 1 -type f | wc -l
+
+grep -q '^VALIDATOR=' .env && sed -i 's/^VALIDATOR=.*/VALIDATOR=1/' .env || printf '\nVALIDATOR=1\n' >> .env
+```
+
+### Restart And Validate
+
+```bash
+cd /opt/belizechain
+docker compose -f docker-compose.ceiba.yml --env-file .env up -d ceiba-node
+docker compose -f docker-compose.ceiba.yml --env-file .env restart nginx
+docker compose -f docker-compose.ceiba.yml --env-file .env ps ceiba-node nginx
+
 curl -sS -H "Content-Type: application/json" \
   -d '{"id":1,"jsonrpc":"2.0","method":"system_health","params":[]}' \
   http://100.81.45.25:9944
+curl -sS -H "Content-Type: application/json" \
+  -d '{"id":2,"jsonrpc":"2.0","method":"chain_getHeader","params":[]}' \
+  http://100.81.45.25:9944
+curl -k -sS -H "Content-Type: application/json" \
+  -d '{"id":3,"jsonrpc":"2.0","method":"system_health","params":[]}' \
+  https://100.81.45.25/rpc
+docker logs --tail 120 ceiba-node | grep -E "Idle|best: #|Imported|Starting consensus|Local node identity" || true
 ```
 
-Expected JSON fields:
-- result.isSyncing
-- result.peers
-- result.shouldHavePeers
+Successful recovery means `ceiba-node` is healthy, `/rpc` works through Nginx,
+the header advances beyond `0x0`, and logs show authored/imported blocks after
+the reset.
 
-## Restart Procedure
+### Rollback
 
-Preferred path on Ceiba:
+Use this only if the reset fails validation and the pre-reset state must be
+restored.
 
 ```bash
 cd /opt/belizechain
-docker compose up -d ceiba-node
-docker compose ps ceiba-node
-docker logs --tail 100 ceiba-node
-```
-
-If the systemd wrapper is present and healthy:
-
-```bash
-sudo systemctl restart belizechain-compose
-sudo systemctl status belizechain-compose --no-pager
-cd /opt/belizechain && docker compose ps
-docker logs --tail 100 ceiba-node
+docker compose -f docker-compose.ceiba.yml --env-file .env stop ceiba-node
+mv /data/chain/chains/belizechain_testnet "/data/chain/chains/belizechain_testnet.failed-reset-$stamp" 2>/dev/null || true
+mv "/data/chain/chains/belizechain_testnet.pre-reset-$stamp" /data/chain/chains/belizechain_testnet
+cp "backups/testnet-spec.pre-testnet-reset-$stamp.json" /data/chain/testnet-spec.json
+cp "backups/.env.pre-testnet-reset-$stamp" .env
+docker compose -f docker-compose.ceiba.yml --env-file .env up -d ceiba-node
+docker compose -f docker-compose.ceiba.yml --env-file .env restart nginx
 ```
 
 ## Backup and Restore
@@ -62,8 +198,10 @@ docker logs --tail 100 ceiba-node
 ### Backup
 
 ```bash
-tar -czf /data/backups/chain-$(date +%F-%H%M).tgz /data/chain
-sha256sum /data/backups/chain-*.tgz | tail -n 1
+cd /opt/belizechain
+mkdir -p backups
+tar -C /data -czf backups/chain-$(date +%F-%H%M).tgz chain
+sha256sum backups/chain-*.tgz | tail -n 1
 ```
 
 ### Restore
@@ -73,93 +211,10 @@ cd /opt/belizechain
 docker compose stop ceiba-node || true
 mv /data/chain /data/chain.pre-restore.$(date +%s)
 mkdir -p /data/chain
-tar -xzf /data/backups/<backup-file>.tgz -C /
+tar -xzf backups/<backup-file>.tgz -C /data
 docker compose up -d ceiba-node
+docker compose restart nginx
 ```
-
-## Clean Reset For Ceiba Dev Chain
-
-Use this when the goal is to discard the current Ceiba development chain and start from a fresh local identity.
-
-Current assumptions:
-- Ceiba is running a disposable `--dev` chain, not a production or long-lived testnet.
-- The active chain data lives under `/data/chain/chains/belizechain_dev`.
-- The libp2p node identity is stored at `/data/chain/chains/belizechain_dev/network/secret_ed25519`.
-
-### Reset Scope Options
-
-- Reset chain data only: keep the current libp2p identity, discard blocks and state.
-- Reset chain data and libp2p identity: also delete the stored node key so Substrate generates a new peer identity on next boot.
-- Session keys: only relevant if Ceiba is later promoted to validator duties outside the disposable dev-chain flow.
-
-### Pre-Reset Snapshot
-
-```bash
-mkdir -p /data/backups
-tar -C /data/chain/chains -czf /data/backups/ceiba-dev-pre-reset-$(date +%F-%H%M).tgz belizechain_dev belizechain_local
-sha256sum /data/backups/ceiba-dev-pre-reset-*.tgz | tail -n 1
-```
-
-### Stop The Runtime
-
-```bash
-cd /opt/belizechain
-docker compose stop ceiba-node
-docker compose ps ceiba-node
-```
-
-### Option A: Keep Current Peer Identity
-
-```bash
-rm -rf /data/chain/chains/belizechain_dev
-rm -rf /data/chain/chains/belizechain_local
-mkdir -p /data/chain/chains
-docker compose up -d ceiba-node
-docker logs --tail 100 ceiba-node
-```
-
-### Option B: Rotate Peer Identity Too
-
-```bash
-mkdir -p /data/backups/node-keys
-cp /data/chain/chains/belizechain_dev/network/secret_ed25519 /data/backups/node-keys/ceiba-dev-secret_ed25519.$(date +%s) 2>/dev/null || true
-cp /data/chain/chains/belizechain_local/network/secret_ed25519 /data/backups/node-keys/ceiba-local-secret_ed25519.$(date +%s) 2>/dev/null || true
-
-rm -rf /data/chain/chains/belizechain_dev
-rm -rf /data/chain/chains/belizechain_local
-mkdir -p /data/chain/chains
-
-docker compose up -d ceiba-node
-docker logs --tail 100 ceiba-node
-```
-
-If the node key is absent on startup, Substrate will generate a fresh local peer identity and log a new `Local node identity` value.
-
-### Post-Reset Validation
-
-```bash
-docker logs --tail 100 ceiba-node | grep -E "Local node identity|Running JSON-RPC server|Prometheus exporter started" || true
-curl -sS -H "Content-Type: application/json" \
-  -d '{"id":1,"jsonrpc":"2.0","method":"system_chain","params":[]}' \
-  http://100.81.45.25:9944
-curl -sS -H "Content-Type: application/json" \
-  -d '{"id":1,"jsonrpc":"2.0","method":"system_health","params":[]}' \
-  http://100.81.45.25:9944
-```
-
-Expected outcome after reset:
-- `system_chain` returns `BelizeChain Development`.
-- `system_health.isSyncing` is `false`.
-- Logs show a new genesis initialization.
-
-### Validator/Session-Key Follow-Up
-
-Do not rotate session keys for the disposable dev chain unless Ceiba is being repurposed as a real validator target.
-
-If Ceiba is later promoted to validator duties:
-1. Generate fresh session keys with `author_rotateKeys`.
-2. Submit `session.setKeys` on-chain from the controller/stash flow.
-3. Back up the new session keys separately from the libp2p node key.
 
 ## Incident Triage
 
