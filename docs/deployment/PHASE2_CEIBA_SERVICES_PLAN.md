@@ -16,16 +16,16 @@ real workflows with deterministic rollback steps.
 
 The Ceiba stack is running the Phase 2 service set through
 `/opt/belizechain/docker-compose.ceiba.yml`. The dated operational snapshot is
-[CEIBA_BASELINE_2026-04-29.md](../operations/CEIBA_BASELINE_2026-04-29.md).
+[CEIBA_BASELINE_2026-05-02.md](../operations/CEIBA_BASELINE_2026-05-02.md).
 
-Live containers verified on 2026-04-29:
+Live containers verified on 2026-05-02:
 
 | Service | Container | Live state |
 |---|---|---|
-| Core node | `ceiba-node` | producing and finalizing testnet blocks |
+| Core node | `ceiba-node` | recovered after epoch/session fix; producing and finalizing testnet blocks |
 | Pakit | `ceiba-pakit` | healthy, DAG backend ready |
-| Nawal | `ceiba-nawal` | healthy and blockchain-connected, FL workload idle |
-| Kinich | `ceiba-kinich` | healthy and blockchain-connected, job workload idle |
+| Nawal | `ceiba-nawal` | healthy, blockchain-connected, Prometheus `/metrics` live, `chain_task_1` pending |
+| Kinich | `ceiba-kinich` | healthy and blockchain-connected, qiskit activation job completed |
 | UI | `ceiba-ui` | Blue Hole Portal live behind Nginx |
 | Observability | `ceiba-prometheus`, `ceiba-grafana` | live on Tailscale-bound ports |
 
@@ -40,8 +40,11 @@ on the active Ceiba testnet on 2026-05-02:
 | Simple DAO | `r1VnpeWtfLmtZ2W2UJhYXSLoHhwo7tAY48RZyVirRu5ucLi7i` |
 | Faucet | `r1TDXUdxgeLC5BAkFQeZnZNSAX67FwRAaavmG19TzPtc2Szcg` |
 
-Current frontend contract note:
-- `infra/docker-compose.ceiba.yml` now uses `belizechain/blue-hole-portal:latest` for the single public `ui` slot on Ceiba; exposing Maya Wallet as a separate public frontend still requires an explicit infra and routing change.
+Current frontend deployment decision:
+- Keep the single public Ceiba `ui` slot on Blue Hole Portal for the stabilization window.
+- Maya Wallet is source-wired to GEM contract env through the `ui` repo, but it is not separately exposed on Ceiba.
+- The latest `infra` source has `NEXT_PUBLIC_*_CONTRACT` defaults for the `ui` service. The live `/opt/belizechain/docker-compose.ceiba.yml` captured on 2026-05-02 does not yet include those env keys, so syncing live compose/env remains a separate deployment step.
+- Expose Maya only after the post-push CI sweep and backup/restore drill are complete, using an explicit infra route/image contract and rollback plan.
 
 ## Completed Rollout Order
 
@@ -55,11 +58,12 @@ Current frontend contract note:
 ## Stabilization Order
 
 1. Lock core and infra source to the live Ceiba baseline.
-2. Make failing CI gates green across core, Pakit, Nawal, Kinich, and GEM SDK.
-3. Add missing Nawal Prometheus-format metrics.
-4. Run real activation workflows for Pakit, Nawal, and Kinich.
-5. Deploy and record GEM contract addresses for the testnet.
-6. Prepare multi-node testnet expansion after the single-node baseline is stable.
+2. Make failing CI gates green across core, infra, Nawal, GEM, and UI.
+3. Add missing Nawal Prometheus-format metrics. Completed on 2026-05-02.
+4. Run real activation workflows for Pakit, Nawal, and Kinich. Completed on 2026-05-02.
+5. Deploy and record GEM contract addresses for the testnet. Completed on 2026-05-02.
+6. Finish backup/restore drill validation before exposing additional frontend surfaces.
+7. Prepare multi-node testnet expansion after the single-node baseline is stable.
 
 ## Preflight
 
@@ -88,8 +92,8 @@ Current frontend contract note:
 
 - All live services pass health checks for 24 hours after the baseline commit.
 - BelizeChain node RPC remains stable and finalized height advances.
-- Prometheus targets stay healthy for node, Kinich, Pakit, and Prometheus.
-- Nawal has either a Prometheus exporter or native `/metrics` endpoint.
+- Prometheus targets stay healthy for node, Kinich, Pakit, Nawal, and Prometheus.
+- Nawal has either a Prometheus exporter or native `/metrics` endpoint. Completed with native `/metrics`.
 - Pakit, Nawal, and Kinich each complete one real activation workflow on Ceiba.
 - GEM testnet contracts are deployed, recorded, and wired into UI/GEM env files.
 - Backup snapshot and restore drill are documented and validated.

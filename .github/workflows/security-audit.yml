@@ -12,11 +12,15 @@ on:
     paths:
       - '**/Cargo.toml'
       - '**/Cargo.lock'
+      - 'deny.toml'
+      - '.github/workflows/security-audit.yml'
   pull_request:
     branches: [belizechain]
     paths:
       - '**/Cargo.toml'
       - '**/Cargo.lock'
+      - 'deny.toml'
+      - '.github/workflows/security-audit.yml'
   schedule:
     # Every Monday at 6am UTC — catches new RustSec advisories
     - cron: '0 6 * * 1'

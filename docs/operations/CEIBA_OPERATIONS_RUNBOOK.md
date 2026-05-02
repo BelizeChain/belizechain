@@ -216,6 +216,11 @@ docker compose -f docker-compose.ceiba.yml --env-file .env restart nginx
 
 ## Backup and Restore
 
+The current Phase 2 backup/restore drill plan is
+`docs/operations/CEIBA_BACKUP_RESTORE_DRILL_2026-05-02.md`. Use that drill
+for chain data, Postgres, service volumes, and compose/env state. The short
+commands below are only the minimal chain-data fallback.
+
 ### Backup
 
 ```bash
