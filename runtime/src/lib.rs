@@ -85,6 +85,133 @@ pub mod opaque {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use codec::{Decode, Encode};
+    use frame_support::traits::{OnFinalize, OnInitialize};
+    use sp_runtime::testing::{Digest, DigestItem};
+
+    fn test_ext_with_session_validator(validator: AccountId) -> sp_io::TestExternalities {
+        let mut storage = frame_system::GenesisConfig::<Runtime>::default()
+            .build_storage()
+            .expect("system genesis storage builds");
+
+        pallet_session::GenesisConfig::<Runtime> {
+            keys: vec![(
+                validator.clone(),
+                validator,
+                opaque::SessionKeys {
+                    babe: sp_core::sr25519::Public::from_raw([1u8; 32]).into(),
+                    grandpa: sp_core::ed25519::Public::from_raw([2u8; 32]).into(),
+                },
+            )],
+            ..Default::default()
+        }
+        .assimilate_storage(&mut storage)
+        .expect("session genesis storage assimilates");
+
+        pallet_babe::GenesisConfig::<Runtime> {
+            epoch_config: BABE_GENESIS_EPOCH_CONFIG,
+            ..Default::default()
+        }
+        .assimilate_storage(&mut storage)
+        .expect("babe genesis storage assimilates");
+
+        sp_io::TestExternalities::new(storage)
+    }
+
+    fn babe_secondary_plain_digest(slot: u64) -> Digest {
+        let pre_digest = sp_consensus_babe::digests::PreDigest::SecondaryPlain(
+            sp_consensus_babe::digests::SecondaryPlainPreDigest {
+                authority_index: 0,
+                slot: sp_consensus_babe::Slot::from(slot),
+            },
+        );
+        Digest {
+            logs: vec![DigestItem::PreRuntime(
+                sp_consensus_babe::BABE_ENGINE_ID,
+                pre_digest.encode(),
+            )],
+        }
+    }
+
+    fn jump_to_block(block: BlockNumber, slot: u64) {
+        <Babe as OnFinalize<BlockNumber>>::on_finalize(System::block_number());
+        <Session as OnFinalize<BlockNumber>>::on_finalize(System::block_number());
+
+        if System::block_number() + 1 != block {
+            System::set_block_number(block - 1);
+        }
+
+        let parent_hash = if System::block_number() > 1 {
+            System::finalize().hash()
+        } else {
+            System::parent_hash()
+        };
+        let pre_digest = babe_secondary_plain_digest(slot);
+
+        System::reset_events();
+        System::initialize(&block, &parent_hash, &pre_digest);
+        <Babe as OnInitialize<BlockNumber>>::on_initialize(block);
+        <Session as OnInitialize<BlockNumber>>::on_initialize(block);
+    }
+
+    fn has_babe_next_epoch_digest() -> bool {
+        System::digest().logs.iter().any(|log| {
+            log.as_consensus().is_some_and(|(id, mut data)| {
+                id == sp_consensus_babe::BABE_ENGINE_ID
+                    && matches!(
+                        sp_consensus_babe::ConsensusLog::decode(&mut data),
+                        Ok(sp_consensus_babe::ConsensusLog::NextEpochData(_))
+                    )
+            })
+        })
+    }
+
+    #[test]
+    fn session_manager_reuses_current_validators_when_staking_is_empty() {
+        let validator = AccountId::new([7u8; 32]);
+        let mut ext = test_ext_with_session_validator(validator.clone());
+
+        ext.execute_with(|| {
+            assert!(pallet_belize_staking::Validators::<Runtime>::iter_keys()
+                .next()
+                .is_none());
+            assert_eq!(Session::validators(), vec![validator.clone()]);
+            assert_eq!(
+                <BelizeSessionManager as pallet_session::SessionManager<AccountId>>::new_session(1),
+                Some(vec![validator])
+            );
+        });
+    }
+
+    #[test]
+    fn session_rotation_aligns_with_babe_epoch_boundary() {
+        let validator = AccountId::new([7u8; 32]);
+        let mut ext = test_ext_with_session_validator(validator);
+
+        ext.execute_with(|| {
+            jump_to_block(1, 1);
+            assert_eq!(Session::current_index(), 0);
+
+            jump_to_block(
+                BabeEpochDuration::get() as BlockNumber,
+                BabeEpochDuration::get(),
+            );
+            assert_eq!(Session::current_index(), 0);
+            assert!(!has_babe_next_epoch_digest());
+
+            jump_to_block(
+                BabeEpochDuration::get() as BlockNumber + 1,
+                BabeEpochDuration::get() + 1,
+            );
+            assert_eq!(Session::current_index(), 1);
+            assert!(has_babe_next_epoch_digest());
+        });
+    }
+}
+
 #[sp_version::runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: Cow::Borrowed("belizechain"),
@@ -92,7 +219,8 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     authoring_version: 1,
     // AR-2: bumped to 101 — pallet_session added (validator rotation enabled).
     // AR-3: bumped to 104 — pallet_sudo ungated for testnet bootstrapping.
-    spec_version: 104,
+    // Phase 2: bumped to 105 — align session rotation with BABE epoch changes.
+    spec_version: 105,
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 1,
@@ -281,26 +409,19 @@ impl pallet_offences::Config for Runtime {
 // authority set was frozen at genesis.  Adding `pallet_session` bridges the two
 // layers so that:
 //  1. When a validator calls `join_validators` / `leave_validators` the new set
-//     is queued for the next session boundary.
-//  2. At each `SessionPeriod` boundary `BelizeSessionManager::new_session` reads
+//     is queued for the next BABE epoch boundary.
+//  2. At each BABE epoch boundary `BelizeSessionManager::new_session` reads
 //     the live `Validators` map and returns the updated authority list.
 //  3. BABE rotates its VRF authority set; GRANDPA rotates its voter set.
 //  4. Compromised keys can be rotated via `Session::set_keys` without a runtime
 //     upgrade (fixing the key-rotation gap identified in AR-2).
 
-parameter_types! {
-    /// Session duration: 1 epoch (≈24 hours at 6 s/block = 14 400 blocks).
-    pub const SessionPeriod: BlockNumber = 14_400;
-    /// Session offset: start immediately from block 0.
-    pub const SessionOffset: BlockNumber = 0;
-}
-
 /// Bridges `pallet_belize_staking` to `pallet_session`.
 ///
-/// `new_session` is called by `pallet_session` at each epoch boundary.  It reads
-/// the live validator set from `pallet_belize_staking::Validators` and returns the
-/// accounts as the next authority list.  `pallet_session` will then signal BABE
-/// and GRANDPA to rotate to this new set at the start of the following session.
+/// `new_session` is called by `pallet_session` at each epoch boundary. It reads
+/// the live validator set from `pallet_belize_staking::Validators` when the
+/// Belize staking set is populated, otherwise it keeps the current session
+/// validators so BABE still receives its external epoch-change trigger.
 pub struct BelizeSessionManager;
 
 impl pallet_session::SessionManager<AccountId> for BelizeSessionManager {
@@ -311,7 +432,12 @@ impl pallet_session::SessionManager<AccountId> for BelizeSessionManager {
             .take(100)
             .collect();
         if validators.is_empty() {
-            None // Keep existing set if staking is empty (genesis bootstrap)
+            let current_validators = pallet_session::Pallet::<Runtime>::validators();
+            if current_validators.is_empty() {
+                None
+            } else {
+                Some(current_validators)
+            }
         } else {
             Some(validators)
         }
@@ -399,9 +525,9 @@ impl pallet_session::Config for Runtime {
     type ValidatorId = AccountId;
     /// Identity conversion: AccountId is already the ValidatorId.
     type ValidatorIdOf = sp_runtime::traits::ConvertInto;
-    /// End sessions on a fixed block-count schedule.
-    type ShouldEndSession = pallet_session::PeriodicSessions<SessionPeriod, SessionOffset>;
-    type NextSessionRotation = pallet_session::PeriodicSessions<SessionPeriod, SessionOffset>;
+    /// End sessions exactly when BABE expects an external epoch-change digest.
+    type ShouldEndSession = Babe;
+    type NextSessionRotation = Babe;
     /// Read validator set from BelizeChain staking pallet.
     type SessionManager = BelizeSessionManager;
     /// Let session keys (BABE + GRANDPA) drive the authority rotation.

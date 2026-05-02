@@ -30,7 +30,15 @@ Live containers verified on 2026-04-29:
 | Observability | `ceiba-prometheus`, `ceiba-grafana` | live on Tailscale-bound ports |
 
 GEM remains a contract deployment and address-wiring workstream rather than a
-long-running Ceiba service.
+long-running Ceiba service. The primary GEM contracts were deployed and verified
+on the active Ceiba testnet on 2026-05-02:
+
+| Contract | Address |
+|---|---|
+| DALLA Token | `r1SAvDb2f5iFbafWL87rE1jP6QV3qCV5xtK8b1QXuqKpGknj5` |
+| BeliNFT | `r1Wywor1ittVCyZeYaA9hweBwuDiXLC2UdLNQm4oUB1ub8qyN` |
+| Simple DAO | `r1VnpeWtfLmtZ2W2UJhYXSLoHhwo7tAY48RZyVirRu5ucLi7i` |
+| Faucet | `r1TDXUdxgeLC5BAkFQeZnZNSAX67FwRAaavmG19TzPtc2Szcg` |
 
 Current frontend contract note:
 - `infra/docker-compose.ceiba.yml` now uses `belizechain/blue-hole-portal:latest` for the single public `ui` slot on Ceiba; exposing Maya Wallet as a separate public frontend still requires an explicit infra and routing change.

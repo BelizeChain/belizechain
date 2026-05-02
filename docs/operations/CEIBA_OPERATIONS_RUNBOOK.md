@@ -66,7 +66,10 @@ jq -c '.genesis.runtimeGenesis.patch | {babe,grandpa}' /data/chain/testnet-spec.
 
 Proceed only when the reset decision is explicit, the backup commands below
 complete, and the new BABE/GRANDPA public keys are written into the replacement
-spec before the node restarts.
+`session.keys` before the node restarts. Do not configure both
+`session.keys` and direct `babe.authorities` in the same replacement spec;
+BABE initializes authorities from the session genesis config when session keys
+are present.
 
 ### Backup And Rollback Anchor
 
@@ -113,11 +116,29 @@ printf 'new_babe=%s\nnew_grandpa=%s\n' "$BABE_SS58" "$GRANDPA_SS58"
 
 ```bash
 cd /opt/belizechain
-jq --arg babe "$BABE_SS58" --arg grandpa "$GRANDPA_SS58" '
+NEW_IMAGE=$(grep -E '^CEIBA_NODE_IMAGE=' .env | cut -d= -f2-)
+docker run --rm "$NEW_IMAGE" build-spec \
+  --disable-default-bootnode \
+  --chain testnet-template > "backups/testnet-spec.generated-$stamp.json"
+
+name=$(jq -r .name /data/chain/testnet-spec.json)
+id=$(jq -r .id /data/chain/testnet-spec.json)
+jq --arg account "$BABE_SS58" \
+   --arg babe "$BABE_SS58" \
+   --arg grandpa "$GRANDPA_SS58" \
+   --arg name "$name" \
+   --arg id "$id" '
+  .name = $name |
+  .id = $id |
   .bootNodes = [] |
-  .genesis.runtimeGenesis.patch.babe.authorities = [[$babe, 1]] |
-  .genesis.runtimeGenesis.patch.grandpa.authorities = [[$grandpa, 1]]
-' /data/chain/testnet-spec.json > "/data/chain/testnet-spec.$stamp.json"
+  .genesis.runtimeGenesis.patch.session.keys = [[
+    $account,
+    $account,
+    {babe: $babe, grandpa: $grandpa}
+  ]] |
+  del(.genesis.runtimeGenesis.patch.babe.authorities) |
+  .genesis.runtimeGenesis.patch.grandpa = {}
+' "backups/testnet-spec.generated-$stamp.json" > "/data/chain/testnet-spec.$stamp.json"
 
 jq empty "/data/chain/testnet-spec.$stamp.json"
 cp "/data/chain/testnet-spec.$stamp.json" /data/chain/testnet-spec.json
