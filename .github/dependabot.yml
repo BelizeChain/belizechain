@@ -1,0 +1,48 @@
+version: 2
+updates:
+  # Rust workspace - direct dependencies only.
+  # Most transitive Rust alerts (wasmtime, rustls-webpki, yamux, hickory-proto)
+  # are pinned by polkadot-sdk and are tracked in
+  # docs/operations/SECURITY_HYGIENE_QUEUE_2026-05-02.md as SDK-blocked
+  # until the next polkadot-sdk upgrade.
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "rust"
+    groups:
+      cargo-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # SDK-pinned: bump only via polkadot-sdk upgrade branch.
+      - dependency-name: "polkadot-sdk"
+      - dependency-name: "frame-*"
+      - dependency-name: "sp-*"
+      - dependency-name: "sc-*"
+      - dependency-name: "pallet-*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "docker"
