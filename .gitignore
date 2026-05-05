@@ -118,3 +118,6 @@ out/
 .cache/
 # Docker build staging (contains release binary)
 build-context/
+
+# Stray release binary at repo root (build output)
+/belizechain-node

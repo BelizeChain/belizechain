@@ -13,13 +13,16 @@
 - Substrate runtime in `runtime/src/lib.rs`
 - Node binary in `node/src/`
 - Multi-stage Docker build: `paritytech/ci-linux:production` → `debian:bookworm-slim`
-- Ports: 30333 (P2P), 9933 (RPC HTTP), 9944 (RPC WebSocket), 9615 (Prometheus)
+- Ports: 30333 (P2P), 9944 (RPC, unified HTTP+WS), 9615 (Prometheus). Legacy 9933 is not exposed by current SDK.
 
 ## Production Deployment (LIVE)
 - **Primary Host**: `ceiba` (Ubuntu 24.04 LTS)
-- **Primary Access**: `ssh wicked@100.81.45.25` (Tailscale)
-- **LAN Fallback**: `ssh wicked@10.0.0.222` (wired segment)
-- **Node Process**: `belizechain-node --dev --base-path /data/chain --port 30333 --rpc-port 9944 --prometheus-port 9615`
+- **Runtime**: Docker Compose at `/opt/belizechain` (not `--dev`, not raw systemd)
+- **Live Image**: `belizechain/ceiba-node:6c447f1-epochfix-spec105-20260502`
+- **Primary Access**: `ssh wicked@ceiba` or `ssh wicked@100.81.45.25` (Tailscale; may require browser auth)
+- **LAN Fallback**: `ssh wicked@10.0.0.222` (wired; run `ssh-keyscan 10.0.0.222 >> ~/.ssh/known_hosts` first if unseen)
+- **Node Args**: `--chain /data/chain/testnet-spec.json --base-path /data/chain --rpc-port 9944 --prometheus-port 9615`
+- **Chain Data**: `/data/chain/chains/belizechain_testnet`
 - **Binding Note**: RPC is exposed on Ceiba's Tailscale address (not localhost)
 - **Runtime Ports**: `30333` (P2P), `9944` (RPC), `9615` (Prometheus)
 
@@ -38,15 +41,18 @@
 
 ## Current Task Context
 - Phase 1 COMPLETE: Ceiba host hardening + BelizeChain node running via Tailscale
-- Phase 2 TODO: Containerize and deploy sibling services (ui, pakit, nawal, kinich, gem) on Ceiba
-- Phase 3 TODO: Productionize observability + backup/restore + host-level automation
+- Phase 2 COMPLETE (2026-05-02): Pakit, Nawal, Kinich, GEM contracts, and Blue Hole Portal UI deployed and verified on Ceiba; chain recovered from epoch-rotation stall and progressing
+- Phase 3 IN PROGRESS: Productionize observability, backup/restore drills, security hygiene queue (Dependabot backlog), and host-level automation
+- Authoritative live ops docs: `docs/operations/CEIBA_BASELINE_2026-05-02.md`, `CEIBA_OPERATIONS_RUNBOOK.md`, `CEIBA_BACKUP_RESTORE_DRILL_2026-05-02.md`, and `docs/deployment/PHASE2_CEIBA_SERVICES_PLAN.md`
 
 ## Dev Commands
 ```bash
 cargo build --release                    # Build node
 cargo test                               # Run all tests
 docker build -t belizechain-node .       # Build Docker image
-ssh wicked@100.81.45.25                  # Access Ceiba node host
+ssh wicked@ceiba                         # Access Ceiba node host (Tailscale)
+docker -H ssh://wicked@ceiba ps          # Inspect live containers
+docker -H ssh://wicked@ceiba logs ceiba-node --tail 200
 curl -H "Content-Type: application/json" -d '{"id":1,"jsonrpc":"2.0","method":"system_health","params":[]}' http://100.81.45.25:9944
 ```
 
