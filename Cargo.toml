@@ -122,7 +122,7 @@ fips204 = { version = "0.4.6", default-features = false, features = ["ml-dsa-87"
 clap = { version = "4.5.3" }
 futures = { version = "0.3.30" }
 tokio = { version = "1.37" }
-jsonrpsee = { version = "0.24.3", features = ["server"] }
+jsonrpsee = { version = "0.26.0", features = ["server"] }
 
 # Additional RPC dependencies
 substrate-frame-rpc-system = { git = "https://github.com/paritytech/polkadot-sdk", rev = "2e4dd0bc22366a5af820492528869a493b5a5208" }
