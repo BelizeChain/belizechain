@@ -121,7 +121,7 @@ log = { version = "0.4.21", default-features = false }
 fips204 = { version = "0.4.6", default-features = false, features = ["ml-dsa-87"] }
 clap = { version = "4.5.3" }
 futures = { version = "0.3.30" }
-tokio = { version = "1.37" }
+tokio = { version = "1.52" }
 jsonrpsee = { version = "0.24.3", features = ["server"] }
 
 # Additional RPC dependencies
