@@ -78,7 +78,7 @@ scale-info = { workspace = true, default-features = false, features = ["derive"]
 serde = { workspace = true, default-features = false, optional = true, features = ["derive", "alloc"] }
 smallvec = "1.11.0"
 log = { workspace = true, default-features = false }
-hex-literal = "0.4"
+hex-literal = "1.1"
 
 [build-dependencies]
 substrate-wasm-builder = "23.0.0"
