@@ -67,6 +67,34 @@ ignore = [
 
     # proc-macro-error unmaintained — SDK-blocked transitive dep
     "RUSTSEC-2024-0370",
+
+    # rustls-webpki advisories — SDK-blocked through libp2p TLS stack in
+    # polkadot-sdk (older 0.101.7 line pinned by libp2p-tls/quic-rs). BelizeChain
+    # does not terminate WebPKI-validated TLS for consensus paths.
+    # CRL panic DoS
+    "RUSTSEC-2026-0104",
+    # Wildcard name constraint accept bug
+    "RUSTSEC-2026-0099",
+    # URI name constraint accept bug
+    "RUSTSEC-2026-0098",
+
+    # ring 0.16.20 — SDK-blocked transitive (libp2p-tls / quic stack). Newer
+    # ring 0.17.x is also in-graph; the 0.16.20 lock is the unfixable leaf.
+    # AES overflow-check panic
+    "RUSTSEC-2025-0009",
+    # ring 0.16.x unmaintained
+    "RUSTSEC-2025-0010",
+
+    # lru 0.12.5 IterMut Stacked Borrows unsoundness — SDK-blocked transitive;
+    # BelizeChain code does not invoke the affected IterMut path directly.
+    "RUSTSEC-2026-0002",
+
+    # core2 0.4.0 unmaintained — vendored patch lives in patches/core2 to keep
+    # the SDK graph resolving; documented in repo memory sdk-upgrade.md.
+    "RUSTSEC-2026-0105",
+
+    # derivative 2.2.0 unmaintained — SDK-blocked transitive dep
+    "RUSTSEC-2024-0388",
 ]
 
 # ── Licenses ────────────────────────────────────────────────────────────
