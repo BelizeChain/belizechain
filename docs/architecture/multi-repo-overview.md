@@ -37,6 +37,14 @@ BelizeChain uses a multi-repository architecture for independent development, de
 └──────────┘ └─────┘ └──────┘ └─────┘ └─────────┘
 ```
 
+> **Port note**: ports above reflect the **Ceiba** docker-compose container
+> ports (fronted by nginx path routing). When running these services
+> standalone from their repos, defaults differ:
+> Nawal local = `8000` (Ceiba container = `8080`),
+> Pakit local = `8080` (Ceiba container = `8001`),
+> Kinich local = `8888` (same on Ceiba),
+> Pakit P2P = `8081` (same on Ceiba, internal only).
+
 ---
 
 ## Communication Patterns
