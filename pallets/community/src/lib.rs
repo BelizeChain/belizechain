@@ -512,6 +512,11 @@ pub mod pallet {
             approve: bool,
             weight: u32,
         },
+        /// Vote withdrawn from a community proposal
+        VoteWithdrawn {
+            proposal_id: u32,
+            voter: T::AccountId,
+        },
 
         /// Community proposal finalized
         ProposalFinalized {
@@ -1171,8 +1176,34 @@ pub mod pallet {
             Ok(())
         }
 
+        /// Withdraw a previously cast vote on a community proposal
+        #[pallet::call_index(7)]
+        #[pallet::weight(T::WeightInfo::withdraw_community_proposal())]
+        pub fn withdraw_vote(
+            origin: OriginFor<T>,
+            proposal_id: u32,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            // Ensure proposal exists
+            let mut proposal = CommunityProposals::<T>::get(proposal_id).ok_or(Error::<T>::ProposalNotFound)?;
+            // Ensure voter has voted
+            let vote = ProposalVotes::<T>::get(proposal_id, &who).ok_or(Error::<T>::AlreadyVoted)?;
+            // Remove vote record
+            ProposalVotes::<T>::remove(proposal_id, &who);
+            // Update proposal vote counts
+            if vote.approve {
+                proposal.votes_for = proposal.votes_for.saturating_sub(vote.weight);
+            } else {
+                proposal.votes_against = proposal.votes_against.saturating_sub(vote.weight);
+            }
+            proposal.total_votes = proposal.total_votes.saturating_sub(1);
+            CommunityProposals::<T>::insert(proposal_id, proposal);
+            Self::deposit_event(Event::VoteWithdrawn { proposal_id, voter: who });
+            Ok(())
+        }
+
         /// Finalize a community proposal (anyone can call after deadline)
-        #[pallet::call_index(6)]
+        #[pallet::call_index(8)]
         #[pallet::weight(T::WeightInfo::finalize_community_proposal())]
         pub fn finalize_community_proposal(
             origin: OriginFor<T>,

@@ -25,6 +25,7 @@ pub trait WeightInfo {
     fn submit_community_proposal() -> Weight;
     fn vote_community_proposal() -> Weight;
     fn finalize_community_proposal() -> Weight;
+    fn withdraw_community_proposal() -> Weight;
     fn sanction_account() -> Weight;
     fn lift_sanction() -> Weight;
     fn ethics_council_vote() -> Weight;
@@ -101,6 +102,13 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
         Weight::from_parts(90_000_000, 3072)
             .saturating_add(RocksDbWeight::get().reads(4))
             .saturating_add(RocksDbWeight::get().writes(4))
+    }
+
+    /// Storage: Proposals (r:1 w:1)
+    fn withdraw_community_proposal() -> Weight {
+        Weight::from_parts(30_000_000, 1536)
+            .saturating_add(RocksDbWeight::get().reads(2))
+            .saturating_add(RocksDbWeight::get().writes(2))
     }
 
     /// Storage: Sanctions (r:1 w:1)
@@ -182,6 +190,11 @@ impl WeightInfo for () {
         Weight::from_parts(50_000_000, 512)
     }
     fn finalize_community_proposal() -> Weight {
+        Weight::from_parts(90_000_000, 3072)
+            .saturating_add(RocksDbWeight::get().reads(4))
+            .saturating_add(RocksDbWeight::get().writes(4))
+    }
+    fn withdraw_community_proposal() -> Weight {
         Weight::from_parts(90_000_000, 512)
     }
     fn sanction_account() -> Weight {
