@@ -2427,7 +2427,7 @@ fn test_governance_participation_council_activity() {
         let baseline = Community::get_srs(&1).map(|s| s.score).unwrap_or(0);
 
         // Record council activity from governance pallet
-        Community::record_council_activity(&1).ok();
+        Community::record_council_membership(&1).ok();
 
         // Trigger SRS update
         System::set_block_number(101);
@@ -2764,7 +2764,7 @@ fn test_governance_proposal_approval_hook() {
 fn test_governance_council_activity_hook() {
     new_test_ext().execute_with(|| {
         // Record council activity from governance pallet
-        assert_ok!(<Community as GovernanceParticipation<u64>>::record_council_activity(&1));
+        assert_ok!(<Community as GovernanceParticipation<u64>>::record_council_membership(&1));
 
         // Verify participation recorded
         let history = ParticipationHistory::<Test>::get(1);

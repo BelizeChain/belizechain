@@ -25,7 +25,7 @@ serde = { workspace = true, features = ["derive"], optional = true }
 log = { workspace = true }
 
 [dev-dependencies]
-sp-io = { workspace = true, features = ["std"] }
+sp-io = { workspace = true, default-features = false }
 pallet-balances = { workspace = true, features = ["std"] }
 
 [features]

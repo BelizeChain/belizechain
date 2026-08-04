@@ -1,4 +1,5 @@
 [env]
+WASM_BUILD_RUSTFLAGS = "-C link-arg=--allow-undefined"
 CXX = "g++"
 CXXFLAGS = "-std=c++17 -include cstdint"
 LLVM_CONFIG_PATH = "/usr/bin/llvm-config-20"
@@ -9,3 +10,5 @@ TMPDIR = "/tmp"
 # Limit parallel rustc jobs to prevent OOM on 14GB RAM systems
 # Substrate release builds use 1-3GB per rustc instance
 jobs = 3
+[target.wasm32v1-none]
+rustflags = ["-C", "link-arg=--allow-undefined"]

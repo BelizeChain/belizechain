@@ -84,7 +84,7 @@ hex-literal = "1.1"
 substrate-wasm-builder = "33.0.0"
 
 [dev-dependencies]
-sp-io = { workspace = true, features = ["std"] }
+sp-io = { workspace = true, default-features = false }
 
 [features]
 default = ["std"]

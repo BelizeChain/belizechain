@@ -21,7 +21,7 @@ frame-benchmarking = { workspace = true, default-features = false, optional = tr
 [dev-dependencies]
 pallet-balances = { workspace = true, default-features = true }
 pallet-timestamp = { workspace = true, default-features = true }
-sp-io = { workspace = true, default-features = true }
+sp-io = { workspace = true, default-features = false }
 
 [features]
 default = ["std"]

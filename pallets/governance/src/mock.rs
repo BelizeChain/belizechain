@@ -73,7 +73,7 @@ impl pallet_belize_community::GovernanceParticipation<u64> for MockCommunityPart
         Ok(()) // No-op in tests
     }
 
-    fn record_council_activity(_account: &u64) -> Result<(), &'static str> {
+    fn record_council_membership(_account: &u64) -> Result<(), &'static str> {
         Ok(()) // No-op in tests
     }
 }

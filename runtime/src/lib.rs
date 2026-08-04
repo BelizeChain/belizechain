@@ -1673,8 +1673,8 @@ impl pallet_belize_community::GovernanceParticipation<AccountId> for GovernanceC
         Community::record_proposal_approval(account)
     }
 
-    fn record_council_activity(account: &AccountId) -> Result<(), &'static str> {
-        Community::record_council_activity(account)
+    fn record_council_membership(account: &AccountId) -> Result<(), &'static str> {
+        Community::record_council_membership(account)
     }
 }
 

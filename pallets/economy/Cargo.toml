@@ -24,7 +24,7 @@ pallet-belize-compliance = { path = "../compliance", default-features = false }
 [dev-dependencies]
 pallet-balances = { workspace = true, default-features = true }
 pallet-timestamp = { workspace = true, default-features = true }
-sp-io = { workspace = true, default-features = true }
+sp-io = { workspace = true, default-features = false }
 
 [features]
 default = ["std"]
