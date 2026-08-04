@@ -86,7 +86,7 @@
 extern crate alloc;
 use alloc::vec::Vec;
 
-pub use pallet::*;
+pub use crate::pallet::*;
 pub use types::{
     ActivityType, CommunityProposal, CommunityProposalType, CompletionData, EducationModule,
     EndorsementType, EthicsConfig, FeeExemptionData, GreenProject, ParticipationRecord,
@@ -1177,7 +1177,7 @@ pub mod pallet {
         }
 
         /// Withdraw a previously cast vote on a community proposal
-        #[pallet::call_index(7)]
+        #[pallet::call_index(6)]
         #[pallet::weight(T::WeightInfo::withdraw_community_proposal())]
         pub fn withdraw_vote(
             origin: OriginFor<T>,
@@ -1202,8 +1202,8 @@ pub mod pallet {
             Ok(())
         }
 
-        /// Finalize a community proposal (anyone can call after deadline)
-        #[pallet::call_index(8)]
+        /// Finalize a community proposal whose voting period has ended
+        #[pallet::call_index(7)]
         #[pallet::weight(T::WeightInfo::finalize_community_proposal())]
         pub fn finalize_community_proposal(
             origin: OriginFor<T>,
@@ -1320,7 +1320,7 @@ pub mod pallet {
         // ================================
 
         /// Sanction an account (governance/council only)
-        #[pallet::call_index(7)]
+        #[pallet::call_index(8)]
         #[pallet::weight(T::WeightInfo::sanction_account())]
         pub fn sanction_account(
             origin: OriginFor<T>,
@@ -1348,7 +1348,7 @@ pub mod pallet {
         }
 
         /// Lift sanction from an account (governance/council only)
-        #[pallet::call_index(8)]
+        #[pallet::call_index(9)]
         #[pallet::weight(T::WeightInfo::lift_sanction())]
         pub fn lift_sanction(origin: OriginFor<T>, account: T::AccountId) -> DispatchResult {
             T::GovernanceOrigin::ensure_origin(origin)?;
@@ -1360,8 +1360,8 @@ pub mod pallet {
             Ok(())
         }
 
-        /// Ethics council vote on proposal under review
-        #[pallet::call_index(9)]
+        /// Ethics council vote on a proposal (M61 phase 4)
+        #[pallet::call_index(10)]
         #[pallet::weight(T::WeightInfo::ethics_council_vote())]
         pub fn ethics_council_vote(
             origin: OriginFor<T>,
@@ -1412,8 +1412,8 @@ pub mod pallet {
         // Phase 5: Incentive Programs
         // ================================
 
-        /// Complete an education module
-        #[pallet::call_index(10)]
+        /// Complete an education module and earn rewards
+        #[pallet::call_index(11)]
         #[pallet::weight(T::WeightInfo::complete_education_module())]
         pub fn complete_education_module(
             origin: OriginFor<T>,
@@ -1499,8 +1499,8 @@ pub mod pallet {
             Ok(())
         }
 
-        /// Contribute to a green/sustainability project
-        #[pallet::call_index(11)]
+        /// Contribute funds to a green project
+        #[pallet::call_index(12)]
         #[pallet::weight(T::WeightInfo::contribute_to_green_project())]
         pub fn contribute_to_green_project(
             origin: OriginFor<T>,
@@ -1576,7 +1576,7 @@ pub mod pallet {
         }
 
         /// Claim referral reward (one-time per referee)
-        #[pallet::call_index(12)]
+        #[pallet::call_index(13)]
         #[pallet::weight(T::WeightInfo::claim_referral_reward())]
         pub fn claim_referral_reward(
             origin: OriginFor<T>,
@@ -1683,7 +1683,7 @@ pub mod pallet {
         /// # Arguments
         /// * `subject`        - Account that performed the activity.
         /// * `activity_code`  - u8 code: 2 = ProposalApproved, 3 = CouncilMembership.
-        #[pallet::call_index(13)]
+        #[pallet::call_index(14)]
         #[pallet::weight(T::WeightInfo::attest_participation())]
         pub fn attest_participation(
             origin: OriginFor<T>,
@@ -1741,6 +1741,75 @@ pub mod pallet {
     // ================================
 
     impl<T: Config> Pallet<T> {
+        /// Check if account can use fee exemption (within monthly limit)
+        /// Returns true if within limit, false if exceeded
+        pub fn check_fee_exemption_limit(
+            account: &T::AccountId,
+            exemption_amount: BalanceOf<T>,
+        ) -> bool {
+            let current_block = frame_system::Pallet::<T>::block_number();
+            let monthly_limit: BalanceOf<T> = T::FeeExemptionMonthlyLimit::get().into();
+
+            // Get or create fee exemption data
+            let mut fee_data =
+                FeeExemptionUsage::<T>::get(account).unwrap_or_else(|| FeeExemptionData {
+                    used_this_month: 0u32.into(),
+                    last_reset_block: current_block,
+                });
+
+            // Check if month has passed (30 days = ~30 * 24 * 60 * 10 blocks)
+            let blocks_per_month: u32 = 30 * 24 * 60 * 10;
+            let current_u64: u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0);
+            let reset_u64: u64 = TryInto::<u64>::try_into(fee_data.last_reset_block).unwrap_or(0);
+            let blocks_since_reset: u32 = current_u64.saturating_sub(reset_u64) as u32;
+
+            if blocks_since_reset >= blocks_per_month {
+                // Reset monthly usage
+                fee_data.used_this_month = 0u32.into();
+                fee_data.last_reset_block = current_block;
+                FeeExemptionUsage::<T>::insert(account, fee_data.clone());
+
+                Self::deposit_event(Event::FeeExemptionReset {
+                    account: account.clone(),
+                });
+            }
+
+            // Check if adding this exemption would exceed limit
+            match fee_data.used_this_month.checked_add(&exemption_amount) {
+                Some(new_total) => new_total <= monthly_limit,
+                None => false, // Overflow means exceeded limit
+            }
+        }
+
+        /// Apply fee exemption and update usage tracking
+        pub fn apply_fee_exemption(
+            account: &T::AccountId,
+            original_fee: BalanceOf<T>,
+            discounted_fee: BalanceOf<T>,
+        ) -> DispatchResult {
+            let current_block = frame_system::Pallet::<T>::block_number();
+            let exemption_amount = if original_fee > discounted_fee {
+                original_fee - discounted_fee
+            } else {
+                return Ok(()); // No exemption to apply
+            };
+
+            // Get or create fee exemption data
+            let mut fee_data =
+                FeeExemptionUsage::<T>::get(account).unwrap_or_else(|| FeeExemptionData {
+                    used_this_month: 0u32.into(),
+                    last_reset_block: current_block,
+                });
+
+            // Update usage
+            fee_data.used_this_month = fee_data
+                .used_this_month
+                .checked_add(&exemption_amount)
+                .unwrap_or(fee_data.used_this_month);
+            FeeExemptionUsage::<T>::insert(account, fee_data);
+
+            Ok(())
+        }
         /// Get SRS data for an account
         pub fn get_srs(account: &T::AccountId) -> Option<SRSData<BlockNumberFor<T>>> {
             SocialResponsibilityScores::<T>::get(account)
@@ -1951,76 +2020,6 @@ pub mod pallet {
             };
 
             (discounted_fee, discount_percentage)
-        }
-
-        /// Check if account can use fee exemption (within monthly limit)
-        /// Returns true if within limit, false if exceeded
-        pub fn check_fee_exemption_limit(
-            account: &T::AccountId,
-            exemption_amount: BalanceOf<T>,
-        ) -> bool {
-            let current_block = frame_system::Pallet::<T>::block_number();
-            let monthly_limit: BalanceOf<T> = T::FeeExemptionMonthlyLimit::get().into();
-
-            // Get or create fee exemption data
-            let mut fee_data =
-                FeeExemptionUsage::<T>::get(account).unwrap_or_else(|| FeeExemptionData {
-                    used_this_month: 0u32.into(),
-                    last_reset_block: current_block,
-                });
-
-            // Check if month has passed (30 days = ~30 * 24 * 60 * 10 blocks)
-            let blocks_per_month: u32 = 30 * 24 * 60 * 10;
-            let current_u64: u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0);
-            let reset_u64: u64 = TryInto::<u64>::try_into(fee_data.last_reset_block).unwrap_or(0);
-            let blocks_since_reset: u32 = current_u64.saturating_sub(reset_u64) as u32;
-
-            if blocks_since_reset >= blocks_per_month {
-                // Reset monthly usage
-                fee_data.used_this_month = 0u32.into();
-                fee_data.last_reset_block = current_block;
-                FeeExemptionUsage::<T>::insert(account, fee_data.clone());
-
-                Self::deposit_event(Event::FeeExemptionReset {
-                    account: account.clone(),
-                });
-            }
-
-            // Check if adding this exemption would exceed limit
-            match fee_data.used_this_month.checked_add(&exemption_amount) {
-                Some(new_total) => new_total <= monthly_limit,
-                None => false, // Overflow means exceeded limit
-            }
-        }
-
-        /// Apply fee exemption and update usage tracking
-        pub fn apply_fee_exemption(
-            account: &T::AccountId,
-            original_fee: BalanceOf<T>,
-            discounted_fee: BalanceOf<T>,
-        ) -> DispatchResult {
-            let current_block = frame_system::Pallet::<T>::block_number();
-            let exemption_amount = if original_fee > discounted_fee {
-                original_fee - discounted_fee
-            } else {
-                return Ok(()); // No exemption to apply
-            };
-
-            // Get or create fee exemption data
-            let mut fee_data =
-                FeeExemptionUsage::<T>::get(account).unwrap_or_else(|| FeeExemptionData {
-                    used_this_month: 0u32.into(),
-                    last_reset_block: current_block,
-                });
-
-            // Update usage
-            fee_data.used_this_month = fee_data
-                .used_this_month
-                .checked_add(&exemption_amount)
-                .unwrap_or(fee_data.used_this_month);
-            FeeExemptionUsage::<T>::insert(account, fee_data);
-
-            Ok(())
         }
 
         // ================================
@@ -2272,8 +2271,8 @@ pub trait CommunityRank<AccountId> {
     fn get_srs_tier(account: &AccountId) -> SRSTier;
 }
 
-impl<T: pallet::Config> CommunityRank<T::AccountId> for pallet::Pallet<T> {
-    fn get_community_rank(account: &T::AccountId) -> u32 {
+impl<T: pallet::Config> CommunityRank<<T as frame_system::Config>::AccountId> for pallet::Pallet<T> {
+    fn get_community_rank(account: &<T as frame_system::Config>::AccountId) -> u32 {
         let srs = Self::get_srs(account);
         match srs {
             // M61 FIX: Diminishing returns — cap multiplier at 4x (was 10x Bronze→Diamond)
@@ -2290,7 +2289,7 @@ impl<T: pallet::Config> CommunityRank<T::AccountId> for pallet::Pallet<T> {
         }
     }
 
-    fn get_srs_tier(account: &T::AccountId) -> SRSTier {
+    fn get_srs_tier(account: &<T as frame_system::Config>::AccountId) -> SRSTier {
         Self::get_srs(account)
             .map(|data| data.tier)
             .unwrap_or(SRSTier::Bronze)
@@ -2311,9 +2310,9 @@ pub trait FeeCalculator<AccountId, Balance> {
     ) -> Result<(), &'static str>;
 }
 
-impl<T: Config> FeeCalculator<T::AccountId, BalanceOf<T>> for Pallet<T> {
+impl<T: Config> FeeCalculator<<T as frame_system::Config>::AccountId, BalanceOf<T>> for pallet::Pallet<T> {
     fn calculate_effective_fee(
-        account: &T::AccountId,
+        account: &<T as frame_system::Config>::AccountId,
         original_fee: BalanceOf<T>,
     ) -> (BalanceOf<T>, u32, bool) {
         let (discounted_fee, discount_percentage) =
@@ -2341,7 +2340,7 @@ impl<T: Config> FeeCalculator<T::AccountId, BalanceOf<T>> for Pallet<T> {
     }
 
     fn apply_fee_discount(
-        account: &T::AccountId,
+        account: &<T as frame_system::Config>::AccountId,
         original_fee: BalanceOf<T>,
         discounted_fee: BalanceOf<T>,
     ) -> Result<(), &'static str> {
@@ -2371,9 +2370,9 @@ pub trait PoUWContributor<AccountId> {
     fn get_pouw_score(account: &AccountId) -> u32;
 }
 
-impl<T: Config> PoUWContributor<T::AccountId> for Pallet<T> {
+impl<T: pallet::Config> PoUWContributor<<T as frame_system::Config>::AccountId> for pallet::Pallet<T> {
     fn record_pouw_contribution(
-        account: &T::AccountId,
+        account: &<T as frame_system::Config>::AccountId,
         quality_score: u32,
         timeliness_score: u32,
         honesty_score: u32,
@@ -2405,7 +2404,7 @@ impl<T: Config> PoUWContributor<T::AccountId> for Pallet<T> {
         Ok(())
     }
 
-    fn get_pouw_score(account: &T::AccountId) -> u32 {
+    fn get_pouw_score(account: &<T as frame_system::Config>::AccountId) -> u32 {
         // Extract PoUW-specific participation records
         let history = ParticipationHistory::<T>::get(account);
         let pouw_records: Vec<_> = history
@@ -2436,11 +2435,11 @@ pub trait GovernanceParticipation<AccountId> {
     fn record_proposal_approval(account: &AccountId) -> Result<(), &'static str>;
 
     /// Record council membership activity
-    fn record_council_activity(account: &AccountId) -> Result<(), &'static str>;
+    fn record_council_membership(account: &AccountId) -> Result<(), &'static str>;
 }
 
-impl<T: Config> GovernanceParticipation<T::AccountId> for Pallet<T> {
-    fn record_proposal_submission(account: &T::AccountId) -> Result<(), &'static str> {
+impl<T: pallet::Config> GovernanceParticipation<<T as frame_system::Config>::AccountId> for pallet::Pallet<T> {
+    fn record_proposal_submission(account: &<T as frame_system::Config>::AccountId) -> Result<(), &'static str> {
         let current_block = frame_system::Pallet::<T>::block_number();
 
         let record = ParticipationRecord {
@@ -2464,7 +2463,7 @@ impl<T: Config> GovernanceParticipation<T::AccountId> for Pallet<T> {
         Ok(())
     }
 
-    fn record_vote_cast(account: &T::AccountId) -> Result<(), &'static str> {
+    fn record_vote_cast(account: &<T as frame_system::Config>::AccountId) -> Result<(), &'static str> {
         let current_block = frame_system::Pallet::<T>::block_number();
 
         let record = ParticipationRecord {
@@ -2483,7 +2482,7 @@ impl<T: Config> GovernanceParticipation<T::AccountId> for Pallet<T> {
         Ok(())
     }
 
-    fn record_proposal_approval(account: &T::AccountId) -> Result<(), &'static str> {
+    fn record_proposal_approval(account: &<T as frame_system::Config>::AccountId) -> Result<(), &'static str> {
         let current_block = frame_system::Pallet::<T>::block_number();
 
         let record = ParticipationRecord {
@@ -2507,7 +2506,7 @@ impl<T: Config> GovernanceParticipation<T::AccountId> for Pallet<T> {
         Ok(())
     }
 
-    fn record_council_activity(account: &T::AccountId) -> Result<(), &'static str> {
+    fn record_council_membership(account: &<T as frame_system::Config>::AccountId) -> Result<(), &'static str> {
         let current_block = frame_system::Pallet::<T>::block_number();
 
         let record = ParticipationRecord {
