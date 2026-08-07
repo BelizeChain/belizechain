@@ -43,7 +43,7 @@ jobs:
           echo "LIBCLANG_PATH=$(${LLVM_CONFIG_BIN} --libdir)" >> "$GITHUB_ENV"
 
       - name: Cache cargo registry and build output
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -82,7 +82,7 @@ jobs:
           echo "LIBCLANG_PATH=$(${LLVM_CONFIG_BIN} --libdir)" >> "$GITHUB_ENV"
 
       - name: Cache cargo registry and build output
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -164,7 +164,7 @@ jobs:
           echo "LIBCLANG_PATH=$(${LLVM_CONFIG_BIN} --libdir)" >> "$GITHUB_ENV"
 
       - name: Cache cargo registry and build output
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -210,7 +210,7 @@ jobs:
           echo "LIBCLANG_PATH=$(${LLVM_CONFIG_BIN} --libdir)" >> "$GITHUB_ENV"
 
       - name: Cache cargo registry and build output
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
