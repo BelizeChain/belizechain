@@ -180,7 +180,7 @@ jobs:
         run: cargo tarpaulin
 
       - name: Upload coverage report
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           files: target/coverage/lcov.info
           fail_ci_if_error: false
