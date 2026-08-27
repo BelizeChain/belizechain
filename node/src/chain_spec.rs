@@ -310,50 +310,52 @@ fn testnet_genesis(
 /// the production chain spec.  The `MAINNET_KEYS_CONFIGURED` compile-time guard
 /// prevents accidental deployment with placeholder keys.
 fn mainnet_genesis() -> Result<serde_json::Value, String> {
-    // ── COMPILE-TIME SAFETY GUARD ──────────────────────────────────────────
-    // Flip this to `true` ONLY after replacing the placeholder keys below
-    // with real, securely-generated validator keys.
-    const MAINNET_KEYS_CONFIGURED: bool = false;
-    if !MAINNET_KEYS_CONFIGURED {
-        return Err("SECURITY: Mainnet genesis still uses placeholder keys. \
-             Generate real validator keys with `subkey generate`, replace \
-             the entries below, and set MAINNET_KEYS_CONFIGURED = true."
-            .into());
-    }
+    use sp_core::crypto::Ss58Codec;
 
-    // Production validator keys — replace with output of `subkey generate`
-    // before setting MAINNET_KEYS_CONFIGURED = true.
-    //
-    // Example (DO NOT USE — generate your own):
-    //   let babe_key = BabeId::from_slice(&hex!("...")).unwrap();
-    //   let gran_key = GrandpaId::from_slice(&hex!("...")).unwrap();
-    //
-    // PLACEHOLDER keys (will be rejected at runtime by the guard above):
+    const MAINNET_KEYS_CONFIGURED: bool = true;
+
+    // Production validator session keys
     let initial_authorities: Vec<(AccountId, BabeId, GrandpaId)> = vec![
-        authority_keys_from_seed("ValidatorOne"),
-        authority_keys_from_seed("ValidatorTwo"),
-        authority_keys_from_seed("ValidatorThree"),
+        (
+            AccountId::from_ss58check("5EcjZEJhfQxEsrUWEMpSH6D6vbq1eWsLsYbR7DUDM82bFAuJ").map_err(|e| format!("{:?}", e))?,
+            BabeId::from_ss58check("5EcjZEJhfQxEsrUWEMpSH6D6vbq1eWsLsYbR7DUDM82bFAuJ").map_err(|e| format!("{:?}", e))?,
+            GrandpaId::from_ss58check("5E2qCsxXwbyywDnmyiQ7ST37bWy4eKZC7F3NDcaPZKz4CikY").map_err(|e| format!("{:?}", e))?,
+        ),
+        (
+            AccountId::from_ss58check("5HTZ2TeVvkuPCgHSQUUiDo78mXdD6PZ58asi2YcziGDUWhV2").map_err(|e| format!("{:?}", e))?,
+            BabeId::from_ss58check("5HTZ2TeVvkuPCgHSQUUiDo78mXdD6PZ58asi2YcziGDUWhV2").map_err(|e| format!("{:?}", e))?,
+            GrandpaId::from_ss58check("5HERG37DJjXa7ouXHVXv5SdPBkhqdzXkQ6sCgbFoh1k1CbKm").map_err(|e| format!("{:?}", e))?,
+        ),
+        (
+            AccountId::from_ss58check("5HN2uP8iB9a2C28qjz5LhGfNGAFR9JjWnAL7pbfAtnd2oUHC").map_err(|e| format!("{:?}", e))?,
+            BabeId::from_ss58check("5HN2uP8iB9a2C28qjz5LhGfNGAFR9JjWnAL7pbfAtnd2oUHC").map_err(|e| format!("{:?}", e))?,
+            GrandpaId::from_ss58check("5GqGQWkFvv5f4sLh1TMFpzuXJbcxg1MiP8FQsuLtxFP9N8Yy").map_err(|e| format!("{:?}", e))?,
+        ),
+        (
+            AccountId::from_ss58check("5FgydnGuSshDLWhcaZyG5ZjV1BCs8rhRCc9JDozySKB8g8AE").map_err(|e| format!("{:?}", e))?,
+            BabeId::from_ss58check("5FgydnGuSshDLWhcaZyG5ZjV1BCs8rhRCc9JDozySKB8g8AE").map_err(|e| format!("{:?}", e))?,
+            GrandpaId::from_ss58check("5HMqcChxxfgjCTLJjSEt3diV47Fhk9Jiy5BSiWAk17JMQriK").map_err(|e| format!("{:?}", e))?,
+        ),
     ];
 
-    // Government of Belize treasury account (multi-signature 4-of-7)
-    // PLACEHOLDER — replace with a real multi-sig account before mainnet.
-    let root_key = get_account_id_from_seed::<sr25519::Public>("TreasuryAccount");
+    // Sovereign Founder Root / Sudo Controller (Wicked)
+    let root_key = AccountId::from_ss58check("5Cg3Ez7Upm8caDfjonnMKPZ14B3H5daWM75DkYj7yEt4XSKt").map_err(|e| format!("{:?}", e))?;
+    // Government of Belize Treasury Sovereign Reserve
+    let treasury_key = AccountId::from_ss58check("5CJX6HRtMn2bvJM1vncjmyUfRbTVQRUWFxwJH6T6SCqoHjf3").map_err(|e| format!("{:?}", e))?;
 
-    // Initial token distribution per Step 9 Token Economics (100M DALLA genesis)
-    let endowed_accounts: Vec<AccountId> = vec![
-        root_key.clone(),
-        // Additional accounts configured during deployment
+    // Initial 100M DALLA Token Distribution (12 decimals)
+    let endowed_balances: Vec<(AccountId, u128)> = vec![
+        (treasury_key.clone(), 60_000_000u128 * 1_000_000_000_000u128),
+        (root_key.clone(), 20_000_000u128 * 1_000_000_000_000u128),
+        (initial_authorities[0].0.clone(), 2_500_000u128 * 1_000_000_000_000u128),
+        (initial_authorities[1].0.clone(), 2_500_000u128 * 1_000_000_000_000u128),
+        (initial_authorities[2].0.clone(), 2_500_000u128 * 1_000_000_000_000u128),
+        (initial_authorities[3].0.clone(), 2_500_000u128 * 1_000_000_000_000u128),
     ];
-
-    let endowment: u128 = 100_000_000 * 1_000_000_000_000; // 100M DALLA for treasury
 
     Ok(serde_json::json!({
         "balances": {
-            "balances": endowed_accounts
-                .iter()
-                .cloned()
-                .map(|k| (k, endowment))
-                .collect::<Vec<_>>(),
+            "balances": endowed_balances,
         },
         "session": {
             "keys": initial_authorities.iter().map(|(account, babe, grandpa)| {
@@ -371,7 +373,9 @@ fn mainnet_genesis() -> Result<serde_json::Value, String> {
             "epochConfig": Some(BABE_GENESIS_EPOCH_CONFIG),
         },
         "grandpa": {},
-        // NOTE: Sudo pallet excluded — gated behind #[cfg(feature = "dev")] in runtime.
+        "sudo": {
+            "key": Some(root_key.clone()),
+        },
 
         // BelizeChain custom pallet configurations
         // Note: Economy pallet doesn't have genesis config yet
@@ -564,17 +568,23 @@ mod tests {
 
     // ── mainnet_genesis safety guard ───────────────────────────────────────
 
+    // ── mainnet_genesis configuration test ────────────────────────────────
     #[test]
-    fn test_mainnet_genesis_blocked_when_keys_not_configured() {
+    fn test_mainnet_genesis_succeeds_when_keys_configured() {
         let result = mainnet_genesis();
         assert!(
-            result.is_err(),
-            "mainnet_genesis must return Err when MAINNET_KEYS_CONFIGURED = false"
+            result.is_ok(),
+            "mainnet_genesis must succeed with configured production keys"
         );
-        let msg = result.unwrap_err();
+        let genesis = result.unwrap();
         assert!(
-            msg.contains("SECURITY"),
-            "Error must contain 'SECURITY' keyword; got: {msg}"
+            genesis.get("sudo").is_some(),
+            "mainnet genesis must contain sudo configuration"
+        );
+        assert_eq!(
+            genesis["session"]["keys"].as_array().map(|a| a.len()),
+            Some(4),
+            "mainnet genesis must configure 4 validator session keys"
         );
     }
 
@@ -805,13 +815,11 @@ mod tests {
     }
 
     #[test]
-    fn test_belizechain_mainnet_config_fails_until_keys_configured() {
-        // Even when WASM is available, mainnet_genesis() gate blocks the build
-        // when MAINNET_KEYS_CONFIGURED = false, so this always returns Err.
+    fn test_belizechain_mainnet_config_succeeds() {
         let result = belizechain_mainnet_config();
         assert!(
-            result.is_err(),
-            "mainnet config must fail until real validator keys are configured"
+            result.is_ok(),
+            "mainnet config must succeed when production keys are configured"
         );
     }
 

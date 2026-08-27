@@ -319,24 +319,22 @@ mod tests {
     }
 
     #[test]
-    fn test_load_spec_empty_string_fails_mainnet_keys_not_configured() {
-        // "" arm calls belizechain_mainnet_config() which calls mainnet_genesis()
-        // mainnet_genesis() returns Err when MAINNET_KEYS_CONFIGURED = false.
+    fn test_load_spec_empty_string_succeeds() {
         let cli = default_cli();
         let result = cli.load_spec("");
         assert!(
-            result.is_err(),
-            "load_spec(\"\") must fail until mainnet keys are set"
+            result.is_ok(),
+            "load_spec(\"\") must succeed when mainnet keys are configured"
         );
     }
 
     #[test]
-    fn test_load_spec_belize_fails_mainnet_keys_not_configured() {
+    fn test_load_spec_belize_succeeds() {
         let cli = default_cli();
         let result = cli.load_spec("belize");
         assert!(
-            result.is_err(),
-            "load_spec(\"belize\") must fail until mainnet keys are set"
+            result.is_ok(),
+            "load_spec(\"belize\") must succeed when mainnet keys are configured"
         );
     }
 
