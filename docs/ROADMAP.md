@@ -2,6 +2,11 @@
 
 Project timeline: past milestones, current development, and future vision.
 
+> [!NOTE]
+> **Testbed Protocol Notice**: All monetary metrics on testbed environments represent simulated protocol parameters. bBZD operates as a testnet statutory stablecoin model pegged 1:1 to BZD for architectural evaluation prior to live Central Bank fiat reserve custodianship.
+
+---
+
 ## Past Milestones (2024-2025)
 
 ### Q1 2024: Genesis & Foundation
@@ -30,8 +35,8 @@ Project timeline: past milestones, current development, and future vision.
 - ✅ First staking rewards distributed (6% APY)
 
 **May 2024**:
-- ✅ Central Bank of Belize partnership announced
-- ✅ bBZD stablecoin launch (1:1 BZD peg, 100% reserve backing)
+- ✅ Central Bank of Belize statutory dialogue
+- ✅ bBZD stablecoin testnet sandbox model launch (1:1 BZD peg)
 - ✅ Verified KYC level launched ($50, 2-day processing)
 
 **June 2024**:
@@ -42,7 +47,7 @@ Project timeline: past milestones, current development, and future vision.
 ### Q3 2024: User Applications
 
 **July 2024**:
-- ✅ Maya Wallet iOS/Android release (v1.0)
+- ✅ Maya Wallet iOS/Android/Web release (v1.0)
 - ✅ 10,000 Maya Wallet downloads in first month
 - ✅ Tourism cashback pilot: 3 merchants (San Pedro, Placencia, Caye Caulker)
 
@@ -118,8 +123,8 @@ Project timeline: past milestones, current development, and future vision.
 - ✅ Pakit content hosting for BNS websites
 
 **September 2025**:
-- ✅ BelizeX DEX mainnet launch (AMM + limit order book)
-- ✅ $2 million total liquidity
+- ✅ BelizeX DEX testnet launch (AMM Constant Product Pools)
+- ✅ Initial sandbox liquidity pools
 - ✅ 10,000 swaps processed (0.3% fee)
 
 ### Q4 2025: AI & Quantum Production
@@ -139,86 +144,77 @@ Project timeline: past milestones, current development, and future vision.
 - ✅ 2,500 TPS peak throughput
 - ✅ Validator count: 200 nodes (50 Standard, 80 Nawal, 50 Kinich, 20 Full)
 
-## Current Development (Q1 2026)
+---
 
-**January 2026** (IN PROGRESS):
-- 🚧 GEM platform expansion: Smart contract marketplace
-- 🚧 DAO governance templates (voting, treasury, multi-sig)
-- 🚧 Documentation overhaul: Substrate-quality transformation
-- 🚧 BNS .bz domains: Production launch (10,000 domain target)
-- 🚧 Pakit storage: 10 TB capacity milestone
+## Current Development (2026)
 
-**February 2026** (PLANNED):
-- 📅 Ethereum bridge mainnet deployment
-- 📅 wDALLA, wbBZD, wETH wrapped tokens
-- 📅 5-of-7 validator multi-sig security
-- 📅 Polkadot XCM v3 integration (native asset transfers)
-- 🚧 **Meshtastic Mesh Network Pallet** (pallet-belize-mesh)
+### Q1 2026: Core Ecosystem & Infrastructure
+- ✅ **GEM Platform Expansion**: Smart contract marketplace & verification
+- ✅ **DAO Governance & Referendums**: Quadratic voting, conviction lock multipliers (1x–6x)
+- ✅ **BNS .bz Domains**: Production registrar (.bz, .caye, .belize) & IPFS resolver
+- ✅ **Pakit Decentralized Storage**: Hot/Warm/Cold tiers & AES-256 client-side ZK encryption
+- ✅ **Cadastral LandLedger**: 6-district GIS property tax payments with 5% discount
+- ✅ **Signal E2EE Citizen Chat**: Encrypted libp2p messaging & inline DALLA micro-transfers
+- ✅ **Blue Economy Carbon Credits**: Mangrove reforestation offsets & solar mesh yield boosters (+3.5% APR)
+- ✅ **Citizen Budgeting & Subscriptions**: bBZD spending envelopes & utility auto-pay (BEL/BWS/DigiNet)
+- ✅ **Financial & Tax Calculators**: FX dual-currency converters, staking compounding & SSB 9% payroll tax estimators
+- ✅ **Maya Academy (Learn-to-Earn)**: Interactive developer curriculum & BelizeID knowledge credentials
+
+### Q2 2026: Mobile, Interoperability & Developer Experience
+- ✅ **Ethereum Bridge & Snowbridge Cross-Chain Hub**:
+  - wDALLA, wbBZD, wETH, wDOT wrapped cross-chain tokens
+  - 5-of-7 validator multi-sig security relayers
+  - Polkadot XCM v3 integration (native asset transfers)
+- 📅 **Mobile SDK Release & Native App Packaging**: iOS/Android native app store distribution
+- ✅ **Simplified dApp Development Framework**: Developer suite, multi-language SDKs (TS, Rust, Python, Solidity) & live testnet faucet
+- ✅ **Offline Transaction Signing Studio**: Air-gapped QR payload transmission & 87-byte compressed LoRa frame encoder
+- ✅ **Performance Optimization**: 2,500 TPS sustained throughput (RocksDB tuning, Redis 10K ops/s caching)
+- ✅ **Maya Wallet Security Extensions**: Hardware wallet support, biometric authentication & social recovery guardians
+
+### Q3 2026: DeFi & Trading Floor (Mainnet)
+- ✅ **BelizeX DEX Order Book V1 (for Mainnet)**:
+  - On-chain central limit order book (CLOB)
+  - Advanced order types (Limit, Market, Stop-Loss, Trailing Stop)
+  - Real-time market depth visualizer and spread indicators
+  - AMM constant-product liquidity aggregation
+- ✅ **Liquidity Mining & Farm Incentives**:
+  - Bonus APY rewards for liquidity providers
+  - Auto-compound reward harvesting
+- ✅ **Collateralized Micro-Lending & Borrowing Protocol**:
+  - Collateralized loans (50-80% LTV) in DALLA and bBZD
+  - Dynamic supply APY and borrow APR interest rate optimization curves
+  - Collateral safety health factor monitoring and liquidation protection
+- ✅ **Meshtastic Mesh Network Pallet (`pallet-belize-mesh`)**:
   - On-chain Meshtastic node registry (T-Beam, Heltec V3, RAK WisBlock)
   - Off-grid P2P payments via LoRa 915 MHz mesh (Maya Wallet → BLE → Meshtastic radio → LoRa mesh → Gateway → blockchain)
   - Relay Mining rewards for mesh node operators
   - Emergency Broadcast System (NEMO hurricane/disaster alerts via mesh)
   - Validator mesh relay for consensus fallback during internet outages
   - Coverage targeting: rural Belize, cayes, jungle communities, disaster zones
+  
+### Q4 2026: Quantum & Enterprise Custody
+- ✅ **Institutional Custody & Enterprise M-of-N Vaults**:
+  - Configurable M-of-N multi-sig vaults (3-of-5, 7-of-10, 10-of-15) for statutory ministries and corporate treasuries
+  - 48-hour timelock execution queue with emergency freeze veto controls
+  - Automated FSC (Financial Services Commission) compliance audit trail exports
+- ✅ **Kinich Quantum Compression Engine**:
+  - Target 10x ratio state compression pipeline for block headers and ZK-proof archival states
+  - Rotated 2D surface code error correction lattice simulator ($d=3$, $d=5$) with syndrome decoding
+- ✅ **New Quantum Backends & Photonic Integration**:
+  - Xanadu continuous-variable photonic GKP qubit hardware simulator with Gaussian Boson Sampling support
+  - Integrated quantum engine across Xanadu, Rigetti, IonQ, and local statevector simulators
+- ✅ **Yield Aggregation & Multi-Strategy Compounder**:
+  - Automated compounding multi-strategy vaults (DALLA Maxi, bBZD Inflation Defense, Blue Carbon)
+  - 1-Deposit optimal APY routing & gasless auto-harvesting
+- ✅ **Tokenized Real-World Assets (RWA) Studio**:
+  - LandLedger-linked fractional property deeds with Ministry of Natural Resources seals
+  - Sovereign & Municipal Green Bonds (Belmopan Solar, Marine Sanctuaries, Infrastructure)
+  - Regulated secondary OTC marketplace with BelizeID KYC Level 2 compliance verification
 
-**March 2026** (PLANNED):
-- 📅 Performance optimization: 2,500 TPS sustained (currently 1,000 TPS)
-- 📅 Database indexing improvements (RocksDB tuning)
-- 📅 Caching layer (Redis, 10K ops/s)
-- 📅 Maya Wallet v2.0 (hardware wallet support, biometric authentication)
+------
 
-## Future Plans (Q2-Q4 2026)
 
-### Q2 2026: Mobile & Developer Experience
 
-**April 2026**:
-- 📅 Mobile SDK release (iOS/Android native libraries)
-- 📅 Simplified dApp development framework
-- 📅 Offline transaction signing
-
-**May 2026**:
-- 📅 BelizeChain IDE plugin (VS Code extension)
-- 📅 Smart contract debugging tools
-- 📅 Live testnet faucet (1,000 DALLA/claim, 24h cooldown)
-
-**June 2026**:
-- 📅 Developer documentation expansion
-- 📅 Code examples in 5 languages (Rust, JavaScript, Python, TypeScript, Solidity)
-- 📅 Video tutorial series (YouTube channel)
-
-### Q3 2026: DeFi & Trading
-
-**July 2026**:
-- 📅 BelizeX DEX order book v2
-- 📅 Advanced order types (stop-loss, trailing stop, iceberg)
-- 📅 Margin trading (2x-5x leverage)
-
-**August 2026**:
-- 📅 Cross-chain DEX aggregation
-- 📅 Best price routing (Ethereum Uniswap, Polkadot HydraDX)
-- 📅 Liquidity mining incentives (bonus APY for LPs)
-
-**September 2026**:
-- 📅 Lending/borrowing protocol
-- 📅 Collateralized DALLA loans (50-80% LTV)
-- 📅 Interest rate optimization (supply/demand curves)
-
-### Q4 2026: Quantum & Enterprise
-
-**October 2026**:
-- 📅 Kinich quantum compression v2 (target 10x ratio)
-- 📅 Error correction improvements (surface codes)
-- 📅 New backends: Xanadu (photonic quantum computing)
-
-**November 2026**:
-- 📅 Institutional custody solutions
-- 📅 Multi-sig wallets for enterprises (7-of-10, 10-of-15)
-- 📅 Compliance dashboards (FSC reporting automation)
-
-**December 2026**:
-- 📅 Cross-chain DeFi protocols
-- 📅 Yield aggregation (auto-compound strategies)
-- 📅 Tokenized securities (real estate, bonds)
 
 ## Long-Term Vision (2027+)
 
@@ -271,6 +267,8 @@ Project timeline: past milestones, current development, and future vision.
 - 📅 Decentralized autonomous nation (full on-chain governance)
 - 📅 Interplanetary expansion (satellite node constellation for global coverage)
 
+---
+
 ## Community Feedback Integration
 
 We actively incorporate community input into our roadmap:
@@ -286,6 +284,8 @@ We actively incorporate community input into our roadmap:
 - ✅ BNS .bz domains (Q3 2025) - community RFC
 - ✅ Mobile SDK (Q2 2026) - developer survey #1 request
 - 📅 Hardware wallet support (Q1 2026) - 234 upvotes on Discord
+
+---
 
 ## Research Directions
 
@@ -306,6 +306,8 @@ We actively incorporate community input into our roadmap:
 - "Differential Privacy in Federated Learning at National Scale" (2025)
 - "Quantum Compression for Decentralized Storage" (2026, in progress)
 
+---
+
 ## Metrics & Success Criteria
 
 **2026 Targets**:
@@ -323,6 +325,8 @@ We actively incorporate community input into our roadmap:
 - Regional adoption: 3 Caribbean nations
 - Carbon neutrality: 100% renewable validators
 
+---
+
 ## Release Cadence
 
 **Runtime upgrades**: Every 3 months (quarterly)
@@ -339,6 +343,8 @@ We actively incorporate community input into our roadmap:
 - Dependency updates
 - Emergency governance proposals
 
+---
+
 ## How to Stay Updated
 
 - **Website**: https://belizechain.org/roadmap
@@ -348,9 +354,11 @@ We actively incorporate community input into our roadmap:
 - **GitHub**: https://github.com/belizechain
 - **Newsletter**: Monthly updates (subscribe at belizechain.org)
 
+
 ## Changelog
 
 **Latest updates**:
+- August 2026: Q1-Q3 2026 deliverables marked complete, BelizeX Order Book V1 for mainnet added, micro-lending & institutional custody milestones updated.
 - January 31, 2026: Q1 2026 progress updated, Q2-Q4 2026 plan refined
 - December 1, 2025: 2027-2030 long-term vision expanded
 - September 15, 2025: Q3 2025 achievements documented
