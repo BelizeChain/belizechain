@@ -254,3 +254,64 @@ docker compose restart nginx
 
 - This runbook is the source of truth for current node operations.
 - Kubernetes and Azure deployment docs are legacy references unless explicitly reactivated.
+
+## Ops Log — 2026-08-30: Two-Validator Reset And Edge Validator
+
+### What changed
+- Testnet genesis reset from dev-Alice to a two-validator authority set:
+  - Validator 1 (Ceiba): BABE sr25519 `5Cg3Ez7Upm8caDfjonnMKPZ14B3H5daWM75DkYj7yEt4XSKt`, GRANDPA ed25519 `5EFaZhoAe2v2PJjYRf99VGZz8WQ3pfzyaXR8BugYaqJC9Sr1` (derived from the SUDO wallet seed).
+  - Validator 2 (Oracle edge `belizechain-edge-proxy`): BABE `5HKq5zdfbmtaUo54BXnTTHEuUP1TwgL6c4Lofk1byG5FQTiB`, GRANDPA `5GAWdnhwJKSrEBkV3brd3rRSH7PPsiEKhS9kaYKcYvqrD9yc` (fresh `key generate` output; suris live on the edge host under `~/validator-keys`, 0600).
+- New spec generated with `build-spec --chain testnet-template` on image
+  `6c447f1-epochfix-spec105-20260502`; both validators written into
+  `session.keys`; `bootNodes = []`. Pre-reset copies: `backups/testnet-spec.pre-reset-20260830-reset.json`,
+  old chain data at `/data/chain/chains/belizechain_testnet.pre-reset-20260830`.
+
+### Pitfalls hit (and rules of thumb)
+- `--force-authoring` is REQUIRED for Ceiba's single-node-before-peers state:
+  without it an AUTHORITY node with 0 peers sits at `best: #0` forever with no
+  error. Added `${VALIDATOR:+--force-authoring}` next to `--validator` in
+  `docker-compose.ceiba.yml`; backup at
+  `backups/docker-compose.ceiba.yml.pre-force-authoring-20260830`.
+- After any manual `mv`/`cp` of chain dirs, chown the active chain dir
+  (`belizechain_testnet`) to uid 1000 (`belizechain` in-container) or the node
+  crash-loops with RocksDB `PermissionDenied`.
+- Keystore files must exist in the ACTIVE chain dir before node start; keystore
+  is only read at startup, restart after inserting keys.
+- Port 443 conflict: a stale Tailscale funnel listener (`tailscaled`) held
+  0.0.0.0:443. `tailscale funnel off` errors are misleading when the serve
+  config blob is empty; `sudo systemctl restart tailscaled` clears the stale
+  listener.
+- `/opt/belizechain/nginx/nginx.conf` had drifted to hardcoded
+  `127.0.0.1`/`172.20.0.x` upstreams causing proxied 502s. Restored the repo
+  version (Docker DNS names); stale copy kept at
+  `backups/nginx.conf.stale-ips-20260830`. Rule: deploy nginx.conf from the
+  infra repo, never hand-edit on the host.
+
+### Nawal unhealthy fix (2026-08-30)
+- Symptom: every request crashed with
+  `SystemError: anyio/_backends/_asyncio.py:763: unknown opcode 235` (corrupt
+  bytecode), then `ModuleNotFoundError: sniffio` after pip reinstalls.
+- Fix: built image `belizechain/nawal:46c5221-fixed-anyio-20260830v2` from the
+  snapshotted container (`snap-before-fix`) with `sniffio==1.3.1` installed
+  into `/app/.local/lib/python3.12/site-packages`. `.env` now pins
+  `NAWAL_IMAGE` to that tag. NOTE: the committed image config lost the original
+  `ENTRYPOINT/CMD`; until a clean rebuild from `nawal-ai` source, the container
+  runs with `--entrypoint python api_server.py` (docker run). Next
+  `nawal-ai` image build should replace this stopgap and re-enable normal
+  compose management.
+
+### Validator 2 on Oracle edge (in progress)
+- Host `belizechain-edge-proxy` (129.213.95.153 / 100.80.208.21, aarch64):
+  8G swapfile added; rustup + clang-18/llvm-18-dev installed; repo cloned to
+  `~/belizechain` at pinned commit `6c447f1dfc1307d18a5be4a246776388c430a63f`
+  (same as running `6c447f1` image); `.cargo/config.toml` patched to
+  llvm-18; release build running (`~/build3.log`, `LIBCLANG_PATH=/usr/lib/llvm-18/lib`).
+- Compose staged at `~/validator/docker-compose.yml` (image tag
+  `belizechain/ceiba-node:6c447f1-arm64` once build completes; 30333 public,
+  9944/9615 bound to `100.80.208.21`; bootnode points at Ceiba peer ID
+  `12D3KooWMWYcGsBhe1NGX3mf4fMkoipi9U59KxEbJp3CmDqe7cP1` — preserved across
+  the reset via `--node-key`).
+- Key files were relayed Ceiba → workstation → edge; direct Ceiba→edge
+  Tailscale SSH hangs on check-mode auth; use the workstation relay.
+- OCI security list must allow TCP 30333 from the internet (or at minimum from
+  Ceiba) before the edge validator can peer.
