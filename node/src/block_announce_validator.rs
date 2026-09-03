@@ -38,12 +38,17 @@ pub struct BelizeBlockAnnounceValidator<B: BlockT> {
 
 impl<B: BlockT> BelizeBlockAnnounceValidator<B> {
     pub fn new() -> Self {
+        Self::new_with_best(0)
+    }
+
+    pub fn new_with_best(initial_best: u32) -> Self {
         log::info!(
             target: "belizechain::block_announce",
-            "Initialized BelizeBlockAnnounceValidator (content-based validation)",
+            "Initialized BelizeBlockAnnounceValidator with initial best #{} (content-based validation)",
+            initial_best,
         );
         Self {
-            best_number: std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            best_number: std::sync::Arc::new(std::sync::atomic::AtomicU32::new(initial_best)),
             _phantom: PhantomData,
         }
     }
