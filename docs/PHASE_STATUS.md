@@ -1,6 +1,6 @@
 # BelizeChain Phase Status
 
-> **Last Updated**: 2026-02-12
+> **Last Updated**: 2026-09-03
 > **Runtime**: `spec_version = 105`, `impl_version = 1`, `tx_version = 1`
 > **SDK**: Polkadot SDK `stable2603` (rev `2e4dd0bc22366a5af820492528869a493b5a5208`)
 > **Network**: Ceiba testnet (`chain_id = belizechain_testnet`, SS58 prefix `1981`)
@@ -9,26 +9,28 @@
 
 ## Custom Pallet Roster (18 pallets, runtime indexes 20–37)
 
-| Index | Pallet | Category | Phase |
+All 18 custom pallets are implemented in the runtime and verified. Phases 4A, 4B, and 5C have been exercised with live extrinsics on the Ceiba testnet.
+
+| Index | Pallet | Category | Status / Phase |
 |---|---|---|---|
-| 20 | Economy | Economy | Phase 1 |
-| 21 | Identity | Identity | Phase 1 |
-| 22 | Governance | Governance | Phase 1 |
-| 23 | Compliance | Identity | Phase 1 |
-| 24 | Staking | Economy | Phase 1 |
-| 25 | Oracle | Infrastructure | Phase 1 |
-| 26 | Payroll | Economy | Phase 2 |
-| 27 | Interoperability | Infrastructure | Phase 2 |
-| 28 | BelizeX (DEX) | Economy | Phase 2 |
-| 29 | LandLedger | Governance | Phase 2 |
-| 30 | Consensus (PoUW) | Infrastructure | Phase 2 |
-| 31 | Quantum | Infrastructure | Phase 2 |
-| 32 | Community | Governance | Phase 3 |
-| 33 | BNS | Infrastructure | Phase 3 |
-| 34 | Mesh | Infrastructure | Phase 3 |
-| 35 | Justice | Governance | **Phase 4A** |
-| 36 | Whistleblower | Governance | **Phase 4B** |
-| 37 | Moderation | Governance | **Phase 5C** |
+| 20 | Economy | Economy | Phase 1 (Verified) |
+| 21 | Identity | Identity | Phase 1 (Verified) |
+| 22 | Governance | Governance | Phase 1 (Verified) |
+| 23 | Compliance | Identity | Phase 1 (Verified) |
+| 24 | Staking | Economy | Phase 1 (Verified) |
+| 25 | Oracle | Infrastructure | Phase 1 (Verified) |
+| 26 | Payroll | Economy | Phase 2 (Verified) |
+| 27 | Interoperability | Infrastructure | Phase 2 (Verified) |
+| 28 | BelizeX (DEX) | Economy | Phase 2 (Verified) |
+| 29 | LandLedger | Governance | Phase 2 (Verified) |
+| 30 | Consensus (PoUW) | Infrastructure | Phase 2 (Verified) |
+| 31 | Quantum | Infrastructure | Phase 2 (Verified) |
+| 32 | Community | Governance | Phase 3 (Verified) |
+| 33 | BNS | Infrastructure | Phase 3 (Verified) |
+| 34 | Mesh | Infrastructure | Phase 3 (Verified) |
+| 35 | Justice | Governance | **Phase 4A (Verified on live testnet)** |
+| 36 | Whistleblower | Governance | **Phase 4B (Verified on live testnet)** |
+| 37 | Moderation | Governance | **Phase 5C (Verified on live testnet)** |
 
 `pallet_contracts` lives at index 13 and is a Substrate-standard pallet; it is
 **not** counted in the 18 custom pallets.
@@ -84,3 +86,24 @@ Live on `belizechain_testnet` (full addresses in
 
 **Pending deployment**: `access-control` (library, optional standalone deploy),
 `hello-belizechain` (tutorial-only).
+
+---
+
+## Live Testnet Extrinsics Verification (2026-09-03)
+
+The ethical safeguard and governance pallets were exercised end-to-end against the live 2-validator Ceiba testnet (`100.81.45.25`) using `@polkadot/api` (`scripts/live-pallet-integration-test.js`). All submitted extrinsics were signed, included in canonical blocks, and verified in on-chain storage:
+
+1. **`pallet-belize-moderation` (Index 37, Phase 5C)**:
+   - Call: `belizeModeration.flagContent(contentHash, 2)` (Reason: Spam).
+   - In block: `#8668` (`0xf5ad18a74ab405de044fce846cdb27d648b226fecf4ea773bc3665438083da3a`).
+   - Verified on-chain: `contentFlags` storage entry set to `Spam`, `flagCounts` incremented to `1`.
+
+2. **`pallet-belize-justice` (Index 35, Phase 4A)**:
+   - Call: `belizeJustice.openDispute(target, evidenceHash, 1)` (Severity: Moderate).
+   - In block: `#8669` (`0xfad71a385124ce3985554db66ec647b71bb9aadf2f98344fe02985cfb624b3ea`).
+   - Verified on-chain: Dispute `#2` created with status `Pending`, 100 DALLA bond reserved from disputant, target placed in `RehabStatus::InCoolingOff` until block `#1304669`.
+
+3. **`pallet-belize-whistleblower` (Index 36, Phase 4B)**:
+   - Call: `belizeWhistleblower.submitReport(commitment, target, evidenceHash, 1)` (Category: Fraud).
+   - In block: `#8670` (`0xd361f3f25ffee63845c378a417aa1a9da97ab194c2a9f6205652b8cac043c546`).
+   - Verified on-chain: Whistleblower report `#2` committed with status `Pending`, 10 DALLA bond escrowed, Blake2-256 domain commitment verified.

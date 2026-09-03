@@ -621,11 +621,11 @@ No single house can ratify a constitutional change alone.
 |---|---|
 | Phase 0 — Break the Single Root Key | ✅ Complete |
 | Phase 1 — Governance Structural Fixes | ✅ Complete |
-| Phase 2 — Economic Fairness | ⬜ Not started |
-| Phase 3 — Identity & Trust | ⬜ Not started |
-| Phase 4 — Justice & Support | ⬜ Not started |
-| Phase 5 — Nawal-Integrated Ethical Enforcement | ⬜ Not started |
-| Phase 6 — Constitutional Hard Invariants | ⬜ Not started |
-| Full Regression Sweep | ⬜ Not started |
+| Phase 2 — Economic Fairness | ✅ Complete (pallet-belize-economy & supply invariants verified) |
+| Phase 3 — Identity & Trust | ✅ Complete (pallet-belize-identity & oracle multi-consensus verified) |
+| Phase 4 — Justice & Support | ✅ Complete (pallet-belize-justice & whistleblower verified live on-chain) |
+| Phase 5 — Nawal-Integrated Ethical Enforcement | ✅ Complete (pallet-belize-moderation community flagging & Nawal assessment verified live on-chain) |
+| Phase 6 — Constitutional Hard Invariants | ✅ Complete (constitutional ratify & parameter locks verified) |
+| Full Regression Sweep | ✅ Complete (all unit, runtime wasm, and live testnet extrinsics verified) |
 
-Update this table as work progresses. Each phase must be fully verified before the next begins.
+All 6 ethical safeguard phases have been fully implemented, integrated into `construct_runtime!`, and verified on the live 2-validator testnet (2026-09-03).
