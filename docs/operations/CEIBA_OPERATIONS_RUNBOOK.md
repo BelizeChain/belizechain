@@ -315,3 +315,20 @@ docker compose restart nginx
   Tailscale SSH hangs on check-mode auth; use the workstation relay.
 - OCI security list must allow TCP 30333 from the internet (or at minimum from
   Ceiba) before the edge validator can peer.
+
+## Ops Log — 2026-09-03: Two-Validator Consensus Convergence & System Recovery
+
+### What was resolved
+- **Ceiba Docker Daemon Recovery**: On Sept 1, rapid crash-loops in `ceiba-nawal` caused `dockerd` to hang on its unix socket. Killed the hung `dockerd` process, restarted systemd socket and docker service.
+- **Nawal Container Entrypoint**: Added explicit `entrypoint: ["python", "api_server.py"]` to `nawal` in `/opt/belizechain/docker-compose.ceiba.yml` so it executes directly without shell wrapper failure (`cannot open python: No such file`). Nginx now boots cleanly without 502/host-not-found errors for upstream `nawal:8080`.
+- **Consensus & Finality Deadlock Resolution**:
+  - During Ceiba's partition (Sept 1–3), Edge had authored solo via `--force-authoring` up to #8566, while Ceiba had local unfinalized blocks up to #8260.
+  - Finality had stalled at #8077, causing BABE's finality lag backoff to trigger (lag > 480 blocks).
+  - Synchronized the canonical ledger DB from Edge (`Edge-Validator-2`) to Ceiba (`Ceiba-Validator-01`), matching both nodes at block #8566 and synchronizing GRANDPA voter set round counters.
+  - Upon coordinated restart, Ceiba and Edge achieved immediate 2-of-2 quorum in GRANDPA, finalized the chain up to head, reduced finality lag to <3 blocks, and resumed live block production (~6s intervals) with alternating VRF slot authorship.
+- **Service Verification**:
+  - `ceiba-node`: Healthy, peering (1 peer), authoring blocks.
+  - `edge-node`: Healthy, peering (1 peer), authoring blocks.
+  - Reverse proxy `/rpc` (Nginx): Functional and responding to JSON-RPC requests.
+  - Web stack: UI (`/`), `/health`, `/api/nawal/health`, `/api/kinich/health`, and `/api/pakit/health` all returning HTTP 200.
+
