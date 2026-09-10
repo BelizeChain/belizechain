@@ -1,6 +1,6 @@
 # Phase 2 Ceiba Services Plan
 
-Status: Live on Ceiba; stabilization and activation in progress
+Status: Live on Ceiba; stabilization and activation in progress *(flagged 2026-09-10 docs audit: "live on Ceiba" here is the ops-host runbook view — the full Ceiba stack including Pakit is not running locally, and the Nawal sovereign-signer gate is still open; see `infra/docs/NEXT3_ROADMAP_LANDED_2026-09-10.md`)*
 Goal: Keep the live sibling services reproducible, observable, and ready for
 real workflows with deterministic rollback steps.
 

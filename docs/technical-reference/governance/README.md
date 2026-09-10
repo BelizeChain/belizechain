@@ -16,7 +16,7 @@ The BelizeChain Governance Pallet implements a sophisticated multi-tiered democr
 
 ### High-Level Documents
 
-#### [GOVERNANCE_STATUS.md](./GOVERNANCE_STATUS.md)
+#### [GOVERNANCE_STATUS.md](./GOVERNANCE_STATUS.md) *(BROKEN — file does not exist; flagged 2026-09-10 docs audit. Executive summary as of 2026-09-10: governance pallets implemented and exercised on testnet, but "87.5% complete / Phase 7" claims are UNVERIFIED — no dated per-phase ledger exists.)*
 **Current development status and metrics**
 - Overall progress tracker (87.5% complete - Phase 7)
 - Test coverage summary (137/137 tests passing)

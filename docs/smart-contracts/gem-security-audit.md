@@ -1,5 +1,7 @@
 # GEM Platform Security Audit
 
+> ⚠️ Docs truthfulness audit 2026-09-10: the "PASSED — no critical vulnerabilities" verdicts further below are the **internal self-audit's** framing and conflict with `gem/docs/audits/AUDIT-GEM-05` (PSP37 architecture findings). They are NOT an external audit — see `docs/security/security-audit-results.md`: no external professional audit completed.
+
 **Security Analysis and Best Practices for BelizeChain Smart Contracts**
 
 This document covers security audits, vulnerability assessments, and best practices for developing and deploying smart contracts on the GEM platform.
