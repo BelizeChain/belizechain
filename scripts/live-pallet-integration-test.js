@@ -11,7 +11,7 @@ const { ApiPromise, WsProvider, Keyring } = require('@polkadot/api');
 const { cryptoWaitReady, blake2AsU8a } = require('@polkadot/util-crypto');
 const { u8aToHex, hexToU8a } = require('@polkadot/util');
 
-const RPC_ENDPOINT = process.env.RPC_ENDPOINT || 'ws://100.81.45.25:9944';
+const RPC_ENDPOINT = process.env.RPC_ENDPOINT || 'ws://127.0.0.1:9944';
 const DALLA = 1_000_000_000_000n; // 10^12 atomic units
 
 function sleep(ms) {
@@ -72,7 +72,8 @@ async function run() {
   console.log(`Connected: ${chainName} (spec_version: ${specVersion}, head block: #${header.number})`);
 
   const keyring = new Keyring({ type: 'sr25519', ss58Format: 42 });
-  const sudoTreasury = keyring.addFromUri('//treasury');
+  const TREASURY_URI = process.env.TREASURY_URI || 'coil apart warrior youth render mimic concert clever bubble festival fee save';
+  const sudoTreasury = keyring.addFromUri(TREASURY_URI);
   const testActor = keyring.addFromUri('//BelizeTestActor//2026');
   const testTarget = keyring.addFromUri('//BelizeTestTarget//2026');
 
