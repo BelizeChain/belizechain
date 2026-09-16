@@ -2374,12 +2374,10 @@ pub mod pallet {
                     // Evaluate only large holders.
                     let balance = T::Currency::free_balance(&account);
                     if balance >= threshold {
-                        let participation_rate = if eligible > 0 {
-                            voted.saturating_mul(100) / eligible
-                        } else {
-                            // No eligible proposals this quarter — treat as missed.
-                            0u32
-                        };
+                        let participation_rate = voted
+                            .saturating_mul(100)
+                            .checked_div(eligible.max(1))
+                            .unwrap_or(0);
                         let current_multiplier = EffectiveVotingMultiplier::<T>::get(&account);
                         if participation_rate < min_rate {
                             // Apply or maintain penalty at 50%.
@@ -3491,11 +3489,7 @@ pub mod pallet {
             // Converts free balance → stake units → optionally quadratic-rooted → capped.
             let balance_u128: u128 = T::Currency::free_balance(&who).saturated_into::<u128>();
             let stake_unit_size_u128: u128 = T::StakeUnitSize::get().saturated_into::<u128>();
-            let stake_units: u128 = if stake_unit_size_u128 > 0 {
-                balance_u128 / stake_unit_size_u128
-            } else {
-                0
-            };
+            let stake_units: u128 = balance_u128.checked_div(stake_unit_size_u128).unwrap_or(0);
             let raw_stake_weight = if T::QuadraticVotingEnabled::get() {
                 Self::isqrt(stake_units)
             } else {
@@ -3620,11 +3614,12 @@ pub mod pallet {
                 .vote_tally
                 .ayes
                 .saturating_add(proposal.vote_tally.nays);
-            let approval_percentage = if total_decisive_votes > 0 {
-                proposal.vote_tally.ayes.saturating_mul(100) / total_decisive_votes
-            } else {
-                0
-            };
+            let approval_percentage = proposal
+                .vote_tally
+                .ayes
+                .saturating_mul(100)
+                .checked_div(total_decisive_votes.max(1))
+                .unwrap_or(0);
 
             // Determine outcome
             let approved = approval_percentage >= required_percentage;
@@ -5196,7 +5191,7 @@ pub mod pallet {
                     .collect();
 
             // Sort by votes (descending)
-            candidates.sort_by(|a, b| b.1.cmp(&a.1));
+            candidates.sort_by_key(|a| std::cmp::Reverse(a.1));
 
             // Take top N candidates based on seat count
             let winners: Vec<T::AccountId> = candidates
@@ -6445,11 +6440,7 @@ pub mod pallet {
 
             let balance_u128: u128 = T::Currency::free_balance(&who).saturated_into::<u128>();
             let stake_unit_size_u128: u128 = T::StakeUnitSize::get().saturated_into::<u128>();
-            let stake_units: u128 = if stake_unit_size_u128 > 0 {
-                balance_u128 / stake_unit_size_u128
-            } else {
-                0
-            };
+            let stake_units: u128 = balance_u128.checked_div(stake_unit_size_u128).unwrap_or(0);
             let raw_stake_weight = if T::QuadraticVotingEnabled::get() {
                 Self::isqrt(stake_units)
             } else {
@@ -6906,11 +6897,10 @@ pub mod pallet {
             // S5-4: Enforce per-period treasury spend cap
             let current_block = <frame_system::Pallet<T>>::block_number();
             let period_len: u32 = T::TreasurySpendPeriod::get().saturated_into();
-            let current_period: u32 = if period_len > 0 {
-                current_block.saturated_into::<u32>() / period_len
-            } else {
-                0u32
-            };
+            let current_period: u32 = current_block
+                .saturated_into::<u32>()
+                .checked_div(period_len.max(1))
+                .unwrap_or(0);
             let (tracked_period, already_spent) = TreasurySpendTracker::<T>::get();
             let effective_spent = if tracked_period == current_period {
                 already_spent
