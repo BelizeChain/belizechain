@@ -101,9 +101,10 @@ pub type SuspiciousActivityReport<BlockNumber> = (
 );
 
 /// Verification levels for compliance
-#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+#[derive(Default, Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum VerificationLevel {
     /// No verification - restricted operations only
+    #[default]
     None,
     /// Basic KYC (L1 from BelizeIdentity)
     Basic,
@@ -138,9 +139,10 @@ impl VerificationLevel {
 }
 
 /// Risk assessment levels
-#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+#[derive(Default, Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub enum RiskLevel {
     /// Low risk - normal operations
+    #[default]
     Low,
     /// Medium risk - enhanced monitoring
     Medium,
@@ -151,7 +153,7 @@ pub enum RiskLevel {
 }
 
 /// Compliance status for an account
-#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+#[derive(Default, Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 pub struct ComplianceStatus {
     /// Current verification level
     pub verification_level: VerificationLevel,
@@ -163,18 +165,6 @@ pub struct ComplianceStatus {
     pub restricted: bool,
     /// Last verification timestamp
     pub last_verification: u64,
-}
-
-impl Default for ComplianceStatus {
-    fn default() -> Self {
-        Self {
-            verification_level: VerificationLevel::None,
-            risk_level: RiskLevel::Low,
-            whitelisted: false,
-            restricted: false,
-            last_verification: 0,
-        }
-    }
 }
 
 /// Suspicious activity types for AML/CFT reporting

@@ -4702,11 +4702,10 @@ pub mod pallet {
 
             // Calculate participation percentage (capped at 100 to prevent u8 wrap)
             let eligible_voters = ReferendumEligibleVoters::<T>::get(referendum_id);
-            let participation_percentage = if eligible_voters > 0 {
-                ((referendum.total_votes as u64 * 100) / eligible_voters as u64).min(100) as u8
-            } else {
-                0
-            };
+            let participation_percentage = (referendum.total_votes as u64 * 100)
+                .checked_div(eligible_voters as u64)
+                .unwrap_or(0)
+                .min(100) as u8;
 
             // Check quorum
             if participation_percentage >= referendum.quorum_percentage {

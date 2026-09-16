@@ -1461,21 +1461,14 @@ pub mod pallet {
                 }
             }
 
-            let average_quality = if active_models > 0 {
-                (total_quality / active_models as u64) as u32
-            } else {
-                0
-            };
-            let average_sustainability = if active_validators > 0 {
-                (total_sustainability / active_validators as u64) as u32
-            } else {
-                0
-            };
-            let average_uptime = if active_validators > 0 {
-                (total_uptime / active_validators as u64) as u32
-            } else {
-                0
-            };
+            let average_quality =
+                total_quality.checked_div(active_models as u64).unwrap_or(0) as u32;
+            let average_sustainability = total_sustainability
+                .checked_div(active_validators as u64)
+                .unwrap_or(0) as u32;
+            let average_uptime = total_uptime
+                .checked_div(active_validators as u64)
+                .unwrap_or(0) as u32;
 
             GlobalAIMetrics::<T>::mutate(|metrics| {
                 metrics.average_quality = average_quality;
