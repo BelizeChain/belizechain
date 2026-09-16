@@ -313,6 +313,13 @@ fn mainnet_genesis() -> Result<serde_json::Value, String> {
     use sp_core::crypto::Ss58Codec;
 
     const MAINNET_KEYS_CONFIGURED: bool = true;
+    if !MAINNET_KEYS_CONFIGURED {
+        return Err(
+            "mainnet keys not configured: inject validator and sudo keys from a \
+             secure key management system before building the production chain spec"
+                .to_string(),
+        );
+    }
 
     // Production validator session keys
     let initial_authorities: Vec<(AccountId, BabeId, GrandpaId)> = vec![

@@ -37,6 +37,7 @@ pub struct BelizeBlockAnnounceValidator<B: BlockT> {
 }
 
 impl<B: BlockT> BelizeBlockAnnounceValidator<B> {
+    #[cfg(test)]
     pub fn new() -> Self {
         Self::new_with_best(0)
     }
