@@ -561,9 +561,15 @@ pub mod pallet {
                 if feed.price > 0 {
                     let max_deviation = T::MaxPriceDeviation::get() as u128;
                     let deviation = if price > feed.price {
-                        (price - feed.price).saturating_mul(10000) / feed.price
+                        (price - feed.price)
+                            .saturating_mul(10000)
+                            .checked_div(feed.price)
+                            .unwrap_or(0)
                     } else {
-                        (feed.price - price).saturating_mul(10000) / feed.price
+                        (feed.price - price)
+                            .saturating_mul(10000)
+                            .checked_div(feed.price)
+                            .unwrap_or(0)
                     };
                     ensure!(
                         deviation <= max_deviation,
@@ -1666,11 +1672,7 @@ pub mod pallet {
 
             let denominator = total_submissions.saturating_mul(10_000_000_000_000u128);
 
-            if denominator == 0 {
-                return 0;
-            }
-
-            numerator / denominator
+            numerator.checked_div(denominator).unwrap_or(0)
         }
 
         /// Get IoT device info

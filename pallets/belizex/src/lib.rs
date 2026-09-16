@@ -817,10 +817,16 @@ pub mod pallet {
                 if let Some(oracle_rate) =
                     T::Oracle::get_crypto_exchange_rate(base_asset, quote_asset)
                 {
-                    let implied_rate = amount_out.saturating_mul(1_000_000) / amount_in_u128;
+                    let implied_rate = amount_out
+                        .saturating_mul(1_000_000)
+                        .checked_div(amount_in_u128)
+                        .unwrap_or(0);
                     if oracle_rate > 0 {
                         let diff = implied_rate.abs_diff(oracle_rate);
-                        let deviation_bps = diff.saturating_mul(10_000) / oracle_rate;
+                        let deviation_bps = diff
+                            .saturating_mul(10_000)
+                            .checked_div(oracle_rate)
+                            .unwrap_or(0);
                         let max_allowed = T::MaxOracleDeviationBps::get() as u128;
                         if deviation_bps > max_allowed {
                             Self::deposit_event(Event::OracleGuardRejected {
@@ -1066,10 +1072,16 @@ pub mod pallet {
                 if a == AssetId::WUSDC.as_u8() && b == AssetId::BBZD.as_u8() {
                     if let Some(oracle_rate) = T::Oracle::get_crypto_exchange_rate(a, b) {
                         if amount > 0 {
-                            let implied_rate = amount_out.saturating_mul(1_000_000) / amount;
+                            let implied_rate = amount_out
+                                .saturating_mul(1_000_000)
+                                .checked_div(amount)
+                                .unwrap_or(0);
                             let diff = implied_rate.abs_diff(oracle_rate);
                             if oracle_rate > 0 {
-                                let deviation_bps = diff.saturating_mul(10_000) / oracle_rate;
+                                let deviation_bps = diff
+                                    .saturating_mul(10_000)
+                                    .checked_div(oracle_rate)
+                                    .unwrap_or(0);
                                 let max_allowed = T::MaxOracleDeviationBps::get() as u128;
                                 if deviation_bps > max_allowed {
                                     Self::deposit_event(Event::OracleGuardRejected {
@@ -1367,7 +1379,12 @@ pub mod pallet {
             if let Some(pair) = Self::trading_pairs(pair_key) {
                 if pair.base_reserve > 0 {
                     // Return rate scaled to 10^6 precision (matching Oracle format)
-                    return Some(pair.quote_reserve.saturating_mul(1_000_000) / pair.base_reserve);
+                    return Some(
+                        pair.quote_reserve
+                            .saturating_mul(1_000_000)
+                            .checked_div(pair.base_reserve)
+                            .unwrap_or(0),
+                    );
                 }
             }
 
