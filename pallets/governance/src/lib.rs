@@ -5191,7 +5191,7 @@ pub mod pallet {
                     .collect();
 
             // Sort by votes (descending)
-            candidates.sort_by_key(|a| std::cmp::Reverse(a.1));
+            candidates.sort_by_key(|a| core::cmp::Reverse(a.1));
 
             // Take top N candidates based on seat count
             let winners: Vec<T::AccountId> = candidates
