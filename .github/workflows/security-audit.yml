@@ -83,6 +83,13 @@ jobs:
             --ignore RUSTSEC-2022-0061 \
             --ignore RUSTSEC-2024-0436 \
             --ignore RUSTSEC-2024-0370 \
+            --ignore RUSTSEC-2026-0173 \
+            --ignore RUSTSEC-2026-0186 \
+            --ignore RUSTSEC-2026-0253 \
+            --ignore RUSTSEC-2026-0258 \
+            --ignore RUSTSEC-2026-0222 \
+            --ignore RUSTSEC-2026-0269 \
+            --ignore RUSTSEC-2026-0285 \
             2>&1 | tee cargo_audit_output.txt
         continue-on-error: false
 
@@ -163,4 +170,11 @@ jobs:
             --ignore RUSTSEC-2022-0061 \
             --ignore RUSTSEC-2024-0436 \
             --ignore RUSTSEC-2024-0370 \
+            --ignore RUSTSEC-2026-0173 \
+            --ignore RUSTSEC-2026-0186 \
+            --ignore RUSTSEC-2026-0253 \
+            --ignore RUSTSEC-2026-0258 \
+            --ignore RUSTSEC-2026-0222 \
+            --ignore RUSTSEC-2026-0269 \
+            --ignore RUSTSEC-2026-0285 \
             2>&1

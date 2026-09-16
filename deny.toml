@@ -49,6 +49,29 @@ ignore = [
     "RUSTSEC-2026-0096",
     "RUSTSEC-2026-0114",
 
+    # NEW (2026-09-16): wasmtime 35.0.0 is SDK-blocked via sc-executor-wasmtime
+    # (requires =^35.0.0, no fix available in-line). wasmtime advisories 0222,
+    # 0269, 0285 are host-executor-level issues; BelizeChain executes
+    # governance-controlled runtime Wasm, not arbitrary host-trusted WASI. Fix
+    # comes with the next polkadot-sdk rev bump.
+    "RUSTSEC-2026-0222",
+    "RUSTSEC-2026-0269",
+    "RUSTSEC-2026-0285",
+
+    # NEW (2026-09-16): triaged during lockfile sweep.
+    # proc-macro-error2 2.0.1 unmaintained — SDK-blocked transitive (subxt).
+    "RUSTSEC-2026-0173",
+    # memmap2 0.5.10 unsound pointer offset — SDK-blocked via parity-db;
+    # 0.5.x line maxed, fix requires SDK memmap2 0.6+ commerce.
+    "RUSTSEC-2026-0186",
+    # lru 0.7.8 use-after-free in pop() — SDK-blocked via
+    # tracing-log/tracing-subscriber (sp-tracing); not reachable from
+    # consensus or auth code paths.
+    "RUSTSEC-2026-0253",
+    # h2 0.3.27 empty DATA frames DoS — SDK-blocked via hyper/jsonrpsee
+    # RPC stack pinned by polkadot-sdk; fix is the h2 0.4 line.
+    "RUSTSEC-2026-0258",
+
     # libsecp256k1 unmaintained — SDK-blocked through sp-core; tracked for the
     # next polkadot-sdk upgrade rather than patched directly in runtime code.
     "RUSTSEC-2025-0161",
