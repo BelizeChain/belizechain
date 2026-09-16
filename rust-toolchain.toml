@@ -1,5 +1,9 @@
 [toolchain]
-channel = "stable"
+# Pinned to match the deploy.yml CI pin (dtolnay/rust-toolchain 1.90.0).
+# Previously "stable", which made CI silently float to the newest Rust stable
+# (rust-toolchain.toml overrides the workflow's toolchain input) and break lint
+# with new deny-by-default clippy lints on every Rust release.
+channel = "1.90.0"
 components = ["rustfmt", "clippy", "rust-src", "rust-analyzer"]
 targets = ["wasm32-unknown-unknown", "wasm32v1-none"]
 profile = "minimal"
