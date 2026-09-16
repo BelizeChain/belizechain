@@ -131,6 +131,7 @@ pub mod pallet {
 
     // ── Rehabilitation status ─────────────────────────────────────────────────
     #[derive(
+        Default,
         Encode,
         Decode,
         codec::DecodeWithMemTracking,
@@ -143,6 +144,7 @@ pub mod pallet {
     )]
     pub enum RehabStatus {
         /// No active justice proceedings.
+        #[default]
         Clean,
         /// Cooling-off period is active.
         InCoolingOff,
@@ -150,12 +152,6 @@ pub mod pallet {
         InRehabilitation,
         /// Fully reinstated.
         Reinstated,
-    }
-
-    impl Default for RehabStatus {
-        fn default() -> Self {
-            Self::Clean
-        }
     }
 
     // ── DisputeRecord ─────────────────────────────────────────────────────────
