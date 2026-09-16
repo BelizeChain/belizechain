@@ -1368,7 +1368,7 @@ pub mod pallet {
                 let uptime = validator
                     .uptime_rounds
                     .saturating_mul(100)
-                    .checked_div(validator.eligible_rounds.max(1))
+                    .checked_div(validator.eligible_rounds)
                     .unwrap_or(50); // Default for new validators (benefit of the doubt)
 
                 // Final score = 50% quality + 20% stake + 20% sustainability + 10% uptime
@@ -1454,7 +1454,7 @@ pub mod pallet {
                     let uptime = validator
                         .uptime_rounds
                         .saturating_mul(100)
-                        .checked_div(validator.eligible_rounds.max(1))
+                        .checked_div(validator.eligible_rounds)
                         .unwrap_or(50);
                     total_uptime = total_uptime.saturating_add(uptime as u64);
                     active_validators = active_validators.saturating_add(1);
@@ -1510,7 +1510,7 @@ pub mod pallet {
                         let up = v
                             .uptime_rounds
                             .saturating_mul(100)
-                            .checked_div(v.eligible_rounds.max(1))
+                            .checked_div(v.eligible_rounds)
                             .unwrap_or(50);
                         (v.sustainability_score.min(100), up)
                     })

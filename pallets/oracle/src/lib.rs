@@ -1349,11 +1349,10 @@ pub mod pallet {
             // Calculate variance (max - min as percentage of median, in basis points)
             let min_price = submissions[0];
             let max_price = submissions[submissions.len() - 1];
-            let variance = if median_price > 0 {
-                (max_price - min_price).saturating_mul(10000) / median_price
-            } else {
-                0u128
-            };
+            let variance = (max_price - min_price)
+                .saturating_mul(10000)
+                .checked_div(median_price)
+                .unwrap_or(0);
 
             let feed_data = PriceFeedData {
                 pair,
