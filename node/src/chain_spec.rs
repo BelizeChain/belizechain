@@ -317,40 +317,67 @@ fn mainnet_genesis() -> Result<serde_json::Value, String> {
     // Production validator session keys
     let initial_authorities: Vec<(AccountId, BabeId, GrandpaId)> = vec![
         (
-            AccountId::from_ss58check("5EcjZEJhfQxEsrUWEMpSH6D6vbq1eWsLsYbR7DUDM82bFAuJ").map_err(|e| format!("{:?}", e))?,
-            BabeId::from_ss58check("5EcjZEJhfQxEsrUWEMpSH6D6vbq1eWsLsYbR7DUDM82bFAuJ").map_err(|e| format!("{:?}", e))?,
-            GrandpaId::from_ss58check("5E2qCsxXwbyywDnmyiQ7ST37bWy4eKZC7F3NDcaPZKz4CikY").map_err(|e| format!("{:?}", e))?,
+            AccountId::from_ss58check("5EcjZEJhfQxEsrUWEMpSH6D6vbq1eWsLsYbR7DUDM82bFAuJ")
+                .map_err(|e| format!("{:?}", e))?,
+            BabeId::from_ss58check("5EcjZEJhfQxEsrUWEMpSH6D6vbq1eWsLsYbR7DUDM82bFAuJ")
+                .map_err(|e| format!("{:?}", e))?,
+            GrandpaId::from_ss58check("5E2qCsxXwbyywDnmyiQ7ST37bWy4eKZC7F3NDcaPZKz4CikY")
+                .map_err(|e| format!("{:?}", e))?,
         ),
         (
-            AccountId::from_ss58check("5HTZ2TeVvkuPCgHSQUUiDo78mXdD6PZ58asi2YcziGDUWhV2").map_err(|e| format!("{:?}", e))?,
-            BabeId::from_ss58check("5HTZ2TeVvkuPCgHSQUUiDo78mXdD6PZ58asi2YcziGDUWhV2").map_err(|e| format!("{:?}", e))?,
-            GrandpaId::from_ss58check("5HERG37DJjXa7ouXHVXv5SdPBkhqdzXkQ6sCgbFoh1k1CbKm").map_err(|e| format!("{:?}", e))?,
+            AccountId::from_ss58check("5HTZ2TeVvkuPCgHSQUUiDo78mXdD6PZ58asi2YcziGDUWhV2")
+                .map_err(|e| format!("{:?}", e))?,
+            BabeId::from_ss58check("5HTZ2TeVvkuPCgHSQUUiDo78mXdD6PZ58asi2YcziGDUWhV2")
+                .map_err(|e| format!("{:?}", e))?,
+            GrandpaId::from_ss58check("5HERG37DJjXa7ouXHVXv5SdPBkhqdzXkQ6sCgbFoh1k1CbKm")
+                .map_err(|e| format!("{:?}", e))?,
         ),
         (
-            AccountId::from_ss58check("5HN2uP8iB9a2C28qjz5LhGfNGAFR9JjWnAL7pbfAtnd2oUHC").map_err(|e| format!("{:?}", e))?,
-            BabeId::from_ss58check("5HN2uP8iB9a2C28qjz5LhGfNGAFR9JjWnAL7pbfAtnd2oUHC").map_err(|e| format!("{:?}", e))?,
-            GrandpaId::from_ss58check("5GqGQWkFvv5f4sLh1TMFpzuXJbcxg1MiP8FQsuLtxFP9N8Yy").map_err(|e| format!("{:?}", e))?,
+            AccountId::from_ss58check("5HN2uP8iB9a2C28qjz5LhGfNGAFR9JjWnAL7pbfAtnd2oUHC")
+                .map_err(|e| format!("{:?}", e))?,
+            BabeId::from_ss58check("5HN2uP8iB9a2C28qjz5LhGfNGAFR9JjWnAL7pbfAtnd2oUHC")
+                .map_err(|e| format!("{:?}", e))?,
+            GrandpaId::from_ss58check("5GqGQWkFvv5f4sLh1TMFpzuXJbcxg1MiP8FQsuLtxFP9N8Yy")
+                .map_err(|e| format!("{:?}", e))?,
         ),
         (
-            AccountId::from_ss58check("5FgydnGuSshDLWhcaZyG5ZjV1BCs8rhRCc9JDozySKB8g8AE").map_err(|e| format!("{:?}", e))?,
-            BabeId::from_ss58check("5FgydnGuSshDLWhcaZyG5ZjV1BCs8rhRCc9JDozySKB8g8AE").map_err(|e| format!("{:?}", e))?,
-            GrandpaId::from_ss58check("5HMqcChxxfgjCTLJjSEt3diV47Fhk9Jiy5BSiWAk17JMQriK").map_err(|e| format!("{:?}", e))?,
+            AccountId::from_ss58check("5FgydnGuSshDLWhcaZyG5ZjV1BCs8rhRCc9JDozySKB8g8AE")
+                .map_err(|e| format!("{:?}", e))?,
+            BabeId::from_ss58check("5FgydnGuSshDLWhcaZyG5ZjV1BCs8rhRCc9JDozySKB8g8AE")
+                .map_err(|e| format!("{:?}", e))?,
+            GrandpaId::from_ss58check("5HMqcChxxfgjCTLJjSEt3diV47Fhk9Jiy5BSiWAk17JMQriK")
+                .map_err(|e| format!("{:?}", e))?,
         ),
     ];
 
     // Sovereign Founder Root / Sudo Controller (Wicked)
-    let root_key = AccountId::from_ss58check("5Cg3Ez7Upm8caDfjonnMKPZ14B3H5daWM75DkYj7yEt4XSKt").map_err(|e| format!("{:?}", e))?;
+    let root_key = AccountId::from_ss58check("5Cg3Ez7Upm8caDfjonnMKPZ14B3H5daWM75DkYj7yEt4XSKt")
+        .map_err(|e| format!("{:?}", e))?;
     // Government of Belize Treasury Sovereign Reserve
-    let treasury_key = AccountId::from_ss58check("5CJX6HRtMn2bvJM1vncjmyUfRbTVQRUWFxwJH6T6SCqoHjf3").map_err(|e| format!("{:?}", e))?;
+    let treasury_key =
+        AccountId::from_ss58check("5CJX6HRtMn2bvJM1vncjmyUfRbTVQRUWFxwJH6T6SCqoHjf3")
+            .map_err(|e| format!("{:?}", e))?;
 
     // Initial 100M DALLA Token Distribution (12 decimals)
     let endowed_balances: Vec<(AccountId, u128)> = vec![
         (treasury_key.clone(), 60_000_000u128 * 1_000_000_000_000u128),
         (root_key.clone(), 20_000_000u128 * 1_000_000_000_000u128),
-        (initial_authorities[0].0.clone(), 2_500_000u128 * 1_000_000_000_000u128),
-        (initial_authorities[1].0.clone(), 2_500_000u128 * 1_000_000_000_000u128),
-        (initial_authorities[2].0.clone(), 2_500_000u128 * 1_000_000_000_000u128),
-        (initial_authorities[3].0.clone(), 2_500_000u128 * 1_000_000_000_000u128),
+        (
+            initial_authorities[0].0.clone(),
+            2_500_000u128 * 1_000_000_000_000u128,
+        ),
+        (
+            initial_authorities[1].0.clone(),
+            2_500_000u128 * 1_000_000_000_000u128,
+        ),
+        (
+            initial_authorities[2].0.clone(),
+            2_500_000u128 * 1_000_000_000_000u128,
+        ),
+        (
+            initial_authorities[3].0.clone(),
+            2_500_000u128 * 1_000_000_000_000u128,
+        ),
     ];
 
     Ok(serde_json::json!({

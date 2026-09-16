@@ -1179,15 +1179,14 @@ pub mod pallet {
         /// Withdraw a previously cast vote on a community proposal
         #[pallet::call_index(6)]
         #[pallet::weight(T::WeightInfo::withdraw_community_proposal())]
-        pub fn withdraw_vote(
-            origin: OriginFor<T>,
-            proposal_id: u32,
-        ) -> DispatchResult {
+        pub fn withdraw_vote(origin: OriginFor<T>, proposal_id: u32) -> DispatchResult {
             let who = ensure_signed(origin)?;
             // Ensure proposal exists
-            let mut proposal = CommunityProposals::<T>::get(proposal_id).ok_or(Error::<T>::ProposalNotFound)?;
+            let mut proposal =
+                CommunityProposals::<T>::get(proposal_id).ok_or(Error::<T>::ProposalNotFound)?;
             // Ensure voter has voted
-            let vote = ProposalVotes::<T>::get(proposal_id, &who).ok_or(Error::<T>::AlreadyVoted)?;
+            let vote =
+                ProposalVotes::<T>::get(proposal_id, &who).ok_or(Error::<T>::AlreadyVoted)?;
             // Remove vote record
             ProposalVotes::<T>::remove(proposal_id, &who);
             // Update proposal vote counts
@@ -1198,7 +1197,10 @@ pub mod pallet {
             }
             proposal.total_votes = proposal.total_votes.saturating_sub(1);
             CommunityProposals::<T>::insert(proposal_id, proposal);
-            Self::deposit_event(Event::VoteWithdrawn { proposal_id, voter: who });
+            Self::deposit_event(Event::VoteWithdrawn {
+                proposal_id,
+                voter: who,
+            });
             Ok(())
         }
 
@@ -2271,7 +2273,9 @@ pub trait CommunityRank<AccountId> {
     fn get_srs_tier(account: &AccountId) -> SRSTier;
 }
 
-impl<T: pallet::Config> CommunityRank<<T as frame_system::Config>::AccountId> for pallet::Pallet<T> {
+impl<T: pallet::Config> CommunityRank<<T as frame_system::Config>::AccountId>
+    for pallet::Pallet<T>
+{
     fn get_community_rank(account: &<T as frame_system::Config>::AccountId) -> u32 {
         let srs = Self::get_srs(account);
         match srs {
@@ -2310,7 +2314,9 @@ pub trait FeeCalculator<AccountId, Balance> {
     ) -> Result<(), &'static str>;
 }
 
-impl<T: Config> FeeCalculator<<T as frame_system::Config>::AccountId, BalanceOf<T>> for pallet::Pallet<T> {
+impl<T: Config> FeeCalculator<<T as frame_system::Config>::AccountId, BalanceOf<T>>
+    for pallet::Pallet<T>
+{
     fn calculate_effective_fee(
         account: &<T as frame_system::Config>::AccountId,
         original_fee: BalanceOf<T>,
@@ -2370,7 +2376,9 @@ pub trait PoUWContributor<AccountId> {
     fn get_pouw_score(account: &AccountId) -> u32;
 }
 
-impl<T: pallet::Config> PoUWContributor<<T as frame_system::Config>::AccountId> for pallet::Pallet<T> {
+impl<T: pallet::Config> PoUWContributor<<T as frame_system::Config>::AccountId>
+    for pallet::Pallet<T>
+{
     fn record_pouw_contribution(
         account: &<T as frame_system::Config>::AccountId,
         quality_score: u32,
@@ -2438,8 +2446,12 @@ pub trait GovernanceParticipation<AccountId> {
     fn record_council_membership(account: &AccountId) -> Result<(), &'static str>;
 }
 
-impl<T: pallet::Config> GovernanceParticipation<<T as frame_system::Config>::AccountId> for pallet::Pallet<T> {
-    fn record_proposal_submission(account: &<T as frame_system::Config>::AccountId) -> Result<(), &'static str> {
+impl<T: pallet::Config> GovernanceParticipation<<T as frame_system::Config>::AccountId>
+    for pallet::Pallet<T>
+{
+    fn record_proposal_submission(
+        account: &<T as frame_system::Config>::AccountId,
+    ) -> Result<(), &'static str> {
         let current_block = frame_system::Pallet::<T>::block_number();
 
         let record = ParticipationRecord {
@@ -2463,7 +2475,9 @@ impl<T: pallet::Config> GovernanceParticipation<<T as frame_system::Config>::Acc
         Ok(())
     }
 
-    fn record_vote_cast(account: &<T as frame_system::Config>::AccountId) -> Result<(), &'static str> {
+    fn record_vote_cast(
+        account: &<T as frame_system::Config>::AccountId,
+    ) -> Result<(), &'static str> {
         let current_block = frame_system::Pallet::<T>::block_number();
 
         let record = ParticipationRecord {
@@ -2482,7 +2496,9 @@ impl<T: pallet::Config> GovernanceParticipation<<T as frame_system::Config>::Acc
         Ok(())
     }
 
-    fn record_proposal_approval(account: &<T as frame_system::Config>::AccountId) -> Result<(), &'static str> {
+    fn record_proposal_approval(
+        account: &<T as frame_system::Config>::AccountId,
+    ) -> Result<(), &'static str> {
         let current_block = frame_system::Pallet::<T>::block_number();
 
         let record = ParticipationRecord {
@@ -2506,7 +2522,9 @@ impl<T: pallet::Config> GovernanceParticipation<<T as frame_system::Config>::Acc
         Ok(())
     }
 
-    fn record_council_membership(account: &<T as frame_system::Config>::AccountId) -> Result<(), &'static str> {
+    fn record_council_membership(
+        account: &<T as frame_system::Config>::AccountId,
+    ) -> Result<(), &'static str> {
         let current_block = frame_system::Pallet::<T>::block_number();
 
         let record = ParticipationRecord {

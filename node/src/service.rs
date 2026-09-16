@@ -225,7 +225,11 @@ pub fn new_full<
             block_announce_validator_builder: Some(Box::new(|client| {
                 use sp_blockchain::HeaderBackend;
                 let initial_best: u32 = client.info().best_number;
-                Box::new(crate::block_announce_validator::BelizeBlockAnnounceValidator::new_with_best(initial_best))
+                Box::new(
+                    crate::block_announce_validator::BelizeBlockAnnounceValidator::new_with_best(
+                        initial_best,
+                    ),
+                )
             })),
             warp_sync_config: Some(sc_service::WarpSyncConfig::WithProvider(warp_sync)),
             block_relay: None,
