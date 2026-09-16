@@ -1470,12 +1470,10 @@ pub mod pallet {
             // the effective bonus is capped to prevent over-incentivising domain self-reporting.
             const MAX_EFFECTIVE_MULTIPLIER: u128 = 13_000; // 1.3x cap
 
-            if total_contributions > 0 {
-                let raw = total_weighted_score / total_contributions;
-                raw.min(MAX_EFFECTIVE_MULTIPLIER)
-            } else {
-                GENERAL_MULTIPLIER // Default to 1.0x if no contributions
-            }
+            let raw = total_weighted_score
+                .checked_div(total_contributions)
+                .unwrap_or(GENERAL_MULTIPLIER);
+            raw.min(MAX_EFFECTIVE_MULTIPLIER)
         }
 
         /// Evaluate model contribution quality based on delta size and Shannon entropy.
