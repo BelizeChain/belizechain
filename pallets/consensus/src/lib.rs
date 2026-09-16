@@ -1365,11 +1365,11 @@ pub mod pallet {
                 let sustainability = validator.sustainability_score.min(100);
 
                 // AR-5: Uptime score — participation reliability (0-100)
-                let uptime = if validator.eligible_rounds > 0 {
-                    validator.uptime_rounds.saturating_mul(100) / validator.eligible_rounds
-                } else {
-                    50 // Default for new validators (benefit of the doubt)
-                };
+                let uptime = validator
+                    .uptime_rounds
+                    .saturating_mul(100)
+                    .checked_div(validator.eligible_rounds.max(1))
+                    .unwrap_or(50); // Default for new validators (benefit of the doubt)
 
                 // Final score = 50% quality + 20% stake + 20% sustainability + 10% uptime
                 let consensus_score = combined_quality
@@ -1383,7 +1383,7 @@ pub mod pallet {
             }
 
             // Sort by consensus score (highest first) - Proof of Useful Work
-            selected_validators.sort_by(|a, b| b.1.cmp(&a.1));
+            selected_validators.sort_by_key(|a| core::cmp::Reverse(a.1));
 
             // CONS-005: Break deterministic tie-ordering via on-chain randomness.
             // Validators with identical scores get shuffled so that an attacker
@@ -1451,11 +1451,11 @@ pub mod pallet {
                 if validator.active {
                     total_sustainability =
                         total_sustainability.saturating_add(validator.sustainability_score as u64);
-                    let uptime = if validator.eligible_rounds > 0 {
-                        validator.uptime_rounds.saturating_mul(100) / validator.eligible_rounds
-                    } else {
-                        50
-                    };
+                    let uptime = validator
+                        .uptime_rounds
+                        .saturating_mul(100)
+                        .checked_div(validator.eligible_rounds.max(1))
+                        .unwrap_or(50);
                     total_uptime = total_uptime.saturating_add(uptime as u64);
                     active_validators = active_validators.saturating_add(1);
                 }
@@ -1507,11 +1507,11 @@ pub mod pallet {
             {
                 ConsensusValidators::<T>::get(vid)
                     .map(|v| {
-                        let up = if v.eligible_rounds > 0 {
-                            v.uptime_rounds.saturating_mul(100) / v.eligible_rounds
-                        } else {
-                            50
-                        };
+                        let up = v
+                            .uptime_rounds
+                            .saturating_mul(100)
+                            .checked_div(v.eligible_rounds.max(1))
+                            .unwrap_or(50);
                         (v.sustainability_score.min(100), up)
                     })
                     .unwrap_or((50, 50))
