@@ -68,6 +68,7 @@ pallet-belize-mesh = { path = "../pallets/mesh", default-features = false }
 pallet-belize-justice = { path = "../pallets/justice", default-features = false }
 pallet-belize-moderation = { path = "../pallets/moderation", default-features = false }
 pallet-belize-whistleblower = { path = "../pallets/whistleblower", default-features = false }
+pallet-storage-proof = { path = "../pallets/storage-proof", default-features = false }
 
 sp-staking = { workspace = true, default-features = false }
 
@@ -126,6 +127,7 @@ std = [
     "pallet-belize-justice/std",
     "pallet-belize-whistleblower/std",
     "pallet-belize-moderation/std",
+    "pallet-storage-proof/std",
     "sp-api/std",
     "sp-block-builder/std",
     "sp-consensus-babe/std",

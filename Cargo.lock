@@ -964,6 +964,7 @@ dependencies = [
  "pallet-grandpa",
  "pallet-offences",
  "pallet-session",
+ "pallet-storage-proof",
  "pallet-sudo",
  "pallet-timestamp",
  "pallet-transaction-payment",
@@ -6930,6 +6931,24 @@ dependencies = [
  "sp-io",
  "sp-runtime",
  "sp-staking",
+]
+
+[[package]]
+name = "pallet-storage-proof"
+version = "0.1.0"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "log",
+ "pallet-balances",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]

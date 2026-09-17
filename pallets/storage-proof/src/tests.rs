@@ -1,11 +1,8 @@
 //! Unit tests for pallet-storage-proof.
 
-use crate::{
-    mock::new_test_ext, mock::Test as Runtime, mock::*, Error, MerkleProof, MerkleStep,
-    Pallet as StorageProof, ProofType, StorageProofs,
-};
-use frame_support::{assert_err, assert_ok, BoundedVec};
-use sp_std::vec;
+use crate::mock::{new_test_ext, RuntimeOrigin, Test as Runtime};
+use crate::{BoundedVec, Error, MerkleProof, MerkleStep, ProofType};
+use frame_support::{assert_err, assert_ok};
 
 /// Builds a correct 2-level Merkle proof using BLAKE2-256.
 /// leaf = blake2_256(b"block-data")

@@ -1341,6 +1341,15 @@ impl pallet_belize_moderation::Config for Runtime {
     type WeightInfo = pallet_belize_moderation::weights::SubstrateWeight<Runtime>;
 }
 
+// =============================================================================
+// Phase 6A: Storage Proof Pallet Configuration
+// Pakit DAG storage proof verification (Merkle-first, ZK-gated Stage B).
+// =============================================================================
+impl pallet_storage_proof::Config for Runtime {
+    /// Root/sudo may revoke a proof (byzantine storage provider dispute path).
+    type RevocationOrigin = EnsureRoot<Self::AccountId>;
+}
+
 // Construct runtime
 // P0-14 FIX: Explicit pallet indices prevent runtime upgrade breakage.
 // Adding/removing/reordering pallets will NOT shift call/storage indices.
@@ -1393,6 +1402,8 @@ construct_runtime!(
         BelizeWhistleblower: pallet_belize_whistleblower = 36,
         // Phase 5C: Community content moderation + Nawal AI auto-queuing
         BelizeModeration: pallet_belize_moderation = 37,
+        // Phase 6A: Pakit DAG storage proof verification (Merkle-first, ZK-gated Stage B)
+        StorageProof: pallet_storage_proof = 38,
     }
 );
 

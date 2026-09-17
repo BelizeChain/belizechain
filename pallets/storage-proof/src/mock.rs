@@ -5,9 +5,8 @@ use super::*;
 use crate as pallet_storage_proof;
 use frame_support::{
     parameter_types,
-    traits::{ConstU16, ConstU32, ConstU64, Everything},
+    traits::Everything,
 };
-use frame_system as system;
 use sp_core::H256;
 use sp_runtime::{
     traits::{BlakeTwo256, IdentityLookup},
