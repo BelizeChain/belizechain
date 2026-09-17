@@ -220,7 +220,9 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     // AR-2: bumped to 101 — pallet_session added (validator rotation enabled).
     // AR-3: bumped to 104 — pallet_sudo ungated for testnet bootstrapping.
     // Phase 2: bumped to 105 — align session rotation with BABE epoch changes.
-    spec_version: 105,
+    // Stage A: bumped to 106 — pallets/storage-proof added at index 38
+    // (on-chain Merkle storage proof verification for Pakit).
+    spec_version: 106,
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 1,
