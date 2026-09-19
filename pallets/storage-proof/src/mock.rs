@@ -3,10 +3,7 @@
 
 use super::*;
 use crate as pallet_storage_proof;
-use frame_support::{
-    parameter_types,
-    traits::Everything,
-};
+use frame_support::{parameter_types, traits::Everything};
 use sp_core::H256;
 use sp_runtime::{
     traits::{BlakeTwo256, IdentityLookup},
@@ -86,6 +83,8 @@ impl pallet_storage_proof::Config for Test {
 }
 
 pub fn new_test_ext() -> sp_io::TestExternalities {
-    let t = frame_system::GenesisConfig::<Test>::default().build_storage().unwrap();
+    let t = frame_system::GenesisConfig::<Test>::default()
+        .build_storage()
+        .unwrap();
     t.into()
 }

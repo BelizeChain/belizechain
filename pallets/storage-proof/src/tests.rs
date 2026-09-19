@@ -28,8 +28,14 @@ fn build_valid_proof() -> ([u8; 32], MerkleProof) {
     let proof = MerkleProof {
         leaf,
         siblings: BoundedVec::truncate_from(vec![
-            MerkleStep { node: s1, node_is_left: false },
-            MerkleStep { node: s2, node_is_left: false },
+            MerkleStep {
+                node: s1,
+                node_is_left: false,
+            },
+            MerkleStep {
+                node: s2,
+                node_is_left: false,
+            },
         ]),
     };
 
@@ -144,6 +150,9 @@ fn revoke_only_by_authority() {
             sp_runtime::DispatchError::BadOrigin
         );
         // Authority (account 42) can.
-        assert_ok!(crate::pallet::Pallet::<Runtime>::revoke_proof(RuntimeOrigin::signed(42), root));
+        assert_ok!(crate::pallet::Pallet::<Runtime>::revoke_proof(
+            RuntimeOrigin::signed(42),
+            root
+        ));
     });
 }
