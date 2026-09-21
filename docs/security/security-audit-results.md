@@ -69,7 +69,7 @@ See [Bug Bounty Program](BUG_BOUNTY_PROGRAM.md) for reward details.
 
 A professional external audit is budgeted and planned. Requirements:
 - Firm with Substrate/Polkadot ecosystem expertise
-- Scope: Full runtime, all 18 custom pallets, node infrastructure
+- Scope: Full runtime, all 19 custom pallets (runtime indexes 20-38), node infrastructure
 - See [Audit Framework](AUDIT_FRAMEWORK.md) for evaluation criteria and planning
 
 ---
