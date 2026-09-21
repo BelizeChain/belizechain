@@ -60,9 +60,34 @@ needed.**
 | New mesh extrinsics present | `add_emergency_authority`, `remove_emergency_authority` |
 | `emergencyAuthorityCount` | `0` (registry empty, as designed) |
 | Block production | advancing ~1 block / 6 s after the upgrade |
+| CI benchmark validation | **19 passed, 0 failed** (run `35556310200`, job `106200552271`) |
 
 The on-chain hash matching the locally built blob is the load-bearing check: it proves
 *which* WASM is executing, not merely that a number changed.
+
+The weight half of this upgrade is independently validated by CI's **Benchmark Smoke
+Test**, which executes every pallet's benchmarks against the real `dev`-chain runtime
+config — not the pallet mocks. All 19 pallets pass:
+
+```
+PASS: pallet_belize_economy          PASS: pallet_belize_landledger
+PASS: pallet_belize_identity         PASS: pallet_belize_consensus
+PASS: pallet_belize_governance       PASS: pallet_belize_quantum
+PASS: pallet_belize_compliance       PASS: pallet_belize_bns
+PASS: pallet_belize_staking          PASS: pallet_belize_mesh
+PASS: pallet_belize_oracle           PASS: pallet_belize_justice
+PASS: pallet_belize_community        PASS: pallet_belize_whistleblower
+PASS: pallet_belize_payroll          PASS: pallet_belize_moderation
+PASS: pallet_belize_interoperability PASS: pallet_storage_proof
+PASS: pallet_belize_belizex
+RESULTS: 19 passed, 0 failed
+```
+
+That distinction matters: the `bench_*` unit tests run against permissive pallet mocks
+(a minimum balance of `1`, hardcoded account allowlists) and pass where the dev-chain
+run fails. The mocks are why several benchmark bugs in this work stayed hidden until the
+smoke test was enabled on pull requests — it had previously only run on `belizechain`
+pushes, and each new push cancelled the in-flight run, so it had never completed.
 
 ### Submission
 
