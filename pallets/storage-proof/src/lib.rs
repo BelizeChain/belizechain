@@ -18,11 +18,22 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use frame_support::BoundedVec;
-use frame_support::{dispatch::DispatchResult, ensure, pallet_prelude::*, traits::EnsureOrigin};
+use frame_support::{
+    dispatch::DispatchResult,
+    ensure,
+    pallet_prelude::*,
+    traits::{Currency, EnsureOrigin, ReservableCurrency},
+    weights::constants::RocksDbWeight,
+};
 use frame_system::pallet_prelude::*;
 
 pub use pallet::*;
+
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
+pub mod weights;
+pub use weights::SubstrateWeight;
 
 #[cfg(test)]
 mod mock;
@@ -101,11 +112,23 @@ pub mod pallet {
     /// Uniquely identifies a content item on Pakit: BLAKE2-256 commitment.
     pub type ContentId = [u8; CID_COMMITMENT_LEN];
 
+    /// Balance type of the configured currency.
+    pub type BalanceOf<T> =
+        <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+
     parameter_types! {
         pub MaxProofSteps: u32 = MAX_PROOF_STEPS;
     }
 
+    /// On-chain storage version for this pallet.
+    ///
+    /// Bump this and register a migration in the runtime's `Migrations` tuple
+    /// whenever this pallet's storage layout changes.
+    pub const STORAGE_VERSION: frame_support::traits::StorageVersion =
+        frame_support::traits::StorageVersion::new(0);
+
     #[pallet::pallet]
+    #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
 
     #[pallet::config]
@@ -114,6 +137,18 @@ pub mod pallet {
         /// (e.g. a proven-byzantine storage provider). Typically a council or
         /// sudo-assigned root.
         type RevocationOrigin: EnsureOrigin<Self::RuntimeOrigin>;
+
+        /// Currency used for the refundable proof deposit.
+        type Currency: ReservableCurrency<Self::AccountId>;
+
+        /// Refundable deposit reserved from the submitter for every stored
+        /// proof. Without it, storing a proof would be permanent free state
+        /// growth that any funded account could drive (H-1).
+        #[pallet::constant]
+        type StorageDeposit: Get<BalanceOf<Self>>;
+
+        /// Weight information for extrinsics in this pallet.
+        type WeightInfo: WeightInfo;
     }
 
     /// CID commitment → submitter + height. ValueQuery: unset rows read as default.
@@ -151,6 +186,10 @@ pub mod pallet {
         Groth16NotYetAccepted,
         /// Proof already recorded for this content by a different provider.
         ContentAlreadyProven,
+        /// Submitter cannot afford the refundable storage deposit.
+        InsufficientDeposit,
+        /// No stored proof exists for this content id.
+        ProofNotFound,
     }
 
     #[pallet::call]
@@ -160,7 +199,7 @@ pub mod pallet {
         /// - `content_id`: 32-byte BLAKE2-256 of the content Merkle root — must
         ///   equal the Merkle root derivable from the provided proof.
         /// - `proof`: ordered siblings walking leaf → root.
-        #[pallet::weight(Weight::from_parts(10_000, 0))]
+        #[pallet::weight(T::WeightInfo::submit_storage_proof(proof.siblings.len() as u32))]
         #[pallet::call_index(0)]
         pub fn submit_storage_proof(
             origin: OriginFor<T>,
@@ -208,6 +247,12 @@ pub mod pallet {
                 Error::<T>::ContentAlreadyProven
             );
 
+            // Reserve the refundable storage deposit before writing the record.
+            // Revocation returns it to the submitter; a provider that never
+            // revokes keeps paying rent in the form of locked capital.
+            T::Currency::reserve(&submitter, T::StorageDeposit::get())
+                .map_err(|_| Error::<T>::InsufficientDeposit)?;
+
             let block = <frame_system::Pallet<T>>::block_number();
             StorageProofs::<T>::insert(
                 derived_root,
@@ -226,14 +271,18 @@ pub mod pallet {
         }
 
         /// Administrative revocation (e.g. byzantine behaviour proven).
-        #[pallet::weight(Weight::from_parts(5_000, 0))]
+        ///
+        /// Returns the storage deposit to the original submitter and removes
+        /// the record so the content can be proven again by a good provider.
+        #[pallet::weight(T::WeightInfo::revoke_proof())]
         #[pallet::call_index(1)]
         pub fn revoke_proof(origin: OriginFor<T>, content_id: ContentId) -> DispatchResult {
             T::RevocationOrigin::ensure_origin(origin)?;
-            ensure!(
-                StorageProofs::<T>::contains_key(content_id),
-                Error::<T>::RootMismatch
-            );
+            let record = StorageProofs::<T>::get(content_id).ok_or(Error::<T>::ProofNotFound)?;
+
+            // Refund the deposit to the account that reserved it.
+            let _ = T::Currency::unreserve(&record.submitter, T::StorageDeposit::get());
+
             StorageProofs::<T>::remove(content_id);
             Self::deposit_event(Event::StorageProofRevoked { content_id });
             Ok(())
@@ -275,5 +324,31 @@ pub mod pallet {
             }
             current
         }
+    }
+}
+
+/// Weight information for pallet extrinsics.
+///
+/// `SubstrateWeight<T>` (in `weights.rs`) carries the benchmarked numbers; the
+/// `()` implementation below is the constant fallback used in tests and by any
+/// runtime that has not wired generated weights yet.
+pub trait WeightInfo {
+    /// `s` is the number of Merkle siblings in the submitted proof.
+    fn submit_storage_proof(s: u32) -> Weight;
+    fn revoke_proof() -> Weight;
+}
+
+impl WeightInfo for () {
+    fn submit_storage_proof(s: u32) -> Weight {
+        Weight::from_parts(20_000_000, 3_500)
+            .saturating_add(Weight::from_parts(2_500_000, 300).saturating_mul(s as u64))
+            .saturating_add(RocksDbWeight::get().reads(3))
+            .saturating_add(RocksDbWeight::get().writes(3))
+    }
+
+    fn revoke_proof() -> Weight {
+        Weight::from_parts(15_000_000, 2_500)
+            .saturating_add(RocksDbWeight::get().reads(2))
+            .saturating_add(RocksDbWeight::get().writes(2))
     }
 }

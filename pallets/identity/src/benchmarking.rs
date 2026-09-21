@@ -70,8 +70,7 @@ mod benchmarks {
     }
 
     #[benchmark]
-    fn admin_simple() {
-        // Uses add_issuer as representative admin operation
+    fn add_issuer() {
         let issuer: T::AccountId = account("issuer", 0, 0);
         fund_account::<T>(&issuer);
         let attr: u8 = 0; // SSN
@@ -81,6 +80,141 @@ mod benchmarks {
 
         #[extrinsic_call]
         add_issuer(RawOrigin::Root, attr, issuer);
+    }
+
+    #[benchmark]
+    fn remove_issuer() {
+        let issuer: T::AccountId = account("issuer", 0, 0);
+        fund_account::<T>(&issuer);
+        let attr: u8 = 0; // SSN
+        IssuerBondAmount::<T>::kill();
+
+        // The removal path only does work when the issuer is currently listed.
+        Pallet::<T>::add_issuer(RawOrigin::Root.into(), attr, issuer.clone())
+            .expect("issuer should be added");
+
+        #[extrinsic_call]
+        remove_issuer(RawOrigin::Root, attr, issuer);
+    }
+
+    #[benchmark]
+    fn set_standard_version() {
+        // SSN and Passport have version storage; Biometrics deliberately errors.
+        let attr: u8 = 0;
+
+        #[extrinsic_call]
+        set_standard_version(RawOrigin::Root, attr, 2u32);
+    }
+
+    #[benchmark]
+    fn set_operation_fee() {
+        let fee: BalanceOf<T> = 10u32.into();
+
+        #[extrinsic_call]
+        set_operation_fee(RawOrigin::Root, fee);
+    }
+
+    #[benchmark]
+    fn set_issuer_bond_amount() {
+        let amount: BalanceOf<T> = 100u32.into();
+
+        #[extrinsic_call]
+        set_issuer_bond_amount(RawOrigin::Root, amount);
+    }
+
+    #[benchmark]
+    fn set_rate_limits() {
+        let window: BlockNumberFor<T> = 100u32.into();
+
+        // Writes all four rate-limit values, the heaviest path for this call.
+        #[extrinsic_call]
+        set_rate_limits(RawOrigin::Root, window, 10u32, 10u32, 10u32);
+    }
+
+    #[benchmark]
+    fn set_pause() {
+        #[extrinsic_call]
+        set_pause(RawOrigin::Root, true);
+    }
+
+    #[benchmark]
+    fn issuer_deposit_bond() {
+        let issuer: T::AccountId = whitelisted_caller();
+        fund_account::<T>(&issuer);
+        let attr: u8 = 0; // SSN
+
+        // A non-zero requirement forces the real transfer to the pallet account
+        // rather than the early return. It must also clear the existential
+        // deposit: the transfer creates that account, and a sub-deposit amount
+        // would be rejected as dust.
+        let required: BalanceOf<T> = T::Currency::minimum_balance() * 1_000u32.into();
+        IssuerBondAmount::<T>::put(required);
+
+        #[extrinsic_call]
+        issuer_deposit_bond(RawOrigin::Signed(issuer.clone()), attr);
+
+        assert_eq!(IssuerBonds::<T>::get(AttributeType::Ssn, &issuer), required);
+    }
+
+    #[benchmark]
+    fn issuer_withdraw_bond() {
+        let issuer: T::AccountId = whitelisted_caller();
+        fund_account::<T>(&issuer);
+        let attr: u8 = 0; // SSN
+        let amount: BalanceOf<T> = 100u32.into();
+
+        // Withdrawal pays out of the pallet account, so it must hold the funds.
+        IssuerBonds::<T>::insert(AttributeType::Ssn, &issuer, amount);
+        fund_account::<T>(&Pallet::<T>::account_id());
+
+        #[extrinsic_call]
+        issuer_withdraw_bond(RawOrigin::Signed(issuer.clone()), attr);
+
+        assert!(IssuerBonds::<T>::get(AttributeType::Ssn, &issuer).is_zero());
+    }
+
+    #[benchmark]
+    fn flag_issuer() {
+        let issuer: T::AccountId = account("issuer", 0, 0);
+        let attr: u8 = 0; // SSN
+
+        #[extrinsic_call]
+        flag_issuer(RawOrigin::Root, attr, issuer, true);
+    }
+
+    #[benchmark]
+    fn slash_issuer_bond() {
+        let issuer: T::AccountId = account("issuer", 0, 0);
+        let attr: u8 = 0; // SSN
+        let amount: BalanceOf<T> = 100u32.into();
+
+        // The slash moves real funds from the pallet account to the treasury, so
+        // both ends must exist and be funded.
+        IssuerBonds::<T>::insert(AttributeType::Ssn, &issuer, amount);
+        fund_account::<T>(&Pallet::<T>::account_id());
+        fund_account::<T>(&T::Treasury::get());
+
+        #[extrinsic_call]
+        slash_issuer_bond(RawOrigin::Root, attr, issuer.clone(), amount);
+
+        assert!(IssuerBonds::<T>::get(AttributeType::Ssn, &issuer).is_zero());
+    }
+
+    #[benchmark]
+    fn report_bad_attestation() {
+        let issuer: T::AccountId = account("issuer", 0, 0);
+        let attr: u8 = 0; // SSN
+        let slash_amount: BalanceOf<T> = 100u32.into();
+
+        IssuerBonds::<T>::insert(AttributeType::Ssn, &issuer, slash_amount);
+        fund_account::<T>(&Pallet::<T>::account_id());
+        fund_account::<T>(&T::Treasury::get());
+
+        // Flag *and* slash: the heaviest path, exercising both writes.
+        #[extrinsic_call]
+        report_bad_attestation(RawOrigin::Root, attr, issuer.clone(), true, slash_amount);
+
+        assert!(FlaggedIssuers::<T>::get(AttributeType::Ssn, &issuer));
     }
 
     #[benchmark]

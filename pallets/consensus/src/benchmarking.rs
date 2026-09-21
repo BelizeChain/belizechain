@@ -145,11 +145,52 @@ mod benchmarks {
 
     #[benchmark]
     fn finalize_consensus_round() {
-        // Start a round first
-        let _ = Pallet::<T>::start_consensus_round(RawOrigin::Root.into(), 1u32.into());
+        // Start a round first, then let it run to completion.
+        //
+        // `finalize_consensus_round` requires `current_block >= start_block +
+        // duration`, so the block number must advance or the call fails with
+        // `RoundNotInProgress` no matter how the round was set up.
+        let duration: BlockNumberFor<T> = 1u32.into();
+        Pallet::<T>::start_consensus_round(RawOrigin::Root.into(), duration)
+            .expect("start_consensus_round should succeed");
+        frame_system::Pallet::<T>::set_block_number(
+            frame_system::Pallet::<T>::block_number() + duration,
+        );
 
         #[extrinsic_call]
         _(RawOrigin::Root);
+    }
+
+    /// Leaving the active set: removes the validator in one step and starts the
+    /// unbonding period. `join_validator` is the cheapest way to reach that state.
+    #[benchmark]
+    fn leave_validator() {
+        let caller: T::AccountId = whitelisted_caller();
+        let stake = T::MinConsensusStake::get();
+        let _ = T::Currency::make_free_balance_be(&caller, stake * 10u32.into());
+        let pq_public_key: Vec<u8> = vec![0u8; 2592];
+        Pallet::<T>::join_consensus_validator(
+            RawOrigin::Signed(caller.clone()).into(),
+            stake,
+            pq_public_key,
+        )
+        .expect("join_consensus_validator should succeed");
+
+        #[extrinsic_call]
+        _(RawOrigin::Signed(caller));
+    }
+
+    /// Per-validator cost of releasing a completed unbond, charged after the
+    /// unbonding period elapses.
+    #[benchmark]
+    fn withdraw_validator_unbonded() {
+        let caller: T::AccountId = whitelisted_caller();
+        let stake = T::MinConsensusStake::get();
+        let unlock_at = frame_system::Pallet::<T>::block_number();
+        PendingValidatorUnbonds::<T>::insert(&caller, (stake, unlock_at));
+
+        #[extrinsic_call]
+        _(RawOrigin::Signed(caller));
     }
 
     impl_benchmark_test_suite!(Pallet, crate::mock::new_test_ext(), crate::mock::Test);

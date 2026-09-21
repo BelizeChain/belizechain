@@ -6,9 +6,13 @@ into a runnable operator utility.
 
 Usage:
   BLOCKCHAIN_WS_URL=ws://127.0.0.1:9944 \
-  ISSUER_SURI='//Alice' \
-  SUDO_SURI='//Alice' \
+  ISSUER_SURI='<issuer-suri>' \
+  SUDO_SURI='<sudo-suri>' \
   python3 scripts/test/seed_testnet_kyc.py --input scripts/test/seed_testnet_kyc.example.json
+
+The example manifest carries `<...>` placeholders: copy it and substitute the real
+operator SURIs before running. Neither the manifest nor this script embeds an
+account key.
 
 Environment:
   BLOCKCHAIN_WS_URL   WebSocket endpoint for the target chain.

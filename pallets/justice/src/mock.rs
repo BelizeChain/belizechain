@@ -89,6 +89,9 @@ impl pallet_belize_justice::Config for Test {
     type MaxMediators = MaxMediators;
     type AppealTimeout = AppealTimeoutBlocks;
     type WeightInfo = ();
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn make_mediator(_account: &u64) {}
 }
 
 // Test accounts

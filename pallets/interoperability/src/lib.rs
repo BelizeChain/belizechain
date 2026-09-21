@@ -90,15 +90,24 @@ pub struct PassthroughPQVerifier;
 
 impl PQSignatureVerifier for PassthroughPQVerifier {
     fn verify(_pubkey: &[u8], _message: &[u8], _signature: &[u8]) -> bool {
-        // AR-6 SECURITY GUARD: refuse to operate in production builds.
-        // This verifier is NOT cryptographically secure.
+        // AR-6 SECURITY GUARD: fail closed in production builds.
+        // This verifier is NOT cryptographically secure, so it must never
+        // accept a signature outside test/benchmark builds. It rejects every
+        // signature rather than panicking: a panic would halt block production
+        // if the verifier were ever mis-wired, while rejecting every signature
+        // keeps the bridge closed and the chain alive.
         // Replace with a real Falcon/Dilithium implementation before mainnet.
+        //
+        // Each `cfg` block is the function's tail expression, so exactly one of
+        // them is compiled and supplies the `bool` return value.
         #[cfg(not(any(test, feature = "runtime-benchmarks")))]
         {
-            panic!(
-                "SECURITY: PassthroughPQVerifier must be replaced with a real \
-                 Falcon/Dilithium verifier before mainnet deployment (AR-6)."
+            log::error!(
+                target: "runtime::interoperability",
+                "SECURITY: PassthroughPQVerifier rejected a signature — it is not a real \
+                 Falcon/Dilithium verifier and must not be wired in production (AR-6)."
             );
+            false
         }
         // Structural length check only (test/benchmark builds).
         #[cfg(any(test, feature = "runtime-benchmarks"))]
@@ -161,7 +170,15 @@ impl PQSignatureVerifier for MLDsaVerifier {
 pub mod pallet {
     use super::*;
 
+    /// On-chain storage version for this pallet.
+    ///
+    /// Bump this and register a migration in the runtime's `Migrations` tuple
+    /// whenever this pallet's storage layout changes.
+    pub const STORAGE_VERSION: frame_support::traits::StorageVersion =
+        frame_support::traits::StorageVersion::new(0);
+
     #[pallet::pallet]
+    #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
 
     #[pallet::config]
@@ -1442,7 +1459,7 @@ pub mod pallet {
         /// accepted, the transaction moves to `Disputed` status and is blocked
         /// from automatic finalization. Governance must then resolve the dispute.
         #[pallet::call_index(6)]
-        #[pallet::weight(T::WeightInfo::update_config())] // Re-use weight; lightweight operation
+        #[pallet::weight(T::WeightInfo::dispute_bridge_transaction())]
         pub fn dispute_bridge_transaction(
             origin: OriginFor<T>,
             tx_id: u32,
@@ -1615,7 +1632,7 @@ pub mod pallet {
         /// Only the pool manager can withdraw. Unreserves funds and updates pool.
         /// If the entire liquidity is withdrawn the pool is deactivated.
         #[pallet::call_index(10)]
-        #[pallet::weight(T::WeightInfo::create_liquidity_pool())]
+        #[pallet::weight(T::WeightInfo::withdraw_liquidity())]
         pub fn withdraw_liquidity(
             origin: OriginFor<T>,
             pool_id: u32,
@@ -1901,6 +1918,8 @@ pub trait WeightInfo {
     fn send_message() -> Weight;
     fn update_config() -> Weight;
     fn confirm_burn_proof() -> Weight;
+    fn dispute_bridge_transaction() -> Weight;
+    fn withdraw_liquidity() -> Weight;
 }
 
 impl WeightInfo for () {
@@ -1924,6 +1943,12 @@ impl WeightInfo for () {
     }
     fn confirm_burn_proof() -> Weight {
         Weight::from_parts(15_000_000, 512).saturating_add(Weight::from_parts(0, 2000))
+    }
+    fn dispute_bridge_transaction() -> Weight {
+        Weight::from_parts(8_000_000, 512).saturating_add(Weight::from_parts(0, 1000))
+    }
+    fn withdraw_liquidity() -> Weight {
+        Weight::from_parts(20_000_000, 512).saturating_add(Weight::from_parts(0, 3000))
     }
 }
 

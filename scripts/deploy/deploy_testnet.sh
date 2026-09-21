@@ -43,8 +43,9 @@ fi
 
 if [ -z "$CHAIN_SPEC_PATH" ]; then
     echo "❌ CHAIN_SPEC_PATH is not set"
-    echo "💡 Generate a dedicated testnet spec first:"
-    echo "   ./target/release/belizechain-node build-spec --disable-default-bootnode --chain testnet-template > belizechain-testnet-plain.json"
+    echo "💡 Generate a dedicated testnet spec first (the built-in template is dev-seeded, so it needs the explicit allowance and key replacement):"
+    echo "   BELIZECHAIN_ALLOW_DEV_SEEDS=1 ./target/release/belizechain-node build-spec --disable-default-bootnode --chain testnet-template > belizechain-testnet-plain.json"
+    echo "   # replace sudo/session/endowed accounts with operator keys in belizechain-testnet-plain.json"
     echo "   ./target/release/belizechain-node build-spec --disable-default-bootnode --chain belizechain-testnet-plain.json --raw > belizechain-testnet-raw.json"
     echo "   CHAIN_SPEC_PATH=./belizechain-testnet-raw.json ./scripts/deploy/deploy_testnet.sh"
     exit 1

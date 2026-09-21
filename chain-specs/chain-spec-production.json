@@ -17,7 +17,7 @@
   "properties": {
     "tokenSymbol": "DALLA",
     "tokenDecimals": 12,
-    "ss58Format": 2025
+    "ss58Format": 1981
   },
   "consensusEngine": "belize-pow",
   "genesis": {

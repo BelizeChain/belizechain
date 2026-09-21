@@ -198,12 +198,12 @@ belizechain-node --version
 ### Create Custom Chain Spec
 
 ```bash
-# Generate base chain spec template
-belizechain-node build-spec \
+# Generate base chain spec template (dev-seeded: the allowance is required)
+BELIZECHAIN_ALLOW_DEV_SEEDS=1 belizechain-node build-spec \
   --disable-default-bootnode \
   --chain testnet-template > belizechain-testnet-plain.json
 
-# Edit genesis (see below)
+# Edit genesis: replace every dev sudo/session/endowed account with operator keys
 nano belizechain-testnet-plain.json
 
 # Convert to raw format
@@ -211,6 +211,9 @@ belizechain-node build-spec \
   --disable-default-bootnode \
     --chain belizechain-testnet-plain.json \
     --raw > belizechain-testnet-raw.json
+
+# The dev-account guard must pass before this spec goes anywhere near a host
+bash ./scripts/deploy/validate_chain_spec.sh ./belizechain-testnet-raw.json
 
 # Launch nodes with the resulting explicit spec file
 belizechain-node --chain belizechain-testnet-raw.json

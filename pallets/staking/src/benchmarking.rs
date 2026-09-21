@@ -5,8 +5,6 @@
 //! so `RawOrigin::Root` is used for those calls.
 //! `force_join_validator` (Root) bypasses KYC checks — used for benchmark setup.
 
-#![cfg(feature = "runtime-benchmarks")]
-
 use super::*;
 use frame_benchmarking::v2::*;
 use frame_support::traits::Currency;

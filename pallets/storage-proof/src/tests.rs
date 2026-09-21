@@ -2,6 +2,7 @@
 
 use crate::mock::{new_test_ext, RuntimeOrigin, Test as Runtime};
 use crate::{BoundedVec, Error, MerkleProof, MerkleStep, ProofType};
+use frame_support::traits::Get;
 use frame_support::{assert_err, assert_ok};
 
 /// Builds a correct 2-level Merkle proof using BLAKE2-256.
@@ -154,5 +155,73 @@ fn revoke_only_by_authority() {
             RuntimeOrigin::signed(42),
             root
         ));
+    });
+}
+
+#[test]
+fn submit_reserves_deposit_and_revoke_refunds_it() {
+    new_test_ext().execute_with(|| {
+        let (root, proof) = build_valid_proof();
+        let deposit = <Runtime as crate::Config>::StorageDeposit::get();
+        let free_before = pallet_balances::Pallet::<Runtime>::free_balance(1);
+
+        assert_ok!(crate::pallet::Pallet::<Runtime>::submit_storage_proof(
+            RuntimeOrigin::signed(1),
+            root,
+            proof,
+            ProofType::Merkle,
+        ));
+
+        // The deposit is locked while the proof is stored.
+        assert_eq!(
+            pallet_balances::Pallet::<Runtime>::reserved_balance(1),
+            deposit
+        );
+        assert_eq!(
+            pallet_balances::Pallet::<Runtime>::free_balance(1),
+            free_before - deposit
+        );
+
+        assert_ok!(crate::pallet::Pallet::<Runtime>::revoke_proof(
+            RuntimeOrigin::signed(42),
+            root
+        ));
+
+        // Revocation refunds the deposit and clears the record.
+        assert_eq!(pallet_balances::Pallet::<Runtime>::reserved_balance(1), 0);
+        assert_eq!(
+            pallet_balances::Pallet::<Runtime>::free_balance(1),
+            free_before
+        );
+        assert!(!crate::StorageProofs::<Runtime>::contains_key(root));
+    });
+}
+
+#[test]
+fn submit_without_funds_for_deposit_fails() {
+    new_test_ext().execute_with(|| {
+        let (root, proof) = build_valid_proof();
+        // Account 3 has no genesis balance, so it cannot cover the deposit.
+        assert_err!(
+            crate::pallet::Pallet::<Runtime>::submit_storage_proof(
+                RuntimeOrigin::signed(3),
+                root,
+                proof,
+                ProofType::Merkle,
+            ),
+            Error::<Runtime>::InsufficientDeposit
+        );
+        assert!(!crate::StorageProofs::<Runtime>::contains_key(root));
+    });
+}
+
+#[test]
+fn revoke_missing_proof_reports_not_found() {
+    new_test_ext().execute_with(|| {
+        let (root, _) = build_valid_proof();
+        assert_err!(
+            crate::pallet::Pallet::<Runtime>::revoke_proof(RuntimeOrigin::signed(42), root),
+            Error::<Runtime>::ProofNotFound
+        );
     });
 }

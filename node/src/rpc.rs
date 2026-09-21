@@ -74,7 +74,8 @@ where
                 "economy", "identity", "governance", "staking", "consensus",
                 "oracle", "interoperability", "belizex", "bns", "landledger",
                 "payroll", "community", "quantum", "mesh", "compliance",
-                "justice", "whistleblower", "moderation"
+                "justice", "whistleblower", "moderation", "storage-proof",
+                "contracts"
             ],
             "features": [
                 "federated_ai_consensus",

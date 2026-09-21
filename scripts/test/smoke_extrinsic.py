@@ -1,21 +1,45 @@
 #!/usr/bin/env python3
-"""Step 1 smoke test: submit an Alice->Bob balance transfer to the Ceiba node.
+"""Step 1 smoke test: submit a signed balance transfer to the Ceiba node.
 
 Confirms: RPC reachable, metadata decodable, tx-pool accepts, block authorship
 includes the extrinsic, and the expected Transfer event fires.
+
+Usage:
+  SMOKE_SENDER_SURI='<sender-suri>' \
+  SMOKE_RECIPIENT_SURI='<recipient-suri>' \
+  python3 scripts/test/smoke_extrinsic.py
+
+Environment:
+  SMOKE_SENDER_SURI     SURI of the sending account. Required — the script never
+                        embeds an account key. On the current testnet the funded
+                        authority seed is documented in
+                        docs/operations/TESTNET_ONLY_RULE_2026-09-18.md.
+  SMOKE_RECIPIENT_SURI  SURI of the receiving account. Required (any funded or
+                        unfunded account works; the transfer must clear the ED).
+  SMOKE_RPC_URL         Override the WebSocket endpoint (default: Ceiba).
 """
 from __future__ import annotations
 
+import os
 import sys
 import time
 
 from substrateinterface import Keypair, SubstrateInterface
 
-RPC_URL = "ws://100.81.45.25:9944"
+RPC_URL = os.environ.get("SMOKE_RPC_URL", "ws://100.81.45.25:9944")
 TRANSFER_AMOUNT = 1_000_000_000_000  # 1 UNIT assuming 12 decimals; irrelevant in --dev
 
 
 def main() -> int:
+    sender_suri = os.environ.get("SMOKE_SENDER_SURI", "")
+    recipient_suri = os.environ.get("SMOKE_RECIPIENT_SURI", "")
+    if not sender_suri or not recipient_suri:
+        print(
+            "ERROR: SMOKE_SENDER_SURI and SMOKE_RECIPIENT_SURI must both be set.",
+            file=sys.stderr,
+        )
+        return 2
+
     print(f"[1/6] Connecting to {RPC_URL} ...")
     substrate = SubstrateInterface(url=RPC_URL)
     print(f"      chain      = {substrate.chain}")
@@ -23,34 +47,34 @@ def main() -> int:
     print(f"      ss58_fmt   = {substrate.ss58_format}")
     print(f"      token_sym  = {substrate.token_symbol}")
 
-    alice = Keypair.create_from_uri("//Alice")
-    bob = Keypair.create_from_uri("//Bob")
-    print(f"[2/6] Alice  = {alice.ss58_address}")
-    print(f"      Bob    = {bob.ss58_address}")
+    sender = Keypair.create_from_uri(sender_suri)
+    recipient = Keypair.create_from_uri(recipient_suri)
+    print(f"[2/6] sender    = {sender.ss58_address}")
+    print(f"      recipient = {recipient.ss58_address}")
 
     def balance(who: str) -> int:
         info = substrate.query("System", "Account", [who])
         return int(info.value["data"]["free"])
 
-    alice_before = balance(alice.ss58_address)
-    bob_before = balance(bob.ss58_address)
-    print(f"[3/6] pre:  Alice={alice_before}  Bob={bob_before}")
+    sender_before = balance(sender.ss58_address)
+    recipient_before = balance(recipient.ss58_address)
+    print(f"[3/6] pre:  sender={sender_before}  recipient={recipient_before}")
 
     print("[4/6] Composing balances.transfer_keep_alive ...")
     try:
         call = substrate.compose_call(
             call_module="Balances",
             call_function="transfer_keep_alive",
-            call_params={"dest": bob.ss58_address, "value": TRANSFER_AMOUNT},
+            call_params={"dest": recipient.ss58_address, "value": TRANSFER_AMOUNT},
         )
     except Exception:
         call = substrate.compose_call(
             call_module="Balances",
             call_function="transfer_allow_death",
-            call_params={"dest": bob.ss58_address, "value": TRANSFER_AMOUNT},
+            call_params={"dest": recipient.ss58_address, "value": TRANSFER_AMOUNT},
         )
 
-    extrinsic = substrate.create_signed_extrinsic(call=call, keypair=alice)
+    extrinsic = substrate.create_signed_extrinsic(call=call, keypair=sender)
     print("[5/6] Submitting and waiting for inclusion ...")
     receipt = substrate.submit_extrinsic(extrinsic, wait_for_inclusion=True)
     print(f"      block_hash  = {receipt.block_hash}")
@@ -75,13 +99,19 @@ def main() -> int:
 
     # Small delay so node account state reflects the block
     time.sleep(1)
-    alice_after = balance(alice.ss58_address)
-    bob_after = balance(bob.ss58_address)
-    delta_bob = bob_after - bob_before
-    print(f"[6/6] post: Alice={alice_after}  Bob={bob_after}  bob_delta={delta_bob}")
+    sender_after = balance(sender.ss58_address)
+    recipient_after = balance(recipient.ss58_address)
+    recipient_delta = recipient_after - recipient_before
+    print(
+        f"[6/6] post: sender={sender_after}  recipient={recipient_after}"
+        f"  recipient_delta={recipient_delta}"
+    )
 
-    if delta_bob != TRANSFER_AMOUNT:
-        print(f"      [FAIL] expected bob delta {TRANSFER_AMOUNT}, got {delta_bob}")
+    if recipient_delta != TRANSFER_AMOUNT:
+        print(
+            f"      [FAIL] expected recipient delta {TRANSFER_AMOUNT},"
+            f" got {recipient_delta}"
+        )
         return 3
 
     print("SMOKE OK")

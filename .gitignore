@@ -19,6 +19,13 @@ Thumbs.db
 
 # Blockchain
 chain-spec-raw.json
+# Live testnet spec: carries the running chain's sudo/session keys. It is
+# operator-managed on the host (`/data/chain/testnet-spec.json`) and must never
+# be committed — see docs/operations/TESTNET_ONLY_RULE_2026-09-18.md.
+testnet-spec.json
+# Generated specs are build artifacts (18MB+ each, deployment-specific bootnodes).
+# Regenerate with scripts/generate-mainnet-spec.sh; never commit them.
+generated_specs/
 .subxt/
 .polkadot/
 .substrate/

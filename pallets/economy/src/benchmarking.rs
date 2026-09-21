@@ -141,29 +141,20 @@ mod benchmarks {
         _(RawOrigin::Root, amount);
     }
 
-    // Orphaned WeightInfo functions — no corresponding extrinsics exist
-    #[benchmark]
-    fn send_remittance() {
-        #[block]
-        {}
-    }
-
+    /// Per-epoch cost of applying annual inflation, charged from `on_initialize`.
+    ///
+    /// Measured against the same helper `on_initialize` calls, so the number
+    /// covers the treasury deposits, the `TotalSupply` sync and the
+    /// `LastInflationBlock` update instead of being an empty stub.
     #[benchmark]
     fn update_inflation() {
-        #[block]
-        {}
-    }
+        let n = frame_system::Pallet::<T>::block_number();
+        let current_supply = T::Currency::total_issuance();
 
-    #[benchmark]
-    fn update_peg_rate() {
         #[block]
-        {}
-    }
-
-    #[benchmark]
-    fn emergency_shutdown() {
-        #[block]
-        {}
+        {
+            Pallet::<T>::apply_annual_inflation(n, current_supply, current_supply);
+        }
     }
 
     #[benchmark]

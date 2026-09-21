@@ -427,7 +427,15 @@ pub mod pallet {
     pub type BalanceOf<T> =
         <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
+    /// On-chain storage version for this pallet.
+    ///
+    /// Bump this and register a migration in the runtime's `Migrations` tuple
+    /// whenever this pallet's storage layout changes.
+    pub const STORAGE_VERSION: frame_support::traits::StorageVersion =
+        frame_support::traits::StorageVersion::new(0);
+
     #[pallet::pallet]
+    #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
 
     #[pallet::config]
@@ -802,7 +810,7 @@ pub mod pallet {
         /// - `employer`: AccountId to verify
         /// - `employer_type`: Classification of the employer
         #[pallet::call_index(7)]
-        #[pallet::weight(Weight::from_parts(15_000_000, 512))]
+        #[pallet::weight(T::WeightInfo::verify_employer())]
         pub fn verify_employer(
             origin: OriginFor<T>,
             employer: T::AccountId,
@@ -1013,7 +1021,7 @@ pub mod pallet {
 
         /// Toggle employee active/inactive status (suspend or reactivate)
         #[pallet::call_index(8)]
-        #[pallet::weight(Weight::from_parts(15_000_000, 512))]
+        #[pallet::weight(T::WeightInfo::toggle_employee_status())]
         pub fn toggle_employee_status(
             origin: OriginFor<T>,
             employee: T::AccountId,
@@ -1359,7 +1367,7 @@ pub mod pallet {
 
         /// Create a department / cost-center
         #[pallet::call_index(9)]
-        #[pallet::weight(Weight::from_parts(15_000_000, 512))]
+        #[pallet::weight(T::WeightInfo::create_department())]
         pub fn create_department(origin: OriginFor<T>, name_hash: [u8; 32]) -> DispatchResult {
             let employer = ensure_signed(origin)?;
 
@@ -1403,7 +1411,7 @@ pub mod pallet {
         /// - `deduction_type`: Type of deduction  
         /// - `amount`: Per-period deduction amount
         #[pallet::call_index(10)]
-        #[pallet::weight(Weight::from_parts(20_000_000, 512))]
+        #[pallet::weight(T::WeightInfo::set_deduction())]
         pub fn set_deduction(
             origin: OriginFor<T>,
             employee: T::AccountId,
@@ -1468,7 +1476,7 @@ pub mod pallet {
         /// - `amount`: Bonus amount (transferred immediately, no deductions)
         /// - `category`: Payment category (Bonus, Overtime, Commission, Reimbursement, etc.)
         #[pallet::call_index(11)]
-        #[pallet::weight(Weight::from_parts(50_000_000, 512))]
+        #[pallet::weight(T::WeightInfo::issue_bonus())]
         pub fn issue_bonus(
             origin: OriginFor<T>,
             employee: T::AccountId,
@@ -1728,6 +1736,11 @@ pub trait WeightInfo {
     fn batch_payment(n: u32) -> Weight;
     fn create_schedule() -> Weight;
     fn update_schedule() -> Weight;
+    fn verify_employer() -> Weight;
+    fn toggle_employee_status() -> Weight;
+    fn create_department() -> Weight;
+    fn set_deduction() -> Weight;
+    fn issue_bonus() -> Weight;
 }
 
 impl WeightInfo for () {
@@ -1756,5 +1769,20 @@ impl WeightInfo for () {
     }
     fn update_schedule() -> Weight {
         Weight::from_parts(20_000_000, 512).saturating_add(Weight::from_parts(0, 2_000))
+    }
+    fn verify_employer() -> Weight {
+        Weight::from_parts(15_000_000, 512).saturating_add(Weight::from_parts(0, 1_000))
+    }
+    fn toggle_employee_status() -> Weight {
+        Weight::from_parts(15_000_000, 512).saturating_add(Weight::from_parts(0, 1_000))
+    }
+    fn create_department() -> Weight {
+        Weight::from_parts(15_000_000, 512).saturating_add(Weight::from_parts(0, 1_000))
+    }
+    fn set_deduction() -> Weight {
+        Weight::from_parts(20_000_000, 512).saturating_add(Weight::from_parts(0, 2_000))
+    }
+    fn issue_bonus() -> Weight {
+        Weight::from_parts(50_000_000, 512).saturating_add(Weight::from_parts(0, 5_000))
     }
 }

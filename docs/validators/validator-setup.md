@@ -185,7 +185,7 @@ curl -H "Content-Type: application/json" -d '{
 
 **Using Polkadot.js Apps:**
 
-1. Navigate to https://polkadot.js.org/apps/?rpc=wss://rpc.belizechain.org
+1. Navigate to https://polkadot.js.org/apps/?rpc=<operator-provided-rpc-url>
 2. Accounts → Add account
 3. Create **Stash account** (holds funds, keep offline)
    - Save 12/24-word seed phrase securely
@@ -236,7 +236,8 @@ await api.tx.compliance.submitKycApplication(
 const { ApiPromise, WsProvider } = require('@polkadot/api');
 
 async function bondTokens() {
-  const provider = new WsProvider('wss://rpc.belizechain.org');
+  // Substitute the operator-provided RPC endpoint (public hosts are not live yet).
+  const provider = new WsProvider('<operator-provided-rpc-url>');
   const api = await ApiPromise.create({ provider });
   
   // Bond 10,000 DALLA (minimum)
@@ -330,7 +331,7 @@ export KINICH_API_KEY="..."
 
 # Start Kinich node
 python -m kinich.core.quantum_node \
-    --blockchain-rpc wss://rpc.belizechain.org \
+    --blockchain-rpc <operator-provided-rpc-url> \
     --validator-account 5GrwvaEF... \
     --backends ionq,quantinuum,simulator
 ```

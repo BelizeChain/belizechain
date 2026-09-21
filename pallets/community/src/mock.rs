@@ -5,6 +5,7 @@ use frame_support::{
 };
 use pallet_belize_identity::{BelizeKyc, KycLevel};
 use sp_runtime::{
+    codec::Encode,
     traits::{BlakeTwo256, IdentityLookup},
     BuildStorage,
 };
@@ -80,9 +81,41 @@ pub struct MockKyc;
 impl BelizeKyc<u64, u64> for MockKyc {
     fn is_kyc_verified(account: &u64, _level: KycLevel, _now: u64) -> bool {
         // Accounts 1-10 are verified for testing purposes
-        matches!(account, 1..=10)
+        if matches!(account, 1..=10) {
+            return true;
+        }
+        // Benchmark accounts are hash-derived, so they can never be in the list
+        // above; they opt in explicitly via `grant_benchmark_kyc`.
+        BENCHMARK_KYC.with(|granted| granted.borrow().contains(&account.encode()))
     }
 }
+
+std::thread_local! {
+    /// Accounts granted KYC by the benchmark running on this thread.
+    ///
+    /// Thread-local so a grant cannot leak into another test, and keyed by
+    /// SCALE-encoded account so the benchmark module can stay generic over
+    /// `T::AccountId`.
+    static BENCHMARK_KYC: std::cell::RefCell<std::collections::BTreeSet<std::vec::Vec<u8>>> =
+        const { std::cell::RefCell::new(std::collections::BTreeSet::new()) };
+}
+
+/// Grant `account` KYC verification for the rest of this test thread.
+///
+/// Benchmark accounts are hash-derived, so the `1..=10` allowlist above can
+/// never cover them. Without this, KYC-gated benchmarks could not run in the
+/// mock harness at all.
+#[cfg(feature = "runtime-benchmarks")]
+pub fn grant_benchmark_kyc<A: Encode>(account: &A) {
+    BENCHMARK_KYC.with(|granted| granted.borrow_mut().insert(account.encode()));
+}
+
+/// Test origin for oracle attestations: any signed account.
+///
+/// The runtime additionally requires technical-council membership, but the mock
+/// has no collective. What matters here is that the origin yields a *signed*
+/// account, which is what the pallet consumes.
+pub type MockOracleAttestationOrigin = frame_system::EnsureSigned<u64>;
 
 // Community pallet configuration
 parameter_types! {
@@ -114,9 +147,12 @@ impl pallet_belize_community::Config for Test {
     type MaxSupply = MaxSupply;
     type WeightInfo = ();
     type MinAttestationsRequired = frame_support::traits::ConstU32<2>;
-    type OracleAttestationOrigin = frame_system::EnsureRoot<u64>;
+    type OracleAttestationOrigin = MockOracleAttestationOrigin;
     type SrsUpdateCooldown = frame_support::traits::ConstU64<100>; // 100 blocks in tests
     type MinProposalVoters = frame_support::traits::ConstU32<3>; // Require at least 3 voters in tests
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn make_council_member(_account: &u64) {}
 }
 
 // Build genesis storage according to the mock runtime.

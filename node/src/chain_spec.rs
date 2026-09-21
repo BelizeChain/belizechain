@@ -31,6 +31,39 @@ where
     AccountPublic::from(get_from_seed::<TPublic>(seed)).into_account()
 }
 
+/// Derive the account ID that a session key belongs to.
+fn dev_derived_account_ids() -> Vec<AccountId> {
+    const DEV_SEEDS: [&str; 6] = ["Alice", "Bob", "Charlie", "Dave", "Eve", "Ferdie"];
+
+    let mut accounts = Vec::with_capacity(DEV_SEEDS.len() * 2);
+    for seed in DEV_SEEDS {
+        accounts.push(get_account_id_from_seed::<sr25519::Public>(seed));
+        // GRANDPA session keys are ed25519, so include those derivations too.
+        accounts.push(AccountId::from(get_from_seed::<sp_core::ed25519::Public>(
+            seed,
+        )));
+    }
+    accounts
+}
+
+/// Protocol id for mainnet peer-to-peer traffic.
+pub(crate) const MAINNET_PROTOCOL_ID: &str = "bzc";
+/// Protocol id for public-testnet peer-to-peer traffic.
+pub(crate) const TESTNET_PROTOCOL_ID: &str = "bzc-testnet";
+
+/// Client-facing chain properties (`system_properties` RPC).
+///
+/// `ss58Format` must match `SS58Prefix` in the runtime (1981, the Belize
+/// independence year) — clients otherwise default to 42 and render every
+/// address in the wrong format.
+fn chain_properties() -> sc_service::Properties {
+    let mut properties = sc_service::Properties::new();
+    properties.insert("tokenSymbol".into(), "DALLA".into());
+    properties.insert("tokenDecimals".into(), 12u32.into());
+    properties.insert("ss58Format".into(), 1981u16.into());
+    properties
+}
+
 /// Generate a BABE authority key pair plus the derived account ID.
 pub fn authority_keys_from_seed(s: &str) -> (AccountId, BabeId, GrandpaId) {
     (
@@ -131,6 +164,8 @@ pub fn belizechain_mainnet_config() -> Result<ChainSpec, String> {
     .with_name("BelizeChain")
     .with_id("belizechain")
     .with_chain_type(ChainType::Live)
+    .with_protocol_id(MAINNET_PROTOCOL_ID)
+    .with_properties(chain_properties())
     .with_genesis_config_patch(mainnet_genesis()?)
     .with_boot_nodes(
         crate::validator_config::BootstrapNodes::mainnet()
@@ -307,19 +342,11 @@ fn testnet_genesis(
 /// # Security
 /// Validator keys and the root (sudo) key MUST be injected from a secure key
 /// management system (e.g. `subkey generate`, HSM, or Vault) before building
-/// the production chain spec.  The `MAINNET_KEYS_CONFIGURED` compile-time guard
-/// prevents accidental deployment with placeholder keys.
+/// the production chain spec. Every key below is checked against the standard
+/// Substrate dev accounts, so a publicly-derivable key fails the build instead of
+/// silently shipping a production genesis anyone can control.
 fn mainnet_genesis() -> Result<serde_json::Value, String> {
     use sp_core::crypto::Ss58Codec;
-
-    const MAINNET_KEYS_CONFIGURED: bool = true;
-    if !MAINNET_KEYS_CONFIGURED {
-        return Err(
-            "mainnet keys not configured: inject validator and sudo keys from a \
-             secure key management system before building the production chain spec"
-                .to_string(),
-        );
-    }
 
     // Production validator session keys
     let initial_authorities: Vec<(AccountId, BabeId, GrandpaId)> = vec![
@@ -364,6 +391,35 @@ fn mainnet_genesis() -> Result<serde_json::Value, String> {
     let treasury_key =
         AccountId::from_ss58check("5CJX6HRtMn2bvJM1vncjmyUfRbTVQRUWFxwJH6T6SCqoHjf3")
             .map_err(|e| format!("{:?}", e))?;
+
+    // H-1/M-1: fail the build if any production key is publicly derivable.
+    let mut production_accounts: Vec<(&str, AccountId)> = vec![
+        ("root/sudo", root_key.clone()),
+        ("treasury", treasury_key.clone()),
+    ];
+    for (account, babe, grandpa) in initial_authorities.iter() {
+        production_accounts.push(("validator account", account.clone()));
+        // Session keys are compared in their account-ID form: `into_inner()` peels
+        // the app-crypto wrapper, and sr25519/ed25519 public keys convert to the
+        // same 32-byte AccountId a dev session key would collide with.
+        production_accounts.push((
+            "validator babe session key",
+            AccountId::from(babe.clone().into_inner()),
+        ));
+        production_accounts.push((
+            "validator grandpa session key",
+            AccountId::from(grandpa.clone().into_inner()),
+        ));
+    }
+    let dev_accounts = dev_derived_account_ids();
+    for (label, account) in production_accounts {
+        if dev_accounts.contains(&account) {
+            return Err(format!(
+                "mainnet {label} is a well-known Substrate dev account ({account}); \
+                 production genesis must use operator-generated keys"
+            ));
+        }
+    }
 
     // Initial 100M DALLA Token Distribution (12 decimals)
     let endowed_balances: Vec<(AccountId, u128)> = vec![
@@ -444,6 +500,35 @@ fn mainnet_genesis() -> Result<serde_json::Value, String> {
     }))
 }
 
+/// Environment switch that allows Live-typed specs built from the built-in
+/// placeholder seeds (`//validator1`, `//treasury`, …).
+///
+/// Those derivations are public knowledge, so a spec generated from them hands
+/// its sudo, session and endowment accounts to anyone who reads this repository.
+/// Local devnets and CI smoke runs opt in explicitly; shared chains must supply
+/// operator keys instead — see RULE 4 in
+/// `docs/operations/TESTNET_ONLY_RULE_2026-09-18.md`.
+pub(crate) const ALLOW_DEV_SEEDS_ENV: &str = "BELIZECHAIN_ALLOW_DEV_SEEDS";
+
+fn dev_seeds_allowed() -> bool {
+    std::env::var(ALLOW_DEV_SEEDS_ENV).as_deref() == Ok("1")
+}
+
+/// Refuse to emit a shared-chain spec whose accounts are dev-derived unless the
+/// caller explicitly opted in.
+fn check_key_source(network: &str, allow_dev_seeds: bool) -> Result<(), String> {
+    if allow_dev_seeds {
+        return Ok(());
+    }
+    Err(format!(
+        "refusing to build the `{network}` chain spec: it is seeded from the built-in \
+         placeholder seeds, whose accounts are publicly derivable. Set \
+         {ALLOW_DEV_SEEDS_ENV}=1 for local experiments and CI smoke tests, or generate \
+         the spec and replace the sudo/session/endowment accounts with operator keys \
+         before `build-spec ... --raw`."
+    ))
+}
+
 /// Generate a public-testnet template from NetworkConfig.
 ///
 /// This template is intended for `build-spec` followed by manual review and
@@ -451,8 +536,17 @@ fn mainnet_genesis() -> Result<serde_json::Value, String> {
 /// file generated from this template rather than a built-in chain alias.
 /// Use `build-spec --disable-default-bootnode` when exporting it, otherwise the
 /// CLI injects a loopback bootnode into the generated artifact.
+///
+/// Requires `BELIZECHAIN_ALLOW_DEV_SEEDS=1`: the preset accounts are dev-derived.
 #[allow(dead_code)]
 pub(crate) fn public_testnet_config() -> Result<ChainSpec, String> {
+    build_public_testnet_config(dev_seeds_allowed())
+}
+
+/// Deterministic core of [`public_testnet_config`], testable without env vars.
+fn build_public_testnet_config(allow_dev_seeds: bool) -> Result<ChainSpec, String> {
+    check_key_source("BelizeChain Public Testnet", allow_dev_seeds)?;
+
     let config = NetworkConfig::public_testnet();
 
     let authorities: Vec<(AccountId, BabeId, GrandpaId)> = config
@@ -478,6 +572,8 @@ pub(crate) fn public_testnet_config() -> Result<ChainSpec, String> {
     .with_name(&config.name)
     .with_id(&config.id)
     .with_chain_type(ChainType::Live)
+    .with_protocol_id(TESTNET_PROTOCOL_ID)
+    .with_properties(chain_properties())
     .with_genesis_config_patch(testnet_genesis(
         authorities,
         root_key,
@@ -488,9 +584,18 @@ pub(crate) fn public_testnet_config() -> Result<ChainSpec, String> {
 }
 
 /// Generate staging chain spec (pre-mainnet testing)
-/// Used for pre-mainnet rehearsal and final integration tests
+/// Used for pre-mainnet rehearsal and final integration tests.
+///
+/// Requires `BELIZECHAIN_ALLOW_DEV_SEEDS=1`: the preset accounts are dev-derived.
 #[allow(dead_code)]
 pub(crate) fn staging_config() -> Result<ChainSpec, String> {
+    build_staging_config(dev_seeds_allowed())
+}
+
+/// Deterministic core of [`staging_config`], testable without env vars.
+fn build_staging_config(allow_dev_seeds: bool) -> Result<ChainSpec, String> {
+    check_key_source("BelizeChain Staging", allow_dev_seeds)?;
+
     let config = NetworkConfig::staging();
 
     let authorities: Vec<(AccountId, BabeId, GrandpaId)> = config
@@ -858,12 +963,97 @@ mod tests {
     }
 
     #[test]
-    fn test_public_testnet_config_succeeds() {
-        public_testnet_config().expect("public_testnet_config must succeed in test build");
+    fn test_mainnet_spec_declares_client_metadata() {
+        let spec = belizechain_mainnet_config().expect("mainnet config must build");
+        let properties = spec.properties();
+        assert_eq!(
+            properties.get("tokenSymbol").and_then(|v| v.as_str()),
+            Some("DALLA")
+        );
+        assert_eq!(
+            properties.get("tokenDecimals").and_then(|v| v.as_u64()),
+            Some(12)
+        );
+        assert_eq!(
+            properties.get("ss58Format").and_then(|v| v.as_u64()),
+            Some(1981),
+            "ss58Format must match the runtime SS58Prefix"
+        );
+        assert_eq!(spec.protocol_id(), Some(MAINNET_PROTOCOL_ID));
     }
 
     #[test]
-    fn test_staging_config_succeeds() {
-        staging_config().expect("staging_config must succeed in test build");
+    fn test_dev_derived_account_ids_cover_well_known_dev_accounts() {
+        use sp_core::crypto::Ss58Codec;
+
+        let dev_accounts = dev_derived_account_ids();
+        assert_eq!(dev_accounts.len(), 12, "6 seeds x (sr25519 + ed25519)");
+
+        // `//Alice` (sr25519) and `//Alice` (ed25519, GRANDPA) must both be caught.
+        for ss58 in [
+            "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
+            "5FA9nQDVg267DEd8m1ZypXLBnvN7SFxYwV7ndqSYGiN9TTpu",
+        ] {
+            let account = AccountId::from_ss58check(ss58).expect("valid dev address");
+            assert!(
+                dev_accounts.contains(&account),
+                "{ss58} must be recognised as a dev-derived account"
+            );
+        }
+    }
+
+    #[test]
+    fn test_public_testnet_config_succeeds_with_dev_seed_allowance() {
+        build_public_testnet_config(true)
+            .expect("public_testnet_config must succeed with the dev-seed allowance");
+    }
+
+    #[test]
+    fn test_public_testnet_spec_declares_client_metadata() {
+        let spec = build_public_testnet_config(true).expect("testnet template must build");
+        let properties = spec.properties();
+        assert_eq!(
+            properties.get("tokenSymbol").and_then(|v| v.as_str()),
+            Some("DALLA")
+        );
+        assert_eq!(
+            properties.get("tokenDecimals").and_then(|v| v.as_u64()),
+            Some(12)
+        );
+        assert_eq!(
+            properties.get("ss58Format").and_then(|v| v.as_u64()),
+            Some(1981)
+        );
+        assert_eq!(spec.protocol_id(), Some(TESTNET_PROTOCOL_ID));
+    }
+
+    #[test]
+    fn test_public_testnet_config_refuses_dev_seeds_by_default() {
+        let err = match build_public_testnet_config(false) {
+            Ok(_) => panic!("dev-seeded testnet spec must not be built by default"),
+            Err(err) => err,
+        };
+        assert!(
+            err.contains(ALLOW_DEV_SEEDS_ENV),
+            "refusal must name the opt-in env var: {err}"
+        );
+    }
+
+    #[test]
+    fn test_staging_config_succeeds_with_dev_seed_allowance() {
+        build_staging_config(true)
+            .expect("staging_config must succeed with the dev-seed allowance");
+    }
+
+    #[test]
+    fn test_staging_config_refuses_dev_seeds_by_default() {
+        let err = match build_staging_config(false) {
+            Ok(_) => panic!("dev-seeded staging spec must not be built by default"),
+            Err(err) => err,
+        };
+        assert!(
+            err.contains(ALLOW_DEV_SEEDS_ENV),
+            "refusal must name the opt-in env var: {err}"
+        );
     }
 }

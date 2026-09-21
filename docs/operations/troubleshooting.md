@@ -53,8 +53,8 @@ Peer discovery timeout after 60s
 # Check if ports are open
 netstat -tuln | grep -E '30333|9933|9944'
 
-# Test P2P connectivity
-nc -zv rpc.belizechain.org 30333
+# Test P2P connectivity against the operator-provided host
+nc -zv <operator-provided-host> 30333
 
 # Check firewall rules
 sudo ufw status
@@ -68,15 +68,14 @@ sudo ufw allow 30333/tcp  # P2P
 sudo ufw allow 9933/tcp   # HTTP-RPC
 sudo ufw allow 9944/tcp   # WS-RPC
 
-# Solution 2: Add bootnodes manually
+# Solution 2: Add bootnodes manually (operator-provided multiaddrs)
 ./target/release/belizechain-node \
   --chain belizechain \
-  --bootnodes /ip4/142.93.150.23/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp \
-  --bootnodes /ip4/167.99.231.78/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMuD
+  --bootnodes <operator-provided-bootnode-multiaddr>
 
 # Solution 3: Check network connectivity
-ping rpc.belizechain.org
-traceroute rpc.belizechain.org
+ping <operator-provided-host>
+traceroute <operator-provided-host>
 ```
 
 ### 3. Slow Block Sync
@@ -487,7 +486,7 @@ if grad_norm > 10.0:
 # Solution 2: Resubmit with correct proof
 from nawal.blockchain.staking_connector import StakingConnector
 
-connector = StakingConnector(ws_endpoint='wss://rpc.belizechain.org')
+connector = StakingConnector(ws_endpoint='<operator-provided-rpc-url>')
 tx_hash = await connector.report_training(
     validator_id='5GrwvaEF...',
     round_id=42,

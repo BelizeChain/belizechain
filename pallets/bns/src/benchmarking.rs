@@ -1,13 +1,12 @@
 //! Benchmarks for pallet-belize-bns (v2 API)
 //!
-//! Covers 13 WeightInfo functions:
+//! Covers 15 WeightInfo functions:
 //!   register_domain, set_resolution, transfer_domain,
 //!   list_domain, buy_domain, unlist_domain,
 //!   activate_hosting, renew_hosting, deactivate_hosting,
 //!   register_external_domain, verify_external_domain,
-//!   update_hosting_content, create_subdomain
-
-#![cfg(feature = "runtime-benchmarks")]
+//!   update_hosting_content, rollback_content, update_ssl_certificate,
+//!   create_subdomain
 
 use super::*;
 use frame_benchmarking::v2::*;
@@ -19,10 +18,18 @@ use sp_std::vec::Vec;
 type BalanceOf<T> =
     <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
+/// Balance given to each benchmark account.
+///
+/// Deliberately a fixed amount rather than a multiple of `minimum_balance`:
+/// the mock's existential deposit is 1, so a multiple of it would be far below
+/// the domain prices this pallet charges (up to 1_000_000_000_000_000 for a
+/// verified domain, times a length multiplier of up to 10).
+const FUNDED_BALANCE: u128 = 100_000_000_000_000_000; // 100,000 DALLA
+
 /// Create a funded account for benchmarks
 fn funded_account<T: Config>(name: &'static str, index: u32) -> T::AccountId {
     let caller: T::AccountId = account(name, index, 0);
-    let amount: BalanceOf<T> = T::Currency::minimum_balance().saturating_mul(1_000_000u32.into());
+    let amount: BalanceOf<T> = FUNDED_BALANCE.saturated_into();
     T::Currency::make_free_balance_be(&caller, amount);
     caller
 }
@@ -87,6 +94,23 @@ fn insert_listing<T: Config>(seller: &T::AccountId, domain_name: &[u8], price: u
     };
 
     DomainListings::<T>::insert(&domain, listing);
+}
+
+/// Seed `ContentHistory` with `current_version` entries and store that as the
+/// current version, so a rollback runs at the `MaxContentVersions` cap.
+fn seed_full_content_history<T: Config>(domain_name: &[u8], current_version: u32) {
+    let domain: BoundedVec<u8, T::MaxDomainLength> =
+        BoundedVec::try_from(domain_name.to_vec()).expect("domain within bounds");
+    let version = ContentVersion {
+        content_hash: [3u8; 32],
+        uploaded_at: frame_system::Pallet::<T>::block_number(),
+        description: BoundedVec::try_from([b'x'; 128].to_vec()).expect("description within bounds"),
+        size_bytes: 4096u64,
+    };
+    for v in 0..current_version {
+        ContentHistory::<T>::insert(&domain, v, version.clone());
+    }
+    CurrentContentVersion::<T>::insert(&domain, current_version);
 }
 
 /// Insert a HostingInfo record for an owned domain
@@ -370,6 +394,62 @@ mod benchmarks {
             parent_domain,
             subdomain,
             None, // delegate_to
+        );
+    }
+
+    #[benchmark]
+    fn rollback_content() {
+        let subscriber = funded_account::<T>("subscriber", 0);
+        let domain_name = make_domain_name(9);
+        insert_domain::<T>(&subscriber, &domain_name);
+        insert_hosting::<T>(&subscriber, &domain_name);
+
+        // A resolution record makes the rollback update it too.
+        let _ = Pallet::<T>::set_resolution(
+            RawOrigin::Signed(subscriber.clone()).into(),
+            domain_name.clone(),
+            None,
+            Some([1u8; 32]),
+            b"rollback setup".to_vec(),
+        );
+
+        // Rolling back from the version cap takes the prune-the-oldest branch,
+        // which is the heaviest path through this extrinsic.
+        let max_versions = T::MaxContentVersions::get();
+        let target_version: u32 = 1;
+        seed_full_content_history::<T>(&domain_name, max_versions);
+
+        #[extrinsic_call]
+        rollback_content(
+            RawOrigin::Signed(subscriber.clone()),
+            domain_name.clone(),
+            target_version,
+        );
+
+        // A rollback moves the subscriber onto a new version.
+        let domain: BoundedVec<u8, T::MaxDomainLength> =
+            BoundedVec::try_from(domain_name).expect("domain within bounds");
+        assert_eq!(CurrentContentVersion::<T>::get(&domain), max_versions + 1);
+    }
+
+    #[benchmark]
+    fn update_ssl_certificate() {
+        let owner = funded_account::<T>("sslowner", 0);
+        let domain_name = make_domain_name(8);
+        insert_domain::<T>(&owner, &domain_name);
+
+        let expires_at: BlockNumberFor<T> =
+            frame_system::Pallet::<T>::block_number().saturating_add(1_000_000u32.into());
+
+        // Worst case is the longest serial number and issuer the storage accepts.
+        #[extrinsic_call]
+        update_ssl_certificate(
+            RawOrigin::Signed(owner),
+            domain_name,
+            [7u8; 32],
+            [b'0'; 64].to_vec(),  // serial_number, max 64
+            [b'i'; 128].to_vec(), // issuer, max 128
+            expires_at,
         );
     }
 

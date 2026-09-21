@@ -187,9 +187,19 @@ pub mod pallet {
         type MinAttestationsRequired: Get<u32>;
 
         /// Origin allowed to submit oracle attestations for high-value activities.
-        /// Should be a council membership check (e.g., TechnicalCouncilMember) so
-        /// each council member can vote individually (Phase 3B).
-        type OracleAttestationOrigin: EnsureOrigin<Self::RuntimeOrigin>;
+        ///
+        /// Must yield the acting account: that account is the *attestor identity*
+        /// recorded in `PendingAttestations`, and a plain `EnsureRoot`/`EnsureSigned`
+        /// origin cannot be combined with `ensure_signed` here because the runtime
+        /// gates this on technical-council membership, whose member origin is not a
+        /// system signed origin.
+        type OracleAttestationOrigin: EnsureOrigin<Self::RuntimeOrigin, Success = Self::AccountId>;
+
+        /// Benchmark-only: seat `account` in the technical council, so it can
+        /// satisfy [`Self::OracleAttestationOrigin`] while still presenting a
+        /// *signed* origin.
+        #[cfg(feature = "runtime-benchmarks")]
+        fn make_council_member(_account: &Self::AccountId) {}
 
         /// C-1/X-1: Minimum blocks between permissionless SRS recalculations
         /// for the same account. Prevents reputation farming via rapid recalc.
@@ -202,7 +212,15 @@ pub mod pallet {
         type MinProposalVoters: Get<u32>;
     }
 
+    /// On-chain storage version for this pallet.
+    ///
+    /// Bump this and register a migration in the runtime's `Migrations` tuple
+    /// whenever this pallet's storage layout changes.
+    pub const STORAGE_VERSION: frame_support::traits::StorageVersion =
+        frame_support::traits::StorageVersion::new(0);
+
     #[pallet::pallet]
+    #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
 
     // ================================
@@ -1178,7 +1196,7 @@ pub mod pallet {
 
         /// Withdraw a previously cast vote on a community proposal
         #[pallet::call_index(6)]
-        #[pallet::weight(T::WeightInfo::withdraw_community_proposal())]
+        #[pallet::weight(T::WeightInfo::withdraw_vote())]
         pub fn withdraw_vote(origin: OriginFor<T>, proposal_id: u32) -> DispatchResult {
             let who = ensure_signed(origin)?;
             // Ensure proposal exists
@@ -1692,8 +1710,9 @@ pub mod pallet {
             subject: T::AccountId,
             activity_code: u8,
         ) -> DispatchResult {
-            T::OracleAttestationOrigin::ensure_origin(origin.clone())?;
-            let oracle = ensure_signed(origin)?;
+            // The origin yields the acting council member; see the Config docs for
+            // why `ensure_signed` must not be used alongside it.
+            let oracle = T::OracleAttestationOrigin::ensure_origin(origin)?;
 
             // Only high-value activity codes are attestable
             ensure!(

@@ -537,6 +537,103 @@ fn slash_validator_for_downtime_works() {
     });
 }
 
+#[test]
+fn slash_validator_applies_to_pending_unbond_stake() {
+    new_test_ext().execute_with(|| {
+        let stake = 10_000_000_000u128;
+        let balance_before = Balances::free_balance(ALICE);
+
+        assert_ok!(BelizeStaking::join_validators(
+            RuntimeOrigin::signed(ALICE),
+            stake,
+            100,
+            test_location("Belize City")
+        ));
+        assert_ok!(BelizeStaking::leave_validators(RuntimeOrigin::signed(
+            ALICE
+        )));
+
+        // C-2: an offence that lands after `leave_validators` must still be
+        // punished against the pending unbond stake — leaving is not an escape.
+        let slashes_before = BelizeStaking::slashing_spans(ALICE);
+        assert_ok!(BelizeStaking::slash_validator(
+            &ALICE,
+            Perbill::from_percent(20),
+            SlashReason::ConsensusViolation,
+        ));
+
+        // The pending stake is reduced by 20%; no active record is recreated.
+        let (pending_stake, unlock_at) = BelizeStaking::pending_unbonds(ALICE).unwrap();
+        assert_eq!(pending_stake, stake - stake / 5);
+        assert!(unlock_at > 0);
+        assert!(BelizeStaking::validators(ALICE).is_none());
+        assert_eq!(BelizeStaking::slashing_spans(ALICE), slashes_before + 1);
+        assert_eq!(Balances::free_balance(ALICE), balance_before - stake / 5);
+
+        System::assert_has_event(
+            Event::ValidatorSlashed {
+                validator: ALICE,
+                slash_amount: stake / 5,
+                reason: SlashReason::ConsensusViolation.as_u8(),
+            }
+            .into(),
+        );
+
+        // Withdrawal after the unbonding period pays out only the reduced stake.
+        run_to_block(102);
+        assert_ok!(BelizeStaking::withdraw_unbonded(RuntimeOrigin::signed(
+            ALICE
+        )));
+        assert!(BelizeStaking::pending_unbonds(ALICE).is_none());
+        assert_eq!(Balances::free_balance(ALICE), balance_before - stake / 5);
+    });
+}
+
+#[test]
+fn slash_validator_without_stake_record_errors() {
+    new_test_ext().execute_with(|| {
+        // EVE has never joined and has no pending unbond: there is nothing to
+        // slash, and the call must say so instead of reporting success.
+        assert_noop!(
+            BelizeStaking::slash_validator(
+                &EVE,
+                Perbill::from_percent(50),
+                SlashReason::MissedDeadline,
+            ),
+            Error::<Test>::ValidatorNotFound
+        );
+    });
+}
+
+#[test]
+fn report_validator_offense_slashes_unbonding_validator() {
+    new_test_ext().execute_with(|| {
+        let stake = 10_000_000_000u128;
+        assert_ok!(BelizeStaking::join_validators(
+            RuntimeOrigin::signed(ALICE),
+            stake,
+            100,
+            test_location("Belize City")
+        ));
+        assert_ok!(BelizeStaking::leave_validators(RuntimeOrigin::signed(
+            ALICE
+        )));
+
+        // Governance reports a non-consensus offence after the validator left
+        // the active set: the pending unbond stake is still slashable.
+        assert_ok!(BelizeStaking::report_validator_offense(
+            RuntimeOrigin::root(),
+            ALICE,
+            10,
+            3, // ModelPoisoning
+        ));
+
+        let (pending_stake, _) = BelizeStaking::pending_unbonds(ALICE).unwrap();
+        assert_eq!(pending_stake, stake - stake / 10);
+        assert!(BelizeStaking::validators(ALICE).is_none());
+    });
+}
+
 // ============================================================================
 // SCORE CALCULATION TESTS
 // ============================================================================
@@ -869,6 +966,11 @@ fn assign_fl_task_works() {
     });
 }
 
+// `submit_model_delta` deliberately skips the computation-commitment equality
+// check when the `runtime-benchmarks` feature is on, so that generated weights
+// measure the unbounded cost of the extrinsic rather than a rejection. These
+// assertions cannot hold in that configuration.
+#[cfg(not(feature = "runtime-benchmarks"))]
 #[test]
 fn submit_model_delta_errors_work() {
     new_test_ext().execute_with(|| {
@@ -1339,6 +1441,8 @@ fn submit_model_delta_after_deadline_fails() {
     });
 }
 
+// See `submit_model_delta_errors_work` for why this is gated.
+#[cfg(not(feature = "runtime-benchmarks"))]
 #[test]
 fn submit_model_delta_homogeneous_commitment_fails() {
     new_test_ext().execute_with(|| {

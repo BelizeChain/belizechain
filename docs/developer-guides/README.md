@@ -205,7 +205,8 @@
 import { ApiPromise, WsProvider } from '@polkadot/api';
 
 async function getBalance(address: string) {
-  const provider = new WsProvider('wss://rpc.belizechain.org');
+  // Substitute the operator-provided RPC endpoint (public hosts are not live yet).
+  const provider = new WsProvider('<operator-provided-rpc-url>');
   const api = await ApiPromise.create({ provider });
   
   const { data: { free } } = await api.query.system.account(address);
@@ -275,8 +276,13 @@ async function getProposals() {
 ## 📖 API Resources
 
 ### RPC Endpoints
-- **Mainnet**: `wss://rpc.belizechain.org`
-- **Testnet**: `wss://testnet-rpc.belizechain.org`
+
+> The public host names below are **planned, not published** (verified 2026-09-20:
+> `rpc.belizechain.org` and `testnet-rpc.belizechain.org` do not resolve). Use the
+> operator-provided endpoint for the network you are targeting.
+
+- **Mainnet**: planned `wss://rpc.belizechain.org`
+- **Testnet**: planned `wss://testnet-rpc.belizechain.org`
 - **Local**: `ws://localhost:9944`
 
 ### Block Explorers

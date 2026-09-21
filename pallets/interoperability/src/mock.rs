@@ -98,6 +98,12 @@ parameter_types! {
 pub struct MockIdentity;
 impl pallet_belize_interoperability::InteroperabilityIdentityProvider<u64> for MockIdentity {
     fn get_kyc_level(account: &u64) -> Option<u8> {
+        // Benchmark accounts are hash-derived and so never in the ranges below;
+        // they hold full KYC for the run. Level 3 is what this mock already uses
+        // for bridge operators.
+        if is_benchmark_granted(account) {
+            return Some(3);
+        }
         match account {
             // ALICE, BOB, CHARLIE: Level 3 (Full KYC - bridge operators)
             1..=3 => Some(3),
@@ -114,7 +120,10 @@ impl pallet_belize_interoperability::InteroperabilityIdentityProvider<u64> for M
 
     fn verify_bridge_operator(account: &u64) -> bool {
         // Only accounts 1-3 (ALICE, BOB, CHARLIE) are verified bridge operators (Level 3)
-        matches!(account, 1..=3)
+        if matches!(account, 1..=3) {
+            return true;
+        }
+        is_benchmark_granted(account)
     }
 
     fn is_sanctioned(account: &u64) -> bool {
@@ -123,11 +132,46 @@ impl pallet_belize_interoperability::InteroperabilityIdentityProvider<u64> for M
     }
 }
 
+std::thread_local! {
+    /// Accounts granted bridge-system privileges by the benchmark running on this
+    /// thread: bridge-operator status, full KYC, and oracle-operator status.
+    ///
+    /// Thread-local so a grant cannot leak into another test, and keyed by
+    /// SCALE-encoded account so the benchmark module can stay generic over
+    /// `T::AccountId`.
+    static BENCHMARK_BRIDGE_OPERATORS: std::cell::RefCell<
+        std::collections::BTreeSet<std::vec::Vec<u8>>,
+    > = const { std::cell::RefCell::new(std::collections::BTreeSet::new()) };
+}
+
+/// Whether `account` was granted benchmark privileges on this thread.
+fn is_benchmark_granted<A: sp_runtime::codec::Encode>(account: &A) -> bool {
+    BENCHMARK_BRIDGE_OPERATORS.with(|granted| {
+        granted
+            .borrow()
+            .contains(&sp_runtime::codec::Encode::encode(account))
+    })
+}
+
+/// Grant `account` bridge-operator status for the rest of this test thread.
+///
+/// Benchmark accounts are hash-derived, so the `1..=3` allowlist above can never
+/// cover them. The runtime provider already returns `true` unconditionally under
+/// `runtime-benchmarks`; this keeps the mock harness in step.
+#[cfg(feature = "runtime-benchmarks")]
+pub fn grant_bridge_operator<A: sp_runtime::codec::Encode>(account: &A) {
+    BENCHMARK_BRIDGE_OPERATORS.with(|granted| granted.borrow_mut().insert(account.encode()));
+}
+
 /// P0-1: Mock oracle operator check — accounts 1-3 and 10-50 are oracle operators.
+///
+/// Benchmark accounts are hash-derived and so never in those ranges; they hold
+/// oracle-operator status for the run, matching the runtime where the check
+/// short-circuits under `runtime-benchmarks`.
 pub struct MockOracleCheck;
 impl pallet_belize_interoperability::OracleOperatorCheck<u64> for MockOracleCheck {
     fn is_oracle_operator(who: &u64) -> bool {
-        matches!(who, 1..=3 | 10..=50)
+        matches!(who, 1..=3 | 10..=50) || is_benchmark_granted(who)
     }
 }
 

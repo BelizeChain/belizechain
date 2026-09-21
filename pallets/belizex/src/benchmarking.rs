@@ -6,12 +6,10 @@
 //! KYC level; benchmark mode should auto-pass or we rely on the default
 //! identity provider returning a sufficient level.
 
-#![cfg(feature = "runtime-benchmarks")]
-
 use super::*;
 use frame_benchmarking::v2::*;
 use frame_support::traits::Currency;
-use frame_system::RawOrigin;
+use frame_system::{pallet_prelude::BlockNumberFor, RawOrigin};
 
 const SEED: u32 = 0;
 
@@ -199,6 +197,36 @@ mod benchmarks {
             0u128, // min_base_amount
             0u128, // min_quote_amount
         );
+    }
+
+    // ───────────────────────────────────────
+    // 10. cancel_order → cancel_order
+    //     WeightInfo fn: cancel_order()
+    //     Creator-only, so the order is seeded straight into the orderbook
+    //     rather than placed through the trading path.
+    // ───────────────────────────────────────────
+    #[benchmark]
+    fn cancel_order() {
+        let caller: T::AccountId = whitelisted_caller();
+        let order_id: u32 = 0;
+        OrderBook::<T>::insert(
+            order_id,
+            OrderEntry::<T::AccountId, BlockNumberFor<T>> {
+                order_id,
+                creator: caller.clone(),
+                pair: (AssetId::from(0u8), AssetId::from(1u8)),
+                order_type: OrderType::Buy,
+                amount: 500_000_000_000u128,
+                price: 1_000_000_000_000u128,
+                remaining: 500_000_000_000u128,
+                expires_at: 1_000u32.into(),
+                is_tourism_order: false,
+            },
+        );
+        AccountOrderCount::<T>::insert(&caller, 1u32);
+
+        #[extrinsic_call]
+        _(RawOrigin::Signed(caller), order_id);
     }
 
     impl_benchmark_test_suite!(Pallet, crate::mock::new_test_ext(), crate::mock::Test);

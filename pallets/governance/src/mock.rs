@@ -1,7 +1,7 @@
 use crate::{self as pallet_belize_governance, *};
 use frame_support::{
     construct_runtime, parameter_types,
-    traits::{ConstU128, ConstU32, ConstU64, ConstU8, Everything, Hooks, Randomness},
+    traits::{ConstU128, ConstU32, ConstU64, ConstU8, Everything, Get, Hooks, Randomness},
     PalletId,
 };
 use frame_system::EnsureRoot;
@@ -47,15 +47,37 @@ impl BehaviorFlagProvider<u64, u64> for MockBehaviorFlags {
     }
 }
 
-// Mock dual-house provider - accounts 1 and 2 are technical, 2 and 3 are governance
+// Mock dual-house provider - accounts 1 and 2 are technical, 2 and 3 are governance.
+// `make_house_member` seats an arbitrary account in both houses from test and
+// benchmark setup, mirroring what the runtime hook does with `pallet_collective`.
 pub struct MockDualHouse;
 impl DualHouseProvider<u64> for MockDualHouse {
     fn is_technical_house_member(account: &u64) -> bool {
-        *account == 1 || *account == 2
+        *account == 1 || *account == 2 || seated_house_members().contains(account)
     }
     fn is_governance_house_member(account: &u64) -> bool {
-        *account == 2 || *account == 3
+        *account == 2 || *account == 3 || seated_house_members().contains(account)
     }
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn make_house_member(account: &u64) {
+        let mut members = seated_house_members();
+        if !members.contains(account) {
+            members.push(*account);
+            frame_support::storage::unhashed::put(SEATED_HOUSE_MEMBERS_KEY, &members);
+        }
+    }
+}
+
+/// Raw-storage key holding accounts seated via `make_house_member`.
+///
+/// The mock has no `pallet_collective` to write to, so the seats live in a
+/// dedicated key that is created fresh with each test externalities.
+const SEATED_HOUSE_MEMBERS_KEY: &[u8] = b"pallet_belize_governance::mock::seated_house_members";
+
+fn seated_house_members() -> sp_std::vec::Vec<u64> {
+    frame_support::storage::unhashed::get::<sp_std::vec::Vec<u64>>(SEATED_HOUSE_MEMBERS_KEY)
+        .unwrap_or_default()
 }
 
 // Mock community participation provider (Phase 6 integration)
@@ -196,6 +218,9 @@ impl pallet_belize_governance::Config for Test {
     type MaxTreasurySpendPerPeriod = ConstU128<500_000_000_000_000_000>;
     type TreasurySpendPeriod = ConstU64<14_400>;
     type MinQuorumPercentage = ConstU8<10>;
+    // H-3: any signed account may reach the origin check in tests; the
+    // dual-house ratification gate is what those tests exercise.
+    type RuntimeUpgradeOrigin = frame_system::EnsureSigned<u64>;
 }
 
 // Build genesis storage according to the mock runtime
@@ -232,10 +257,38 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
     .unwrap();
 
     let mut ext = sp_io::TestExternalities::new(t);
+    // `frame_system::set_code` validates that the new blob's `spec_version` is
+    // greater than the in-code one, reading it from the wasm via the
+    // `runtime_version` host function. Pallet mocks have no executor, so the
+    // host call is stubbed with a bumped copy of the mock's own version — the
+    // same approach polkadot-sdk's `frame_system` tests take.
+    ext.register_extension(sp_core::traits::ReadRuntimeVersionExt::new(
+        StubRuntimeVersion(bumped_runtime_version::<Test>()),
+    ));
     ext.execute_with(|| {
         System::set_block_number(1);
     });
     ext
+}
+
+/// SCALE-encoded copy of `T`'s runtime version with `spec_version` bumped by one.
+fn bumped_runtime_version<T: frame_system::Config>() -> Vec<u8> {
+    let mut version = T::Version::get();
+    version.spec_version = version.spec_version.saturating_add(1);
+    codec::Encode::encode(&version)
+}
+
+/// Stub for the `runtime_version` host function used by `frame_system::set_code`.
+struct StubRuntimeVersion(Vec<u8>);
+
+impl sp_core::traits::ReadRuntimeVersion for StubRuntimeVersion {
+    fn read_runtime_version(
+        &self,
+        _wasm_code: &[u8],
+        _ext: &mut dyn sp_core::traits::Externalities,
+    ) -> Result<Vec<u8>, String> {
+        Ok(self.0.clone())
+    }
 }
 
 // Test helper functions

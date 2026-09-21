@@ -28,7 +28,8 @@ Any request touching a different chain gets refused and explained — not silent
 This is deliberate and documented (commit `796dba1`, May 2026): the original sudo SURI was lost/leaked, so the **single-node testnet** genesis was rotated to the well-known `//Alice` dev key pair. Consequences:
 
 - **Alice = chain authority (Sudo) on testnet**, and the **only funded genesis account** (1,000,000,000 DALLA at genesis), plus governance council chair, identity issuers, etc.
-- Alice is not "signed in anywhere" by default. To act as Alice, derive it from the standard dev seed (`//Alice` / the standard bottom-drive dev phrase). The repo already does this in `scripts/test/smoke_extrinsic.py` (`Keypair.create_from_uri('//Alice')` with `substrateinterface`).
+- Alice is not "signed in anywhere" by default. To act as Alice, derive it from the standard dev seed (`//Alice` / the standard bottom-drive dev phrase) and pass it to tooling through the environment — operator scripts read the authority SURI from env (`SUDO_SURI`, `ISSUER_SURI`, `SMOKE_SENDER_SURI`) and never embed it themselves, e.g.
+  `SMOKE_SENDER_SURI='//Alice' SMOKE_RECIPIENT_SURI='//Bob' python3 scripts/test/smoke_extrinsic.py`.
 - **On testnet, "Alice" is effectively the operator's account.** Keep it that way until a deliberate handover script is approved by the user.
 
 ## RULE 3 — Address formats: one pubkey, two encodings. Always resolve explicitly.
@@ -58,3 +59,23 @@ A one-time, non-reset repair on the testnet:
 ## Why "we didn't go backwards"
 
 The testnet kept running blocks the whole time. The mainnet spec work stands as intentional parallel work, not wasted effort. The "circle" was only in balances visibility across two chains — the repair is a single transfer, not a rebuild.
+
+## RULE 4 — Dev-keyed chain specs never reach a shared chain (added 2026-09-20)
+
+RULE 2 accepts dev keys as the *testnet authority model*. This rule stops that
+model from leaking into repository artifacts or into any future shared chain:
+
+- The running testnet's spec (`/data/chain/testnet-spec.json` on Ceiba) is
+  **operator-managed and untracked** (`.gitignore`). It carries the live sudo and
+  session keys and must never be committed again.
+- `scripts/deploy/validate_chain_spec.sh <spec>` fails closed when a spec carries
+  well-known dev accounts (Alice…Ferdie, both SS58 and raw-hex forms) or the
+  standard dev mnemonic. `--allow-dev-accounts` exists only for local devnets and
+  the CI smoke artifact.
+- `.github/workflows/deploy.yml` validates keyless templates plus a self-test that
+  the dev-account guard really rejects a dev-keyed spec.
+- Building a Live-typed spec from the built-in dev-seeded presets
+  (`--chain testnet-template`, `--chain staging`) requires
+  `BELIZECHAIN_ALLOW_DEV_SEEDS=1`; without it `build-spec` refuses and says why.
+  Passing that switch only acknowledges a template — the finished spec still has
+  to clear `validate_chain_spec.sh` (operator keys, no dev accounts).

@@ -184,7 +184,15 @@ pub mod pallet {
         pub appeal_evidence: Option<[u8; 32]>,
     }
 
+    /// On-chain storage version for this pallet.
+    ///
+    /// Bump this and register a migration in the runtime's `Migrations` tuple
+    /// whenever this pallet's storage layout changes.
+    pub const STORAGE_VERSION: frame_support::traits::StorageVersion =
+        frame_support::traits::StorageVersion::new(0);
+
     #[pallet::pallet]
+    #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
 
     #[pallet::config]
@@ -199,6 +207,11 @@ pub mod pallet {
         /// Checked at both origin level and storage level (MediatorList).
         /// Must return AccountId so we can verify mediator list membership.
         type MediatorOrigin: EnsureOrigin<Self::RuntimeOrigin, Success = Self::AccountId>;
+
+        /// Benchmark-only: seat `account` so it can satisfy [`Self::MediatorOrigin`]
+        /// while still presenting a *signed* origin. No-op in production.
+        #[cfg(feature = "runtime-benchmarks")]
+        fn make_mediator(_account: &Self::AccountId) {}
 
         /// Bond required to open a dispute — prevents frivolous filings.
         #[pallet::constant]

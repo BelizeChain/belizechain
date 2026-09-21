@@ -43,7 +43,8 @@ Ethereum                     BelizeChain
 const { ApiPromise, WsProvider } = require('@polkadot/api');
 
 async function bridgeToEthereum() {
-  const provider = new WsProvider('wss://rpc.belizechain.org');
+  // `<operator-provided-rpc-url>` — the public rpc.belizechain.org host is planned, not live.
+  const provider = new WsProvider('<operator-provided-rpc-url>');
   const api = await ApiPromise.create({ provider });
   
   const amount = 1000 * 1e12;  // 1,000 DALLA

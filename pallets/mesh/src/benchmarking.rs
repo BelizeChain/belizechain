@@ -1,14 +1,12 @@
 //! Benchmarking for pallet-belize-mesh
 //!
-//! Provides machine-profiled weight functions for all 14 extrinsics
+//! Provides machine-profiled weight functions for all 16 extrinsics
 //! exposed via the `WeightInfo` trait.
 //!
 //! NOTE: `register_node` depends on cross-pallet KYC via `T::Identity::get_kyc_level`.
 //! For benchmarks, writing the node directly to storage bypasses KYC for derived
 //! benchmarks. The `register_node` benchmark itself will use the real extrinsic
 //! (KYC must return >= 1 for the caller, or a runtime-benchmarks bypass is needed).
-
-#![cfg(feature = "runtime-benchmarks")]
 
 use super::*;
 use crate::pallet::*;
@@ -417,6 +415,31 @@ mod benchmarks {
             relayer_node_id,
             0u32, // proof_index
         );
+    }
+
+    // ── NEMO emergency-authority registry ────────────────────────────────────
+
+    #[benchmark]
+    fn add_emergency_authority() {
+        let account: T::AccountId = account("nemo", 0, 0);
+
+        #[extrinsic_call]
+        _(RawOrigin::Root, account.clone());
+
+        assert!(EmergencyAuthorities::<T>::get(&account));
+    }
+
+    #[benchmark]
+    fn remove_emergency_authority() {
+        let account: T::AccountId = account("nemo", 0, 0);
+        // Removal only does work when the account is registered.
+        Pallet::<T>::add_emergency_authority(RawOrigin::Root.into(), account.clone())
+            .expect("add_emergency_authority should succeed");
+
+        #[extrinsic_call]
+        _(RawOrigin::Root, account.clone());
+
+        assert!(!EmergencyAuthorities::<T>::get(&account));
     }
 
     impl_benchmark_test_suite!(Pallet, crate::mock::new_test_ext(), crate::mock::Test,);

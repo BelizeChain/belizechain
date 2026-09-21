@@ -42,7 +42,15 @@ pub mod pallet {
     /// Property ID type - simple counter for on-chain properties
     pub type PropertyId = u32;
 
+    /// On-chain storage version for this pallet.
+    ///
+    /// Bump this and register a migration in the runtime's `Migrations` tuple
+    /// whenever this pallet's storage layout changes.
+    pub const STORAGE_VERSION: frame_support::traits::StorageVersion =
+        frame_support::traits::StorageVersion::new(0);
+
     #[pallet::pallet]
+    #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
 
     #[pallet::config]
@@ -839,7 +847,7 @@ pub mod pallet {
 
         /// LL-4 FIX: Remove a government surveyor from the registry
         #[pallet::call_index(5)]
-        #[pallet::weight(T::WeightInfo::register_surveyor())]
+        #[pallet::weight(T::WeightInfo::remove_surveyor())]
         pub fn remove_surveyor(origin: OriginFor<T>, surveyor: T::AccountId) -> DispatchResult {
             T::GovernmentOrigin::ensure_origin(origin)?;
 
@@ -856,7 +864,7 @@ pub mod pallet {
 
         /// AUDIT FIX (CRIT-02): Add an encumbrance to a property (government-only)
         #[pallet::call_index(6)]
-        #[pallet::weight(T::WeightInfo::register_surveyor())]
+        #[pallet::weight(T::WeightInfo::add_encumbrance())]
         pub fn add_encumbrance(
             origin: OriginFor<T>,
             property_id: u32,
@@ -900,7 +908,7 @@ pub mod pallet {
 
         /// AUDIT FIX (CRIT-02): Remove (deactivate) an encumbrance from a property (government-only)
         #[pallet::call_index(7)]
-        #[pallet::weight(T::WeightInfo::register_surveyor())]
+        #[pallet::weight(T::WeightInfo::remove_encumbrance())]
         pub fn remove_encumbrance(
             origin: OriginFor<T>,
             property_id: u32,
@@ -1096,6 +1104,9 @@ pub trait WeightInfo {
     fn verify_property() -> Weight;
     fn survey_property() -> Weight;
     fn register_surveyor() -> Weight;
+    fn remove_surveyor() -> Weight;
+    fn add_encumbrance() -> Weight;
+    fn remove_encumbrance() -> Weight;
 }
 
 impl WeightInfo for () {
@@ -1112,6 +1123,15 @@ impl WeightInfo for () {
         Weight::from_parts(25_000_000, 512).saturating_add(Weight::from_parts(0, 3500))
     }
     fn register_surveyor() -> Weight {
+        Weight::from_parts(10_000_000, 512).saturating_add(Weight::from_parts(0, 1500))
+    }
+    fn remove_surveyor() -> Weight {
+        Weight::from_parts(10_000_000, 512).saturating_add(Weight::from_parts(0, 1500))
+    }
+    fn add_encumbrance() -> Weight {
+        Weight::from_parts(10_000_000, 512).saturating_add(Weight::from_parts(0, 1500))
+    }
+    fn remove_encumbrance() -> Weight {
         Weight::from_parts(10_000_000, 512).saturating_add(Weight::from_parts(0, 1500))
     }
 }

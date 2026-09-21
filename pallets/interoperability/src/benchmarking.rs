@@ -8,8 +8,6 @@
 //! the bridge path. For initiate_bridge we test the signed path and rely on
 //! the KYC provider being permissive in benchmark mode.
 
-#![cfg(feature = "runtime-benchmarks")]
-
 use super::*;
 use frame_benchmarking::v2::*;
 use frame_support::traits::Currency;
@@ -80,6 +78,18 @@ fn setup_bridge_tx<T: Config>(initiator: &T::AccountId) -> u32 {
 mod benchmarks {
     use super::*;
 
+    /// The mock gates bridge operators on an account allowlist; benchmark
+    /// accounts are hash-derived, so opt them in. The runtime provider returns
+    /// `true` unconditionally under `runtime-benchmarks`, so this is a no-op
+    /// there.
+    #[cfg(not(test))]
+    fn grant_bridge_operator<T: Config>(_account: &T::AccountId) {}
+
+    #[cfg(test)]
+    fn grant_bridge_operator<T: Config>(account: &T::AccountId) {
+        crate::mock::grant_bridge_operator(account);
+    }
+
     // ───────────────────────────────────────────
     // 1. initiate_bridge — signed, KYC level 2+
     // ───────────────────────────────────────────
@@ -90,6 +100,10 @@ mod benchmarks {
         let amount = 100_000_000_000_000u128; // 100 DALLA (above MinBridgeAmount of 50 DALLA)
                                               // SAFETY(saturated_into): benchmark seed balance, well within Balance range
         T::Currency::make_free_balance_be(&caller, (amount * 10).saturated_into());
+
+        // KYC level 2+ is required; benchmark accounts are hash-derived, so the
+        // mock's allowlist has to be told about them explicitly.
+        grant_bridge_operator::<T>(&caller);
 
         // Pre-fund treasury so the fee transfer doesn't fail due to ExistentialDeposit
         let treasury = T::Treasury::get();
@@ -116,6 +130,7 @@ mod benchmarks {
         let validator = setup_bridge_validator::<T>(0);
         let initiator: T::AccountId = account("init", 0, SEED);
         let tx_id = setup_bridge_tx::<T>(&initiator);
+        grant_bridge_operator::<T>(&validator);
 
         #[extrinsic_call]
         provide_pq_signature(
@@ -216,6 +231,7 @@ mod benchmarks {
         let caller: T::AccountId = whitelisted_caller();
         let fee = T::MinBridgeAmount::get();
         T::Currency::make_free_balance_be(&caller, fee * 10u32.into());
+        grant_bridge_operator::<T>(&caller);
 
         // Pre-fund treasury so it stays above ExistentialDeposit
         let treasury = T::Treasury::get();
@@ -247,6 +263,114 @@ mod benchmarks {
             200u32,                        // fee_rate
             2_000_000_000_000_000_000u128, // max_amount
         );
+    }
+
+    #[benchmark]
+    fn dispute_bridge_transaction() {
+        setup_chain_config::<T>();
+        let validator = setup_bridge_validator::<T>(0);
+        grant_bridge_operator::<T>(&validator);
+        // The dispute bond is `max(tx_amount / 20, MinBridgeAmount)`, and
+        // `tx_amount / 20` dominates wherever `MinBridgeAmount` is small.
+        T::Currency::make_free_balance_be(&validator, 1_000_000_000_000_000u128.saturated_into());
+
+        // Only a transaction inside the challenge window is disputable.
+        let tx_id = setup_bridge_tx::<T>(&validator);
+        BridgeTransactions::<T>::mutate(tx_id, |maybe_tx| {
+            if let Some(tx) = maybe_tx {
+                tx.status = BridgeStatus::ReadyForExecution;
+            }
+        });
+        PendingFinalizations::<T>::insert(tx_id, frame_system::Pallet::<T>::block_number());
+
+        #[extrinsic_call]
+        dispute_bridge_transaction(RawOrigin::Signed(validator.clone()), tx_id, vec![b'x'; 256]);
+
+        assert_eq!(
+            BridgeTransactions::<T>::get(tx_id)
+                .expect("benchmark seeded a tx")
+                .status,
+            BridgeStatus::Disputed
+        );
+    }
+
+    #[benchmark]
+    fn withdraw_liquidity() {
+        let manager: T::AccountId = whitelisted_caller();
+        let pool_id: u32 = 0;
+        let liquidity = 10_000_000_000_000u128;
+
+        // `unreserve` is the expensive half of this call, so give the manager a
+        // real reserve to release.
+        T::Currency::make_free_balance_be(&manager, (liquidity * 2).saturated_into());
+        T::Currency::reserve(&manager, liquidity.saturated_into())
+            .expect("benchmark accounted is funded");
+        LiquidityPools::<T>::insert(
+            pool_id,
+            LiquidityPool {
+                pool_id,
+                chain: BridgeChain::Ethereum,
+                asset: BridgeAsset::DALLA,
+                belizechain_liquidity: liquidity,
+                external_liquidity: 0u128,
+                manager: manager.clone(),
+                fee_rate: 100u32,
+                total_volume: 0u128,
+                active: true,
+            },
+        );
+
+        #[extrinsic_call]
+        withdraw_liquidity(
+            RawOrigin::Signed(manager.clone()),
+            pool_id,
+            liquidity.saturated_into(),
+        );
+
+        assert_eq!(
+            LiquidityPools::<T>::get(pool_id)
+                .expect("benchmark seeded a pool")
+                .belizechain_liquidity,
+            0u128
+        );
+    }
+
+    /// Confirms a burn proof for a `BurnAndUnlock` bridge transaction.
+    ///
+    /// `OracleOperatorCheck` short-circuits to `true` under `runtime-benchmarks`,
+    /// so the oracle-operator gate stays on the measured path without seeding the
+    /// oracle pallet's storage from here.
+    #[benchmark]
+    fn confirm_burn_proof() {
+        let oracle: T::AccountId = account("oracle", 0, 0);
+        let tx_id: u32 = 0;
+        BridgeTransactions::<T>::insert(
+            tx_id,
+            BridgeTransaction::<T::AccountId, BlockNumberFor<T>> {
+                tx_id,
+                initiator: oracle.clone(),
+                operation: BridgeOperation::BurnAndUnlock {
+                    source_chain: BridgeChain::Ethereum,
+                    source_tx_hash: BoundedVec::truncate_from(vec![0u8; 32]),
+                    amount: 1_000_000u128,
+                    asset: BridgeAsset::DALLA,
+                    recipient: BoundedVec::truncate_from(vec![0u8; 32]),
+                },
+                status: BridgeStatus::Initiated,
+                required_signatures: 1,
+                collected_signatures: 0,
+                pq_signatures: BoundedVec::default(),
+                fee: 0u128,
+                initiated_at: 0u32.into(),
+                completed_at: None,
+                external_confirmation: None,
+                dispute_info: None,
+            },
+        );
+        grant_bridge_operator::<T>(&oracle);
+
+        #[extrinsic_call]
+        _(RawOrigin::Signed(oracle), tx_id);
     }
 
     impl_benchmark_test_suite!(Pallet, crate::mock::new_test_ext(), crate::mock::Test);

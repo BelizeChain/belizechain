@@ -2,6 +2,10 @@
 WASM_BUILD_RUSTFLAGS = "-C link-arg=--allow-undefined"
 CXX = "g++"
 CXXFLAGS = "-std=c++17 -include cstdint"
+# Local development defaults for this workstation. Cargo only applies `[env]`
+# entries that are not already set, so CI (workflow-level env) and the Docker
+# image (ENV in the Dockerfile) override these without editing this file.
+# Anything without LLVM 20 installed must set LLVM_CONFIG_PATH/LIBCLANG_PATH.
 LLVM_CONFIG_PATH = "/usr/bin/llvm-config-20"
 LIBCLANG_PATH = "/usr/lib/llvm-20/lib"
 TMPDIR = "/tmp"

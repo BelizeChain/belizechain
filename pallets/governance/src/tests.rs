@@ -2354,6 +2354,103 @@ fn apply_pending_runtime_upgrade_hash_mismatch_fails() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// H-3: dual-house ratification gate on the runtime upgrade dispatcher
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Code bytes plus the blake2-256 hash governance would have approved.
+fn pending_upgrade_code() -> (Vec<u8>, [u8; 32]) {
+    let code = b"governance-gated runtime wasm".to_vec();
+    let hash = sp_core::blake2_256(&code);
+    (code, hash)
+}
+
+#[test]
+fn ratify_runtime_upgrade_requires_council_member() {
+    new_test_ext().execute_with(|| {
+        let (_, hash) = pending_upgrade_code();
+        crate::PendingRuntimeUpgrade::<Test>::put(hash);
+
+        // Account 9 belongs to neither house.
+        assert_noop!(
+            BelizeGovernance::ratify_runtime_upgrade(RuntimeOrigin::signed(9), hash),
+            Error::<Test>::NotCouncilMember
+        );
+    });
+}
+
+#[test]
+fn ratify_runtime_upgrade_requires_pending_hash_match() {
+    new_test_ext().execute_with(|| {
+        let (_, hash) = pending_upgrade_code();
+
+        // Nothing pending yet.
+        assert_noop!(
+            BelizeGovernance::ratify_runtime_upgrade(RuntimeOrigin::signed(1), hash),
+            Error::<Test>::RuntimeUpgradeNotPending
+        );
+
+        // A different hash is pending.
+        crate::PendingRuntimeUpgrade::<Test>::put([7u8; 32]);
+        assert_noop!(
+            BelizeGovernance::ratify_runtime_upgrade(RuntimeOrigin::signed(1), hash),
+            Error::<Test>::RuntimeCodeHashMismatch
+        );
+    });
+}
+
+#[test]
+fn non_root_apply_requires_both_house_ratifications() {
+    new_test_ext().execute_with(|| {
+        let (code, hash) = pending_upgrade_code();
+        crate::PendingRuntimeUpgrade::<Test>::put(hash);
+
+        // Technical house only (account 1 is technical, not governance).
+        assert_ok!(BelizeGovernance::ratify_runtime_upgrade(
+            RuntimeOrigin::signed(1),
+            hash
+        ));
+        assert_noop!(
+            BelizeGovernance::apply_pending_runtime_upgrade(
+                RuntimeOrigin::signed(5),
+                code.clone(),
+            ),
+            Error::<Test>::RuntimeUpgradeNotRatified
+        );
+
+        // Governance house ratifies too (account 3 is governance only).
+        assert_ok!(BelizeGovernance::ratify_runtime_upgrade(
+            RuntimeOrigin::signed(3),
+            hash
+        ));
+        assert_ok!(BelizeGovernance::apply_pending_runtime_upgrade(
+            RuntimeOrigin::signed(5),
+            code,
+        ));
+
+        // Applied upgrade clears the pending hash and its ratifications.
+        assert_eq!(crate::PendingRuntimeUpgrade::<Test>::get(), None);
+        assert_eq!(
+            crate::RuntimeUpgradeRatifications::<Test>::get(hash),
+            (false, false)
+        );
+    });
+}
+
+#[test]
+fn root_apply_bypasses_ratification_gate() {
+    new_test_ext().execute_with(|| {
+        let (code, hash) = pending_upgrade_code();
+        crate::PendingRuntimeUpgrade::<Test>::put(hash);
+
+        assert_ok!(BelizeGovernance::apply_pending_runtime_upgrade(
+            RuntimeOrigin::root(),
+            code,
+        ));
+        assert_eq!(crate::PendingRuntimeUpgrade::<Test>::get(), None);
+    });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // allocate_district_budget — error paths
 // ─────────────────────────────────────────────────────────────────────────────
 

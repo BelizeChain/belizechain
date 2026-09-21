@@ -8,11 +8,26 @@ Complete API documentation for BelizeChain's REST, WebSocket, and RPC interfaces
 
 | Environment | REST API | WebSocket | GraphQL |
 |-------------|----------|-----------|---------|
-| Mainnet | `https://api.belizechain.org` | `wss://rpc.belizechain.org` | `https://graphql.belizechain.org` |
+| Mainnet | **Not published** (planned `https://api.belizechain.org`) | **Not published** (planned `wss://rpc.belizechain.org`) | **Not published** (planned `https://graphql.belizechain.org`) |
 | Testnet | Not published yet | Operator-provided while the public testnet is being staged | Not published yet |
 | Local | `http://localhost:9933` | `ws://localhost:9944` | `http://localhost:8080/graphql` |
 
-The current repo does not publish fixed public testnet REST, WebSocket, or GraphQL hosts. Use the operator-provided RPC URL for the active network, or point clients at your own node.
+> **Endpoint status (verified 2026-09-20):** the mainnet hosts above do not
+> resolve yet — `rpc.belizechain.org`, `graphql.belizechain.org` and
+> `relayer.belizechain.org` return NXDOMAIN, and `api.belizechain.org` points at
+> the documentation web host, not an API. They are planned names, not working
+> services. Everywhere in this document, substitute the operator-provided URL for
+> the network you are actually targeting.
+
+The repo does not publish fixed public testnet REST, WebSocket, or GraphQL hosts.
+Use the operator-provided RPC URL for the active network, or point clients at your
+own node.
+
+Throughout this document the REST base URL is written as `$BELIZECHAIN_API`:
+
+```bash
+export BELIZECHAIN_API="https://<operator-provided-rest-host>"
+```
 
 ## Authentication
 
@@ -20,7 +35,7 @@ The current repo does not publish fixed public testnet REST, WebSocket, or Graph
 
 ```bash
 # Register for API key at https://portal.belizechain.org
-curl -X POST https://api.belizechain.org/v1/auth/register \
+curl -X POST "$BELIZECHAIN_API/v1/auth/register" \
   -H "Content-Type: application/json" \
   -d '{"email": "developer@example.com", "tier": "free"}'
 
@@ -32,7 +47,7 @@ curl -X POST https://api.belizechain.org/v1/auth/register \
 # }
 
 # Use API key in requests
-curl https://api.belizechain.org/v1/blocks/latest \
+curl "$BELIZECHAIN_API/v1/blocks/latest" \
   -H "X-API-Key: bzc_live_a1b2c3d4e5f6..."
 ```
 
@@ -54,7 +69,7 @@ curl https://api.belizechain.org/v1/blocks/latest \
 Get the latest block.
 
 ```bash
-curl https://api.belizechain.org/v1/blocks/latest \
+curl "$BELIZECHAIN_API/v1/blocks/latest" \
   -H "X-API-Key: YOUR_API_KEY"
 ```
 
@@ -78,7 +93,7 @@ curl https://api.belizechain.org/v1/blocks/latest \
 Get block by number or hash.
 
 ```bash
-curl https://api.belizechain.org/v1/blocks/1234567
+curl "$BELIZECHAIN_API/v1/blocks/1234567"
 ```
 
 **Query Parameters**:
@@ -90,7 +105,7 @@ curl https://api.belizechain.org/v1/blocks/1234567
 Get multiple blocks.
 
 ```bash
-curl "https://api.belizechain.org/v1/blocks/range?from=1234000&to=1234100"
+curl "$BELIZECHAIN_API/v1/blocks/range?from=1234000&to=1234100"
 ```
 
 **Response**:
@@ -110,7 +125,7 @@ curl "https://api.belizechain.org/v1/blocks/range?from=1234000&to=1234100"
 Get account information.
 
 ```bash
-curl https://api.belizechain.org/v1/accounts/5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY
+curl "$BELIZECHAIN_API/v1/accounts/5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"
 ```
 
 **Response**:
@@ -148,7 +163,7 @@ curl https://api.belizechain.org/v1/accounts/5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNeh
 Get account transaction history.
 
 ```bash
-curl "https://api.belizechain.org/v1/accounts/5Grw.../transactions?limit=50&offset=0"
+curl "$BELIZECHAIN_API/v1/accounts/5Grw.../transactions?limit=50&offset=0"
 ```
 
 **Query Parameters**:
@@ -165,7 +180,7 @@ curl "https://api.belizechain.org/v1/accounts/5Grw.../transactions?limit=50&offs
 Submit signed transaction.
 
 ```bash
-curl -X POST https://api.belizechain.org/v1/transactions/submit \
+curl -X POST "$BELIZECHAIN_API/v1/transactions/submit" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: YOUR_API_KEY" \
   -d '{
@@ -189,7 +204,7 @@ curl -X POST https://api.belizechain.org/v1/transactions/submit \
 Get transaction details.
 
 ```bash
-curl https://api.belizechain.org/v1/transactions/0xabcd...1234
+curl "$BELIZECHAIN_API/v1/transactions/0xabcd...1234"
 ```
 
 **Response**:
@@ -231,7 +246,7 @@ curl https://api.belizechain.org/v1/transactions/0xabcd...1234
 Get list of validators.
 
 ```bash
-curl "https://api.belizechain.org/v1/staking/validators?active=true"
+curl "$BELIZECHAIN_API/v1/staking/validators?active=true"
 ```
 
 **Response**:
@@ -264,7 +279,7 @@ curl "https://api.belizechain.org/v1/staking/validators?active=true"
 Get staking rewards history.
 
 ```bash
-curl https://api.belizechain.org/v1/staking/rewards/5GrwvaEF...
+curl "$BELIZECHAIN_API/v1/staking/rewards/5GrwvaEF..."
 ```
 
 **Response**:
@@ -299,7 +314,7 @@ curl https://api.belizechain.org/v1/staking/rewards/5GrwvaEF...
 Get governance proposals.
 
 ```bash
-curl "https://api.belizechain.org/v1/governance/proposals?status=active"
+curl "$BELIZECHAIN_API/v1/governance/proposals?status=active"
 ```
 
 **Response**:
@@ -335,7 +350,7 @@ curl "https://api.belizechain.org/v1/governance/proposals?status=active"
 Submit governance vote.
 
 ```bash
-curl -X POST https://api.belizechain.org/v1/governance/vote \
+curl -X POST "$BELIZECHAIN_API/v1/governance/vote" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: YOUR_API_KEY" \
   -d '{
@@ -354,7 +369,7 @@ curl -X POST https://api.belizechain.org/v1/governance/vote \
 Get trading pairs.
 
 ```bash
-curl https://api.belizechain.org/v1/dex/pairs
+curl "$BELIZECHAIN_API/v1/dex/pairs"
 ```
 
 **Response**:
@@ -381,7 +396,7 @@ curl https://api.belizechain.org/v1/dex/pairs
 Get limit order book.
 
 ```bash
-curl "https://api.belizechain.org/v1/dex/orders?pair=DALLA-bBZD&depth=20"
+curl "$BELIZECHAIN_API/v1/dex/orders?pair=DALLA-bBZD&depth=20"
 ```
 
 **Response**:
@@ -407,7 +422,8 @@ curl "https://api.belizechain.org/v1/dex/orders?pair=DALLA-bBZD&depth=20"
 ```javascript
 const { ApiPromise, WsProvider } = require('@polkadot/api');
 
-const provider = new WsProvider('wss://rpc.belizechain.org');
+// Replace with the operator-provided RPC endpoint (the public host above is not live yet).
+const provider = new WsProvider('<operator-provided-rpc-url>');
 const api = await ApiPromise.create({ provider });
 
 console.log(`Connected to chain: ${await api.rpc.system.chain()}`);
@@ -645,8 +661,8 @@ query {
 import { ApiPromise, WsProvider, Keyring } from '@polkadot/api';
 import { cryptoWaitReady } from '@polkadot/util-crypto';
 
-// Connect to blockchain
-const provider = new WsProvider('wss://rpc.belizechain.org');
+// Connect to blockchain (operator-provided RPC endpoint)
+const provider = new WsProvider('<operator-provided-rpc-url>');
 const api = await ApiPromise.create({ provider });
 
 // Create account from seed
@@ -673,9 +689,9 @@ console.log(`Free DALLA: ${balance.free.toString()}`);
 ```python
 from substrateinterface import SubstrateInterface, Keypair
 
-# Connect to blockchain
+# Connect to blockchain (operator-provided RPC endpoint)
 substrate = SubstrateInterface(
-    url="wss://rpc.belizechain.org",
+    url="<operator-provided-rpc-url>",
     ss58_format=42,
     type_registry_preset='polkadot'
 )
@@ -715,8 +731,8 @@ pub mod belizechain {}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Connect to blockchain
-    let api = OnlineClient::<PolkadotConfig>::from_url("wss://rpc.belizechain.org").await?;
+    // Connect to blockchain (operator-provided RPC endpoint)
+    let api = OnlineClient::<PolkadotConfig>::from_url("<operator-provided-rpc-url>").await?;
     
     // Create signer
     let signer = PairSigner::new(AccountKeyring::Alice.pair());

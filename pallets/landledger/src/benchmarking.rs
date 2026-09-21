@@ -3,16 +3,66 @@
 use super::*;
 use frame_benchmarking::v2::*;
 use frame_system::RawOrigin;
+use sp_std::vec;
 
 #[benchmarks]
 mod benchmarks {
     use super::*;
+
+    /// `PropertyRecord::encumbrances` capacity.
+    const MAX_ENCUMBRANCES: u32 = 10;
+
+    /// The mock gates property registration on KYC; benchmark accounts are
+    /// hash-derived and so opt in explicitly. The runtime provider is permissive
+    /// for benchmarks, so this is a no-op there.
+    #[cfg(not(test))]
+    fn grant_kyc<T: Config>(_account: &T::AccountId) {}
+
+    #[cfg(test)]
+    fn grant_kyc<T: Config>(account: &T::AccountId) {
+        crate::mock::grant_benchmark_kyc(account);
+    }
+
+    /// Seed a worst-case property: every fixed-size field filled to its capacity,
+    /// so any mutation rewrites the largest possible `PropertyRecord`.
+    fn seed_property<T: Config>(property_id: u32, encumbrances: u32) {
+        let encumbrance = Encumbrance {
+            encumbrance_type: EncumbranceType::Mortgage,
+            holder: account("holder", 0, 0),
+            amount: Some(1_000u128),
+            description: BoundedVec::try_from(vec![b'x'; 256]).unwrap_or_default(),
+            active: true,
+        };
+        Properties::<T>::insert(
+            property_id,
+            PropertyRecord {
+                property_id,
+                owner: account("owner", 0, 0),
+                title_number: BoundedVec::try_from(vec![b'x'; 64]).unwrap_or_default(),
+                description: BoundedVec::try_from(vec![b'x'; 256]).unwrap_or_default(),
+                coordinates: (17_000_000, -88_000_000),
+                area_sqm: 1_000u32,
+                property_type: PropertyType::Residential,
+                assessed_value: 100_000u128,
+                registered_at: 0u64,
+                last_transferred: None,
+                government_verified: true,
+                surveyed: true,
+                environmental_clearance: false,
+                is_tourism_property: false,
+                zoning: ZoningType::UrbanResidential,
+                encumbrances: BoundedVec::try_from(vec![encumbrance; encumbrances as usize])
+                    .unwrap_or_default(),
+            },
+        );
+    }
 
     #[benchmark]
     fn register_property() {
         let caller: T::AccountId = whitelisted_caller();
         let deposit = T::RegistrationDeposit::get();
         let _ = T::Currency::make_free_balance_be(&caller, deposit * 10u32.into());
+        grant_kyc::<T>(&caller);
 
         let title_number = b"BZ-PROP-BENCH-001".to_vec();
         let description = b"Benchmark test property".to_vec();
@@ -39,6 +89,10 @@ mod benchmarks {
         let new_owner: T::AccountId = account("new_owner", 0, 0);
         let deposit = T::RegistrationDeposit::get();
         let _ = T::Currency::make_free_balance_be(&caller, deposit * 10u32.into());
+        // Both parties need KYC: the seller to register, the buyer for the
+        // transaction itself.
+        grant_kyc::<T>(&caller);
+        grant_kyc::<T>(&new_owner);
 
         // Pre-fund pallet account so it can receive transfer tax (must exist above ED)
         let pallet_account = Pallet::<T>::account_id();
@@ -83,6 +137,7 @@ mod benchmarks {
         let caller: T::AccountId = whitelisted_caller();
         let deposit = T::RegistrationDeposit::get();
         let _ = T::Currency::make_free_balance_be(&caller, deposit * 10u32.into());
+        grant_kyc::<T>(&caller);
 
         // Register a property first
         let _ = Pallet::<T>::register_property(
@@ -107,6 +162,7 @@ mod benchmarks {
         let owner: T::AccountId = whitelisted_caller();
         let deposit = T::RegistrationDeposit::get();
         let _ = T::Currency::make_free_balance_be(&owner, deposit * 10u32.into());
+        grant_kyc::<T>(&owner);
 
         // Register surveyor
         let _ = Pallet::<T>::register_surveyor(RawOrigin::Root.into(), surveyor.clone());
@@ -141,6 +197,61 @@ mod benchmarks {
 
         #[extrinsic_call]
         _(RawOrigin::Root, surveyor);
+    }
+
+    #[benchmark]
+    fn remove_surveyor() {
+        let surveyor: T::AccountId = account("surveyor", 1, 0);
+        GovernmentSurveyors::<T>::insert(&surveyor, true);
+
+        #[extrinsic_call]
+        _(RawOrigin::Root, surveyor.clone());
+
+        assert!(!GovernmentSurveyors::<T>::contains_key(&surveyor));
+    }
+
+    #[benchmark]
+    fn add_encumbrance() {
+        let property_id: u32 = 0;
+        // One short of the cap, so the push rewrites the largest possible
+        // `PropertyRecord`.
+        seed_property::<T>(property_id, MAX_ENCUMBRANCES - 1);
+
+        #[extrinsic_call]
+        _(
+            RawOrigin::Root,
+            property_id,
+            EncumbranceType::TaxLien,
+            account("holder", 1, 0),
+            Some(500u128),
+            vec![b'x'; 256],
+        );
+
+        assert_eq!(
+            Properties::<T>::get(property_id)
+                .expect("benchmark seeded a property")
+                .encumbrances
+                .len(),
+            MAX_ENCUMBRANCES as usize
+        );
+    }
+
+    #[benchmark]
+    fn remove_encumbrance() {
+        let property_id: u32 = 0;
+        // A full encumbrance list makes the read-modify-write below as large as
+        // it can get.
+        seed_property::<T>(property_id, MAX_ENCUMBRANCES);
+
+        #[extrinsic_call]
+        _(RawOrigin::Root, property_id, 0u32);
+
+        assert!(
+            !Properties::<T>::get(property_id)
+                .expect("benchmark seeded a property")
+                .encumbrances[0]
+                .active
+        );
     }
 
     impl_benchmark_test_suite!(Pallet, crate::mock::new_test_ext(), crate::mock::Test);

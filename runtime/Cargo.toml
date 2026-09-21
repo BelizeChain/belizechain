@@ -179,6 +179,7 @@ runtime-benchmarks = [
     "pallet-belize-justice/runtime-benchmarks",
     "pallet-belize-whistleblower/runtime-benchmarks",
     "pallet-belize-moderation/runtime-benchmarks",
+    "pallet-storage-proof/runtime-benchmarks",
     "sp-runtime/runtime-benchmarks",
 ]
 
@@ -213,6 +214,9 @@ try-runtime = [
     "pallet-belize-justice/try-runtime",
     "pallet-belize-whistleblower/try-runtime",
     "pallet-belize-moderation/try-runtime",
+    "pallet-storage-proof/try-runtime",
+    "pallet-contracts/try-runtime",
+    "sp-runtime/try-runtime",
 ]
 
 # Development-only example migration hooks (disabled by default)

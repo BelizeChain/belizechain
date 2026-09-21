@@ -46,7 +46,15 @@ pub mod pallet {
     use super::*;
     use sp_std::prelude::*;
 
+    /// On-chain storage version for this pallet.
+    ///
+    /// Bump this and register a migration in the runtime's `Migrations` tuple
+    /// whenever this pallet's storage layout changes.
+    pub const STORAGE_VERSION: frame_support::traits::StorageVersion =
+        frame_support::traits::StorageVersion::new(0);
+
     #[pallet::pallet]
+    #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
 
     #[pallet::config]
@@ -790,7 +798,7 @@ pub mod pallet {
 
         /// Admin: add an issuer for a given attribute type
         #[pallet::call_index(3)]
-        #[pallet::weight(T::WeightInfo::admin_simple())]
+        #[pallet::weight(T::WeightInfo::add_issuer())]
         pub fn add_issuer(origin: OriginFor<T>, attr: u8, issuer: T::AccountId) -> DispatchResult {
             T::AdminOrigin::ensure_origin(origin)?;
             let attr_e = AttributeType::from(attr);
@@ -832,7 +840,7 @@ pub mod pallet {
 
         /// Admin: remove an issuer
         #[pallet::call_index(4)]
-        #[pallet::weight(T::WeightInfo::admin_simple())]
+        #[pallet::weight(T::WeightInfo::remove_issuer())]
         pub fn remove_issuer(
             origin: OriginFor<T>,
             attr: u8,
@@ -873,7 +881,7 @@ pub mod pallet {
 
         /// Admin: update standards version
         #[pallet::call_index(5)]
-        #[pallet::weight(T::WeightInfo::admin_simple())]
+        #[pallet::weight(T::WeightInfo::set_standard_version())]
         pub fn set_standard_version(
             origin: OriginFor<T>,
             attr: u8,
@@ -894,7 +902,7 @@ pub mod pallet {
 
         /// Admin: set operation fee (10 DALLA default via genesis)
         #[pallet::call_index(6)]
-        #[pallet::weight(T::WeightInfo::admin_simple())]
+        #[pallet::weight(T::WeightInfo::set_operation_fee())]
         pub fn set_operation_fee(origin: OriginFor<T>, fee: BalanceOf<T>) -> DispatchResult {
             T::AdminOrigin::ensure_origin(origin)?;
             OperationFee::<T>::put(fee);
@@ -904,7 +912,7 @@ pub mod pallet {
 
         /// Admin: set issuer bond requirement (0 disables)
         #[pallet::call_index(7)]
-        #[pallet::weight(T::WeightInfo::admin_simple())]
+        #[pallet::weight(T::WeightInfo::set_issuer_bond_amount())]
         pub fn set_issuer_bond_amount(
             origin: OriginFor<T>,
             amount: BalanceOf<T>,
@@ -917,7 +925,7 @@ pub mod pallet {
 
         /// Admin: set rate limit window and per-attr thresholds (0 disables)
         #[pallet::call_index(8)]
-        #[pallet::weight(T::WeightInfo::admin_simple())]
+        #[pallet::weight(T::WeightInfo::set_rate_limits())]
         pub fn set_rate_limits(
             origin: OriginFor<T>,
             window: BlockNumberFor<T>,
@@ -941,7 +949,7 @@ pub mod pallet {
 
         /// Admin: pause/resume the pallet
         #[pallet::call_index(9)]
-        #[pallet::weight(T::WeightInfo::admin_simple())]
+        #[pallet::weight(T::WeightInfo::set_pause())]
         pub fn set_pause(origin: OriginFor<T>, paused: bool) -> DispatchResult {
             T::AdminOrigin::ensure_origin(origin)?;
             GlobalPaused::<T>::put(paused);
@@ -1197,7 +1205,7 @@ pub mod pallet {
 
         /// Issuer self-bond deposit for a specific attribute (must be >= configured bond)
         #[pallet::call_index(15)]
-        #[pallet::weight(T::WeightInfo::admin_simple())]
+        #[pallet::weight(T::WeightInfo::issuer_deposit_bond())]
         pub fn issuer_deposit_bond(origin: OriginFor<T>, attr: u8) -> DispatchResult {
             let issuer = ensure_signed(origin)?;
             let attr_e = AttributeType::from(attr);
@@ -1227,7 +1235,7 @@ pub mod pallet {
 
         /// Issuer withdraws bond (must not be currently authorized or flagged)
         #[pallet::call_index(16)]
-        #[pallet::weight(T::WeightInfo::admin_simple())]
+        #[pallet::weight(T::WeightInfo::issuer_withdraw_bond())]
         pub fn issuer_withdraw_bond(origin: OriginFor<T>, attr: u8) -> DispatchResult {
             let issuer = ensure_signed(origin)?;
             let attr_e = AttributeType::from(attr);
@@ -1259,7 +1267,7 @@ pub mod pallet {
 
         /// Admin: flag/unflag issuer (cannot issue when flagged)
         #[pallet::call_index(17)]
-        #[pallet::weight(T::WeightInfo::admin_simple())]
+        #[pallet::weight(T::WeightInfo::flag_issuer())]
         pub fn flag_issuer(
             origin: OriginFor<T>,
             attr: u8,
@@ -1278,7 +1286,7 @@ pub mod pallet {
 
         /// Admin: slash issuer bond, funds transferred to Treasury
         #[pallet::call_index(18)]
-        #[pallet::weight(T::WeightInfo::admin_simple())]
+        #[pallet::weight(T::WeightInfo::slash_issuer_bond())]
         pub fn slash_issuer_bond(
             origin: OriginFor<T>,
             attr: u8,
@@ -1307,7 +1315,7 @@ pub mod pallet {
 
         /// Admin: convenience action to flag an issuer for bad attestation and optionally slash
         #[pallet::call_index(19)]
-        #[pallet::weight(T::WeightInfo::admin_simple())]
+        #[pallet::weight(T::WeightInfo::report_bad_attestation())]
         pub fn report_bad_attestation(
             origin: OriginFor<T>,
             attr: u8,
@@ -1576,7 +1584,18 @@ pub trait WeightInfo {
     fn register_identity() -> Weight;
     fn link_account() -> Weight;
     fn update_did() -> Weight;
-    fn admin_simple() -> Weight;
+    fn add_issuer() -> Weight;
+    fn remove_issuer() -> Weight;
+    fn set_standard_version() -> Weight;
+    fn set_operation_fee() -> Weight;
+    fn set_issuer_bond_amount() -> Weight;
+    fn set_rate_limits() -> Weight;
+    fn set_pause() -> Weight;
+    fn issuer_deposit_bond() -> Weight;
+    fn issuer_withdraw_bond() -> Weight;
+    fn flag_issuer() -> Weight;
+    fn slash_issuer_bond() -> Weight;
+    fn report_bad_attestation() -> Weight;
     fn issue_attestation() -> Weight;
     fn revoke() -> Weight;
 }
@@ -1598,10 +1617,69 @@ impl WeightInfo for () {
             .saturating_add(frame_support::weights::constants::RocksDbWeight::get().reads(1))
             .saturating_add(frame_support::weights::constants::RocksDbWeight::get().writes(1))
     }
-    fn admin_simple() -> frame_support::weights::Weight {
+    // The admin extrinsics were previously billed as one shared `admin_simple()`
+    // weight, but they differ materially: the bond operations move currency and
+    // `set_rate_limits` performs four writes, versus the two reads and one write
+    // the shared weight declared. Each now carries its own measured weight.
+    fn add_issuer() -> frame_support::weights::Weight {
         Weight::from_parts(10_000_000, 512)
             .saturating_add(frame_support::weights::constants::RocksDbWeight::get().reads(1))
             .saturating_add(frame_support::weights::constants::RocksDbWeight::get().writes(1))
+    }
+    fn remove_issuer() -> frame_support::weights::Weight {
+        Weight::from_parts(10_000_000, 512)
+            .saturating_add(frame_support::weights::constants::RocksDbWeight::get().reads(1))
+            .saturating_add(frame_support::weights::constants::RocksDbWeight::get().writes(1))
+    }
+    fn set_standard_version() -> frame_support::weights::Weight {
+        Weight::from_parts(10_000_000, 512)
+            .saturating_add(frame_support::weights::constants::RocksDbWeight::get().reads(1))
+            .saturating_add(frame_support::weights::constants::RocksDbWeight::get().writes(1))
+    }
+    fn set_operation_fee() -> frame_support::weights::Weight {
+        Weight::from_parts(10_000_000, 512)
+            .saturating_add(frame_support::weights::constants::RocksDbWeight::get().reads(1))
+            .saturating_add(frame_support::weights::constants::RocksDbWeight::get().writes(1))
+    }
+    fn set_issuer_bond_amount() -> frame_support::weights::Weight {
+        Weight::from_parts(10_000_000, 512)
+            .saturating_add(frame_support::weights::constants::RocksDbWeight::get().reads(1))
+            .saturating_add(frame_support::weights::constants::RocksDbWeight::get().writes(1))
+    }
+    fn set_rate_limits() -> frame_support::weights::Weight {
+        Weight::from_parts(10_000_000, 512)
+            .saturating_add(frame_support::weights::constants::RocksDbWeight::get().reads(1))
+            .saturating_add(frame_support::weights::constants::RocksDbWeight::get().writes(4))
+    }
+    fn set_pause() -> frame_support::weights::Weight {
+        Weight::from_parts(10_000_000, 512)
+            .saturating_add(frame_support::weights::constants::RocksDbWeight::get().reads(1))
+            .saturating_add(frame_support::weights::constants::RocksDbWeight::get().writes(1))
+    }
+    fn issuer_deposit_bond() -> frame_support::weights::Weight {
+        Weight::from_parts(20_000_000, 1024)
+            .saturating_add(frame_support::weights::constants::RocksDbWeight::get().reads(4))
+            .saturating_add(frame_support::weights::constants::RocksDbWeight::get().writes(3))
+    }
+    fn issuer_withdraw_bond() -> frame_support::weights::Weight {
+        Weight::from_parts(20_000_000, 1024)
+            .saturating_add(frame_support::weights::constants::RocksDbWeight::get().reads(4))
+            .saturating_add(frame_support::weights::constants::RocksDbWeight::get().writes(3))
+    }
+    fn flag_issuer() -> frame_support::weights::Weight {
+        Weight::from_parts(10_000_000, 512)
+            .saturating_add(frame_support::weights::constants::RocksDbWeight::get().reads(1))
+            .saturating_add(frame_support::weights::constants::RocksDbWeight::get().writes(1))
+    }
+    fn slash_issuer_bond() -> frame_support::weights::Weight {
+        Weight::from_parts(20_000_000, 1024)
+            .saturating_add(frame_support::weights::constants::RocksDbWeight::get().reads(3))
+            .saturating_add(frame_support::weights::constants::RocksDbWeight::get().writes(3))
+    }
+    fn report_bad_attestation() -> frame_support::weights::Weight {
+        Weight::from_parts(20_000_000, 1024)
+            .saturating_add(frame_support::weights::constants::RocksDbWeight::get().reads(3))
+            .saturating_add(frame_support::weights::constants::RocksDbWeight::get().writes(4))
     }
     fn issue_attestation() -> frame_support::weights::Weight {
         Weight::from_parts(40_000_000, 1536)

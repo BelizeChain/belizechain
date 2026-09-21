@@ -30,8 +30,14 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
+pub mod weights;
+
+// Re-exported so existing `pallet_belize_economy::SubstrateWeight` paths keep
+// working now that the implementation lives in `weights`.
+pub use weights::SubstrateWeight;
+
 use codec::{Decode, Encode, MaxEncodedLen};
-use frame_support::weights::{constants::RocksDbWeight, Weight};
+use frame_support::weights::Weight;
 use frame_support::{
     pallet_prelude::*,
     sp_runtime::traits::AccountIdConversion,
@@ -70,75 +76,6 @@ pub trait WeightInfo {
     fn burn_dalla() -> Weight;
     fn governance_burn() -> Weight;
     fn transfer_bbzd() -> Weight;
-}
-
-/// Default weight implementation
-pub struct SubstrateWeight<T>(sp_std::marker::PhantomData<T>);
-
-impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
-    fn issue_bbzd() -> Weight {
-        Weight::from_parts(25_000_000, 2560)
-            .saturating_add(RocksDbWeight::get().reads(3)) // CentralBankReserves, TotalBbzdSupply, AuthorizedMinters
-            .saturating_add(RocksDbWeight::get().writes(2)) // BBZDBalances, TotalBbzdSupply
-    }
-
-    fn redeem_bbzd() -> Weight {
-        Weight::from_parts(30_000_000, 1024)
-            .saturating_add(RocksDbWeight::get().reads(2)) // BBZDBalances, TotalBbzdSupply
-            .saturating_add(RocksDbWeight::get().writes(4)) // BBZDBalances, TotalBbzdSupply, RedemptionRequests, NextRedemptionId
-    }
-
-    fn process_redemption() -> Weight {
-        Weight::from_parts(20_000_000, 1024)
-            .saturating_add(RocksDbWeight::get().reads(2)) // AuthorizedMinters, RedemptionRequests
-            .saturating_add(RocksDbWeight::get().writes(1)) // RedemptionRequests
-    }
-
-    fn set_minter_authorization() -> Weight {
-        Weight::from_parts(15_000_000, 1024)
-            .saturating_add(RocksDbWeight::get().reads(0))
-            .saturating_add(RocksDbWeight::get().writes(1)) // AuthorizedMinters
-    }
-
-    fn update_reserves() -> Weight {
-        Weight::from_parts(18_000_000, 2560)
-            .saturating_add(RocksDbWeight::get().reads(2)) // CentralBankReserves, TotalBbzdSupply
-            .saturating_add(RocksDbWeight::get().writes(1)) // CentralBankReserves
-    }
-
-    fn pay_tourism_incentive() -> Weight {
-        Weight::from_parts(50_000_000, 2048)
-            .saturating_add(RocksDbWeight::get().reads(3))
-            .saturating_add(RocksDbWeight::get().writes(2))
-    }
-
-    /// DOS-012 FIX: Weight covers full inflation path — 3× deposit_creating,
-    /// 2× cumulative mutate, TotalSupply sync, LastInflationBlock update.
-    fn update_inflation() -> Weight {
-        Weight::from_parts(60_000_000, 4096)
-            .saturating_add(RocksDbWeight::get().reads(7))
-            .saturating_add(RocksDbWeight::get().writes(7))
-    }
-
-    fn burn_dalla() -> Weight {
-        Weight::from_parts(30_000_000, 2048)
-            .saturating_add(RocksDbWeight::get().reads(2))
-            .saturating_add(RocksDbWeight::get().writes(2))
-    }
-
-    fn governance_burn() -> Weight {
-        Weight::from_parts(35_000_000, 1024)
-            .saturating_add(RocksDbWeight::get().reads(2))
-            .saturating_add(RocksDbWeight::get().writes(2))
-    }
-
-    fn transfer_bbzd() -> Weight {
-        // 2 reads (BBZDBalances sender + receiver), 2 writes (mutate both),
-        // plus Oracle reads for sanctions/KYC checks on both parties
-        Weight::from_parts(30_000_000, 2048)
-            .saturating_add(RocksDbWeight::get().reads(4))
-            .saturating_add(RocksDbWeight::get().writes(2))
-    }
 }
 
 // ===== TYPE DEFINITIONS =====
@@ -203,7 +140,15 @@ pub mod pallet {
     use frame_support::traits::Imbalance;
     use pallet_belize_compliance::ComplianceReporter as _;
 
+    /// On-chain storage version for this pallet.
+    ///
+    /// Bump this and register a migration in the runtime's `Migrations` tuple
+    /// whenever this pallet's storage layout changes.
+    pub const STORAGE_VERSION: frame_support::traits::StorageVersion =
+        frame_support::traits::StorageVersion::new(0);
+
     #[pallet::pallet]
+    #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
 
     #[pallet::config]
@@ -409,59 +354,7 @@ pub mod pallet {
                 let new_supply = current_supply.saturating_add(inflation_amount);
 
                 if new_supply <= max_supply {
-                    let treasury = T::Treasury::get();
-
-                    // ── Phase 2C: Progressive public-goods routing ────────────
-                    // Route `PublicGoodsRoutingPercent`% of inflation to the
-                    // public-goods treasury; remainder goes to main treasury.
-                    let routing_percent: u128 =
-                        T::PublicGoodsRoutingPercent::get().min(100) as u128;
-                    let total_u128: u128 = inflation_amount.saturated_into::<u128>();
-                    let pg_u128: u128 = total_u128.saturating_mul(routing_percent) / 100;
-                    let main_u128: u128 = total_u128.saturating_sub(pg_u128);
-
-                    // ── Phase 5B: Carve wellbeing sub-portion from PG allocation ──
-                    let wb_percent: u128 = T::WellbeingFundPercent::get().min(100) as u128;
-                    let wb_u128: u128 = pg_u128.saturating_mul(wb_percent) / 100;
-                    let pg_net_u128: u128 = pg_u128.saturating_sub(wb_u128);
-
-                    let pg_amount: <T::Currency as Currency<T::AccountId>>::Balance =
-                        pg_net_u128.saturated_into();
-                    let wb_amount: <T::Currency as Currency<T::AccountId>>::Balance =
-                        wb_u128.saturated_into();
-                    let main_amount: <T::Currency as Currency<T::AccountId>>::Balance =
-                        main_u128.saturated_into();
-
-                    if pg_amount > Zero::zero() {
-                        let pg_treasury = T::PublicGoodsTreasury::get();
-                        let _ = T::Currency::deposit_creating(&pg_treasury, pg_amount);
-                    }
-
-                    if wb_amount > Zero::zero() {
-                        let wb_treasury = T::WellbeingTreasury::get();
-                        let _ = T::Currency::deposit_creating(&wb_treasury, wb_amount);
-                    }
-
-                    if main_amount > Zero::zero() {
-                        let _ = T::Currency::deposit_creating(&treasury, main_amount);
-                    }
-
-                    // Sync TotalSupply to authoritative TotalIssuance (H-20)
-                    let new_supply = T::Currency::total_issuance();
-                    TotalSupply::<T>::put(new_supply);
-
-                    // W-1: Emit actual minted amount (sum of deposits) not theoretical
-                    let actually_minted = new_supply.saturating_sub(current_supply);
-
-                    // Update last inflation block
-                    LastInflationBlock::<T>::put(n);
-
-                    // Emit event
-                    Self::deposit_event(Event::AnnualInflationApplied {
-                        amount: actually_minted,
-                        new_supply,
-                    });
-
+                    Self::apply_annual_inflation(n, inflation_amount, current_supply);
                     weight = weight.saturating_add(T::WeightInfo::update_inflation());
                 }
                 // If max supply would be exceeded, don't apply inflation (hard cap reached)
@@ -619,24 +512,6 @@ pub mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        /// Mint bBZD stablecoin (Central Bank only - USDC-style fiat-backed)
-        ///
-        /// This extrinsic mints new bBZD tokens ONLY when the Central Bank has received
-        /// an off-chain BZD deposit into their traditional bank account. The flow is:
-        ///
-        /// 1. User deposits 100 BZD into Central Bank's fiat account
-        /// 2. Central Bank verifies deposit via traditional banking system
-        /// 3. Central Bank calls this extrinsic with deposit reference number
-        /// 4. bBZD is minted 1:1 (100 BZD → 100 bBZD)
-        /// 5. Central Bank reserves increase on-chain (audit transparency)
-        ///
-        /// **CRITICAL**: NO DALLA COLLATERAL is involved. This is pure fiat-backing.
-        ///
-        /// # Parameters
-        /// - `origin`: Must be an authorized Central Bank minter account
-        /// - `recipient`: User account receiving the bBZD
-        /// - `amount`: Amount of bBZD to mint (1:1 with off-chain BZD deposit)
-        /// - `deposit_reference`: Off-chain bank deposit reference (audit trail)
         #[pallet::call_index(0)]
         #[pallet::weight(T::WeightInfo::issue_bbzd())]
         pub fn mint_bbzd(
@@ -1232,6 +1107,95 @@ pub mod pallet {
     // ===== HELPER FUNCTIONS =====
 
     impl<T: Config> Pallet<T> {
+        /// Mints one annual inflation epoch and books it.
+        ///
+        /// Routes the public-goods and wellbeing shares, sends the remainder to the
+        /// main treasury, syncs `TotalSupply` to `TotalIssuance` (H-20), records the
+        /// epoch block, and emits `AnnualInflationApplied`.
+        ///
+        /// The caller must already have established that a year has elapsed and that
+        /// `inflation_amount` keeps the supply within `MaxSupply`.
+        ///
+        /// Factored out of `on_initialize` so `WeightInfo::update_inflation` is
+        /// benchmarked against this exact code path instead of a copy of it.
+        /// `pub` because the benchmark suite calls it directly.
+        pub fn apply_annual_inflation(
+            n: BlockNumberFor<T>,
+            inflation_amount: <T::Currency as Currency<T::AccountId>>::Balance,
+            current_supply: <T::Currency as Currency<T::AccountId>>::Balance,
+        ) {
+            let treasury = T::Treasury::get();
+
+            // ── Phase 2C: Progressive public-goods routing ──────────────
+            // Route `PublicGoodsRoutingPercent`% of inflation to the
+            // public-goods treasury; remainder goes to main treasury.
+            let routing_percent: u128 = T::PublicGoodsRoutingPercent::get().min(100) as u128;
+            let total_u128: u128 = inflation_amount.saturated_into::<u128>();
+            let pg_u128: u128 = total_u128.saturating_mul(routing_percent) / 100;
+            let main_u128: u128 = total_u128.saturating_sub(pg_u128);
+
+            // ── Phase 5B: Carve wellbeing sub-portion from PG allocation ──────
+            let wb_percent: u128 = T::WellbeingFundPercent::get().min(100) as u128;
+            let wb_u128: u128 = pg_u128.saturating_mul(wb_percent) / 100;
+            let pg_net_u128: u128 = pg_u128.saturating_sub(wb_u128);
+
+            let pg_amount: <T::Currency as Currency<T::AccountId>>::Balance =
+                pg_net_u128.saturated_into();
+            let wb_amount: <T::Currency as Currency<T::AccountId>>::Balance =
+                wb_u128.saturated_into();
+            let main_amount: <T::Currency as Currency<T::AccountId>>::Balance =
+                main_u128.saturated_into();
+
+            if pg_amount > Zero::zero() {
+                let pg_treasury = T::PublicGoodsTreasury::get();
+                let _ = T::Currency::deposit_creating(&pg_treasury, pg_amount);
+            }
+
+            if wb_amount > Zero::zero() {
+                let wb_treasury = T::WellbeingTreasury::get();
+                let _ = T::Currency::deposit_creating(&wb_treasury, wb_amount);
+            }
+
+            if main_amount > Zero::zero() {
+                let _ = T::Currency::deposit_creating(&treasury, main_amount);
+            }
+
+            // Sync TotalSupply to authoritative TotalIssuance (H-20)
+            let new_supply = T::Currency::total_issuance();
+            TotalSupply::<T>::put(new_supply);
+
+            // W-1: Emit actual minted amount (sum of deposits) not theoretical
+            let actually_minted = new_supply.saturating_sub(current_supply);
+
+            // Update last inflation block
+            LastInflationBlock::<T>::put(n);
+
+            // Emit event
+            Self::deposit_event(Event::AnnualInflationApplied {
+                amount: actually_minted,
+                new_supply,
+            });
+        }
+
+        /// Mint bBZD stablecoin (Central Bank only - USDC-style fiat-backed)
+        ///
+        /// This extrinsic mints new bBZD tokens ONLY when the Central Bank has received
+        /// an off-chain BZD deposit into their traditional bank account. The flow is:
+        ///
+        /// 1. User deposits 100 BZD into Central Bank's fiat account
+        /// 2. Central Bank verifies deposit via traditional banking system
+        /// 3. Central Bank calls this extrinsic with deposit reference number
+        /// 4. bBZD is minted 1:1 (100 BZD → 100 bBZD)
+        /// 5. Central Bank reserves increase on-chain (audit transparency)
+        ///
+        /// **CRITICAL**: NO DALLA COLLATERAL is involved. This is pure fiat-backing.
+        ///
+        /// # Parameters
+        /// - `origin`: Must be an authorized Central Bank minter account
+        /// - `recipient`: User account receiving the bBZD
+        /// - `amount`: Amount of bBZD to mint (1:1 with off-chain BZD deposit)
+        /// - `deposit_reference`: Off-chain bank deposit reference (audit trail)
+        ///
         /// Get treasury account
         pub fn treasury_account() -> T::AccountId {
             TREASURY_ID.into_account_truncating()

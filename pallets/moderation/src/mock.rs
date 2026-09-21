@@ -70,24 +70,7 @@ impl pallet_belize_moderation::Config for Test {
     type WeightInfo = ();
 }
 
-// Provide a trivial WeightInfo impl for tests
-impl crate::weights::WeightInfo for () {
-    fn flag_content() -> frame_support::weights::Weight {
-        frame_support::weights::Weight::zero()
-    }
-    fn review_content() -> frame_support::weights::Weight {
-        frame_support::weights::Weight::zero()
-    }
-    fn add_moderator() -> frame_support::weights::Weight {
-        frame_support::weights::Weight::zero()
-    }
-    fn remove_moderator() -> frame_support::weights::Weight {
-        frame_support::weights::Weight::zero()
-    }
-    fn submit_nawal_assessment() -> frame_support::weights::Weight {
-        frame_support::weights::Weight::zero()
-    }
-}
+// `impl WeightInfo for ()` lives in `weights.rs` (generated), next to the trait.
 
 // Test accounts
 pub const ALICE: u64 = 1;

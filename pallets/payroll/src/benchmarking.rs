@@ -7,13 +7,12 @@
 //! If KYC fails at benchmark runtime, add a `#[cfg(feature = "runtime-benchmarks")]`
 //! bypass to the `meets_kyc_requirement` check in the extrinsic.
 
-#![cfg(feature = "runtime-benchmarks")]
-
 use super::*;
 use frame_benchmarking::v2::*;
 use frame_support::traits::Currency;
 use frame_system::RawOrigin;
 use sp_runtime::traits::{Bounded, Saturating, Zero};
+use sp_std::vec::Vec;
 
 /// Helper: set up a verified employer via the `verify_employer` extrinsic (Root origin).
 fn setup_employer<T: Config>() -> T::AccountId {
@@ -163,6 +162,80 @@ mod benchmarks {
             schedule_id,
             100_800u32, // new interval: ~bi-weekly
             true,       // keep active
+        );
+    }
+
+    // ── 8. verify_employer ───────────────────────────────────────────
+    #[benchmark]
+    fn verify_employer() {
+        // Fresh account: the extrinsic rejects already-registered employers.
+        let employer: T::AccountId = account("new_employer", 0, 0);
+
+        #[extrinsic_call]
+        verify_employer(RawOrigin::Root, employer, EmployerType::SME);
+    }
+
+    // ── 9. toggle_employee_status ────────────────────────────────────
+    #[benchmark]
+    fn toggle_employee_status() {
+        let employer = setup_employer::<T>();
+        let employee = insert_employee::<T>(&employer, 0);
+
+        #[extrinsic_call]
+        toggle_employee_status(RawOrigin::Signed(employer), employee, false);
+    }
+
+    // ── 10. create_department ────────────────────────────────────────
+    #[benchmark]
+    fn create_department() {
+        let employer = setup_employer::<T>();
+
+        #[extrinsic_call]
+        create_department(RawOrigin::Signed(employer), [7u8; 32]);
+    }
+
+    // ── 11. set_deduction ────────────────────────────────────────────
+    // Worst case: nine deductions already stored, so the call performs the
+    // longest scan the bounded list allows before pushing the tenth entry.
+    #[benchmark]
+    fn set_deduction() {
+        let employer = setup_employer::<T>();
+        let employee = insert_employee::<T>(&employer, 0);
+        let amount: BalanceOf<T> = T::MinimumPayment::get();
+
+        let mut deductions = Vec::new();
+        for i in 0..9u8 {
+            deductions.push(Deduction {
+                deduction_type: DeductionType::Custom([i; 16]),
+                amount,
+                active: true,
+            });
+        }
+        EmployeeDeductions::<T>::insert(
+            &employer,
+            &employee,
+            BoundedVec::truncate_from(deductions),
+        );
+
+        let new_deduction = DeductionType::Custom([9u8; 16]);
+
+        #[extrinsic_call]
+        set_deduction(RawOrigin::Signed(employer), employee, new_deduction, amount);
+    }
+
+    // ── 12. issue_bonus ──────────────────────────────────────────────
+    #[benchmark]
+    fn issue_bonus() {
+        let employer = setup_employer::<T>();
+        let employee = insert_employee::<T>(&employer, 0);
+        let amount: BalanceOf<T> = T::MinimumPayment::get();
+
+        #[extrinsic_call]
+        issue_bonus(
+            RawOrigin::Signed(employer),
+            employee,
+            amount,
+            PaymentCategory::Bonus,
         );
     }
 

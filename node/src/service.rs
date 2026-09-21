@@ -207,8 +207,9 @@ pub fn new_full<
         backend.clone(),
         grandpa_link.shared_authority_set().clone(),
         Vec::default(), // P2P-FIX-004: Warp sync hard forks (empty = no authority set hard forks)
-                        // NOTE: For warp sync security with trusted checkpoints, use --warp-sync-checkpoint CLI flag
-                        // See WARP_SYNC_CHECKPOINTS constant documentation above for checkpoint management strategy
+                        // NOTE: trusted checkpoints are supplied at run time via
+                        // `--warp-sync-checkpoint`; source control deliberately
+                        // pins no checkpoint hashes.
     ));
 
     // P2P-FIX-002: Content-based block announce validation (defense-in-depth)
@@ -262,11 +263,16 @@ pub fn new_full<
 
     let role = config.role;
     let force_authoring = config.force_authoring;
-    // CONS-034 FIX: Enable BABE slot-skipping backoff when finality lags.
-    // A value of 10 means the node will skip authoring after producing
-    // 10 consecutive blocks without GRANDPA finality catching up.
+    // CONS-034: back off BABE authoring while GRANDPA finality lags. The SDK
+    // defaults (max_interval 100 slots, unfinalized_slack 50 blocks,
+    // authoring_bias 2) are spelled out explicitly so an SDK upgrade cannot
+    // silently change this node's authoring behaviour.
     let backoff_authoring_blocks =
-        Some(sc_consensus_slots::BackoffAuthoringOnFinalizedHeadLagging::default());
+        Some(sc_consensus_slots::BackoffAuthoringOnFinalizedHeadLagging {
+            max_interval: 100,
+            unfinalized_slack: 50,
+            authoring_bias: 2,
+        });
     let name = config.network.node_name.clone();
     let enable_grandpa = !config.disable_grandpa;
     let prometheus_registry = config.prometheus_registry().cloned();

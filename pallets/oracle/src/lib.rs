@@ -32,7 +32,15 @@ pub mod pallet {
     use sp_runtime::traits::{SaturatedConversion, Saturating};
     use sp_std::vec::Vec;
 
+    /// On-chain storage version for this pallet.
+    ///
+    /// Bump this and register a migration in the runtime's `Migrations` tuple
+    /// whenever this pallet's storage layout changes.
+    pub const STORAGE_VERSION: frame_support::traits::StorageVersion =
+        frame_support::traits::StorageVersion::new(0);
+
     #[pallet::pallet]
+    #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
 
     #[pallet::config]
@@ -583,8 +591,15 @@ pub mod pallet {
             // Store the submission
             PriceSubmissions::<T>::insert(pair, &operator, (price, current_block));
 
-            // Aggregate all submissions
-            Self::aggregate_price_feed(pair)?;
+            // Aggregate once `MinConsensusOperators` fresh submissions exist.
+            //
+            // Aggregation is best-effort *by design*: a feed needs several
+            // independent operators before it can be published, so a submission
+            // that has not yet reached consensus is still a valid submission. If
+            // the error were propagated, `?` would revert the insert above and no
+            // operator could ever be the first to report — the feed could never
+            // be bootstrapped at all.
+            Self::try_aggregate_price_feed(pair)?;
 
             Self::deposit_event(Event::PriceSubmitted {
                 operator,
@@ -1171,9 +1186,7 @@ pub mod pallet {
         ///
         /// ## Safety
         /// Multi-oracle consensus (MinOracleAgreement) prevents unilateral Nawal suppression.
-        #[pallet::weight(Weight::from_parts(15_000_000, 1024)
-            .saturating_add(T::DbWeight::get().reads(3))
-            .saturating_add(T::DbWeight::get().writes(2)))]
+        #[pallet::weight(T::WeightInfo::submit_behavior_flag())]
         #[pallet::call_index(14)]
         pub fn submit_behavior_flag(
             origin: OriginFor<T>,
@@ -1242,9 +1255,7 @@ pub mod pallet {
         ///
         /// Callable only by `OracleAdminOrigin`.  Used when Nawal oracle assessment
         /// is disputed or when sufficient time and rehabilitation has occurred.
-        #[pallet::weight(Weight::from_parts(10_000_000, 512)
-            .saturating_add(T::DbWeight::get().reads(1))
-            .saturating_add(T::DbWeight::get().writes(2)))]
+        #[pallet::weight(T::WeightInfo::clear_behavior_flag())]
         #[pallet::call_index(15)]
         pub fn clear_behavior_flag(origin: OriginFor<T>, account: T::AccountId) -> DispatchResult {
             T::OracleAdminOrigin::ensure_origin(origin)?;
@@ -1316,6 +1327,19 @@ pub mod pallet {
         }
 
         /// Aggregate price submissions from multiple operators
+        /// Publish a feed when consensus exists, treating "not enough submissions
+        /// yet" as a normal state rather than an error.
+        ///
+        /// See `submit_price` for why this distinction matters: rejecting the
+        /// submission that fails to reach consensus would make the feed
+        /// impossible to bootstrap.
+        fn try_aggregate_price_feed(pair: CurrencyPair) -> DispatchResult {
+            match Self::aggregate_price_feed(pair) {
+                Err(err) if err == Error::<T>::InsufficientConsensus.into() => Ok(()),
+                other => other,
+            }
+        }
+
         fn aggregate_price_feed(pair: CurrencyPair) -> DispatchResult {
             let current_block = frame_system::Pallet::<T>::block_number();
             let max_staleness = T::MaxDataStaleness::get();

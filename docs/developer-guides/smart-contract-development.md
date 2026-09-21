@@ -543,7 +543,8 @@ import { ApiPromise, WsProvider } from '@polkadot/api';
 import { ContractPromise } from '@polkadot/api-contract';
 
 async function deployContract() {
-  const provider = new WsProvider('wss://rpc.belizechain.org');
+  // Substitute the operator-provided RPC endpoint (public hosts are not live yet).
+  const provider = new WsProvider('<operator-provided-rpc-url>');
   const api = await ApiPromise.create({ provider });
   
   // Load contract metadata

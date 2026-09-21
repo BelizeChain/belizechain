@@ -2,9 +2,6 @@
 
 use sc_cli::RunCmd;
 
-#[cfg(feature = "try-runtime")]
-use try_runtime_cli;
-
 /// BelizeChain node CLI
 #[derive(Debug, clap::Parser)]
 pub struct Cli {
@@ -47,10 +44,6 @@ pub enum Subcommand {
     #[cfg(feature = "runtime-benchmarks")]
     #[command(subcommand)]
     Benchmark(Box<frame_benchmarking_cli::BenchmarkCmd>),
-
-    /// Try some command against a specified runtime.
-    #[cfg(feature = "try-runtime")]
-    TryRuntime(try_runtime_cli::TryRuntimeCmd),
 
     /// Chain info utilities.
     ChainInfo(sc_cli::ChainInfoCmd),

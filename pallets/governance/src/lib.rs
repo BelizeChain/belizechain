@@ -227,6 +227,20 @@ pub trait DualHouseProvider<AccountId> {
     fn is_technical_house_member(account: &AccountId) -> bool;
     /// Returns `true` if `account` is a member of the Governance house (Instance2).
     fn is_governance_house_member(account: &AccountId) -> bool;
+
+    /// Benchmark-only scaffolding: arrange storage so that `account` passes the
+    /// membership checks above.
+    ///
+    /// House-gated extrinsics (`ratify_constitutional_proposal`,
+    /// `ratify_runtime_upgrade`) cannot be reached on a benchmark chain, because
+    /// `pallet_collective` has no members there. Rather than short-circuiting the
+    /// check, the runtime implements this hook by writing the real
+    /// `pallet_collective::Members` storage, which keeps the membership lookup on
+    /// the measured path.
+    ///
+    /// Compiled out of production builds, so it cannot be misused at runtime.
+    #[cfg(feature = "runtime-benchmarks")]
+    fn make_house_member(_account: &AccountId) {}
 }
 
 /// Blocks per year assuming 6-second block time (~5,256,000).
@@ -794,7 +808,15 @@ pub mod pallet {
     use sp_runtime::{traits::Zero, SaturatedConversion};
     use sp_std::prelude::*;
 
+    /// On-chain storage version for this pallet.
+    ///
+    /// Bump this and register a migration in the runtime's `Migrations` tuple
+    /// whenever this pallet's storage layout changes.
+    pub const STORAGE_VERSION: frame_support::traits::StorageVersion =
+        frame_support::traits::StorageVersion::new(0);
+
     #[pallet::pallet]
+    #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
 
     #[pallet::config]
@@ -964,6 +986,13 @@ pub mod pallet {
         /// Value is in range 1-100.  Recommended: 10.
         #[pallet::constant]
         type MinQuorumPercentage: Get<u8>;
+
+        /// Origin allowed to apply a ratified runtime upgrade (H-3 FIX).
+        ///
+        /// Wired to `GovernanceCouncilSuperMajority` at the runtime level so the
+        /// upgrade path no longer depends on `Root`/sudo existing. `Root` remains
+        /// a bypass for testnet bootstrapping and emergencies.
+        type RuntimeUpgradeOrigin: EnsureOrigin<Self::RuntimeOrigin>;
     }
 
     /// Type alias for balance amounts
@@ -2008,6 +2037,14 @@ pub mod pallet {
         OptionQuery,
     >;
 
+    /// Dual-house ratification of the pending runtime upgrade hash (H-3 FIX).
+    ///
+    /// Keyed by code hash → `(technical_house_ratified, governance_house_ratified)`.
+    /// A non-root caller may only apply the upgrade once both flags are `true`.
+    #[pallet::storage]
+    pub type RuntimeUpgradeRatifications<T: Config> =
+        StorageMap<_, Blake2_128Concat, [u8; 32], (bool, bool), ValueQuery>;
+
     // ===== PHASE 6: COUNCIL ELECTION SYSTEM STORAGE =====
 
     #[pallet::storage]
@@ -2421,18 +2458,8 @@ pub mod pallet {
 
             // Remove expired members
             for (_, account) in &to_process {
-                if let Some(member) = CouncilMembers::<T>::take(account) {
-                    // Update board composition count
-                    let current_count = BoardComposition::<T>::get(member.role);
-                    if current_count > 0 {
-                        BoardComposition::<T>::insert(member.role, current_count - 1);
-                    }
-                    Self::deposit_event(Event::CouncilTermAutoExpired {
-                        account: account.clone(),
-                    });
-                    weight = weight
-                        .saturating_add(T::WeightInfo::expire_council_member())
-                        .saturating_add(T::DbWeight::get().writes(2));
+                if Self::expire_seat(account) {
+                    weight = weight.saturating_add(T::WeightInfo::expire_council_member());
                 }
             }
 
@@ -2581,6 +2608,15 @@ pub mod pallet {
         },
         /// Governance-approved runtime upgrade code was verified and applied (AR-14)
         RuntimeUpgradeApplied { code_hash: [u8; 32] },
+        /// A governance house ratified the pending runtime upgrade hash (H-3)
+        RuntimeUpgradeRatified {
+            who: T::AccountId,
+            code_hash: [u8; 32],
+            /// `true` when the caller is a member of the technical house.
+            technical: bool,
+            /// `true` when the caller is a member of the governance house.
+            governance: bool,
+        },
         /// Governance parameter changed
         ParameterChanged {
             parameter_index: u8, // Index of GovernanceParameter variant
@@ -3103,6 +3139,9 @@ pub mod pallet {
         RuntimeUpgradeNotPending,
         /// Submitted code hash does not match governance-approved hash.
         RuntimeCodeHashMismatch,
+        /// Both governance houses must ratify the pending hash before a
+        /// non-root origin may apply the upgrade (H-3).
+        RuntimeUpgradeNotRatified,
         // Department Action Errors (AR-8)
         /// `call_data` bytes could not be SCALE-decoded as a valid `DepartmentCall`.
         InvalidCallData,
@@ -3792,7 +3831,7 @@ pub mod pallet {
 
         /// Set department manager (root only)
         #[pallet::call_index(6)]
-        #[pallet::weight(Weight::from_parts(10_000_000, 512))]
+        #[pallet::weight(T::WeightInfo::set_department_manager())]
         pub fn set_department_manager(
             origin: OriginFor<T>,
             department_index: u8,
@@ -3824,7 +3863,7 @@ pub mod pallet {
 
         /// Submit a department-specific proposal
         #[pallet::call_index(7)]
-        #[pallet::weight(Weight::from_parts(20_000_000, 512))]
+        #[pallet::weight(T::WeightInfo::submit_department_proposal())]
         pub fn submit_department_proposal(
             origin: OriginFor<T>,
             department_index: u8,
@@ -3952,7 +3991,7 @@ pub mod pallet {
 
         /// Approve a cross-department proposal
         #[pallet::call_index(8)]
-        #[pallet::weight(Weight::from_parts(15_000_000, 512))]
+        #[pallet::weight(T::WeightInfo::approve_cross_department())]
         pub fn approve_cross_department(
             origin: OriginFor<T>,
             proposal_id: u32,
@@ -4014,7 +4053,7 @@ pub mod pallet {
 
         /// Add a new board member with a specific role and term
         #[pallet::call_index(9)]
-        #[pallet::weight(Weight::from_parts(20_000_000, 512))]
+        #[pallet::weight(T::WeightInfo::add_board_member())]
         pub fn add_board_member(
             origin: OriginFor<T>,
             account: T::AccountId,
@@ -4110,7 +4149,7 @@ pub mod pallet {
 
         /// Remove a board member (expired term or resignation)
         #[pallet::call_index(10)]
-        #[pallet::weight(Weight::from_parts(15_000_000, 512))]
+        #[pallet::weight(T::WeightInfo::remove_board_member())]
         pub fn remove_board_member(
             origin: OriginFor<T>,
             account: T::AccountId,
@@ -4186,9 +4225,7 @@ pub mod pallet {
         /// )
         /// ```
         #[pallet::call_index(23)]
-        #[pallet::weight(Weight::from_parts(15_000_000, 1024)
-            .saturating_add(T::DbWeight::get().reads(2))
-            .saturating_add(T::DbWeight::get().writes(1)))]
+        #[pallet::weight(T::WeightInfo::declare_emergency())]
         pub fn declare_emergency(
             origin: OriginFor<T>,
             emergency_type_index: u8, // 0=Hurricane, 1=HealthCrisis, 2=EconomicCrisis, 3=SecurityThreat, 4=InfrastructureFailure, 5=Other
@@ -4279,9 +4316,7 @@ pub mod pallet {
         /// - Resumes normal governance operations
         /// - Logs emergency end for historical records
         #[pallet::call_index(24)]
-        #[pallet::weight(Weight::from_parts(10_000_000, 512)
-            .saturating_add(T::DbWeight::get().reads(1))
-            .saturating_add(T::DbWeight::get().writes(1)))]
+        #[pallet::weight(T::WeightInfo::end_emergency())]
         pub fn end_emergency(origin: OriginFor<T>) -> DispatchResult {
             // Requires root or board authority
             T::CouncilOrigin::try_origin(origin)
@@ -4312,11 +4347,9 @@ pub mod pallet {
         /// emergency is cancelled.
         #[pallet::call_index(44)]
         // DOS-009 FIX: Operational dispatch — emergency veto is safety-critical.
-        // DOS-010 FIX: Weight accounts for bounded council scan (up to 200 reads)
-        // and worst-case EmergencyVetoes clear (up to 200 writes).
-        #[pallet::weight((Weight::from_parts(25_000_000, 4096)
-            .saturating_add(T::DbWeight::get().reads(204))
-            .saturating_add(T::DbWeight::get().writes(202)), DispatchClass::Operational))]
+        // DOS-010 FIX: benchmarked at the worst case — bounded council scan (up
+        // to 200 reads) and `EmergencyVetoes` clear (up to 200 writes).
+        #[pallet::weight((T::WeightInfo::veto_emergency(), DispatchClass::Operational))]
         pub fn veto_emergency(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
@@ -4362,7 +4395,7 @@ pub mod pallet {
 
         /// Nominate a citizen for delegate position
         #[pallet::call_index(11)]
-        #[pallet::weight(Weight::from_parts(10_000_000, 512))]
+        #[pallet::weight(T::WeightInfo::nominate_for_delegate())]
         pub fn nominate_for_delegate(
             origin: OriginFor<T>,
             nominee: T::AccountId,
@@ -4393,7 +4426,7 @@ pub mod pallet {
 
         /// Vote for a delegate candidate
         #[pallet::call_index(12)]
-        #[pallet::weight(Weight::from_parts(10_000_000, 512))]
+        #[pallet::weight(T::WeightInfo::vote_for_delegate())]
         pub fn vote_for_delegate(origin: OriginFor<T>, nominee: T::AccountId) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
@@ -4456,9 +4489,7 @@ pub mod pallet {
         /// - `duration_blocks`: Voting period duration
         /// - `district_index`: Optional district restriction (0-5)
         #[pallet::call_index(25)]
-        #[pallet::weight(Weight::from_parts(30_000_000, 1536)
-            .saturating_add(T::DbWeight::get().reads(3))
-            .saturating_add(T::DbWeight::get().writes(4)))]
+        #[pallet::weight(T::WeightInfo::create_referendum())]
         pub fn create_referendum(
             origin: OriginFor<T>,
             title: Vec<u8>,
@@ -4589,9 +4620,7 @@ pub mod pallet {
         /// - `referendum_id`: ID of referendum to vote on
         /// - `option_index`: Index of option being voted for (0-based)
         #[pallet::call_index(26)]
-        #[pallet::weight(Weight::from_parts(20_000_000, 2048)
-            .saturating_add(T::DbWeight::get().reads(4))
-            .saturating_add(T::DbWeight::get().writes(2)))]
+        #[pallet::weight(T::WeightInfo::vote_on_referendum())]
         pub fn vote_on_referendum(
             origin: OriginFor<T>,
             referendum_id: u32,
@@ -4677,9 +4706,7 @@ pub mod pallet {
         /// - `origin`: Any signed account
         /// - `referendum_id`: ID of referendum to finalize
         #[pallet::call_index(27)]
-        #[pallet::weight(Weight::from_parts(25_000_000, 1024)
-            .saturating_add(T::DbWeight::get().reads(2))
-            .saturating_add(T::DbWeight::get().writes(1)))]
+        #[pallet::weight(T::WeightInfo::finalize_referendum())]
         pub fn finalize_referendum(origin: OriginFor<T>, referendum_id: u32) -> DispatchResult {
             let _who = ensure_signed(origin)?;
 
@@ -4818,9 +4845,7 @@ pub mod pallet {
         /// // -> ProposalExecuted event emitted
         /// ```
         #[pallet::call_index(13)]
-        #[pallet::weight(Weight::from_parts(50_000_000, 2560)
-            .saturating_add(T::DbWeight::get().reads(5))
-            .saturating_add(T::DbWeight::get().writes(3)))]
+        #[pallet::weight(T::WeightInfo::execute_proposal())]
         pub fn execute_proposal(origin: OriginFor<T>, proposal_id: u32) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
@@ -4892,9 +4917,7 @@ pub mod pallet {
 
         /// Start a district council election
         #[pallet::call_index(14)]
-        #[pallet::weight(Weight::from_parts(25_000_000, 512)
-            .saturating_add(T::DbWeight::get().reads(1))
-            .saturating_add(T::DbWeight::get().writes(1)))]
+        #[pallet::weight(T::WeightInfo::start_district_election())]
         pub fn start_district_election(
             origin: OriginFor<T>,
             district_index: u8,
@@ -4966,9 +4989,7 @@ pub mod pallet {
 
         /// Register as a candidate in a district election
         #[pallet::call_index(15)]
-        #[pallet::weight(Weight::from_parts(20_000_000, 1536)
-            .saturating_add(T::DbWeight::get().reads(3))
-            .saturating_add(T::DbWeight::get().writes(1)))]
+        #[pallet::weight(T::WeightInfo::register_candidate())]
         pub fn register_candidate(
             origin: OriginFor<T>,
             district_index: u8,
@@ -5058,9 +5079,7 @@ pub mod pallet {
 
         /// Vote in a district election
         #[pallet::call_index(16)]
-        #[pallet::weight(Weight::from_parts(20_000_000, 2048)
-            .saturating_add(T::DbWeight::get().reads(4))
-            .saturating_add(T::DbWeight::get().writes(2)))]
+        #[pallet::weight(T::WeightInfo::vote_in_district_election())]
         pub fn vote_in_district_election(
             origin: OriginFor<T>,
             district_index: u8,
@@ -5142,11 +5161,9 @@ pub mod pallet {
 
         /// Finalize a district election and assign council seats
         #[pallet::call_index(17)]
-        // DOS-015 FIX: Weight parameterized by MaxCandidatesPerElection (200)
-        // for candidate iteration, sorting, and winner seating.
-        #[pallet::weight(Weight::from_parts(80_000_000, 10240)
-            .saturating_add(T::DbWeight::get().reads(210))
-            .saturating_add(T::DbWeight::get().writes(210)))]
+        // DOS-015 FIX: benchmarked at the worst case — every seat iterates,
+        // sorts and seats up to MaxCandidatesPerElection (200) candidates.
+        #[pallet::weight(T::WeightInfo::finalize_district_election())]
         pub fn finalize_district_election(
             origin: OriginFor<T>,
             district_index: u8,
@@ -5328,9 +5345,7 @@ pub mod pallet {
         /// // Alice can still revoke at any time
         /// ```
         #[pallet::call_index(18)]
-        #[pallet::weight(Weight::from_parts(25_000_000, 1024)
-            .saturating_add(T::DbWeight::get().reads(2))
-            .saturating_add(T::DbWeight::get().writes(2)))]
+        #[pallet::weight(T::WeightInfo::delegate_vote())]
         pub fn delegate_vote(
             origin: OriginFor<T>,
             delegate: T::AccountId,
@@ -5401,9 +5416,7 @@ pub mod pallet {
 
         /// Revoke vote delegation
         #[pallet::call_index(19)]
-        #[pallet::weight(Weight::from_parts(20_000_000, 1024)
-            .saturating_add(T::DbWeight::get().reads(2))
-            .saturating_add(T::DbWeight::get().writes(2)))]
+        #[pallet::weight(T::WeightInfo::revoke_delegation())]
         pub fn revoke_delegation(origin: OriginFor<T>) -> DispatchResult {
             let delegator = ensure_signed(origin)?;
 
@@ -5431,9 +5444,7 @@ pub mod pallet {
 
         /// Amend a proposal (only by original proposer before voting ends)
         #[pallet::call_index(20)]
-        #[pallet::weight(Weight::from_parts(30_000_000, 1024)
-            .saturating_add(T::DbWeight::get().reads(2))
-            .saturating_add(T::DbWeight::get().writes(1)))]
+        #[pallet::weight(T::WeightInfo::amend_proposal())]
         pub fn amend_proposal(
             origin: OriginFor<T>,
             proposal_id: u32,
@@ -5499,10 +5510,8 @@ pub mod pallet {
 
         /// Claim participation rewards
         #[pallet::call_index(21)]
-        // DOS-004 FIX: Weight accounts for worst-case 50-item bounded scan.
-        #[pallet::weight(Weight::from_parts(85_000_000, 4096)
-            .saturating_add(T::DbWeight::get().reads(53))
-            .saturating_add(T::DbWeight::get().writes(2)))]
+        // DOS-004 FIX: benchmarked at the worst case — 50-entry bounded scan.
+        #[pallet::weight(T::WeightInfo::claim_participation_reward())]
         pub fn claim_participation_reward(origin: OriginFor<T>, reward_type: u8) -> DispatchResult {
             let claimer = ensure_signed(origin)?;
 
@@ -5588,9 +5597,7 @@ pub mod pallet {
 
         /// Set proposal priority (admin function)
         #[pallet::call_index(22)]
-        #[pallet::weight(Weight::from_parts(20_000_000, 1024)
-            .saturating_add(T::DbWeight::get().reads(2))
-            .saturating_add(T::DbWeight::get().writes(1)))]
+        #[pallet::weight(T::WeightInfo::set_proposal_priority())]
         pub fn set_proposal_priority(
             origin: OriginFor<T>,
             proposal_id: u32,
@@ -5651,9 +5658,7 @@ pub mod pallet {
         /// - `amount`: Budget amount in DALLA (12 decimals)
         /// - `fiscal_year_blocks`: Duration of fiscal year in blocks
         #[pallet::call_index(28)]
-        #[pallet::weight(Weight::from_parts(25_000_000, 1024)
-            .saturating_add(T::DbWeight::get().reads(2))
-            .saturating_add(T::DbWeight::get().writes(2)))]
+        #[pallet::weight(T::WeightInfo::allocate_district_budget())]
         pub fn allocate_district_budget(
             origin: OriginFor<T>,
             district_index: u8,
@@ -5716,9 +5721,7 @@ pub mod pallet {
         /// - `description`: Justification (max 512 bytes)
         /// - `district_index`: Optional district for budget tracking
         #[pallet::call_index(29)]
-        #[pallet::weight(Weight::from_parts(30_000_000, 1536)
-            .saturating_add(T::DbWeight::get().reads(3))
-            .saturating_add(T::DbWeight::get().writes(2)))]
+        #[pallet::weight(T::WeightInfo::propose_treasury_spend())]
         pub fn propose_treasury_spend(
             origin: OriginFor<T>,
             recipient: T::AccountId,
@@ -5805,9 +5808,7 @@ pub mod pallet {
         /// - `origin`: Board member account
         /// - `proposal_id`: ID of treasury spend proposal
         #[pallet::call_index(30)]
-        #[pallet::weight(Weight::from_parts(20_000_000, 1024)
-            .saturating_add(T::DbWeight::get().reads(2))
-            .saturating_add(T::DbWeight::get().writes(1)))]
+        #[pallet::weight(T::WeightInfo::approve_treasury_spend())]
         pub fn approve_treasury_spend(origin: OriginFor<T>, proposal_id: u32) -> DispatchResult {
             let approver = ensure_signed(origin)?;
 
@@ -5871,9 +5872,7 @@ pub mod pallet {
         /// - `origin`: Any signed account
         /// - `proposal_id`: ID of approved treasury spend proposal
         #[pallet::call_index(31)]
-        #[pallet::weight(Weight::from_parts(40_000_000, 2048)
-            .saturating_add(T::DbWeight::get().reads(4))
-            .saturating_add(T::DbWeight::get().writes(3)))]
+        #[pallet::weight(T::WeightInfo::execute_treasury_proposal())]
         pub fn execute_treasury_proposal(origin: OriginFor<T>, proposal_id: u32) -> DispatchResult {
             let _executor = ensure_signed(origin)?;
 
@@ -5970,9 +5969,7 @@ pub mod pallet {
         /// - `amount`: Amount to transfer
         /// - `reason`: Justification (max 256 bytes)
         #[pallet::call_index(32)]
-        #[pallet::weight(Weight::from_parts(30_000_000, 1024)
-            .saturating_add(T::DbWeight::get().reads(2))
-            .saturating_add(T::DbWeight::get().writes(2)))]
+        #[pallet::weight(T::WeightInfo::transfer_district_budget())]
         pub fn transfer_district_budget(
             origin: OriginFor<T>,
             from_district_index: u8,
@@ -6054,9 +6051,7 @@ pub mod pallet {
         /// - Reads: 3 (JaguarMode, Proposals, CouncilMembers iteration)
         /// - Writes: 1 (Proposals update)
         #[pallet::call_index(33)]
-        #[pallet::weight(Weight::from_parts(35_000_000, 1536)
-            .saturating_add(T::DbWeight::get().reads(3))
-            .saturating_add(T::DbWeight::get().writes(1)))]
+        #[pallet::weight(T::WeightInfo::execute_emergency_proposal())]
         pub fn execute_emergency_proposal(
             origin: OriginFor<T>,
             proposal_id: u32,
@@ -6132,9 +6127,7 @@ pub mod pallet {
         /// - Reads: 2 (JaguarMode, Referendums)
         /// - Writes: 1 (Referendums update)
         #[pallet::call_index(34)]
-        #[pallet::weight(Weight::from_parts(20_000_000, 1024)
-            .saturating_add(T::DbWeight::get().reads(2))
-            .saturating_add(T::DbWeight::get().writes(1)))]
+        #[pallet::weight(T::WeightInfo::fast_track_referendum())]
         pub fn fast_track_referendum(origin: OriginFor<T>, referendum_id: u32) -> DispatchResult {
             // Only Root or Council can fast-track
             if ensure_root(origin.clone()).is_err() {
@@ -6189,9 +6182,7 @@ pub mod pallet {
         /// - Reads: 2 (JaguarMode, Proposals)
         /// - Writes: 1 (Proposals update)
         #[pallet::call_index(35)]
-        #[pallet::weight(Weight::from_parts(30_000_000, 1024)
-            .saturating_add(T::DbWeight::get().reads(2))
-            .saturating_add(T::DbWeight::get().writes(1)))]
+        #[pallet::weight(T::WeightInfo::emergency_override_proposal())]
         pub fn emergency_override_proposal(
             origin: OriginFor<T>,
             proposal_id: u32,
@@ -6253,9 +6244,7 @@ pub mod pallet {
         ///
         /// - `ChainParameterUpdated`
         #[pallet::call_index(36)]
-        #[pallet::weight(Weight::from_parts(10_000_000, 512)
-            .saturating_add(T::DbWeight::get().reads(1))
-            .saturating_add(T::DbWeight::get().writes(1)))]
+        #[pallet::weight(T::WeightInfo::update_chain_parameter())]
         pub fn update_chain_parameter(
             origin: OriginFor<T>,
             key: Vec<u8>,
@@ -6304,9 +6293,7 @@ pub mod pallet {
         ///
         /// # Events
         /// - `VoteCommitted { proposal_id, voter }`
-        #[pallet::weight(Weight::from_parts(10_000_000, 1024)
-            .saturating_add(T::DbWeight::get().reads(2))
-            .saturating_add(T::DbWeight::get().writes(1)))]
+        #[pallet::weight(T::WeightInfo::commit_vote())]
         #[pallet::call_index(37)]
         pub fn commit_vote(
             origin: OriginFor<T>,
@@ -6367,9 +6354,7 @@ pub mod pallet {
         ///
         /// # Events
         /// - `VoteRevealed { proposal_id, voter, vote_index, weight }`
-        #[pallet::weight(Weight::from_parts(15_000_000, 1536)
-            .saturating_add(T::DbWeight::get().reads(3))
-            .saturating_add(T::DbWeight::get().writes(3)))]
+        #[pallet::weight(T::WeightInfo::reveal_vote())]
         #[pallet::call_index(38)]
         pub fn reveal_vote(
             origin: OriginFor<T>,
@@ -6508,42 +6493,116 @@ pub mod pallet {
 
         // ── AR-14: Apply governance-approved runtime upgrade ─────────────────
 
+        /// Ratify the pending runtime upgrade code hash (H-3).
+        ///
+        /// Members of either governance house call this to record their house's
+        /// ratification of the exact hash stored in `PendingRuntimeUpgrade`. Once
+        /// both houses have ratified, `apply_pending_runtime_upgrade` can be
+        /// called by `RuntimeUpgradeOrigin` (council supermajority) instead of
+        /// requiring `Root`.
+        ///
+        /// # Errors
+        /// - `NotCouncilMember` — caller belongs to neither house.
+        /// - `RuntimeUpgradeNotPending` — no pending hash to ratify.
+        /// - `RuntimeCodeHashMismatch` — `code_hash` is not the pending hash.
+        ///
+        /// # Events
+        /// - `RuntimeUpgradeRatified { who, code_hash, technical, governance }`
+        #[pallet::weight(T::WeightInfo::ratify_runtime_upgrade())]
+        #[pallet::call_index(45)]
+        pub fn ratify_runtime_upgrade(origin: OriginFor<T>, code_hash: [u8; 32]) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            let is_technical = T::DualHouseProvider::is_technical_house_member(&who);
+            let is_governance = T::DualHouseProvider::is_governance_house_member(&who);
+            ensure!(is_technical || is_governance, Error::<T>::NotCouncilMember);
+
+            // Only the pending hash can be ratified — a house cannot pre-approve
+            // an upgrade that governance has not yet passed.
+            let approved_hash =
+                PendingRuntimeUpgrade::<T>::get().ok_or(Error::<T>::RuntimeUpgradeNotPending)?;
+            ensure!(
+                code_hash == approved_hash,
+                Error::<T>::RuntimeCodeHashMismatch
+            );
+
+            RuntimeUpgradeRatifications::<T>::mutate(code_hash, |(technical, governance)| {
+                if is_technical {
+                    *technical = true;
+                }
+                if is_governance {
+                    *governance = true;
+                }
+            });
+
+            Self::deposit_event(Event::RuntimeUpgradeRatified {
+                who,
+                code_hash,
+                technical: is_technical,
+                governance: is_governance,
+            });
+
+            Ok(())
+        }
+
         /// Apply a pending runtime upgrade that was previously approved via governance.
         ///
         /// # Flow
         /// 1. Governance passes a `RuntimeUpgrade { code_hash }` proposal →
         ///    `execute_runtime_upgrade` stores the 32-byte hash in
         ///    `PendingRuntimeUpgrade`.
-        /// 2. A trusted operator (root / sudo for now) calls this extrinsic with
-        ///    the actual WASM blob.
-        /// 3. `blake2_256(&code)` is verified against `PendingRuntimeUpgrade`.
-        /// 4. `frame_system::Pallet::<T>::set_code` is dispatched as root.
-        /// 5. `PendingRuntimeUpgrade` is cleared to prevent re-application.
+        /// 2. Both houses ratify that exact hash via `ratify_runtime_upgrade`.
+        /// 3. `RuntimeUpgradeOrigin` (council supermajority) calls this extrinsic
+        ///    with the actual WASM blob.
+        /// 4. `blake2_256(&code)` is verified against `PendingRuntimeUpgrade`.
+        /// 5. `frame_system::Pallet::<T>::set_code` is dispatched as root.
+        /// 6. `PendingRuntimeUpgrade` and its ratifications are cleared.
+        ///
+        /// # Authorization (H-3 FIX)
+        /// - `RuntimeUpgradeOrigin` — the normal path; additionally requires both
+        ///   governance houses to have ratified the pending hash.
+        /// - `Root` — bootstrap/emergency path (sudo on testnet); bypasses the
+        ///   ratification requirement but still cannot bypass the hash check.
         ///
         /// # Security
-        /// - Only callable with root origin (sudo until sudo removal at launch).
-        /// - Code hash is verified on-chain before `set_code` \u2014 no governance
-        ///   bypass is possible.
+        /// - Code hash is verified on-chain before `set_code` — the WASM blob
+        ///   must match the governance-approved hash; no bypass is possible.
         ///
         /// # Errors
-        /// - `RuntimeUpgradeNotPending` \u2014 no governance-approved hash exists.
-        /// - `RuntimeCodeHashMismatch` \u2014 submitted code does not match approved hash.
+        /// - `RuntimeUpgradeNotPending` — no governance-approved hash exists.
+        /// - `RuntimeUpgradeNotRatified` — a house has not ratified the pending hash.
+        /// - `RuntimeCodeHashMismatch` — submitted code does not match approved hash.
         /// - Any error propagated by `frame_system::set_code` (e.g. code too large).
         ///
         /// # Events
         /// - `RuntimeUpgradeApplied { code_hash }`
-        #[pallet::weight(Weight::from_parts(200_000_000, 512)
-            .saturating_add(T::DbWeight::get().reads(1))
-            .saturating_add(T::DbWeight::get().writes(1)))]
+        // `set_code` is deliberately un-benchmarked by the SDK — its cost is a
+        // fixed constant (`SystemWeightInfo::set_code`) — so the benchmark for
+        // this pallet skips the call and the fixed cost is declared right here.
+        #[pallet::weight(
+            T::WeightInfo::apply_pending_runtime_upgrade().saturating_add(
+                <T::SystemWeightInfo as frame_system::weights::WeightInfo>::set_code()
+            )
+        )]
         #[pallet::call_index(39)]
         pub fn apply_pending_runtime_upgrade(
             origin: OriginFor<T>,
             code: Vec<u8>,
         ) -> DispatchResultWithPostInfo {
-            ensure_root(origin)?;
-
             let approved_hash =
                 PendingRuntimeUpgrade::<T>::get().ok_or(Error::<T>::RuntimeUpgradeNotPending)?;
+
+            // `Root` keeps the bootstrap/emergency path. Every other caller must
+            // pass `RuntimeUpgradeOrigin` AND clear the dual-house ratification
+            // gate for this exact hash.
+            if ensure_root(origin.clone()).is_err() {
+                T::RuntimeUpgradeOrigin::ensure_origin(origin)?;
+                let (technical, governance) = RuntimeUpgradeRatifications::<T>::get(approved_hash);
+                ensure!(
+                    technical && governance,
+                    Error::<T>::RuntimeUpgradeNotRatified
+                );
+            }
 
             // Verify code against governance-approved hash
             let code_hash = blake2_256(&code);
@@ -6553,10 +6612,16 @@ pub mod pallet {
             );
 
             // Apply the upgrade. `set_code` takes a root origin internally.
+            //
+            // `runtime-benchmarks` skips the call (see this extrinsic's weight
+            // attribute): the SDK does not benchmark `set_code`, so its cost is
+            // declared as a fixed addend instead of being measured here.
+            #[cfg(not(feature = "runtime-benchmarks"))]
             frame_system::Pallet::<T>::set_code(frame_system::RawOrigin::Root.into(), code)?;
 
-            // Clear pending upgrade to prevent replay.
+            // Clear pending upgrade and its ratifications to prevent replay.
             PendingRuntimeUpgrade::<T>::kill();
+            RuntimeUpgradeRatifications::<T>::remove(approved_hash);
 
             Self::deposit_event(Event::RuntimeUpgradeApplied {
                 code_hash: approved_hash,
@@ -6583,8 +6648,7 @@ pub mod pallet {
         /// ## Emits
         /// - `ExitProofGenerated { account, proof_hash, valid_until }`
         #[pallet::call_index(40)]
-        #[pallet::weight(Weight::from_parts(10_000_000, 512)
-            .saturating_add(T::DbWeight::get().reads(2)))]
+        #[pallet::weight(T::WeightInfo::generate_exit_proof())]
         pub fn generate_exit_proof(origin: OriginFor<T>) -> DispatchResult {
             let account = ensure_signed(origin)?;
 
@@ -6627,9 +6691,7 @@ pub mod pallet {
         /// - `NotHouseMember` — caller is not a member of either governance house
         /// - `AlreadyRatifiedByHouse` — this house has already submitted its ratification
         #[pallet::call_index(41)]
-        #[pallet::weight(Weight::from_parts(20_000_000, 1024)
-            .saturating_add(T::DbWeight::get().reads(3))
-            .saturating_add(T::DbWeight::get().writes(1)))]
+        #[pallet::weight(T::WeightInfo::ratify_constitutional_proposal())]
         pub fn ratify_constitutional_proposal(
             origin: OriginFor<T>,
             proposal_id: u32,
@@ -6703,9 +6765,7 @@ pub mod pallet {
         ///
         /// Requires `ConstitutionalAdminOrigin`.
         #[pallet::call_index(42)]
-        #[pallet::weight(Weight::from_parts(15_000_000, 512)
-            .saturating_add(T::DbWeight::get().reads(1))
-            .saturating_add(T::DbWeight::get().writes(1)))]
+        #[pallet::weight(T::WeightInfo::lock_chain_parameter())]
         pub fn lock_chain_parameter(origin: OriginFor<T>, key: Vec<u8>) -> DispatchResult {
             T::ConstitutionalAdminOrigin::ensure_origin(origin)?;
 
@@ -6731,9 +6791,7 @@ pub mod pallet {
         ///
         /// Requires `ConstitutionalAdminOrigin`.
         #[pallet::call_index(43)]
-        #[pallet::weight(Weight::from_parts(15_000_000, 512)
-            .saturating_add(T::DbWeight::get().reads(1))
-            .saturating_add(T::DbWeight::get().writes(1)))]
+        #[pallet::weight(T::WeightInfo::unlock_chain_parameter())]
         pub fn unlock_chain_parameter(origin: OriginFor<T>, key: Vec<u8>) -> DispatchResult {
             T::ConstitutionalAdminOrigin::ensure_origin(origin)?;
 
@@ -6783,6 +6841,29 @@ pub mod pallet {
         /// Check if account is council member
         pub fn is_council_member(account: &T::AccountId) -> bool {
             CouncilMembers::<T>::contains_key(account)
+        }
+
+        /// Expires one council seat.
+        ///
+        /// Drops the membership, decrements the role's board-composition counter,
+        /// and emits [`Event::CouncilTermAutoExpired`]. Returns `false` when the
+        /// account no longer holds a seat.
+        ///
+        /// Factored out of `on_initialize` so
+        /// [`WeightInfo::expire_council_member`] is benchmarked against this exact
+        /// code path instead of a copy of it.
+        pub fn expire_seat(account: &T::AccountId) -> bool {
+            let Some(member) = CouncilMembers::<T>::take(account) else {
+                return false;
+            };
+            let current_count = BoardComposition::<T>::get(member.role);
+            if current_count > 0 {
+                BoardComposition::<T>::insert(member.role, current_count.saturating_sub(1));
+            }
+            Self::deposit_event(Event::CouncilTermAutoExpired {
+                account: account.clone(),
+            });
+            true
         }
 
         // ── Phase 6A: Constitutional ratification helper ──────────────────────
@@ -7364,6 +7445,57 @@ pub trait WeightInfo {
     fn council_override() -> Weight;
     fn update_chain_parameter() -> Weight;
     fn expire_council_member() -> Weight;
+    fn ratify_runtime_upgrade() -> Weight;
+
+    // ── Phase 3-7 extrinsics: one entry per `#[pallet::call_index]`, in index
+    // order, so a new call index cannot be added without a matching entry here.
+    fn set_department_manager() -> Weight;
+    fn submit_department_proposal() -> Weight;
+    fn approve_cross_department() -> Weight;
+    fn add_board_member() -> Weight;
+    fn remove_board_member() -> Weight;
+    fn nominate_for_delegate() -> Weight;
+    fn vote_for_delegate() -> Weight;
+    fn execute_proposal() -> Weight;
+    fn start_district_election() -> Weight;
+    fn register_candidate() -> Weight;
+    fn vote_in_district_election() -> Weight;
+    fn finalize_district_election() -> Weight;
+    fn delegate_vote() -> Weight;
+    fn revoke_delegation() -> Weight;
+    fn amend_proposal() -> Weight;
+    fn claim_participation_reward() -> Weight;
+    fn set_proposal_priority() -> Weight;
+    fn declare_emergency() -> Weight;
+    fn end_emergency() -> Weight;
+    fn create_referendum() -> Weight;
+    fn vote_on_referendum() -> Weight;
+    fn finalize_referendum() -> Weight;
+    fn allocate_district_budget() -> Weight;
+    fn propose_treasury_spend() -> Weight;
+    fn approve_treasury_spend() -> Weight;
+    fn execute_treasury_proposal() -> Weight;
+    fn transfer_district_budget() -> Weight;
+    fn execute_emergency_proposal() -> Weight;
+    fn fast_track_referendum() -> Weight;
+    fn emergency_override_proposal() -> Weight;
+    fn commit_vote() -> Weight;
+    fn reveal_vote() -> Weight;
+    fn apply_pending_runtime_upgrade() -> Weight;
+    fn generate_exit_proof() -> Weight;
+    fn ratify_constitutional_proposal() -> Weight;
+    fn lock_chain_parameter() -> Weight;
+    fn unlock_chain_parameter() -> Weight;
+    fn veto_emergency() -> Weight;
+}
+
+/// Database-weight fallback for the [`WeightInfo for ()`] implementation.
+///
+/// `()` carries no runtime `DbWeight`, so the standard Substrate RocksDB figures
+/// are used. Production builds use [`weights::SubstrateWeight`], which is
+/// regenerated from the benchmark run.
+fn fallback_db() -> frame_support::weights::RuntimeDbWeight {
+    frame_support::weights::constants::RocksDbWeight::get()
 }
 
 impl WeightInfo for () {
@@ -7390,6 +7522,188 @@ impl WeightInfo for () {
     }
     fn expire_council_member() -> Weight {
         Weight::from_parts(10_000_000, 512).saturating_add(Weight::from_parts(0, 1000))
+    }
+    fn ratify_runtime_upgrade() -> Weight {
+        Weight::from_parts(12_000_000, 512).saturating_add(Weight::from_parts(0, 1000))
+    }
+
+    // The entries below mirror the values that used to be hard-coded on each
+    // call site, so behaviour is unchanged until `scripts/bench_weights.sh`
+    // regenerates them. `weights::SubstrateWeight<T>` (used by the runtime) has
+    // the same placeholders and is the file the benchmark run rewrites.
+    fn set_department_manager() -> Weight {
+        Weight::from_parts(10_000_000, 512)
+    }
+    fn submit_department_proposal() -> Weight {
+        Weight::from_parts(20_000_000, 512)
+    }
+    fn approve_cross_department() -> Weight {
+        Weight::from_parts(15_000_000, 512)
+    }
+    fn add_board_member() -> Weight {
+        Weight::from_parts(20_000_000, 512)
+    }
+    fn remove_board_member() -> Weight {
+        Weight::from_parts(15_000_000, 512)
+    }
+    fn nominate_for_delegate() -> Weight {
+        Weight::from_parts(10_000_000, 512)
+    }
+    fn vote_for_delegate() -> Weight {
+        Weight::from_parts(10_000_000, 512)
+    }
+    fn execute_proposal() -> Weight {
+        Weight::from_parts(50_000_000, 2560)
+            .saturating_add(fallback_db().reads(5))
+            .saturating_add(fallback_db().writes(3))
+    }
+    fn start_district_election() -> Weight {
+        Weight::from_parts(25_000_000, 512)
+            .saturating_add(fallback_db().reads(1))
+            .saturating_add(fallback_db().writes(1))
+    }
+    fn register_candidate() -> Weight {
+        Weight::from_parts(20_000_000, 1536)
+            .saturating_add(fallback_db().reads(3))
+            .saturating_add(fallback_db().writes(1))
+    }
+    fn vote_in_district_election() -> Weight {
+        Weight::from_parts(20_000_000, 2048)
+            .saturating_add(fallback_db().reads(4))
+            .saturating_add(fallback_db().writes(2))
+    }
+    fn finalize_district_election() -> Weight {
+        Weight::from_parts(80_000_000, 10240)
+            .saturating_add(fallback_db().reads(210))
+            .saturating_add(fallback_db().writes(210))
+    }
+    fn delegate_vote() -> Weight {
+        Weight::from_parts(25_000_000, 1024)
+            .saturating_add(fallback_db().reads(2))
+            .saturating_add(fallback_db().writes(2))
+    }
+    fn revoke_delegation() -> Weight {
+        Weight::from_parts(20_000_000, 1024)
+            .saturating_add(fallback_db().reads(2))
+            .saturating_add(fallback_db().writes(2))
+    }
+    fn amend_proposal() -> Weight {
+        Weight::from_parts(30_000_000, 1024)
+            .saturating_add(fallback_db().reads(2))
+            .saturating_add(fallback_db().writes(1))
+    }
+    fn claim_participation_reward() -> Weight {
+        Weight::from_parts(85_000_000, 4096)
+            .saturating_add(fallback_db().reads(53))
+            .saturating_add(fallback_db().writes(2))
+    }
+    fn set_proposal_priority() -> Weight {
+        Weight::from_parts(20_000_000, 1024)
+            .saturating_add(fallback_db().reads(2))
+            .saturating_add(fallback_db().writes(1))
+    }
+    fn declare_emergency() -> Weight {
+        Weight::from_parts(15_000_000, 1024)
+            .saturating_add(fallback_db().reads(2))
+            .saturating_add(fallback_db().writes(1))
+    }
+    fn end_emergency() -> Weight {
+        Weight::from_parts(10_000_000, 512)
+            .saturating_add(fallback_db().reads(1))
+            .saturating_add(fallback_db().writes(1))
+    }
+    fn create_referendum() -> Weight {
+        Weight::from_parts(30_000_000, 1536)
+            .saturating_add(fallback_db().reads(3))
+            .saturating_add(fallback_db().writes(4))
+    }
+    fn vote_on_referendum() -> Weight {
+        Weight::from_parts(20_000_000, 2048)
+            .saturating_add(fallback_db().reads(4))
+            .saturating_add(fallback_db().writes(2))
+    }
+    fn finalize_referendum() -> Weight {
+        Weight::from_parts(25_000_000, 1024)
+            .saturating_add(fallback_db().reads(2))
+            .saturating_add(fallback_db().writes(1))
+    }
+    fn allocate_district_budget() -> Weight {
+        Weight::from_parts(25_000_000, 1024)
+            .saturating_add(fallback_db().reads(2))
+            .saturating_add(fallback_db().writes(2))
+    }
+    fn propose_treasury_spend() -> Weight {
+        Weight::from_parts(30_000_000, 1536)
+            .saturating_add(fallback_db().reads(3))
+            .saturating_add(fallback_db().writes(2))
+    }
+    fn approve_treasury_spend() -> Weight {
+        Weight::from_parts(20_000_000, 1024)
+            .saturating_add(fallback_db().reads(2))
+            .saturating_add(fallback_db().writes(1))
+    }
+    fn execute_treasury_proposal() -> Weight {
+        Weight::from_parts(40_000_000, 2048)
+            .saturating_add(fallback_db().reads(4))
+            .saturating_add(fallback_db().writes(3))
+    }
+    fn transfer_district_budget() -> Weight {
+        Weight::from_parts(30_000_000, 1024)
+            .saturating_add(fallback_db().reads(2))
+            .saturating_add(fallback_db().writes(2))
+    }
+    fn execute_emergency_proposal() -> Weight {
+        Weight::from_parts(35_000_000, 1536)
+            .saturating_add(fallback_db().reads(3))
+            .saturating_add(fallback_db().writes(1))
+    }
+    fn fast_track_referendum() -> Weight {
+        Weight::from_parts(20_000_000, 1024)
+            .saturating_add(fallback_db().reads(2))
+            .saturating_add(fallback_db().writes(1))
+    }
+    fn emergency_override_proposal() -> Weight {
+        Weight::from_parts(30_000_000, 1024)
+            .saturating_add(fallback_db().reads(2))
+            .saturating_add(fallback_db().writes(1))
+    }
+    fn commit_vote() -> Weight {
+        Weight::from_parts(10_000_000, 1024)
+            .saturating_add(fallback_db().reads(2))
+            .saturating_add(fallback_db().writes(1))
+    }
+    fn reveal_vote() -> Weight {
+        Weight::from_parts(15_000_000, 1536)
+            .saturating_add(fallback_db().reads(3))
+            .saturating_add(fallback_db().writes(3))
+    }
+    fn apply_pending_runtime_upgrade() -> Weight {
+        Weight::from_parts(200_000_000, 512)
+            .saturating_add(fallback_db().reads(2))
+            .saturating_add(fallback_db().writes(2))
+    }
+    fn generate_exit_proof() -> Weight {
+        Weight::from_parts(10_000_000, 512).saturating_add(fallback_db().reads(2))
+    }
+    fn ratify_constitutional_proposal() -> Weight {
+        Weight::from_parts(20_000_000, 1024)
+            .saturating_add(fallback_db().reads(3))
+            .saturating_add(fallback_db().writes(1))
+    }
+    fn lock_chain_parameter() -> Weight {
+        Weight::from_parts(15_000_000, 512)
+            .saturating_add(fallback_db().reads(1))
+            .saturating_add(fallback_db().writes(1))
+    }
+    fn unlock_chain_parameter() -> Weight {
+        Weight::from_parts(15_000_000, 512)
+            .saturating_add(fallback_db().reads(1))
+            .saturating_add(fallback_db().writes(1))
+    }
+    fn veto_emergency() -> Weight {
+        Weight::from_parts(25_000_000, 4096)
+            .saturating_add(fallback_db().reads(204))
+            .saturating_add(fallback_db().writes(202))
     }
 }
 

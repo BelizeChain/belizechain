@@ -1,6 +1,15 @@
 /// Runtime upgrade utilities for forkless blockchain upgrades.
 /// Enables seamless pallet updates without hard forks.
 ///
+/// ## Pallet storage versions
+///
+/// Every pallet declares `#[pallet::storage_version(STORAGE_VERSION)]`. When a
+/// pallet's storage layout changes, bump its `STORAGE_VERSION` constant **and**
+/// register a migration here in the same runtime upgrade. The in-code vs
+/// on-chain version mismatch is the signal that a migration is missing; it is
+/// enforced by the `every_belize_pallet_declares_matching_storage_version` test
+/// and by `try-runtime` `post_upgrade` against live state.
+///
 /// ## Adding a new migration
 ///
 /// 1. Bump `CURRENT_RUNTIME_VERSION` by one.

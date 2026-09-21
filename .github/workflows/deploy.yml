@@ -94,22 +94,40 @@ jobs:
       - name: Run tests
         run: cargo test --release --workspace
 
-      - name: Validate checked-in testnet spec
-        run: bash ./scripts/deploy/validate_chain_spec.sh ./testnet-spec.json
+      # M-7: keep the try-runtime feature wiring compiling. Without this, the
+      # runtime's try-runtime hooks and pallet features can silently bit-rot.
+      - name: Check runtime try-runtime features
+        run: cargo check -p belizechain-runtime --features try-runtime
+
+      - name: Validate chain-spec preflight guards
+        run: |
+          # Placeholder mainnet template: must pass every guard.
+          bash ./scripts/deploy/validate_chain_spec.sh ./chain-specs/chain-spec-production.json
+
+          # Self-test: a dev-keyed spec must be rejected by the dev-account guard.
+          printf '%s' '{"name":"guard self test","id":"guard_self_test","chainType":"Live","genesis":{"runtimeGenesis":{"patch":{"sudo":{"key":"5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"}}}}}' \
+            > /tmp/belizechain-dev-keyed-spec.json
+          if bash ./scripts/deploy/validate_chain_spec.sh /tmp/belizechain-dev-keyed-spec.json >/dev/null 2>&1; then
+            echo "ERROR: dev-account guard accepted a dev-keyed chain spec" >&2
+            exit 1
+          fi
+          echo "OK: dev-account guard rejects dev-keyed chain specs"
 
       - name: Build release node for explicit-spec smoke test
         run: cargo build --release -p belizechain-node
 
       - name: Smoke test explicit raw spec boot
         run: |
-          ./target/release/belizechain-node build-spec \
+          # The built-in template is intentionally dev-keyed, so generating and
+          # validating it requires the explicit dev-seed allowance here.
+          BELIZECHAIN_ALLOW_DEV_SEEDS=1 ./target/release/belizechain-node build-spec \
             --disable-default-bootnode \
             --chain testnet-template > /tmp/belizechain-testnet-template.json
-          ./target/release/belizechain-node build-spec \
+          BELIZECHAIN_ALLOW_DEV_SEEDS=1 ./target/release/belizechain-node build-spec \
             --disable-default-bootnode \
             --chain /tmp/belizechain-testnet-template.json \
             --raw > /tmp/belizechain-testnet-template-raw.json
-          bash ./scripts/deploy/validate_chain_spec.sh /tmp/belizechain-testnet-template-raw.json
+          bash ./scripts/deploy/validate_chain_spec.sh /tmp/belizechain-testnet-template-raw.json --allow-dev-accounts
 
           ./target/release/belizechain-node \
             --chain /tmp/belizechain-testnet-template-raw.json \
@@ -139,6 +157,32 @@ jobs:
 
           cat /tmp/belizechain-testnet-smoke.log
           exit 1
+
+  # M-4: the Python integration/security suites under tests/ were never checked
+  # by CI. They need the full Ceiba service stack (chain, Postgres, Redis, IPFS,
+  # Nawal, Kinich) to *run*, but collection alone catches import rot, syntax
+  # errors and stale fixture wiring, which is what CI can honestly enforce here.
+  # Full runs stay a documented, operator-triggered activity (tests/README.md).
+  python-tests:
+    name: Python Integration Suites
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: tests/requirements.txt
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r tests/requirements.txt
+
+      - name: Collect integration suites
+        run: python -m pytest tests/ --collect-only -q
 
   coverage:
     name: Coverage Gate
@@ -188,7 +232,10 @@ jobs:
   benchmark:
     name: Benchmark Smoke Test
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
+    # Runs on pull requests too: every benchmark must execute against the real
+    # runtime config before weights are regenerated from it. Mock-level
+    # `bench_*` tests are not sufficient — they use permissive pallet mocks
+    # (e.g. a minimum balance of 1) and pass where the dev-chain run fails.
     steps:
       - uses: actions/checkout@v6
 

@@ -7,21 +7,21 @@ FROM paritytech/ci-linux:production AS builder
 
 WORKDIR /build
 
-# The local workspace carries host-specific Cargo env overrides.
-RUN mkdir -p /tmp/belizechain-tmp
+# Cargo's `[env]` section only sets variables that are not already present, so
+# the image provides its own toolchain paths here instead of rewriting the
+# tracked `.cargo/config.toml`. `TMPDIR` points inside the build context because
+# the tracked config keeps a machine-local value for local builds.
+ENV LLVM_CONFIG_PATH=/usr/bin/llvm-config-14 \
+    LIBCLANG_PATH=/usr/lib/llvm-14/lib \
+    TMPDIR=/tmp/belizechain-tmp
+
+RUN mkdir -p "$TMPDIR"
 
 # Copy entire workspace (filtered by .dockerignore)
 COPY . .
 
 # Build optimised release binary
-RUN if [ -f .cargo/config.toml ]; then \
-        sed -i \
-            -e 's#/usr/bin/llvm-config-20#/usr/bin/llvm-config-14#g' \
-            -e 's#/usr/lib/llvm-20/lib#/usr/lib/llvm-14/lib#g' \
-            -e 's#/home/wicked/.cache/belizechain-tmp#/tmp/belizechain-tmp#g' \
-            .cargo/config.toml; \
-    fi && \
-    cargo build --release --package belizechain-node && \
+RUN cargo build --release --package belizechain-node && \
     # Strip debug symbols to shrink binary (~50 %)
     strip /build/target/release/belizechain-node
 

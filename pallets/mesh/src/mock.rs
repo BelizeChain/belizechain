@@ -120,6 +120,7 @@ impl pallet_mesh::Config for Test {
     type MaxMeshNodes = ConstU32<1000>;
     type MaxPendingMeshTx = ConstU32<500>;
     type MaxActiveAlerts = ConstU32<50>;
+    type MaxEmergencyAuthorities = ConstU32<20>;
     type MaxRelayProofsPerClaim = ConstU32<100>;
     type RelayRewardPerTransaction = ConstU128<1_000_000_000>; // 1 DALLA
     type RelayRewardPerBlockHeader = ConstU128<500_000_000>; // 0.5 DALLA

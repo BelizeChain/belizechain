@@ -20,6 +20,7 @@ PALLETS=(
   pallet_belize_justice
   pallet_belize_whistleblower
   pallet_belize_moderation
+  pallet_storage_proof
 )
 
 PASS=0

@@ -55,7 +55,15 @@ const MARKETPLACE_FEE_PERCENT: u8 = 5;
 pub mod pallet {
     use super::*;
 
+    /// On-chain storage version for this pallet.
+    ///
+    /// Bump this and register a migration in the runtime's `Migrations` tuple
+    /// whenever this pallet's storage layout changes.
+    pub const STORAGE_VERSION: frame_support::traits::StorageVersion =
+        frame_support::traits::StorageVersion::new(0);
+
     #[pallet::pallet]
+    #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
 
     #[pallet::config]
@@ -1197,7 +1205,7 @@ pub mod pallet {
 
         /// Rollback hosting content to a previous version
         #[pallet::call_index(13)]
-        #[pallet::weight(T::WeightInfo::update_hosting_content())] // Reuse update weight
+        #[pallet::weight(T::WeightInfo::rollback_content())]
         pub fn rollback_content(
             origin: OriginFor<T>,
             domain_name: Vec<u8>,
@@ -1273,7 +1281,7 @@ pub mod pallet {
 
         /// Update SSL/TLS certificate hash for domain
         #[pallet::call_index(14)]
-        #[pallet::weight(T::WeightInfo::update_hosting_content())] // Reuse similar weight
+        #[pallet::weight(T::WeightInfo::update_ssl_certificate())]
         pub fn update_ssl_certificate(
             origin: OriginFor<T>,
             domain_name: Vec<u8>,

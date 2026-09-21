@@ -96,16 +96,21 @@ Real public testnets should be launched from an explicit generated JSON/raw spec
 
 ### Custom Chain Spec
 ```bash
-# Export a public testnet template to JSON
-./target/release/belizechain-node build-spec \
+# Export a public testnet template to JSON. The built-in template is seeded with
+# dev accounts, so it refuses to build without the explicit allowance below.
+BELIZECHAIN_ALLOW_DEV_SEEDS=1 ./target/release/belizechain-node build-spec \
   --disable-default-bootnode \
   --chain testnet-template > belizechain-testnet-plain.json
 
-# Edit belizechain-testnet-plain.json as needed, then build raw spec
+# Edit belizechain-testnet-plain.json (replace every dev sudo/session/endowed
+# account with operator keys), then build the raw spec
 ./target/release/belizechain-node build-spec \
   --disable-default-bootnode \
   --chain belizechain-testnet-plain.json \
   --raw > belizechain-testnet-raw.json
+
+# Verify the finished spec carries no dev accounts
+./scripts/deploy/validate_chain_spec.sh belizechain-testnet-raw.json
 
 # Run node with custom spec
 ./target/release/belizechain-node --chain belizechain-testnet-raw.json

@@ -242,8 +242,9 @@ python scripts/convert_storage.py state.json belizechain_state.json
 cd belizechain
 cargo build --release
 
-# 4. Generate genesis with imported state
-./target/release/belizechain-node build-spec \
+# 4. Generate genesis with imported state.
+# `staging` is a dev-seeded template, so the build-spec guard requires an explicit opt-in.
+BELIZECHAIN_ALLOW_DEV_SEEDS=1 ./target/release/belizechain-node build-spec \
   --chain staging \
   --raw \
   --disable-default-bootnode \
@@ -310,8 +311,8 @@ from substrateinterface import SubstrateInterface, Keypair
 pg_conn = psycopg2.connect("dbname=land_registry user=admin")
 cursor = pg_conn.cursor()
 
-# Connect to BelizeChain
-substrate = SubstrateInterface(url="wss://rpc.belizechain.org")
+# Connect to BelizeChain (operator-provided RPC endpoint)
+substrate = SubstrateInterface(url="<operator-provided-rpc-url>")
 keypair = Keypair.create_from_uri('//GovernmentAdmin')
 
 # Fetch all properties
@@ -362,7 +363,7 @@ echo "Runtime hash: $WASM_HASH"
 
 # 4. Submit governance proposal
 polkadot-js-api \
-  --ws wss://rpc.belizechain.org \
+  --ws <operator-provided-rpc-url> \
   tx.democracy.propose \
   '{"call":"system.setCode","args":{"code":"0x'$(xxd -p -c 0 belizechain_runtime.compact.compressed.wasm)'"}}' \
   --seed "//GovernmentCouncil"
@@ -457,12 +458,13 @@ for (const record of oldCalls) {
 ```bash
 # 1. Clone mainnet state to testnet
 polkadot-js-api \
-  --ws wss://rpc.belizechain.org \
+  --ws <operator-provided-rpc-url> \
   rpc.state.getKeysPaged null 100 \
   --output mainnet_state.json
 
-# 2. Start staging network
-./target/release/belizechain-node \
+# 2. Start staging network.
+# `staging` is a dev-seeded template, so the build-spec guard requires an explicit opt-in.
+BELIZECHAIN_ALLOW_DEV_SEEDS=1 ./target/release/belizechain-node \
   --chain staging \
   --tmp \
   --import-state mainnet_state.json \
@@ -473,7 +475,7 @@ python test_migration.py --network staging
 
 # 4. Verify state consistency
 python verify_migration.py \
-  --source wss://rpc.belizechain.org \
+  --source <operator-provided-rpc-url> \
   --target ws://localhost:9944
 ```
 
@@ -484,7 +486,7 @@ python verify_migration.py \
 # (Requires sudo or governance emergency powers)
 
 polkadot-js-api \
-  --ws wss://rpc.belizechain.org \
+  --ws <operator-provided-rpc-url> \
   --sudo \
   tx.system.setCode \
   --code previous_runtime.wasm \
@@ -493,7 +495,7 @@ polkadot-js-api \
 # Restore storage from backup
 ./scripts/restore_storage.sh \
   --backup storage_backup_2026_01_30.json \
-  --target wss://rpc.belizechain.org
+  --target <operator-provided-rpc-url>
 ```
 
 ## Migration Support

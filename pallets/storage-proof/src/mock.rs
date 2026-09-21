@@ -16,6 +16,7 @@ type Block = frame_system::mocking::MockBlock<Test>;
 frame_support::construct_runtime!(
     pub enum Test {
         System: frame_system::{Pallet, Call, Config<T>, Storage, Event<T>},
+        Balances: pallet_balances::{Pallet, Call, Config<T>, Storage, Event<T>},
         StorageProof: pallet_storage_proof::{Pallet, Call, Storage, Event<T>},
     }
 );
@@ -42,7 +43,7 @@ impl frame_system::Config for Test {
     type BlockHashCount = BlockHashCount;
     type Version = ();
     type PalletInfo = PalletInfo;
-    type AccountData = ();
+    type AccountData = pallet_balances::AccountData<u128>;
     type OnNewAccount = ();
     type OnKilledAccount = ();
     type SystemWeightInfo = ();
@@ -60,6 +61,27 @@ impl frame_system::Config for Test {
 
 parameter_types! {
     pub const RevocationAuthority: u64 = 42;
+}
+
+parameter_types! {
+    pub const ExistentialDeposit: u128 = 1;
+}
+
+impl pallet_balances::Config for Test {
+    type MaxLocks = ConstU32<50>;
+    type MaxReserves = ConstU32<50>;
+    type ReserveIdentifier = [u8; 8];
+    type Balance = u128;
+    type RuntimeEvent = RuntimeEvent;
+    type DustRemoval = ();
+    type ExistentialDeposit = ExistentialDeposit;
+    type AccountStore = System;
+    type WeightInfo = ();
+    type RuntimeHoldReason = ();
+    type RuntimeFreezeReason = ();
+    type FreezeIdentifier = ();
+    type MaxFreezes = ();
+    type DoneSlashHandler = ();
 }
 
 /// Authorizes account 42 as the revocation authority.
@@ -80,11 +102,27 @@ impl frame_support::traits::EnsureOrigin<RuntimeOrigin> for RevocationOrigin {
 
 impl pallet_storage_proof::Config for Test {
     type RevocationOrigin = RevocationOrigin;
+    type Currency = Balances;
+    /// Refundable deposit used in tests — 1 DALLA at 12 decimals.
+    type StorageDeposit = frame_support::traits::ConstU128<1_000_000_000>;
+    type WeightInfo = ();
 }
 
 pub fn new_test_ext() -> sp_io::TestExternalities {
-    let t = frame_system::GenesisConfig::<Test>::default()
+    let mut t = frame_system::GenesisConfig::<Test>::default()
         .build_storage()
         .unwrap();
+
+    pallet_balances::GenesisConfig::<Test> {
+        balances: vec![
+            (1u64, 1_000_000_000_000),
+            (2u64, 1_000_000_000_000),
+            (42u64, 1_000_000_000_000),
+        ],
+        ..Default::default()
+    }
+    .assimilate_storage(&mut t)
+    .unwrap();
+
     t.into()
 }

@@ -281,6 +281,29 @@ pytest tests/integration/economic/test_bbzd_compliance.py::TestBBZDCompliance::t
 pytest tests/integration/ -v --capture=no
 ```
 
+## CI coverage and how to run these suites
+
+CI (`.github/workflows/deploy.yml`, job `python-tests`) **collects** these suites
+with `pytest tests/ --collect-only`. That catches import rot, syntax errors and
+broken fixture wiring, but it does not execute the tests.
+
+Execution needs the full stack these tests assume: a reachable chain
+(`BLOCKCHAIN_WS_URL`), Postgres, Redis, IPFS, and for the ML/quantum cases the
+Nawal (`FL_SERVER_URL`) and Kinich (`QUANTUM_API_URL`) APIs. Run them against the
+Ceiba stack or a local compose stack:
+
+```bash
+BLOCKCHAIN_WS_URL=ws://localhost:9944 \
+POSTGRES_URL=postgresql://belizechain:...@localhost:5432/belizechain \
+REDIS_URL=redis://localhost:6379 \
+pytest tests/ -v
+```
+
+Markers (`requires_blockchain`, `requires_ipfs`, `slow`, …) are registered in
+`tests/conftest.py`; `pytest tests/ -m "not requires_blockchain"` does **not**
+produce a service-free green run today — every remaining test still skips or
+fails without the stack.
+
 ## Contributing
 
 ### Adding New Tests

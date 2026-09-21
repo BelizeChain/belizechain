@@ -27,8 +27,8 @@ use frame_support::{
     weights::{constants::WEIGHT_REF_TIME_PER_SECOND, Weight},
     PalletId,
 };
-use frame_system::{EnsureRoot, EnsureRootWithSuccess};
-use pallet_collective::{EnsureMember, EnsureProportionAtLeast, EnsureProportionMoreThan};
+use frame_system::EnsureRoot;
+use pallet_collective::{EnsureProportionAtLeast, EnsureProportionMoreThan};
 use pallet_grandpa::AuthorityId as GrandpaId;
 use sp_api::impl_runtime_apis;
 use sp_consensus_babe::AuthorityId as BabeId;
@@ -210,6 +210,58 @@ mod tests {
             assert!(has_babe_next_epoch_digest());
         });
     }
+
+    /// Every Belize pallet must declare a storage version, and on a fresh chain the
+    /// in-code version must equal the on-chain version.
+    ///
+    /// The `StorageVersion` type annotation fails to compile for any pallet missing
+    /// `#[pallet::storage_version(...)]`, and the equality check fails when a version
+    /// was bumped without registering a migration — the same invariant that
+    /// `try-runtime post_upgrade` enforces against live state.
+    #[test]
+    fn every_belize_pallet_declares_matching_storage_version() {
+        use frame_support::traits::{GetStorageVersion, StorageVersion};
+
+        macro_rules! assert_storage_version {
+            ($pallet:ty) => {{
+                let in_code: StorageVersion =
+                    <$pallet as GetStorageVersion>::in_code_storage_version();
+                let on_chain: StorageVersion =
+                    <$pallet as GetStorageVersion>::on_chain_storage_version();
+                assert_eq!(
+                    in_code, on_chain,
+                    concat!(
+                        stringify!($pallet),
+                        ": in-code and on-chain storage versions differ. Bump ",
+                        "`STORAGE_VERSION` only together with a migration registered ",
+                        "in runtime/src/migrations.rs"
+                    )
+                );
+            }};
+        }
+
+        sp_io::TestExternalities::default().execute_with(|| {
+            assert_storage_version!(Economy);
+            assert_storage_version!(Identity);
+            assert_storage_version!(Governance);
+            assert_storage_version!(Compliance);
+            assert_storage_version!(Staking);
+            assert_storage_version!(Oracle);
+            assert_storage_version!(Payroll);
+            assert_storage_version!(Interoperability);
+            assert_storage_version!(BelizeX);
+            assert_storage_version!(LandLedger);
+            assert_storage_version!(Consensus);
+            assert_storage_version!(Quantum);
+            assert_storage_version!(Community);
+            assert_storage_version!(Bns);
+            assert_storage_version!(Mesh);
+            assert_storage_version!(BelizeJustice);
+            assert_storage_version!(BelizeWhistleblower);
+            assert_storage_version!(BelizeModeration);
+            assert_storage_version!(StorageProof);
+        });
+    }
 }
 
 #[sp_version::runtime_version]
@@ -222,7 +274,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     // Phase 2: bumped to 105 — align session rotation with BABE epoch changes.
     // Stage A: bumped to 106 — pallets/storage-proof added at index 38
     // (on-chain Merkle storage proof verification for Pakit).
-    spec_version: 106,
+    spec_version: 107,
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 1,
@@ -316,7 +368,9 @@ impl pallet_babe::Config for Runtime {
     type ExpectedBlockTime = ExpectedBlockTime;
     type EpochChangeTrigger = pallet_babe::ExternalTrigger;
     type DisabledValidators = Session;
-    // S5-5 FIX: use calibrated weights instead of placeholder ()
+    // M-5: `()` looks like a placeholder but is the SDK's real measured default —
+    // pallet-babe mounts `default_weights.rs`, which implements `WeightInfo for ()`
+    // with hand-calibrated constants (the sibling `weights.rs` is not mounted).
     type WeightInfo = ();
     // CONS-021 FIX: align with MaxValidators = 100 in staking/consensus pallets.
     type MaxAuthorities = ConstU32<100>;
@@ -328,7 +382,9 @@ impl pallet_babe::Config for Runtime {
 
 impl pallet_grandpa::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    // S5-5 FIX: use calibrated weights instead of placeholder ()
+    // M-5: `()` looks like a placeholder but is the SDK's real measured default —
+    // pallet-grandpa mounts `default_weights.rs`, which implements
+    // `WeightInfo for ()` with hand-calibrated constants.
     type WeightInfo = ();
     // CONS-021 FIX: align with MaxValidators = 100 in staking/consensus pallets.
     type MaxAuthorities = ConstU32<100>;
@@ -385,16 +441,36 @@ impl
         slash_fraction: &[Perbill],
         _session: sp_staking::SessionIndex,
     ) -> Weight {
+        // CONS-031: one storage read to locate the stake (active validator or
+        // pending unbond) plus up to three writes (stake record, lock, slash
+        // counter) per offender. Returning `Weight::zero()` under-reported the
+        // block that finalized the offence.
+        let per_offender_weight = RocksDbWeight::get().reads_writes(3, 3);
+        let mut total_weight = Weight::zero();
+
         for (detail, &fraction) in offenders.iter().zip(slash_fraction.iter()) {
             let (ref account, _) = detail.offender;
-            // Best-effort: ignore errors (validator may have already left)
-            let _ = pallet_belize_staking::Pallet::<Runtime>::slash_validator(
+            // An offender who has already fully withdrawn has no stake left to
+            // slash. That is not a chain failure — but it must be visible, since
+            // an equivocation that costs the offender nothing is exactly what an
+            // operator needs to see.
+            if let Err(error) = pallet_belize_staking::Pallet::<Runtime>::slash_validator(
                 account,
                 fraction,
                 pallet_belize_staking::SlashReason::ConsensusViolation,
-            );
+            ) {
+                log::warn!(
+                    target: "runtime::offences",
+                    "equivocation slash had no effect for {:?}: {:?}",
+                    account,
+                    error
+                );
+            }
+
+            total_weight = total_weight.saturating_add(per_offender_weight);
         }
-        Weight::zero()
+
+        total_weight
     }
 }
 
@@ -630,7 +706,7 @@ impl pallet_contracts::Config for Runtime {
     type Currency = Balances;
     type RuntimeEvent = RuntimeEvent;
     type RuntimeCall = RuntimeCall;
-    type CallFilter = frame_support::traits::Everything;
+    type CallFilter = ContractCallFilter;
     type DepositPerItem = DepositPerItem;
     type DepositPerByte = DepositPerByte;
     type DefaultDepositLimit = DefaultDepositLimit;
@@ -888,10 +964,50 @@ parameter_types! {
 }
 
 /// Any single member of TechnicalCouncil (low-risk admin operations), OR Root.
-pub type TechnicalCouncilMember = EitherOfDiverse<
-    EnsureRootWithSuccess<AccountId, RootAccountSuccess>,
-    EnsureMember<AccountId, TechnicalCouncilInstance>,
->;
+///
+/// NOTE: this replaces `pallet_collective::EnsureMember`, whose membership branch
+/// is unreachable for externally-signed calls — it only accepts the collective's
+/// *internal* `RawOrigin::Member`, which `frame_system::ensure_signed` does not
+/// recognise either. An origin built from it silently degrades "a council member
+/// may call this" into "only Root may call this", and breaks any call that also
+/// needs the acting account.
+///
+/// `Root` is still accepted (yielding [`RootAccountSuccess`]); pallets that only
+/// need an authorisation gate discard that value.
+pub struct SignedTechnicalCouncilMember;
+
+impl frame_support::traits::EnsureOrigin<RuntimeOrigin> for SignedTechnicalCouncilMember {
+    type Success = AccountId;
+
+    fn try_origin(origin: RuntimeOrigin) -> Result<Self::Success, RuntimeOrigin> {
+        match origin.clone().into() {
+            Ok(frame_system::RawOrigin::Root) => Ok(RootAccountSuccess::get()),
+            Ok(frame_system::RawOrigin::Signed(who)) => {
+                if pallet_collective::Members::<Runtime, TechnicalCouncilInstance>::get()
+                    .contains(&who)
+                {
+                    Ok(who)
+                } else {
+                    Err(origin)
+                }
+            }
+            _ => Err(origin),
+        }
+    }
+
+    /// Benchmarks need an origin guaranteed to pass this check. `Root` is
+    /// accepted by `try_origin`, so it is the correct choice.
+    ///
+    /// Gated because the trait only declares this method under the benchmark
+    /// feature.
+    #[cfg(feature = "runtime-benchmarks")]
+    fn try_successful_origin() -> Result<RuntimeOrigin, ()> {
+        Ok(frame_system::RawOrigin::Root.into())
+    }
+}
+
+/// Any single *signed* member of TechnicalCouncil (low-risk admin operations), OR Root.
+pub type TechnicalCouncilMember = SignedTechnicalCouncilMember;
 
 /// Simple majority (>1/2) of TechnicalCouncil — standard technical decisions, OR Root.
 pub type TechnicalCouncilMajority = EitherOfDiverse<
@@ -924,6 +1040,39 @@ pub type GovernanceCouncilSuperMajority = EitherOfDiverse<
 >;
 
 // ==================== END PHASE 0 COLLECTIVES ====================
+
+/// Calls a contract account may dispatch through the runtime (M-6).
+///
+/// `pallet_contracts` dispatches contract calls as `Signed(contract_account)`,
+/// and a contract account has no private key — the runtime is the only way it
+/// can act. `Everything` is the Substrate template default, but it also means a
+/// contract could reach any *signed-origin* extrinsic. Cross-contract calls
+/// (including `Contracts::call`) are intentionally allowed — blocking them would
+/// break `seal_call` — so this filter blocks only the administrative
+/// `System`/`Sudo` variants. Every variant below is root-gated today, which makes
+/// this defense in depth: it keeps the surface closed if an origin check is ever
+/// relaxed.
+pub struct ContractCallFilter;
+
+impl frame_support::traits::Contains<RuntimeCall> for ContractCallFilter {
+    fn contains(call: &RuntimeCall) -> bool {
+        !matches!(
+            call,
+            RuntimeCall::Sudo(..)
+                | RuntimeCall::System(
+                    frame_system::Call::set_heap_pages { .. }
+                        | frame_system::Call::set_code { .. }
+                        | frame_system::Call::set_code_without_checks { .. }
+                        | frame_system::Call::set_storage { .. }
+                        | frame_system::Call::kill_storage { .. }
+                        | frame_system::Call::kill_prefix { .. }
+                        | frame_system::Call::authorize_upgrade { .. }
+                        | frame_system::Call::authorize_upgrade_without_checks { .. }
+                        | frame_system::Call::apply_authorized_upgrade { .. }
+                )
+        )
+    }
+}
 
 // BelizeChain custom pallet configurations.
 //
@@ -1017,6 +1166,10 @@ impl pallet_belize_governance::Config for Runtime {
     type TreasurySpendPeriod = TreasurySpendPeriod;
     // P0-17 — minimum quorum floor (10%)
     type MinQuorumPercentage = ConstU8<10>;
+    // H-3 FIX: runtime upgrades are applied by a GovernanceCouncil supermajority
+    // once both houses ratify the pending code hash. `Root` (sudo) remains a
+    // bootstrap/emergency bypass on testnet.
+    type RuntimeUpgradeOrigin = GovernanceCouncilSuperMajority;
 }
 
 use pallet_belize_compliance::VerificationLevel;
@@ -1219,6 +1372,15 @@ impl pallet_belize_community::Config for Runtime {
     type SrsUpdateCooldown = ConstU32<{ DAYS }>;
     // AUDIT FIX: Minimum 10 voters required for community proposals
     type MinProposalVoters = ConstU32<10>;
+
+    // `attest_participation` needs a *signed* technical council member, so the
+    // benchmark seats the caller in the collective.
+    #[cfg(feature = "runtime-benchmarks")]
+    fn make_council_member(account: &AccountId) {
+        pallet_collective::Members::<Runtime, TechnicalCouncilInstance>::put(sp_std::vec![
+            account.clone()
+        ]);
+    }
 }
 
 parameter_types! {
@@ -1256,6 +1418,9 @@ impl pallet_belize_mesh::Config for Runtime {
     type MaxMeshNodes = ConstU32<5_000>; // 5,000 Meshtastic nodes across Belize
     type MaxPendingMeshTx = ConstU32<1_000>; // 1,000 pending off-grid transactions
     type MaxActiveAlerts = ConstU32<50>; // 50 concurrent emergency alerts
+                                         // Bounded NEMO registry: the accounts allowed to raise and resolve
+                                         // emergency alerts from a signed origin.
+    type MaxEmergencyAuthorities = ConstU32<100>;
     type MaxRelayProofsPerClaim = ConstU32<100>; // 100 relay proofs per reward claim
     type RelayRewardPerTransaction = ConstU128<{ DOLLARS / 10 }>; // 0.1 DALLA per tx relay
     type RelayRewardPerBlockHeader = ConstU128<{ 5 * DOLLARS / 100 }>; // 0.05 DALLA per block header
@@ -1281,19 +1446,28 @@ impl pallet_belize_justice::Config for Runtime {
     type Currency = Balances;
     /// Governance council majority required for appeals (constitutional-grade).
     type GovernanceOrigin = GovernanceCouncilMajority;
-    /// Technical council member can act as mediator.
-    /// Uses raw EnsureMember (not the Root-wrapped alias) because this origin
-    /// requires `Success = AccountId`.
-    /// In benchmarks, use EnsureSigned so benchmarking doesn't need collective setup.
-    #[cfg(not(feature = "runtime-benchmarks"))]
-    type MediatorOrigin = EnsureMember<AccountId, TechnicalCouncilInstance>;
-    #[cfg(feature = "runtime-benchmarks")]
-    type MediatorOrigin = frame_system::EnsureSigned<AccountId>;
+    /// A *signed* technical council member can act as mediator, or Root.
+    ///
+    /// Previously this was `pallet_collective::EnsureMember`, which only accepts
+    /// the collective's internal member origin — unreachable for signed calls, so
+    /// no mediator could ever open a case. The benchmark also swapped in
+    /// `EnsureSigned`, meaning it exercised an origin production never had.
+    type MediatorOrigin = SignedTechnicalCouncilMember;
     type OpenDisputeBond = JusticeOpenDisputeBond;
     type CoolingOffPeriod = JusticeCoolingOffPeriod;
     type MaxMediators = ConstU32<20>;
     type AppealTimeout = ConstU32<{ 14 * DAYS }>; // 14 days to resolve appeals before auto-close
     type WeightInfo = pallet_belize_justice::weights::SubstrateWeight<Runtime>;
+
+    // `MediatorOrigin` requires a *signed* technical council member, so the
+    // benchmark seats the caller in the collective instead of weakening the
+    // origin for benchmark builds.
+    #[cfg(feature = "runtime-benchmarks")]
+    fn make_mediator(account: &AccountId) {
+        pallet_collective::Members::<Runtime, TechnicalCouncilInstance>::put(sp_std::vec![
+            account.clone()
+        ]);
+    }
 }
 
 // =============================================================================
@@ -1350,6 +1524,10 @@ impl pallet_belize_moderation::Config for Runtime {
 impl pallet_storage_proof::Config for Runtime {
     /// Root/sudo may revoke a proof (byzantine storage provider dispute path).
     type RevocationOrigin = EnsureRoot<Self::AccountId>;
+    type Currency = Balances;
+    /// Refundable deposit per stored proof — prevents free permanent state growth.
+    type StorageDeposit = ConstU128<DOLLARS>;
+    type WeightInfo = pallet_storage_proof::weights::SubstrateWeight<Runtime>;
 }
 
 // Construct runtime
@@ -1465,6 +1643,22 @@ impl pallet_belize_governance::DualHouseProvider<AccountId> for DualHouseMembers
     }
     fn is_governance_house_member(account: &AccountId) -> bool {
         pallet_collective::Members::<Runtime, GovernanceCouncilInstance>::get().contains(account)
+    }
+
+    /// Benchmark-only: seat `account` in both houses.
+    ///
+    /// `pallet_collective` has no members on a benchmark chain, so house-gated
+    /// extrinsics would otherwise be unreachable. Seating a member here — rather
+    /// than short-circuiting `is_*_house_member` — keeps the real membership
+    /// lookup on the measured path.
+    #[cfg(feature = "runtime-benchmarks")]
+    fn make_house_member(account: &AccountId) {
+        pallet_collective::Members::<Runtime, TechnicalCouncilInstance>::put(sp_std::vec![
+            account.clone()
+        ]);
+        pallet_collective::Members::<Runtime, GovernanceCouncilInstance>::put(sp_std::vec![
+            account.clone()
+        ]);
     }
 }
 
@@ -1877,12 +2071,11 @@ impl pallet_belize_mesh::MeshIdentityProvider<AccountId> for MeshIdentityProvide
         return true;
         #[cfg(not(feature = "runtime-benchmarks"))]
         {
-            // Level 3 KYC (Full) + not sanctioned = authorized for emergency alerts
-            // In production, this would check a dedicated NEMO authority registry
-            let current_block = System::block_number();
-            use pallet_belize_identity::{KycLevel, KycState};
-            Identity::kyc_state(account, KycLevel::L3, current_block) == KycState::Valid
-                && !Oracle::is_sanctioned(account)
+            // Authoritative NEMO registry, populated by governance via
+            // `Mesh::add_emergency_authority`. Previously this was a KYC-level
+            // proxy, which let any L3-verified, non-sanctioned citizen issue
+            // emergency alerts because no authority registry existed.
+            pallet_belize_mesh::EmergencyAuthorities::<Runtime>::get(account)
         }
     }
 
@@ -2004,6 +2197,7 @@ mod benches {
         [pallet_belize_justice, BelizeJustice]
         [pallet_belize_whistleblower, BelizeWhistleblower]
         [pallet_belize_moderation, BelizeModeration]
+        [pallet_storage_proof, StorageProof]
     );
 }
 

@@ -5,9 +5,11 @@ round opened on-chain.
 
 ## Context
 
-The committed `testnet-spec.json` referenced a sudo SS58
+The `testnet-spec.json` tracked in git at the time referenced a sudo SS58
 (`5CPnByRew...`) whose SURI was generated during an earlier session and never
-persisted to disk. Without that SURI we could not sign Sudo extrinsics
+persisted to disk. (That spec file is no longer tracked — since 2026-09-20 it is
+operator-managed on Ceiba; see RULE 4 in
+[TESTNET_ONLY_RULE_2026-09-18.md](TESTNET_ONLY_RULE_2026-09-18.md).) Without that SURI we could not sign Sudo extrinsics
 (`Staking.assign_fl_task` was blocked). Separately, the BABE/GRANDPA validator
 mnemonics had been written to plaintext files under
 `/data/chain/authority-keys-*` and exposed in chat history.

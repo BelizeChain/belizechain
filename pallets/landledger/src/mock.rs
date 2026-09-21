@@ -82,6 +82,14 @@ parameter_types! {
 pub struct MockOracle;
 impl pallet_belize_landledger::LandLedgerOracleProvider<u64> for MockOracle {
     fn verify_land_owner(property_id: u32, account: &u64) -> bool {
+        // The runtime provider delegates to `LandLedger::property_owners`, so a
+        // caller that just registered the property is genuinely verified. This
+        // mock uses a fixed account list instead, which cannot see that, so
+        // benchmark accounts — which do own what they registered — opt in via
+        // `grant_benchmark_kyc`.
+        if is_benchmark_granted(account) {
+            return true;
+        }
         // Properties 1-100: Verified for accounts 1-3 (ALICE, BOB, CHARLIE)
         // Property 101: Verified for account 666 (SANCTIONED - to test oracle verification)
         // Others: Not verified
@@ -93,6 +101,11 @@ impl pallet_belize_landledger::LandLedgerOracleProvider<u64> for MockOracle {
     }
 
     fn get_kyc_level(account: &u64) -> Option<u8> {
+        // Benchmark accounts are hash-derived and so never in the ranges below;
+        // they hold full KYC for the run.
+        if is_benchmark_granted(account) {
+            return Some(3);
+        }
         match account {
             // ALICE, BOB, CHARLIE: Level 3 (Full KYC)
             1..=3 => Some(3),
@@ -111,6 +124,34 @@ impl pallet_belize_landledger::LandLedgerOracleProvider<u64> for MockOracle {
         // Account 666 is sanctioned
         *account == 666
     }
+}
+
+std::thread_local! {
+    /// Accounts granted full KYC by the benchmark running on this thread.
+    ///
+    /// Thread-local so a grant cannot leak into another test, and keyed by
+    /// SCALE-encoded account so the benchmark module can stay generic over
+    /// `T::AccountId`.
+    static BENCHMARK_KYC: std::cell::RefCell<std::collections::BTreeSet<std::vec::Vec<u8>>> =
+        const { std::cell::RefCell::new(std::collections::BTreeSet::new()) };
+}
+
+/// Whether `account` was granted benchmark KYC on this thread.
+fn is_benchmark_granted<A: sp_runtime::codec::Encode>(account: &A) -> bool {
+    BENCHMARK_KYC.with(|granted| {
+        granted
+            .borrow()
+            .contains(&sp_runtime::codec::Encode::encode(account))
+    })
+}
+
+/// Grant `account` full KYC for the rest of this test thread.
+///
+/// Benchmark accounts are hash-derived, so the `1..=3` / `10..=50` allowlists
+/// above can never cover them.
+#[cfg(feature = "runtime-benchmarks")]
+pub fn grant_benchmark_kyc<A: sp_runtime::codec::Encode>(account: &A) {
+    BENCHMARK_KYC.with(|granted| granted.borrow_mut().insert(account.encode()));
 }
 
 /// Mock KYC provider — delegates to MockOracle's get_kyc_level

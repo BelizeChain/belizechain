@@ -7,8 +7,6 @@
 //!   bridge_to_ethereum, bridge_to_parachain, cancel_bridge,
 //!   request_verification, submit_verification
 
-#![cfg(feature = "runtime-benchmarks")]
-
 use super::*;
 use frame_benchmarking::v2::*;
 use frame_support::traits::Currency;
@@ -18,16 +16,24 @@ use sp_std::vec;
 
 const MAX_JOB_ID_LEN: u32 = 64;
 
+/// Balance given to each benchmark account.
+///
+/// Deliberately a fixed amount rather than a multiple of `minimum_balance`: the
+/// mock's existential deposit is 1, so a multiple of it stays far below the job
+/// cost this pallet charges (`qubits * DallaPerQubit + shots * DallaPerShot`,
+/// already 15_000_000 for the smallest benchmarked job).
+const FUNDED_BALANCE: u128 = 100_000_000_000_000_000; // 100,000 DALLA
+
 /// Create a funded account for benchmarks
 fn funded_account<T: Config>(name: &'static str, index: u32) -> T::AccountId {
     let caller: T::AccountId = account(name, index, 0);
-    let amount = T::Currency::minimum_balance().saturating_mul(1_000_000u32.into());
+    let amount = FUNDED_BALANCE.saturated_into();
     T::Currency::make_free_balance_be(&caller, amount);
     caller
 }
 
 /// Create a valid job_id BoundedVec
-fn make_job_id<T: Config>(seed: u8) -> BoundedVec<u8, ConstU32<MAX_JOB_ID_LEN>> {
+fn make_job_id(seed: u8) -> BoundedVec<u8, ConstU32<MAX_JOB_ID_LEN>> {
     let mut id = vec![b'j', b'o', b'b', b'-'];
     id.push(b'0' + (seed % 10));
     BoundedVec::try_from(id).expect("job id within bounds")
@@ -201,7 +207,7 @@ mod benchmarks {
     #[benchmark]
     fn submit_quantum_job() {
         let caller = funded_account::<T>("submitter", 0);
-        let job_id = make_job_id::<T>(1);
+        let job_id = make_job_id(1);
 
         #[extrinsic_call]
         submit_quantum_job(
@@ -218,7 +224,7 @@ mod benchmarks {
     #[benchmark]
     fn update_job_status() {
         let caller = funded_account::<T>("submitter", 0);
-        let job_id = make_job_id::<T>(2);
+        let job_id = make_job_id(2);
         insert_quantum_job::<T>(&caller, &job_id);
 
         #[extrinsic_call]
@@ -233,7 +239,7 @@ mod benchmarks {
     fn record_quantum_result() {
         let submitter = funded_account::<T>("submitter", 0);
         let executor = funded_account::<T>("executor", 1);
-        let job_id = make_job_id::<T>(3);
+        let job_id = make_job_id(3);
         insert_quantum_job::<T>(&submitter, &job_id);
 
         // Set executor reputation to required minimum (100)
@@ -265,7 +271,7 @@ mod benchmarks {
     fn verify_quantum_result() {
         let submitter = funded_account::<T>("submitter", 0);
         let executor = funded_account::<T>("executor", 1);
-        let job_id = make_job_id::<T>(4);
+        let job_id = make_job_id(4);
         insert_quantum_job::<T>(&submitter, &job_id);
         insert_quantum_result::<T>(&executor, &job_id);
 
@@ -281,7 +287,7 @@ mod benchmarks {
     fn mint_achievement_nft() {
         let caller = funded_account::<T>("minter", 0);
         let executor = funded_account::<T>("executor", 1);
-        let job_id = make_job_id::<T>(5);
+        let job_id = make_job_id(5);
         insert_quantum_job::<T>(&caller, &job_id);
         insert_quantum_result::<T>(&executor, &job_id);
 
@@ -399,7 +405,7 @@ mod benchmarks {
     fn request_verification() {
         let submitter = funded_account::<T>("submitter", 0);
         let executor = funded_account::<T>("executor", 1);
-        let job_id = make_job_id::<T>(6);
+        let job_id = make_job_id(6);
         insert_quantum_job::<T>(&submitter, &job_id);
         insert_quantum_result::<T>(&executor, &job_id);
 
@@ -416,7 +422,7 @@ mod benchmarks {
         let submitter = funded_account::<T>("submitter", 0);
         let executor = funded_account::<T>("executor", 1);
         let validator = funded_account::<T>("validator", 2);
-        let job_id = make_job_id::<T>(7);
+        let job_id = make_job_id(7);
         insert_quantum_job::<T>(&submitter, &job_id);
         insert_quantum_result::<T>(&executor, &job_id);
         insert_verification_request::<T>(&job_id);

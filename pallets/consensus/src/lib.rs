@@ -165,7 +165,15 @@ impl PqSignatureVerifier for SizeOnlyPqVerifier {
 pub mod pallet {
     use super::*;
 
+    /// On-chain storage version for this pallet.
+    ///
+    /// Bump this and register a migration in the runtime's `Migrations` tuple
+    /// whenever this pallet's storage layout changes.
+    pub const STORAGE_VERSION: frame_support::traits::StorageVersion =
+        frame_support::traits::StorageVersion::new(0);
+
     #[pallet::pallet]
+    #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
 
     #[pallet::config]
@@ -1251,7 +1259,7 @@ pub mod pallet {
 
         /// Withdraw stake after the validator unbonding period has elapsed.
         #[pallet::call_index(7)]
-        #[pallet::weight(T::WeightInfo::leave_validator())]
+        #[pallet::weight(T::WeightInfo::withdraw_validator_unbonded())]
         pub fn withdraw_validator_unbonded(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
@@ -1309,6 +1317,9 @@ pub mod pallet {
                 // in a single block, which can otherwise trip per-block rate limiting and
                 // distort weight collection. Production builds always enforce the limit.
                 let _ = who;
+                // The early `return` is required: dropping it would make this block the
+                // function's tail expression, whose `Result` value is then discarded.
+                #[allow(clippy::needless_return)]
                 return Ok(());
             }
 
@@ -1538,6 +1549,7 @@ pub trait WeightInfo {
     fn register_ai_model() -> Weight;
     fn join_validator() -> Weight;
     fn leave_validator() -> Weight;
+    fn withdraw_validator_unbonded() -> Weight;
     fn validate_model() -> Weight;
     fn start_consensus_round() -> Weight;
     fn submit_ai_work() -> Weight;
@@ -1553,6 +1565,9 @@ impl WeightInfo for () {
     }
     fn leave_validator() -> Weight {
         Weight::from_parts(30_000_000, 512).saturating_add(Weight::from_parts(0, 3500))
+    }
+    fn withdraw_validator_unbonded() -> Weight {
+        Weight::from_parts(25_000_000, 512).saturating_add(Weight::from_parts(0, 2500))
     }
     fn validate_model() -> Weight {
         Weight::from_parts(15_000_000, 512).saturating_add(Weight::from_parts(0, 2000))

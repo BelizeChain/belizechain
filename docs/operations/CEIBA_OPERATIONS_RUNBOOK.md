@@ -16,6 +16,8 @@ Dated baseline snapshot:
 - Runtime: Docker Compose stack in `/opt/belizechain`
 - Core container: `ceiba-node`
 - Active chain spec: `/data/chain/testnet-spec.json`
+  (operator-managed on the host; **not tracked in git** since 2026-09-20 because it
+  carries the live sudo/session keys — see RULE 4 in [TESTNET_ONLY_RULE_2026-09-18.md](TESTNET_ONLY_RULE_2026-09-18.md))
 - Active chain data: `/data/chain/chains/belizechain_testnet`
 - Command shape: `belizechain-node --chain /data/chain/testnet-spec.json --base-path /data/chain --port 30333 --rpc-port 9944 --prometheus-port 9615 --prometheus-external --rpc-cors all --unsafe-rpc-external --rpc-methods Safe --name Ceiba-Node-1 --validator`
 - P2P: 30333 (public)
@@ -117,10 +119,11 @@ printf 'new_babe=%s\nnew_grandpa=%s\n' "$BABE_SS58" "$GRANDPA_SS58"
 ```bash
 cd /opt/belizechain
 NEW_IMAGE=$(grep -E '^CEIBA_NODE_IMAGE=' .env | cut -d= -f2-)
-docker run --rm "$NEW_IMAGE" build-spec \
+# The built-in template is dev-seeded, so it needs the explicit allowance; the
+# generated spec is patched with operator keys further down.
+docker run --rm -e BELIZECHAIN_ALLOW_DEV_SEEDS=1 "$NEW_IMAGE" build-spec \
   --disable-default-bootnode \
   --chain testnet-template > "backups/testnet-spec.generated-$stamp.json"
-
 name=$(jq -r .name /data/chain/testnet-spec.json)
 id=$(jq -r .id /data/chain/testnet-spec.json)
 jq --arg account "$BABE_SS58" \

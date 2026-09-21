@@ -170,8 +170,6 @@ pub fn run() -> sc_cli::Result<()> {
                 _ => Err("This benchmark sub-command is not supported yet.".into()),
             })
         }
-        #[cfg(feature = "try-runtime")]
-        Some(Subcommand::TryRuntime(_cmd)) => Err("try-runtime is not implemented".into()),
         Some(Subcommand::ChainInfo(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             runner.sync_run(|config| cmd.run::<Block>(&config))
@@ -263,6 +261,13 @@ mod tests {
         <Cli as clap::Parser>::parse_from(["belizechain-node"])
     }
 
+    /// The built-in `testnet-template` / `staging` presets are seeded from
+    /// dev-derived placeholder accounts, so building them is an explicit opt-in
+    /// (`chain_spec::ALLOW_DEV_SEEDS_ENV`).
+    fn allow_dev_seeds() {
+        std::env::set_var(chain_spec::ALLOW_DEV_SEEDS_ENV, "1");
+    }
+
     #[test]
     fn test_load_spec_dev_succeeds_when_wasm_built() {
         // "dev" arm calls development_config() — succeeds when WASM_BINARY is compiled in.
@@ -287,23 +292,25 @@ mod tests {
     }
 
     #[test]
-    fn test_load_spec_testnet_template_succeeds_when_wasm_built() {
+    fn test_load_spec_testnet_template_succeeds_with_dev_seed_allowance() {
+        allow_dev_seeds();
         let cli = default_cli();
         let result = cli.load_spec("testnet-template");
         assert!(
             result.is_ok(),
-            "load_spec(\"testnet-template\") must succeed in test build: {:?}",
+            "load_spec(\"testnet-template\") must succeed with the dev-seed allowance: {:?}",
             result.err()
         );
     }
 
     #[test]
-    fn test_load_spec_staging_succeeds_when_wasm_built() {
+    fn test_load_spec_staging_succeeds_with_dev_seed_allowance() {
+        allow_dev_seeds();
         let cli = default_cli();
         let result = cli.load_spec("staging");
         assert!(
             result.is_ok(),
-            "load_spec(\"staging\") must succeed in test build: {:?}",
+            "load_spec(\"staging\") must succeed with the dev-seed allowance: {:?}",
             result.err()
         );
     }

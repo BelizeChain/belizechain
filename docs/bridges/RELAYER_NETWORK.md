@@ -203,7 +203,8 @@ networks:
     confirmation_blocks: 12
     
   belizechain:
-    rpc: "wss://rpc.belizechain.org"
+    # Planned host name — rpc.belizechain.org does not resolve yet (verified 2026-09-20).
+    rpc: "<operator-provided-rpc-url>"
     bridge_address: "5GrwvaEF5zXb..."
     
   polkadot:
@@ -237,7 +238,9 @@ POST /sign                   # Request signature (internal)
 ### WebSocket Subscriptions
 
 ```javascript
-const ws = new WebSocket('wss://relayer.belizechain.org');
+const ws = new WebSocket('<operator-provided-relayer-url>');
+// NOTE: `wss://relayer.belizechain.org` is the planned host name; it does not
+// resolve yet (verified 2026-09-20), so use the operator-provided URL.
 
 // Subscribe to transfer events
 ws.send(JSON.stringify({

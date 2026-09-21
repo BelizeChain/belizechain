@@ -31,17 +31,21 @@ mod benchmarks {
         let bond = T::OpenDisputeBond::get();
         let _ = T::Currency::make_free_balance_be(&disputant, bond * 10u32.into());
 
-        let _ = Pallet::<T>::open_dispute(
+        Pallet::<T>::open_dispute(
             RawOrigin::Signed(disputant).into(),
             target.clone(),
             [1u8; 32],
             0u8,
-        );
+        )
+        .expect("open_dispute setup should succeed");
 
         // Add mediator to the list
         let mediator: T::AccountId = whitelisted_caller();
         MediatorList::<T>::try_mutate(|list| list.try_push(mediator.clone()))
             .expect("mediator list not full");
+        // The production origin requires a technical council member, so seat the
+        // caller rather than swapping in a weaker benchmark-only origin.
+        T::make_mediator(&mediator);
 
         #[extrinsic_call]
         _(RawOrigin::Signed(mediator), 1u32, 0u8, 0u32);
@@ -55,23 +59,26 @@ mod benchmarks {
         let bond = T::OpenDisputeBond::get();
         let _ = T::Currency::make_free_balance_be(&disputant, bond * 10u32.into());
 
-        let _ = Pallet::<T>::open_dispute(
+        Pallet::<T>::open_dispute(
             RawOrigin::Signed(disputant).into(),
             target.clone(),
             [1u8; 32],
             0u8,
-        );
+        )
+        .expect("open_dispute setup should succeed");
 
         let mediator: T::AccountId = account("mediator", 0, 0);
         MediatorList::<T>::try_mutate(|list| list.try_push(mediator.clone()))
             .expect("mediator list not full");
+        T::make_mediator(&mediator);
 
-        let _ = Pallet::<T>::mediator_ruling(
+        Pallet::<T>::mediator_ruling(
             RawOrigin::Signed(mediator).into(),
             1u32,
             1u8, // Upheld
             0u32,
-        );
+        )
+        .expect("mediator_ruling setup should succeed");
 
         let counter_evidence: [u8; 32] = [2u8; 32];
 

@@ -602,6 +602,10 @@ fn setup_consensus_for_rate_limit() {
     assert_ok!(Consensus::start_consensus_round(RuntimeOrigin::root(), 10));
 }
 
+// The rate limiter is deliberately bypassed when the `runtime-benchmarks` feature
+// is on, so that generated weights measure the unbounded cost of the extrinsic
+// rather than the cost of a rejection.
+#[cfg(not(feature = "runtime-benchmarks"))]
 #[test]
 fn submit_ai_work_rate_limit_blocks_after_max_per_block() {
     new_test_ext().execute_with(|| {
@@ -1205,6 +1209,8 @@ fn double_finalize_fails() {
 // Expanded Coverage — Rate Limit Isolation
 // ============================================================================
 
+// See `submit_ai_work_rate_limit_blocks_after_max_per_block` for why this is gated.
+#[cfg(not(feature = "runtime-benchmarks"))]
 #[test]
 fn rate_limit_per_account_isolation() {
     new_test_ext().execute_with(|| {

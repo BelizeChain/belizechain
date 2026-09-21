@@ -141,6 +141,8 @@ pub trait WeightInfo {
     fn update_mesh_config() -> Weight;
     fn fund_relay_rewards() -> Weight;
     fn confirm_relay_proof() -> Weight;
+    fn add_emergency_authority() -> Weight;
+    fn remove_emergency_authority() -> Weight;
 }
 
 /// Default weight implementation
@@ -187,6 +189,16 @@ impl WeightInfo for () {
     fn confirm_relay_proof() -> Weight {
         Weight::from_parts(40_000_000, 512)
     }
+    fn add_emergency_authority() -> Weight {
+        Weight::from_parts(25_000_000, 1024)
+            .saturating_add(frame_support::weights::constants::RocksDbWeight::get().reads(2))
+            .saturating_add(frame_support::weights::constants::RocksDbWeight::get().writes(2))
+    }
+    fn remove_emergency_authority() -> Weight {
+        Weight::from_parts(25_000_000, 1024)
+            .saturating_add(frame_support::weights::constants::RocksDbWeight::get().reads(1))
+            .saturating_add(frame_support::weights::constants::RocksDbWeight::get().writes(2))
+    }
 }
 
 /// Trait for Identity integration - KYC verification for mesh node registration
@@ -225,7 +237,15 @@ const MESH_PALLET_ID: PalletId = PalletId(*b"bz/mesht");
 pub mod pallet {
     use super::*;
 
+    /// On-chain storage version for this pallet.
+    ///
+    /// Bump this and register a migration in the runtime's `Migrations` tuple
+    /// whenever this pallet's storage layout changes.
+    pub const STORAGE_VERSION: frame_support::traits::StorageVersion =
+        frame_support::traits::StorageVersion::new(0);
+
     #[pallet::pallet]
+    #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
 
     #[pallet::config]
@@ -256,6 +276,13 @@ pub mod pallet {
         /// Maximum active emergency alerts
         #[pallet::constant]
         type MaxActiveAlerts: Get<u32>;
+
+        /// Maximum accounts that may hold emergency-alert authority.
+        ///
+        /// Bounds the NEMO registry so `add_emergency_authority` cannot be used
+        /// to grow unbounded state.
+        #[pallet::constant]
+        type MaxEmergencyAuthorities: Get<u32>;
 
         /// Maximum relay proofs per claim period
         #[pallet::constant]
@@ -380,6 +407,26 @@ pub mod pallet {
     /// O(1) flag: true when at least one unresolved Catastrophic alert exists (H-40)
     #[pallet::storage]
     pub type CatastrophicAlertCount<T: Config> = StorageValue<_, u32, ValueQuery>;
+
+    /// Accounts authorized to issue and resolve emergency alerts.
+    ///
+    /// This is the authoritative NEMO (National Emergency Management
+    /// Organization) registry. Governance populates it via
+    /// [`Call::add_emergency_authority`]; the runtime's identity provider
+    /// consults it to authorise `broadcast_emergency_alert` and
+    /// `resolve_emergency_alert` from a signed origin.
+    ///
+    /// A `bool` value with `ValueQuery` keeps lookups allocation-free: the
+    /// default `false` means "not an authority".
+    #[pallet::storage]
+    #[pallet::getter(fn emergency_authorities)]
+    pub type EmergencyAuthorities<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, bool, ValueQuery>;
+
+    /// O(1) size of [`EmergencyAuthorities`], maintained so the cap in
+    /// `MaxEmergencyAuthorities` can be enforced without iteration.
+    #[pallet::storage]
+    pub type EmergencyAuthorityCount<T: Config> = StorageValue<_, u32, ValueQuery>;
 
     /// Relayed block headers via mesh
     #[pallet::storage]
@@ -577,6 +624,10 @@ pub mod pallet {
             alert_id: u32,
             confirmer_node: MeshtasticNodeId,
         },
+        /// Account added to the emergency authority (NEMO) registry
+        EmergencyAuthorityAdded { account: T::AccountId },
+        /// Account removed from the emergency authority (NEMO) registry
+        EmergencyAuthorityRemoved { account: T::AccountId },
         /// Block header relayed through mesh
         BlockHeaderRelayed {
             block_number: u32,
@@ -632,6 +683,12 @@ pub mod pallet {
         MaxActiveAlertsExceeded,
         /// Not authorized to issue emergency alerts
         NotEmergencyAuthority,
+        /// Emergency authority registry is full
+        TooManyEmergencyAuthorities,
+        /// Account is already in the emergency authority registry
+        AlreadyEmergencyAuthority,
+        /// Account is not in the emergency authority registry
+        NotRegisteredEmergencyAuthority,
         /// Relay proof limit exceeded for this claim period
         RelayProofLimitExceeded,
         /// No relay rewards to claim
@@ -1520,6 +1577,72 @@ pub mod pallet {
                 Ok(())
             })
         }
+
+        /// Add an account to the emergency-authority (NEMO) registry.
+        ///
+        /// This is the missing half of emergency alerts: without a registry,
+        /// [`Call::broadcast_emergency_alert`] could only be driven by a
+        /// governance origin, because no signed account could ever be shown to
+        /// hold authority. Governance (or Root) populates the registry here,
+        /// and the runtime's identity provider then authorises individual
+        /// NEMO operators.
+        #[pallet::call_index(14)]
+        #[pallet::weight(T::WeightInfo::add_emergency_authority())]
+        pub fn add_emergency_authority(
+            origin: OriginFor<T>,
+            account: T::AccountId,
+        ) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+
+            ensure!(
+                !EmergencyAuthorities::<T>::get(&account),
+                Error::<T>::AlreadyEmergencyAuthority
+            );
+
+            let count = EmergencyAuthorityCount::<T>::get();
+            ensure!(
+                count < T::MaxEmergencyAuthorities::get(),
+                Error::<T>::TooManyEmergencyAuthorities
+            );
+
+            EmergencyAuthorities::<T>::insert(&account, true);
+            EmergencyAuthorityCount::<T>::put(count.saturating_add(1));
+
+            Self::deposit_event(Event::EmergencyAuthorityAdded {
+                account: account.clone(),
+            });
+
+            Ok(())
+        }
+
+        /// Remove an account from the emergency-authority (NEMO) registry.
+        ///
+        /// Revocation must always be possible, so this deliberately has no
+        /// "last authority" guard — governance can empty the registry.
+        #[pallet::call_index(15)]
+        #[pallet::weight(T::WeightInfo::remove_emergency_authority())]
+        pub fn remove_emergency_authority(
+            origin: OriginFor<T>,
+            account: T::AccountId,
+        ) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+
+            ensure!(
+                EmergencyAuthorities::<T>::get(&account),
+                Error::<T>::NotRegisteredEmergencyAuthority
+            );
+
+            EmergencyAuthorities::<T>::remove(&account);
+            EmergencyAuthorityCount::<T>::mutate(|count| {
+                *count = count.saturating_sub(1);
+            });
+
+            Self::deposit_event(Event::EmergencyAuthorityRemoved {
+                account: account.clone(),
+            });
+
+            Ok(())
+        }
     }
 
     // ========================
@@ -1530,6 +1653,14 @@ pub mod pallet {
         /// Get the pallet account ID (for relay mining treasury)
         pub fn pallet_account_id() -> T::AccountId {
             MESH_PALLET_ID.into_account_truncating()
+        }
+
+        /// Whether `account` currently holds emergency-alert authority.
+        ///
+        /// The single authoritative check for the NEMO registry; the runtime's
+        /// `MeshIdentityProvider` delegates here.
+        pub fn is_emergency_authority(account: &T::AccountId) -> bool {
+            EmergencyAuthorities::<T>::get(account)
         }
 
         /// Check if a mesh node is active (heartbeat within timeout)

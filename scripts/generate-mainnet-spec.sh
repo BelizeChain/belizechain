@@ -25,12 +25,36 @@ SPEC_HUMAN="${OUTPUT_DIR}/chainspec-mainnet.json"
 SPEC_RAW="${OUTPUT_DIR}/chainspec-mainnet-raw.json"
 
 echo "📜 Step 1: Exporting baseline template chainspec from runtime WASM..."
-"${NODE_BIN}" build-spec --chain staging --disable-default-bootnode > "${SPEC_HUMAN}.tmp"
+# `staging` is used purely as a structural template: every dev-derived account it
+# seeds (sudo key, session keys, endowments, issuers, council) is overwritten in
+# step 2 from mainnet-keys-inventory.json. The explicit allowance below is what
+# acknowledges that, and `validate_chain_spec.sh` re-checks the finished spec.
+BELIZECHAIN_ALLOW_DEV_SEEDS=1 "${NODE_BIN}" build-spec --chain staging --disable-default-bootnode > "${SPEC_HUMAN}.tmp"
 
 echo "🔧 Step 2: Injecting sovereign Root Sudo, Treasury, and 4-Validator Authorities..."
 
 ROOT_SS58=$(jq -r '.rootSudo.sr25519.ss58Address' "${KEYS_JSON}")
 TREASURY_SS58=$(jq -r '.treasury.sr25519.ss58Address' "${KEYS_JSON}")
+
+# M-1: the mainnet root key exists in two places — this inventory and
+# `mainnet_genesis()` in node/src/chain_spec.rs. If they disagree, the spec built
+# here grants root to a different account than the built-in mainnet spec does.
+# Fail loudly instead of shipping whichever one happened to be read last.
+CODE_ROOT_SS58=$(grep -A2 'Sovereign Founder Root / Sudo Controller' "${ROOT_DIR}/node/src/chain_spec.rs" \
+    | grep -oE '5[A-Za-z0-9]{47}' | head -1)
+if [[ -n "${CODE_ROOT_SS58}" && "${CODE_ROOT_SS58}" != "${ROOT_SS58}" ]]; then
+    if [[ "${ALLOW_ROOT_KEY_DRIFT:-0}" != "1" ]]; then
+        echo "❌ ROOT KEY MISMATCH between the two mainnet root sources:" >&2
+        echo "     node/src/chain_spec.rs mainnet_genesis(): ${CODE_ROOT_SS58}" >&2
+        echo "     ${KEYS_JSON}: ${ROOT_SS58}" >&2
+        echo "   Decide which key is the sovereign mainnet root, update both sources in the" >&2
+        echo "   same commit, then re-run. See docs/deployment/MAINNET_KEY_GENERATION.md." >&2
+        echo "   (ALLOW_ROOT_KEY_DRIFT=1 regenerates despite the mismatch.)" >&2
+        exit 1
+    fi
+    echo "⚠️  ALLOW_ROOT_KEY_DRIFT=1: generating with root ${ROOT_SS58} while" >&2
+    echo "   node/src/chain_spec.rs still declares ${CODE_ROOT_SS58}." >&2
+fi
 
 VAL1_SS58=$(jq -r '.validators[0].sr25519.ss58Address' "${KEYS_JSON}")
 VAL1_BABE=$(jq -r '.validators[0].sr25519.ss58Address' "${KEYS_JSON}")
@@ -93,7 +117,10 @@ rm -f "${SPEC_HUMAN}.tmp"
 echo "⚙️  Step 3: Compiling canonical raw genesis spec (chainspec-mainnet-raw.json)..."
 "${NODE_BIN}" build-spec --chain "${SPEC_HUMAN}" --raw --disable-default-bootnode > "${SPEC_RAW}"
 
-echo "🔒 Step 4: Computing Cryptographic Checksums..."
+echo "🔒 Step 4: Validating the generated spec (no dev accounts, no loopback bootnodes)..."
+"${ROOT_DIR}/scripts/deploy/validate_chain_spec.sh" "${SPEC_RAW}"
+
+echo "🔒 Step 5: Computing Cryptographic Checksums..."
 SHA_HUMAN=$(sha256sum "${SPEC_HUMAN}" | awk '{print $1}')
 SHA_RAW=$(sha256sum "${SPEC_RAW}" | awk '{print $1}')
 
@@ -107,4 +134,8 @@ echo "👑 Sovereign Root Sudo: ${ROOT_SS58}"
 echo "🏛️  Treasury Balance:    60,000,000 DALLA"
 echo "💼 Founder Reserve:     20,000,000 DALLA"
 echo "🛡️  4 Authorities:      Ceiba, Maya, Reef, Cayo (10,000,000 DALLA Total Stake)"
+echo ""
+echo "⚠️  BOOTNODES: none injected. Add the operator bootnode multiaddrs to"
+echo "   ${SPEC_HUMAN} (\"bootNodes\") and regenerate the raw spec before launching,"
+echo "   otherwise peers cannot discover the network."
 echo "=============================================================================="

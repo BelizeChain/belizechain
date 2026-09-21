@@ -50,7 +50,15 @@ pub mod pallet {
     pub type BalanceOf<T> =
         <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
+    /// On-chain storage version for this pallet.
+    ///
+    /// Bump this and register a migration in the runtime's `Migrations` tuple
+    /// whenever this pallet's storage layout changes.
+    pub const STORAGE_VERSION: frame_support::traits::StorageVersion =
+        frame_support::traits::StorageVersion::new(0);
+
     #[pallet::pallet]
+    #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
 
     /// Provider trait for Oracle pallet verification
@@ -769,8 +777,12 @@ pub mod pallet {
 
             let reason = SlashReason::from_u8(reason_code).ok_or(Error::<T>::InvalidSlashReason)?;
 
+            // An active record or a pending unbond both represent slashable stake.
+            // A validator who has left the set still owes penalties for offences
+            // committed while active (C-2).
             ensure!(
-                Validators::<T>::contains_key(&validator),
+                Validators::<T>::contains_key(&validator)
+                    || PendingUnbonds::<T>::contains_key(&validator),
                 Error::<T>::ValidatorNotFound
             );
 
@@ -780,6 +792,11 @@ pub mod pallet {
             // justice pallet opens a dispute and applies a cooling-off period; the slash
             // only executes if the mediator confirms wrongdoing.  Repeat offenders (any
             // prior slash on record) bypass this path and are slashed immediately.
+            // A validator already unbonding has no active record, so the
+            // first-offense escrow path below cannot compute a stake amount for
+            // it. Such a validator is slashed immediately instead: the justice
+            // cooling-off period would otherwise outlive the unbonding window
+            // and the penalty could never be collected.
             let current_slashes = SlashingSpans::<T>::get(&validator);
             if current_slashes == 0 && !T::JusticeProvider::has_pending_review(&validator) {
                 if let Some(validator_info) = Validators::<T>::get(&validator) {
@@ -850,9 +867,9 @@ pub mod pallet {
                 Error::<T>::InvalidComputationCommitment
             );
             // CONS-010: Commitment must be H(delta || who || block_number)
-            use sp_runtime::traits::Hash;
             #[cfg(not(feature = "runtime-benchmarks"))]
             {
+                use sp_runtime::traits::Hash;
                 let expected_commitment = T::Hashing::hash_of(&(
                     encrypted_delta.as_slice(),
                     &who,
@@ -1674,6 +1691,14 @@ pub mod pallet {
                 let slash_amount = slash_percentage * unbonding_stake;
                 let (imbalance, remaining) = T::Currency::slash(validator, slash_amount);
                 let actual_slashed = slash_amount.saturating_sub(remaining);
+                if !remaining.is_zero() {
+                    log::warn!(
+                        target: "staking",
+                        "slash_validator: partial slash on unbonding {:?}: requested={:?}, actual={:?} \
+                         (insufficient free balance) (CONS-031)",
+                        validator, slash_amount, actual_slashed
+                    );
+                }
                 drop(imbalance);
 
                 let new_stake = unbonding_stake.saturating_sub(actual_slashed);
@@ -1698,6 +1723,12 @@ pub mod pallet {
                     slash_amount: actual_slashed,
                     reason: reason.as_u8(),
                 });
+            } else {
+                // Neither an active validator record nor a pending unbond exists:
+                // there is no stake left to slash. Returning `Ok` here would report
+                // an economic penalty that never happened, so the caller gets an
+                // explicit error and surfaces it in the logs (CONS-031).
+                return Err(Error::<T>::ValidatorNotFound.into());
             }
 
             Ok(())
