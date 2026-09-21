@@ -274,6 +274,15 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     // Phase 2: bumped to 105 — align session rotation with BABE epoch changes.
     // Stage A: bumped to 106 — pallets/storage-proof added at index 38
     // (on-chain Merkle storage proof verification for Pakit).
+    // M-5: bumped to 107 — every pallet weight is now a benchmarked value, and
+    // three origin/behaviour fixes landed alongside it: the technical-council
+    // origin (`SignedTechnicalCouncilMember`) actually admits signed members,
+    // the oracle price feed can bootstrap past `InsufficientConsensus`, and
+    // `is_emergency_authority` reads the new NEMO registry instead of a KYC
+    // proxy. That registry adds `mesh::EmergencyAuthorities`,
+    // `mesh::EmergencyAuthorityCount`, `MaxEmergencyAuthorities` and the
+    // `add_/remove_emergency_authority` extrinsics — all `ValueQuery`-backed, so
+    // they read empty on upgrade and need no storage migration.
     spec_version: 107,
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,

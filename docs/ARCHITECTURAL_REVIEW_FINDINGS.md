@@ -1,5 +1,13 @@
 # BelizeChain Architectural Review — Findings & Execution Plan
 
+> **HISTORICAL SNAPSHOT — 2025-06-30.** This is a point-in-time review, not a
+> description of the current branch. Findings and effort estimates reflect the
+> code as it stood on the date below. Some have since been addressed (each
+> resolved item is marked inline with a `**Status: DONE.**` note); the rest
+> should be re-verified against the live tree before being acted on. When this
+> document disagrees with `Cargo.toml`, `runtime/src/lib.rs`, or the operations
+> docs, those are authoritative.
+
 **Date**: 2025-06-30  
 **Evaluator Role**: Principal Blockchain Architect (Permissioned DLT / Regulated Financial Infrastructure)  
 **Scope**: Full system architecture — runtime, 16 custom pallets, consensus, economic model, permissioning, governance, bridge, identity  
@@ -587,6 +595,13 @@ cargo build --release --features runtime-benchmarks
 This will replace all hand-estimated weights with measured values including proper proof_size (PoV) weights.
 
 **Effort**: 1–2 weeks (mostly automated)
+
+> **Status: DONE.** All 19 pallets now carry measured weights generated against the
+> `dev` chain (commit `b8887a2`). Tooling added since this review:
+> `scripts/bench_weights.sh <pallet>|--all` plus `templates/weights-template.hbs`
+> and `templates/weights-template-with-trait.hbs` for the two `WeightInfo`
+> ownership layouts. The workflow step that verifies this now runs on pull
+> requests, not only on ``belizechain`` pushes.
 
 ---
 
