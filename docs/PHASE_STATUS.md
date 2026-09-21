@@ -1,15 +1,16 @@
 # BelizeChain Phase Status
 
-> **Last Updated**: 2026-09-03
-> **Runtime**: `spec_version = 105`, `impl_version = 1`, `tx_version = 1`
+> **Last Updated**: 2026-09-21
+> **Runtime**: `spec_version = 107`, `impl_version = 1`, `tx_version = 1`
 > **SDK**: Polkadot SDK `stable2603` (rev `2e4dd0bc22366a5af820492528869a493b5a5208`)
 > **Network**: Ceiba testnet (`chain_id = belizechain_testnet`, SS58 prefix `1981`)
 
 ---
 
-## Custom Pallet Roster (18 pallets, runtime indexes 20–37)
+## Custom Pallet Roster (19 pallets, runtime indexes 20–38)
 
-All 18 custom pallets are implemented in the runtime and verified. Phases 4A, 4B, and 5C have been exercised with live extrinsics on the Ceiba testnet.
+All 19 custom pallets are implemented in the runtime. Phases 4A, 4B, and 5C
+have been exercised with live extrinsics on the Ceiba testnet.
 
 | Index | Pallet | Category | Status / Phase |
 |---|---|---|---|
@@ -31,9 +32,10 @@ All 18 custom pallets are implemented in the runtime and verified. Phases 4A, 4B
 | 35 | Justice | Governance | **Phase 4A (Verified on live testnet)** |
 | 36 | Whistleblower | Governance | **Phase 4B (Verified on live testnet)** |
 | 37 | Moderation | Governance | **Phase 5C (Verified on live testnet)** |
+| 38 | StorageProof | Infrastructure | In the runtime; present in live chain metadata |
 
 `pallet_contracts` lives at index 13 and is a Substrate-standard pallet; it is
-**not** counted in the 18 custom pallets.
+**not** counted in the 19 custom pallets.
 
 ---
 
