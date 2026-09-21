@@ -163,6 +163,45 @@ so it is **not** a regression from 105 → 107. It does mean any block-decoding 
 the UI (the explorer in particular) is broken against this chain regardless of spec
 version, and needs a newer polkadot-js.
 
+Which version fixes it, measured by decoding real blocks from this chain with each
+release installed in isolation:
+
+| `@polkadot/api` | block decoding |
+|-----------------|----------------|
+| 10.13.1 (current) | **FAIL** — `Unsupported unsigned extrinsic version 5` |
+| 12.6.2 | does not load (module resolution error on Node 24) |
+| 13.2.1 | **FAIL** — same error |
+| 14.3.1 | OK |
+| 15.0.1 | OK |
+| 16.5.6 | OK (current release) |
+
+The fix therefore landed in **14.x**. The blast radius is narrower than it first looks:
+only `getBlock` / `getBlockHash` are affected — `api.query`, `api.tx`,
+`api.rpc.chain.getHeader` and `api.query.system.events` all work fine on 10.13.1.
+`api.query` / `api.tx` appear in **51** files, while only **6** touch the block-decoding
+path:
+
+- `maya-wallet/src/services/blockchain.ts`
+- `blue-hole-portal/src/services/blockchain.ts`
+- `blue-hole-portal/src/lib/blockchain/hooks.ts`
+- `blue-hole-portal/src/hooks/useSystem.ts`
+- `blue-hole-portal/src/components/Dashboard.tsx`
+- `blue-hole-portal/src/services/fsc-exporter.ts`
+
+Aligned target versions (`ui` is an npm-workspaces monorepo, so this is one lockfile
+change affecting `shared`, `maya-wallet` and `blue-hole-portal`):
+
+| package | now | target |
+|---------|-----|--------|
+| `@polkadot/api` | 10.13.1 / 10.11.2 | ^16.5.6 |
+| `@polkadot/api-contract` | 10.13.1 | ^16.5.6 |
+| `@polkadot/extension-dapp` | ^0.46.6 | ^0.63.1 |
+| `@polkadot/extension-inject` | ^0.46.6 | ^0.63.1 |
+| `@polkadot/util` | ^12.6.2 | ^14.0.3 |
+| `@polkadot/util-crypto` | ^12.6.2 | ^14.0.3 |
+
+`@polkadot/api@16` requires Node `>=18` (workstation is on 24).
+
 ## Follow-up (not done, needs a decision)
 
 - **Rebuild and redeploy the node image.** The running container still uses the
@@ -170,8 +209,21 @@ version, and needs a newer polkadot-js.
   the chain is 107. The node correctly executes the on-chain WASM, but native and WASM
   are out of sync. Rebuilding the node against `b8887a2` (no `runtime-benchmarks`)
   restores parity. Requires a container restart — needs explicit approval.
-- **Seed the NEMO registry.** `EmergencyAuthorities` is empty, so emergency alerts only
-  work through the governance origin until authorities are added.
-- **UI polkadot-js upgrade.** See trap 2.
+- **UI polkadot-js upgrade.** 9 packages, 4 major versions, one workspace lockfile; a
+  scoped migration rather than a version bump. Full version table and the 6 affected
+  files are under trap 2 above. Minimum viable target is 14.x, current release is 16.5.6.
 - **Remove `pallet_sudo`** before opening the chain to external peers (deferred by
   operator decision on 2026-09-20; acceptable while the operator is the only user).
+
+## Done after the upgrade
+
+- **NEMO registry seeded (2026-09-21).** `EmergencyAuthorities` was empty, so signed
+  emergency alerts were impossible. Added the operator account
+  (`5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY`) via
+  `sudo.sudo(mesh.add_emergency_authority(...))` — `GovernanceOrigin` is
+  `EitherOfDiverse<EnsureRoot, EnsureProportionMoreThan<GovernanceCouncil, 1, 2>>`, and
+  `sudo.sudo` dispatches as `RawOrigin::Root`, which satisfies the `EnsureRoot` arm.
+  Verified by re-reading chain state: `EmergencyAuthorityCount` 0 → 1 and
+  `EmergencyAuthorities` reads `true`. This also exercised the new spec-107 storage and
+  extrinsic against the live chain. Revoke with `remove_emergency_authority`, which
+  deliberately has no guard against emptying the registry.
