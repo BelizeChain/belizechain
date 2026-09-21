@@ -236,8 +236,13 @@ archives (339 MB, 4 archives, 7-day retention).
    retired to stop it competing with the timer.
 
    **Standing risk:** because `/opt/belizechain` is not a checkout, every change
-   in `infra/deploy/` must be copied to the host by hand and nothing detects
-   drift. Either make the host a checkout or add a deployed-vs-git hash check.
+   in `infra/deploy/` must be copied to the host by hand. **Now detected:**
+   `infra/deploy/check-host-drift.sh` hashes every mapped file against the host
+   and fails on unexpected drift, and `infra/deploy/HOST_STATE_AND_DRIFT.md`
+   records the deliberate host-specific overrides so real drift still surfaces.
+   Verified 2026-09-21: 17 files in sync, 0 unexpected drift. Running the host
+   as a checkout remains an alternative, but the check closes the blind spot
+   without moving the stack.
 5. ~~Add a tracked generation path for the testnet spec.~~ **DONE** —
    `scripts/generate-testnet-spec.sh` embeds the freshly built runtime, warns when
    the wasm is older than the sources, and with `--verify` boots a throwaway chain
