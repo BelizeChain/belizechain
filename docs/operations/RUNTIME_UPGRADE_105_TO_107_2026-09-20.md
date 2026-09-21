@@ -161,7 +161,7 @@ Unsupported unsigned extrinsic version 5
 This fails identically on pre-upgrade blocks (#37905, #37935) and post-upgrade blocks,
 so it is **not** a regression from 105 → 107. It does mean any block-decoding feature in
 the UI (the explorer in particular) is broken against this chain regardless of spec
-version, and needs a newer polkadot-js.
+version, and needs a newer polkadot-js. **Fixed — see "Done after the upgrade".**
 
 Which version fixes it, measured by decoding real blocks from this chain with each
 release installed in isolation:
@@ -207,11 +207,8 @@ change affecting `shared`, `maya-wallet` and `blue-hole-portal`):
 - **Rebuild and redeploy the node image.** The running container still uses the
   `6c447f1-epochfix-spec105-20260502` binary, whose *native* runtime is spec 105 while
   the chain is 107. The node correctly executes the on-chain WASM, but native and WASM
-  are out of sync. Rebuilding the node against `b8887a2` (no `runtime-benchmarks`)
-  restores parity. Requires a container restart — needs explicit approval.
-- **UI polkadot-js upgrade.** 9 packages, 4 major versions, one workspace lockfile; a
-  scoped migration rather than a version bump. Full version table and the 6 affected
-  files are under trap 2 above. Minimum viable target is 14.x, current release is 16.5.6.
+  are out of sync. Rebuilding the node against `a32223f` (no `runtime-benchmarks`)
+  restores parity. Requires a container restart.
 - **Remove `pallet_sudo`** before opening the chain to external peers (deferred by
   operator decision on 2026-09-20; acceptable while the operator is the only user).
 
@@ -227,3 +224,28 @@ change affecting `shared`, `maya-wallet` and `blue-hole-portal`):
   `EmergencyAuthorities` reads `true`. This also exercised the new spec-107 storage and
   extrinsic against the live chain. Revoke with `remove_emergency_authority`, which
   deliberately has no guard against emptying the registry.
+- **UI polkadot-js standardized (2026-09-21, `ui@4ebeb5d`).** Fixed as version drift
+  rather than by patching the broken call sites, because the drift *was* the root cause:
+  the workspace carried three different `@polkadot/api` ranges (10.13.1 in maya-wallet,
+  10.11.2 in shared and blue-hole-portal) and imported `@polkadot/types`,
+  `@polkadot/types-codec` and `@polkadot/keyring` without declaring them at all. Two
+  copies of the registry in one app is a correctness hazard in itself — two metadata
+  decoders that can disagree about the same chain data.
+
+  Every `@polkadot` package now resolves to a single version, verified against the
+  lockfile with zero duplicates: `api` / `api-contract` / `types` / `types-codec`
+  `16.5.6`, `extension-dapp` / `extension-inject` `0.63.1`, `util` / `util-crypto` /
+  `keyring` / `networks` `14.0.3`. A root-level `overrides` block pins the family so a
+  future dependency cannot silently reintroduce a second copy.
+
+  The lockfile needed a clean re-resolution: npm initially rewrote only the declared
+  ranges and left the resolved tree on 10.x, which is precisely the inconsistent state
+  being removed.
+
+  Verified: zero duplicates; all three workspaces pass `tsc --noEmit`; `shared` builds
+  (ESM + CJS + DTS); `npm ls` resolves one version tree-wide; `npm ci --dry-run` passes,
+  which is the install path both Dockerfiles use. `getBlock` now decodes live blocks
+  from Ceiba — the check that was failing before.
+
+  Also cleared ~2.9 GB of `.next` build caches that had been produced against polkadot
+  10.x, so no stale bundle can survive the switch.
