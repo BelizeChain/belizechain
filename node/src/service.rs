@@ -320,6 +320,24 @@ pub fn new_full<
 
         let slot_duration = babe_link.config().slot_duration();
 
+        // GUARD-1/GUARD-2: a validator that cannot author must never do so
+        // silently -- see `authoring_guard` for the 2026-09-21 Ceiba incident.
+        crate::authoring_guard::log_authoring_preflight(
+            &client,
+            &keystore_container.keystore(),
+            role,
+        );
+        task_manager.spawn_handle().spawn(
+            "authoring-watchdog",
+            None,
+            crate::authoring_guard::authoring_watchdog(
+                client.clone(),
+                keystore_container.keystore(),
+                role,
+                slot_duration.as_duration(),
+            ),
+        );
+
         let babe = sc_consensus_babe::start_babe(sc_consensus_babe::BabeParams {
             keystore: keystore_container.keystore(),
             client: client.clone(),

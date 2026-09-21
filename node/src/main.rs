@@ -11,6 +11,7 @@ use belizechain_runtime::{self, opaque::Block};
 use sc_cli::{ChainSpec, SubstrateCli};
 use sc_service::PartialComponents;
 
+mod authoring_guard;
 mod block_announce_validator;
 mod chain_spec;
 mod chain_spec_configs;
