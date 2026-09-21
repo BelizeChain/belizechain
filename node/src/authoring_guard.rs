@@ -93,7 +93,11 @@ pub fn key_status(client: &Arc<FullClient>, keystore: &Arc<dyn Keystore>) -> Key
         .count();
     let grandpa_matched = grandpa_on_chain
         .iter()
-        .filter(|(id, _)| local_grandpa.iter().any(|key| key.as_slice() == id.as_slice()))
+        .filter(|(id, _)| {
+            local_grandpa
+                .iter()
+                .any(|key| key.as_slice() == id.as_slice())
+        })
         .count();
 
     KeyStatus {
