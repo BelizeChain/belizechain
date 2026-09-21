@@ -161,12 +161,48 @@ The signer key lives in `/opt/belizechain/.env` as `NAWAL_KEYPAIR_URI` (a
 `Government` identity, so the Nawal identity is id 1. Functional behaviour is
 identical; recreate the `Government` identity explicitly if it is wanted.
 
+### Federated-learning round (PoUW evidence restored)
+
+`scripts/run_fl_round.py` (nawal-ai) trains a sovereign `NawalTransformer` from
+scratch on the Belize corpus with the real Belize tokenizer, then submits the
+proof. Measured run:
+
+| Metric | Value |
+|---|---|
+| Parameters | 53,316,480 — sized to the tokenizer's real 12,137-token vocabulary |
+| Steps / tokens | 25 steps, 5,969 tokens |
+| Loss | 12.3124 → 10.0127 |
+| Duration | 57 s |
+| Model hash | `0x6ffe48883ad630841219a540bedd8af5aa98a33b5f554f974802b708fa1f927e` |
+
+On-chain result, all read back from the chain:
+
+| Evidence | Value |
+|---|---|
+| `ActiveFLTask` | taskId 1, modelHash = the hash above (assigned via sudo with `scripts/assign-fl-task.js`) |
+| `ModelSubmissions[signer]` | present — validator `0xce2f6ecf…b902d054`, delta = the model hash, `submitted_at` 222 |
+| `Validators[signer]` | `lastFlContribution` 222, `totalContributions` 1, scores computed by the pallet |
+| `EpochRewards[0]` | **0.46 DALLA** minted; signer balance rose by exactly 460000000000 |
+
+**CORRECTION to an earlier reading.** `Staking.ModelSubmissions` does not persist
+across an epoch: `distribute_rewards` calls `ModelSubmissions::clear(...)` as it
+advances the epoch. The empty `ModelSubmissions` seen in the pre-reset backup at
+block 39013 was therefore **normal life-cycle, not corruption** — the A1 round had
+simply been rewarded already. This round reproduced that sequence exactly
+(submission visible, then cleared on the epoch advance), and the durable evidence
+that survives is `Validators[signer]` plus `EpochRewards`.
+
+Also note `assign_fl_task` clears `ModelSubmissions` too, so assigning a new task
+invalidates the previous one's submissions.
+
 ### Not restored
 
-`Staking.ModelSubmissions` read **0 in the pre-reset backup at block 39013**, so
-the A1 federated-learning round's on-chain evidence was already gone before the
-reset — it was not lost to this operation. Re-run one FL round against the new
-chain to restore it.
+The A1 round's *specific* numbers are gone regardless — `ModelSubmissions` was
+already empty before the reset (see the correction above). What is restored is the
+evidence that the mechanism works end to end on this chain. The original A1 driver
+script no longer exists, so `scripts/run_fl_round.py` is a reconstruction, not a
+re-run of the same code; the model is also 53.3M parameters rather than 84.3M,
+because it is sized to the tokenizer's real vocabulary.
 
 ## 4. Cleanup performed
 
@@ -181,7 +217,7 @@ archives (339 MB, 4 archives, 7-day retention).
 
 ## 5. Follow-ups
 
-1. Re-run one FL round to restore the on-chain PoUW evidence.
+1. ~~Re-run one FL round to restore the on-chain PoUW evidence.~~ **DONE** — see above.
 2. Consider whether the `Government` identity should exist on the fresh chain.
 3. `chain-specs/chain-spec-production.json` carries **no** embedded code
    (`code bytes: none`) and `generated_specs/chainspec-mainnet.json` still embeds
@@ -189,10 +225,25 @@ archives (339 MB, 4 archives, 7-day retention).
    touched here; mainnet scope was explicitly out of this task.
 4. The next nightly backup run should be checked for the new
    `OK: node authoring resumed` line, confirming the consistency fix works.
-5. **`testnet-spec.json` is gitignored by design** (`.gitignore:25`, "operator-managed
-   on the host") and had silently drifted to pin the spec-**105** runtime. That
-   drift is what forced a second upgrade pass on every fresh chain. There is no
-   tracked generation path for the testnet spec, only `generate-mainnet-spec.sh`.
-   Add one (running `scripts/set-spec-code.py` against the freshly built
-   `belizechain_runtime.compact.compressed.wasm` after a release build) so the
-   spec can never again be born behind the runtime.
+5. ~~Add a tracked generation path for the testnet spec.~~ **DONE** —
+   `scripts/generate-testnet-spec.sh` embeds the freshly built runtime, warns when
+   the wasm is older than the sources, and with `--verify` boots a throwaway chain
+   to confirm the spec comes up at the version the sources declare.
+
+   Both directions are verified: it reports `OK: … is born at spec 107` with the
+   current runtime, and fails with `FAILED: the spec boots at spec 105 but the
+   sources declare 107` when handed the old spec-105 wasm. That is precisely the
+   drift that shipped unnoticed, because `testnet-spec.json` is gitignored and
+   nothing else ever looked at it.
+
+   Remaining gap: nothing runs this automatically. A release step or a pre-deploy
+   check that runs `generate-testnet-spec.sh --verify` would make the drift
+   impossible rather than merely detectable.
+6. `RocksDB` inspection tooling (`ldb`, `sst_dump`) is absent from both the node
+   image and the Ceiba host. A damaged DB therefore cannot be examined on the
+   machine where it broke. Worth adding to the image: the 2026-09-21 corruption
+   was undiagnosable partly for this reason.
+7. The `.corrupted-cf-*` directory removed in cleanup showed this CF-corruption
+   class also occurred on **2026-08-26**, roughly four weeks earlier. Two
+   occurrences points at a recurring trigger rather than a one-off, and the
+   evidence from both is now gone. Worth treating as a live risk.
