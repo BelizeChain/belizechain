@@ -223,8 +223,21 @@ archives (339 MB, 4 archives, 7-day retention).
    (`code bytes: none`) and `generated_specs/chainspec-mainnet.json` still embeds
    a **9,335,011-byte** runtime — both need review before mainnet work. Not
    touched here; mainnet scope was explicitly out of this task.
-4. The next nightly backup run should be checked for the new
-   `OK: node authoring resumed` line, confirming the consistency fix works.
+4. ~~Check the next nightly backup run for the new `OK: node authoring
+   resumed` line.~~ **DONE — and it exposed a deployment gap.** The consistency
+   fix was committed to git but had **never reached the host**: `/opt/belizechain`
+   is not a git checkout, and the deployed `backup-chain.sh` was still the
+   pre-fix version (mtime 2026-09-17 19:11), still tarring a running RocksDB.
+   The fixed script plus `verify-chain-backup.sh` are now installed on Ceiba;
+   the installed copy was run in place as the timer runs it (10 s downtime,
+   `block 797 -> 799`) and its archive was independently verified as restorable
+   (`PASS — archive is restorable and authoring (block 797 -> 799)`). A redundant
+   weekly cron that live-tarred the chain into `/data/chain-backups/` has been
+   retired to stop it competing with the timer.
+
+   **Standing risk:** because `/opt/belizechain` is not a checkout, every change
+   in `infra/deploy/` must be copied to the host by hand and nothing detects
+   drift. Either make the host a checkout or add a deployed-vs-git hash check.
 5. ~~Add a tracked generation path for the testnet spec.~~ **DONE** —
    `scripts/generate-testnet-spec.sh` embeds the freshly built runtime, warns when
    the wasm is older than the sources, and with `--verify` boots a throwaway chain
@@ -239,11 +252,46 @@ archives (339 MB, 4 archives, 7-day retention).
    Remaining gap: nothing runs this automatically. A release step or a pre-deploy
    check that runs `generate-testnet-spec.sh --verify` would make the drift
    impossible rather than merely detectable.
-6. `RocksDB` inspection tooling (`ldb`, `sst_dump`) is absent from both the node
-   image and the Ceiba host. A damaged DB therefore cannot be examined on the
-   machine where it broke. Worth adding to the image: the 2026-09-21 corruption
-   was undiagnosable partly for this reason.
+6. ~~Add `RocksDB` inspection tooling (`ldb`, `sst_dump`) to the image.~~
+   **REJECTED — it would not have helped.** The stall lived *above* RocksDB, in
+   the consensus client's slot-claim path; the SST files were never implicated.
+   `ldb`/`sst_dump` must additionally match the node's embedded RocksDB build or
+   they produce misleading output on the exact failure you are confused by.
+   `verify-chain-backup.sh` answers the question that actually matters — *is this
+   archive usable?* — in about a minute. Revisit only if a DB fails while the
+   archive verifier reports it as good.
 7. The `.corrupted-cf-*` directory removed in cleanup showed this CF-corruption
    class also occurred on **2026-08-26**, roughly four weeks earlier. Two
    occurrences points at a recurring trigger rather than a one-off, and the
-   evidence from both is now gone. Worth treating as a live risk.
+   evidence from both is now gone. **Still unattributed, and deliberately not
+   blamed on hardware:** the 2026-08-26 event predates the kernel now under
+   suspicion, so no single cause explains both. Treat as a live risk.
+8. **Kernel `BAD_PAGE` on Ceiba — observation window open.** Kernel
+   `7.0.0-31-generic` produced 15,866 `BUG: Bad page map` events (taint 544),
+   all one page of one process (`postgres`), which stayed healthy throughout;
+   the node never appeared in a single event. RAM had already passed a full
+   memtester soak. The box has been booted into `6.8.0-110-generic` via a
+   one-time `grub-reboot`, and is clean so far. **This is not yet a result:** on
+   the old kernel the first event took **28.5 hours** to appear (boot
+   `2026-09-18T22:54:59Z`, first event `2026-09-20T03:24:07Z`), so a short clean
+   window proves nothing. Needs 24-48 h of observation:
+
+   ```
+   ssh wicked@ceiba 'uname -r; cat /proc/sys/kernel/tainted; \
+     sudo journalctl -k -b | grep -c "Bad page map"'
+   ```
+
+   **Reversion hazard:** the one-time entry is consumed and `GRUB_DEFAULT=0` was
+   never changed, so the next power cycle returns the host to `7.0.0-31`. If the
+   window closes clean, making `6.8.0-110` the permanent default is a separate
+   boot-config change and has *not* been made.
+9. ~~Explain why a 12-hour-old archive failed to author.~~ **CORRECTED — the
+   premise was wrong.** That archive was taken at block 39013, i.e. it was a
+   snapshot of the **already-broken pre-reset chain**, so its failure to author
+   is expected and demonstrates nothing about archive age. The earlier
+   "12-hour" hypothesis was a confound and should not be relied on.
+10. **Dependabot on `nawal-ai` is blocked upstream.** `flwr 1.37.0` — the latest
+    release — pins `cryptography>=46.0.7,<47.0.0`, so the patched 48/49.x cannot
+    be adopted and a naive merge of the alert would break the build. Our usage
+    (`blockchain/mesh_network.py`) touches only stable APIs, so it is a safe bump
+    the moment `flwr` relaxes. Document rather than force.
