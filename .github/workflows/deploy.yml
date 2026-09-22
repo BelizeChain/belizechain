@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@1.90.0
         with:
           toolchain: "1.90.0"
           targets: wasm32-unknown-unknown
@@ -65,7 +65,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@1.90.0
         with:
           toolchain: "1.90.0"
           targets: wasm32-unknown-unknown
@@ -191,7 +191,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@1.90.0
         with:
           toolchain: "1.90.0"
           targets: wasm32-unknown-unknown
@@ -240,7 +240,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@1.90.0
         with:
           toolchain: "1.90.0"
           targets: wasm32-unknown-unknown,wasm32v1-none
