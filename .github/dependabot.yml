@@ -33,6 +33,12 @@ updates:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 5
+    # This action's ref IS the Rust toolchain version, not an action version. Dependabot
+    # reads `@1.90.0` as a semver and proposes e.g. `1.120.0`, which would silently swap
+    # the compiler for every build. Confirmed live in gem#6: all 10 contract tests failed
+    # in 4-7s. Bumping Rust is a deliberate change with its own CI run, not an automated one.
+    ignore:
+      - dependency-name: "dtolnay/rust-toolchain"
     labels:
       - "dependencies"
       - "github-actions"
