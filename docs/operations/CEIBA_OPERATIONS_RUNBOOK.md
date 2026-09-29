@@ -10,19 +10,36 @@ Scope: BelizeChain self-hosted runtime on Ceiba
 
 ## Runtime Baseline
 
-Dated baseline snapshot:
+Current chain identity (2026-09-29):
+[EMPTY_EPOCH_STALL_AND_REGENESIS_2026-09-29.md](EMPTY_EPOCH_STALL_AND_REGENESIS_2026-09-29.md).
+Dated baseline snapshots:
+[CEIBA_BASELINE_2026-05-02.md](CEIBA_BASELINE_2026-05-02.md) (superseded),
 [CEIBA_BASELINE_2026-04-29.md](CEIBA_BASELINE_2026-04-29.md).
 
 - Runtime: Docker Compose stack in `/opt/belizechain`
 - Core container: `ceiba-node`
+- Node image: `belizechain/ceiba-node:509830c-emptyauth-20260929`
+- Genesis: `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef`
+- Epoch: `BabeEpochDuration = 300` slots (~30 min) via the `testnet-fast-epoch`
+  build feature. The default build keeps 14,400 slots (~24 h), which is the
+  mainnet value; 300 is a testnet convenience for observing rotations.
 - Active chain spec: `/data/chain/testnet-spec.json`
   (operator-managed on the host; **not tracked in git** since 2026-09-20 because it
   carries the live sudo/session keys — see RULE 4 in [TESTNET_ONLY_RULE_2026-09-18.md](TESTNET_ONLY_RULE_2026-09-18.md))
 - Active chain data: `/data/chain/chains/belizechain_testnet`
-- Command shape: `belizechain-node --chain /data/chain/testnet-spec.json --base-path /data/chain --port 30333 --rpc-port 9944 --prometheus-port 9615 --prometheus-external --rpc-cors all --unsafe-rpc-external --rpc-methods Safe --name Ceiba-Node-1 --validator`
+- Command shape: `belizechain-node --chain /data/chain/testnet-spec.json --base-path /data/chain --port 30333 --rpc-port 9944 --prometheus-port 9615 --prometheus-external --rpc-cors all --unsafe-rpc-external --rpc-methods Safe --name Ceiba-Node-1 --validator --force-authoring`
+  (`--force-authoring` is REQUIRED for Ceiba's single-node-before-peers state;
+  the libp2p `--node-key`/`--node-key-file` is supplied from the host environment
+  and is deliberately not recorded here)
 - P2P: 30333 (public)
 - RPC: 9944 (bound to Ceiba's Tailscale address)
 - Prometheus: 9615 (bound to Ceiba's Tailscale address)
+
+Health checks worth running after any restart or re-genesis:
+`scripts/verify_epoch_config.py <rpc-url> <expected-duration>` — asserts the
+on-chain BABE authority set is **non-empty**. An empty set is unrecoverable and
+is what stalled the chain on 2026-09-23; it is worth checking on every boot
+rather than discovering days later from a silent `Idle` log.
 
 Validator mode requires `--unsafe-rpc-external` instead of `--rpc-external`.
 Keep `--rpc-methods Safe` and the host binding on Ceiba's Tailscale address.
@@ -334,4 +351,56 @@ docker compose restart nginx
   - `edge-node`: Healthy, peering (1 peer), authoring blocks.
   - Reverse proxy `/rpc` (Nginx): Functional and responding to JSON-RPC requests.
   - Web stack: UI (`/`), `/health`, `/api/nawal/health`, `/api/kinich/health`, and `/api/pakit/health` all returning HTTP 200.
+
+## Ops Log — 2026-09-29: Empty-Authority Epoch Stall And Re-Genesis
+
+Full write-up: [EMPTY_EPOCH_STALL_AND_REGENESIS_2026-09-29.md](EMPTY_EPOCH_STALL_AND_REGENESIS_2026-09-29.md).
+
+### What happened
+- Block production stopped at **#28791 on 2026-09-23 16:02:36** and did not resume
+  for ~6 days. Nothing crashed; the log simply went silent (`💤 Idle`).
+- Cause: a validator in `Staking::Validators` (`0xce2f6ecf…b902d054`, the Nawal AI
+  signer) had **no session keys**. `pallet_session` silently dropped it while
+  building the queued set, leaving it **empty**; BABE then announced a
+  `NextEpochData` digest containing **zero authorities**. Past the end of that
+  epoch no slot was claimable, so no block could be produced, so the epoch could
+  never advance. **Unrecoverable in place**, and no backup predated the damage.
+- Restarting did not help and could not — the client rebuilds its epoch tree from
+  the same on-chain digest.
+
+### What was done
+- Fixed the runtime: `BelizeSessionManager::new_session` now filters to validators
+  holding session keys and falls back to the current authority set, making an
+  empty queued set unreachable. Validator entry paths gained a session-key check.
+- Re-genesis via `scripts/regenesis-ceiba-emptyauth.sh`: new spec
+  (`generate-testnet-spec.sh --verify` → born at spec 107), new image, wiped only
+  `chains/belizechain_testnet/db` and `network/`. **Keystore preserved.**
+- Verified at the exact failure point: the epoch-change digest now carries
+  **1 authority (74 bytes)** where the dead chain had **0 (34 bytes)**, and a live
+  session rotation was observed (epoch 0 → 1 at block #302) with the chain
+  continuing to author through it.
+
+### Current chain
+- Image `belizechain/ceiba-node:509830c-emptyauth-20260929`
+- Genesis `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef`
+- Epoch 300 slots (`testnet-fast-epoch`)
+- Forensic backup of the stalled database:
+  `/data/regenesis-backup-20260929-115324/`
+
+### Pitfalls hit (and rules of thumb)
+- **`ceiba-nawal` does not retry its chain connection.** It latched
+  `blockchain_connected: false` at startup and logged nothing but health checks for
+  six days; it needed a manual restart. Any chain outage strands it — expect to
+  restart dependents after a chain recovery.
+- **A `Dockerfile.runtime` start failure can be a permissions problem wearing a
+  "missing file" costume.** `scp` drops the execute bit, `COPY` preserves the
+  source mode, and the result is `exec: "belizechain-node": executable file not
+  found in $PATH` from a cleanly built image. Verify with
+  `docker run --rm --entrypoint /bin/sh <image> -c '<bin> --version'`.
+- **Two operational lessons worth remembering:** a restart cannot fix state that
+  the consensus client reads from the authoritative chain, and a backup is only a
+  rollback asset if its capture time predates the failure. Check the failure time
+  against the archive before promising a rollback.
+- `ceiba-explorer` is Polkadot.js Apps (a client-side UI), not an indexer — a
+  re-genesis requires nothing of it.
 

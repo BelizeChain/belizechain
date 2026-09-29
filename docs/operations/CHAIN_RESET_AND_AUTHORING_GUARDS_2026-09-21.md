@@ -1,5 +1,14 @@
 # Chain Reset, Authoring Guards, and Born-at-107 Genesis (Ceiba, 2026-09-21)
 
+> **SUPERSEDED IN PART — the chain this document describes is dead.**
+> Genesis `0x631fb936…` stalled at block #28791 on 2026-09-23 and never resumed;
+> it was re-genesised on 2026-09-29 as `0xb2664568…`. See
+> [EMPTY_EPOCH_STALL_AND_REGENESIS_2026-09-29.md](EMPTY_EPOCH_STALL_AND_REGENESIS_2026-09-29.md).
+> The authoring-guard work written up here **did its job** — it detected and
+> diagnosed the later stall — but the §A1 Nawal signer registration procedure
+> does not currently run against the new chain (see §5 of the new document).
+> Kept as the record of that reset and of the guards it introduced.
+
 **Status:** Executed and verified. The Ceiba testnet runs a fresh chain that is
 **spec 107 from genesis**, with a validator that can no longer stall silently.
 This is a **testnet-only** operation under

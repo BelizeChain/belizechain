@@ -1,5 +1,14 @@
 # Ceiba Baseline - 2026-05-02
 
+> **SUPERSEDED — historical snapshot. Do not treat any value below as current.**
+> Captured 2026-05-02 22:22-22:23 UTC. The chain described here was re-genesised
+> twice afterwards (2026-09-21 and 2026-09-29) and no longer exists; the image and
+> genesis below are not the live ones. For the current chain see
+> [EMPTY_EPOCH_STALL_AND_REGENESIS_2026-09-29.md](EMPTY_EPOCH_STALL_AND_REGENESIS_2026-09-29.md)
+> and the Runtime Baseline section of [CEIBA_OPERATIONS_RUNBOOK.md](CEIBA_OPERATIONS_RUNBOOK.md).
+> Values are left as captured rather than rewritten, so the snapshot keeps
+> recording what was actually observed at the time.
+
 Status: Active Phase 2 post-recovery stabilization baseline
 Host: `ceiba` at `100.81.45.25` over Tailscale
 Compose path: `/opt/belizechain`

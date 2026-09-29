@@ -8,7 +8,7 @@
 
 ## Architecture
 - Core workspace: `node/`, `runtime/`, `pallets/`, `scripts/`, `tests/`, `docs/`
-- 18 Belize-specific pallets in `pallets/` plus shared `pallets/common`: belizex, bns, community, compliance, consensus, economy, governance, identity, interoperability, justice, landledger, mesh, moderation, oracle, payroll, quantum, staking, whistleblower
+- 19 Belize-specific pallets in `pallets/` plus shared `pallets/common`: belizex, bns, community, compliance, consensus, economy, governance, identity, interoperability, justice, landledger, mesh, moderation, oracle, payroll, quantum, staking, storage-proof, whistleblower
 - Runtime topology source of truth: `Cargo.toml` workspace members plus `runtime/src/lib.rs` `construct_runtime!`
 - Substrate runtime in `runtime/src/lib.rs`
 - Node binary in `node/src/`
@@ -18,7 +18,9 @@
 ## Production Deployment (LIVE)
 - **Primary Host**: `ceiba` (Ubuntu 24.04 LTS)
 - **Runtime**: Docker Compose at `/opt/belizechain` (not `--dev`, not raw systemd)
-- **Live Image**: `belizechain/ceiba-node:6c447f1-epochfix-spec105-20260502`
+- **Live Image**: `belizechain/ceiba-node:509830c-emptyauth-20260929`
+- **Live Genesis**: `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef` — re-genesised 2026-09-29 after the empty-authority stall; the previous chain (`0x631fb936…`) is dead and superseded
+- **Live Epoch**: `BabeEpochDuration = 300` slots (~30 min). This is the **`testnet-fast-epoch` build feature**, used so a session rotation can be observed in minutes; the default build keeps 14,400 slots (~24 h) for mainnet
 - **Primary Access**: `ssh wicked@ceiba` or `ssh wicked@100.81.45.25` (Tailscale; may require browser auth)
 - **LAN Fallback**: `ssh wicked@10.0.0.222` (wired; run `ssh-keyscan 10.0.0.222 >> ~/.ssh/known_hosts` first if unseen)
 - **Node Args**: `--chain /data/chain/testnet-spec.json --base-path /data/chain --rpc-port 9944 --prometheus-port 9615`
@@ -42,8 +44,9 @@
 ## Current Task Context
 - Phase 1 COMPLETE: Ceiba host hardening + BelizeChain node running via Tailscale
 - Phase 2 COMPLETE (2026-05-02): Pakit, Nawal, Kinich, GEM contracts, and Blue Hole Portal UI deployed and verified on Ceiba; chain recovered from epoch-rotation stall and progressing
+- **2026-09-29: chain re-genesised** after a 6-day stall caused by a zero-authority BABE epoch. See `docs/operations/EMPTY_EPOCH_STALL_AND_REGENESIS_2026-09-29.md` — it is the authoritative record for the current chain, and it supersedes the 2026-09-21 reset in part.
 - Phase 3 IN PROGRESS: Productionize observability, backup/restore drills, security hygiene queue (Dependabot backlog), and host-level automation
-- Authoritative live ops docs: `docs/operations/CEIBA_BASELINE_2026-05-02.md`, `CEIBA_OPERATIONS_RUNBOOK.md`, `CEIBA_BACKUP_RESTORE_DRILL_2026-05-02.md`, and `docs/deployment/PHASE2_CEIBA_SERVICES_PLAN.md`
+- Authoritative live ops docs: `docs/operations/EMPTY_EPOCH_STALL_AND_REGENESIS_2026-09-29.md` (current chain), `CEIBA_OPERATIONS_RUNBOOK.md` (node ops), `CEIBA_BASELINE_2026-05-02.md` (superseded snapshot), and `docs/deployment/PHASE2_CEIBA_SERVICES_PLAN.md`
 
 ## Dev Commands
 ```bash
