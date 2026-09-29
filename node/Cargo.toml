@@ -143,6 +143,9 @@ runtime-benchmarks = [
     "belizechain-runtime/runtime-benchmarks",
 ]
 
+# Opt-in short BABE epoch for testnet verification builds; see the runtime manifest.
+testnet-fast-epoch = ["belizechain-runtime/testnet-fast-epoch"]
+
 try-runtime = [
     "frame-try-runtime/try-runtime",
     "frame-executive/try-runtime",

@@ -302,6 +302,20 @@ mod tests {
         });
     }
 
+    /// The 24 h epoch is the shipping default; only the explicit
+    /// `testnet-fast-epoch` feature may shorten it. This guards against the
+    /// testnet-only value leaking into a default build and changing mainnet
+    /// consensus timing.
+    #[test]
+    fn babe_epoch_duration_respects_build_feature() {
+        let expected = if cfg!(feature = "testnet-fast-epoch") {
+            300
+        } else {
+            14_400
+        };
+        assert_eq!(BabeEpochDuration::get(), expected);
+    }
+
     /// Every Belize pallet must declare a storage version, and on a fresh chain the
     /// in-code version must equal the on-chain version.
     ///
@@ -445,7 +459,16 @@ impl frame_system::Config for Runtime {
 parameter_types! {
     /// BABE epoch duration in slots (= blocks at 6 s/slot).
     /// Aligned with SessionPeriod so epoch boundary = session boundary.
-    pub const BabeEpochDuration: u64 = 14_400; // ~24 hours
+    ///
+    /// A full epoch is ~24 h. The `testnet-fast-epoch` feature shortens it to
+    /// ~30 min so a session rotation can actually be observed on a testnet;
+    /// verifying one otherwise takes a day. The feature is off by default so the
+    /// mainnet epoch length cannot change by accident.
+    pub const BabeEpochDuration: u64 = if cfg!(feature = "testnet-fast-epoch") {
+        300 // ~30 min at 6 s/slot
+    } else {
+        14_400 // ~24 hours
+    };
     /// Expected block time in milliseconds.
     pub const ExpectedBlockTime: u64 = 6000; // 6 seconds
     /// How long equivocation reports remain valid (10 epochs).

@@ -183,6 +183,17 @@ runtime-benchmarks = [
     "sp-runtime/runtime-benchmarks",
 ]
 
+# Opt-in short BABE epoch for testnet verification builds.
+#
+# The epoch boundary is where a chain stops dead if its queued authority set is
+# empty (see `BelizeSessionManager::new_session`). Proving a rotation works would
+# otherwise take a full `BabeEpochDuration` of 14_400 slots (~24 h). This feature
+# shortens the epoch so a rotation can be observed in minutes.
+#
+# OFF by default: the default build keeps the 24 h epoch, so this cannot silently
+# change mainnet consensus timing.
+testnet-fast-epoch = []
+
 try-runtime = [
     "frame-try-runtime/try-runtime",
     "frame-executive/try-runtime",
