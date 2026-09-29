@@ -48,7 +48,7 @@ impl OracleVerifier<u64> for MockIdentity {
 }
 
 // Mock session-key registry: every account has session keys except the one
-// reserved to exercise the keyless-validator rejection path.
+// reserved to exercise the keyless-validator warning path.
 pub struct MockSessionKeys;
 impl pallet_belize_staking::SessionKeyRegistry<u64> for MockSessionKeys {
     fn has_session_keys(account: &u64) -> bool {

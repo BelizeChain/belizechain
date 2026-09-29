@@ -142,12 +142,14 @@ pub mod pallet {
         #[pallet::constant]
         type MaxDomainContributionsPerEpoch: Get<u32>;
 
-        /// Registry used to reject validators that cannot author blocks.
+        /// Registry used to report validators that cannot author blocks.
         ///
         /// A validator whose session keys are absent is silently dropped from the
-        /// queued validator set by `pallet_session`. If that empties the set, BABE
-        /// announces a next epoch with **zero authorities** and block production
-        /// halts permanently, so a keyless account must never become a validator.
+        /// queued validator set by `pallet_session`, so it can never author. That is a
+        /// legitimate state — PoUW-only participants (for example the Nawal signer)
+        /// join to earn rewards without ever producing a block — so this registry
+        /// only powers a warning at join time. Keeping the authority set non-empty is
+        /// `BelizeSessionManager::new_session`'s job, not this pallet's.
         type SessionKeys: SessionKeyRegistry<Self::AccountId>;
     }
 
@@ -166,9 +168,10 @@ pub mod pallet {
 
     /// Session-key registry provider trait for Staking pallet.
     ///
-    /// Lets the staking pallet confirm that a joining validator has already
-    /// registered the session keys `pallet_session` requires, before accepting it
-    /// into `Validators`.
+    /// Lets the staking pallet report whether a joining validator is able to
+    /// author. An account without session keys is still accepted into
+    /// `Validators`: it simply never becomes a consensus authority, so it earns
+    /// PoUW rewards without producing blocks.
     pub trait SessionKeyRegistry<AccountId> {
         /// Returns `true` if `account` has session keys registered.
         fn has_session_keys(account: &AccountId) -> bool;
@@ -540,8 +543,6 @@ pub mod pallet {
         InvalidSlashReason,
         /// S6-2: Operator exceeded per-epoch domain contribution cap
         DomainContributionCapExceeded,
-        /// Validator has no session keys registered, so it could never author
-        SessionKeysNotRegistered,
     }
 
     /// Reasons for slashing validators
@@ -627,14 +628,18 @@ pub mod pallet {
 
             // A validator without session keys can never become a consensus
             // authority: `pallet_session` silently drops validators whose
-            // `NextKeys` entry is absent while building the queued validator set,
-            // and an entirely-dropped set makes BABE announce a next epoch with
-            // zero authorities — which halts block production permanently.
-            // Reject the join rather than accepting a validator that cannot author.
-            ensure!(
-                T::SessionKeys::has_session_keys(&who),
-                Error::<T>::SessionKeysNotRegistered
-            );
+            // `NextKeys` entry is absent while building the queued validator set.
+            // That is allowed here — PoUW-only participants join for rewards
+            // without authoring — but it is worth surfacing, because a validator
+            // that never produces a block is otherwise invisible. Preventing the
+            // authority set from ever emptying is `BelizeSessionManager`'s job.
+            if !T::SessionKeys::has_session_keys(&who) {
+                log::warn!(
+                    "join_validators: {:?} has no session keys and will not author blocks \
+                     until it calls Session::set_keys",
+                    who,
+                );
+            }
 
             // TODO: Record participation in Community pallet via trait (Phase 6 integration)
             // Activity code 2 = ValidatorStaking
@@ -1186,15 +1191,16 @@ pub mod pallet {
             // Require root/sudo origin
             ensure_root(origin)?;
 
-            // Session keys are a structural precondition, not a policy check: root
-            // may override KYC, but a validator without session keys is silently
-            // dropped from the queued authority set by `pallet_session` and can
-            // therefore never author. Reject it here rather than creating an inert
-            // validator that only a later error log would reveal.
-            ensure!(
-                T::SessionKeys::has_session_keys(&who),
-                Error::<T>::SessionKeysNotRegistered
-            );
+            // Mirrors `join_validators`: root may override KYC and sanctions, and a
+            // keyless account is accepted too. It will never author, so warn rather
+            // than block the forced registration.
+            if !T::SessionKeys::has_session_keys(&who) {
+                log::warn!(
+                    "force_join_validator: {:?} has no session keys and will not author \
+                     blocks until it calls Session::set_keys",
+                    who,
+                );
+            }
 
             // Ensure minimum stake (keep this check for safety)
             ensure!(

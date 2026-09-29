@@ -658,7 +658,8 @@ impl pallet_session::SessionManager<AccountId> for BelizeSessionManager {
                 target: "runtime::session",
                 "BelizeSessionManager: {} staking validator(s) have no session keys and were \
                  excluded from the queued authority set. They cannot author until they call \
-                 Session::set_keys; join_validators now rejects keyless accounts up front.",
+                 Session::set_keys. Keeping this set non-empty is what prevents the empty-\
+                 authority BABE epoch that halts block production.",
                 keyless
             );
         }
