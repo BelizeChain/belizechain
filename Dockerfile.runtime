@@ -6,6 +6,11 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 COPY belizechain-node /usr/local/bin/belizechain-node
 COPY chain-specs/ /etc/belizechain/
+# `COPY` preserves the source file mode, and a binary shipped by scp/tar/artifact
+# download routinely arrives without the executable bit. Without this the image
+# builds fine but every start fails with:
+#   exec: "belizechain-node": executable file not found in $PATH
+RUN chmod +x /usr/local/bin/belizechain-node
 RUN userdel -r ubuntu 2>/dev/null; \
     useradd -m -u 1000 -U -s /bin/sh -d /data belizechain && \
     mkdir -p /data /etc/belizechain && \
