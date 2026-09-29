@@ -17,6 +17,53 @@ fn make_valid_commitment(delta: &[u8], who: u64, block: u32) -> [u8; 32] {
 // VALIDATOR REGISTRATION TESTS
 // ============================================================================
 
+/// A validator with no session keys could never author: `pallet_session` drops it
+/// from the queued set, and an entirely-dropped set makes BABE announce an epoch
+/// with zero authorities and halts block production permanently. The join must be
+/// rejected up front instead of silently accepting an inert validator.
+#[test]
+fn join_validators_rejects_account_without_session_keys() {
+    new_test_ext().execute_with(|| {
+        // NO_SESSION_KEYS satisfies KYC, sanctions and stake checks, so the
+        // session-key gate is the only reason this call can fail.
+        assert_noop!(
+            BelizeStaking::join_validators(
+                RuntimeOrigin::signed(NO_SESSION_KEYS),
+                10_000_000_000u128,
+                100,
+                test_location("Belize City")
+            ),
+            Error::<Test>::SessionKeysNotRegistered
+        );
+
+        // Nothing was written, so the account may retry once it registers keys.
+        assert!(BelizeStaking::validators(NO_SESSION_KEYS).is_none());
+    });
+}
+
+/// Root may override KYC and sanctions, but not the session-key precondition: a
+/// forced validator without session keys can never author, so it must be rejected
+/// up front rather than registered as an inert validator.
+#[test]
+fn force_join_validator_rejects_account_without_session_keys() {
+    new_test_ext().execute_with(|| {
+        Balances::make_free_balance_be(&NO_SESSION_KEYS, 1_000_000_000_000);
+
+        assert_noop!(
+            BelizeStaking::force_join_validator(
+                RuntimeOrigin::root(),
+                NO_SESSION_KEYS,
+                10_000_000_000u128,
+                100,
+                test_location("Belize City"),
+            ),
+            Error::<Test>::SessionKeysNotRegistered
+        );
+
+        assert!(BelizeStaking::validators(NO_SESSION_KEYS).is_none());
+    });
+}
+
 #[test]
 fn join_validators_works() {
     new_test_ext().execute_with(|| {

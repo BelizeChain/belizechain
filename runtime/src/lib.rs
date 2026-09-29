@@ -186,6 +186,97 @@ mod tests {
         });
     }
 
+    /// Registers `account` in the staking validator map without touching
+    /// `pallet_session`'s key registry — i.e. a validator that joined (or was
+    /// seeded) but never called `Session::set_keys`.
+    fn insert_staking_validator(account: AccountId) {
+        pallet_belize_staking::Validators::<Runtime>::insert(
+            account.clone(),
+            pallet_belize_staking::ValidatorInfo {
+                account,
+                stake: 10_000u128 * 1_000_000_000_000,
+                compute_capacity: 100,
+                location: Default::default(),
+                compliance_score: 100,
+                last_fl_contribution: 0,
+                quality_score: 80,
+                timeliness_score: 90,
+                honesty_score: 95,
+                total_contributions: 0,
+            },
+        );
+    }
+
+    /// SESSION-1 regression: a staking validator with no session keys must never be
+    /// returned, because `pallet_session` silently drops it while building the
+    /// queued set.
+    #[test]
+    fn session_manager_excludes_keyless_staking_validators() {
+        let keyed = AccountId::new([7u8; 32]);
+        let keyless = AccountId::new([9u8; 32]);
+        let mut ext = test_ext_with_session_validator(keyed.clone());
+
+        ext.execute_with(|| {
+            insert_staking_validator(keyed.clone());
+            insert_staking_validator(keyless);
+
+            assert_eq!(
+                <BelizeSessionManager as pallet_session::SessionManager<AccountId>>::new_session(1),
+                Some(vec![keyed])
+            );
+        });
+    }
+
+    /// SESSION-1 regression: when *every* staking validator lacks session keys the
+    /// current authority set must be kept. Returning the keyless accounts would let
+    /// `pallet_session` empty the queue, and BABE would then enact an epoch with no
+    /// authorities and never author again.
+    #[test]
+    fn session_manager_falls_back_when_all_staking_validators_are_keyless() {
+        let current = AccountId::new([7u8; 32]);
+        let keyless = AccountId::new([9u8; 32]);
+        let mut ext = test_ext_with_session_validator(current.clone());
+
+        ext.execute_with(|| {
+            insert_staking_validator(keyless);
+
+            assert_eq!(
+                <BelizeSessionManager as pallet_session::SessionManager<AccountId>>::new_session(1),
+                Some(vec![current])
+            );
+        });
+    }
+
+    /// SESSION-1 regression, end to end: rotating the session while a keyless
+    /// validator sits in the staking set must still queue real authorities. An empty
+    /// queue is precisely what makes BABE enact a zero-authority epoch and stop the
+    /// chain permanently.
+    #[test]
+    fn session_rotation_never_queues_an_empty_authority_set() {
+        let validator = AccountId::new([7u8; 32]);
+        let keyless = AccountId::new([9u8; 32]);
+        let mut ext = test_ext_with_session_validator(validator);
+
+        ext.execute_with(|| {
+            insert_staking_validator(keyless);
+
+            jump_to_block(1, 1);
+            jump_to_block(
+                BabeEpochDuration::get() as BlockNumber + 1,
+                BabeEpochDuration::get() + 1,
+            );
+
+            assert!(
+                !Session::queued_keys().is_empty(),
+                "rotation queued no session keys — BABE would have no authorities"
+            );
+            assert!(
+                !pallet_babe::NextAuthorities::<Runtime>::get().is_empty(),
+                "rotation announced a BABE epoch with no authorities"
+            );
+        });
+    }
+
     #[test]
     fn session_rotation_aligns_with_babe_epoch_boundary() {
         let validator = AccountId::new([7u8; 32]);
@@ -515,9 +606,40 @@ impl pallet_session::SessionManager<AccountId> for BelizeSessionManager {
     fn new_session(_session_index: u32) -> Option<Vec<AccountId>> {
         // CONS-009 FIX: bound the validator set enumeration so a bloated staking map
         // cannot cause unbounded heap growth or block production stalls at session rotation.
-        let validators: Vec<AccountId> = pallet_belize_staking::Validators::<Runtime>::iter_keys()
-            .take(100)
+        let staking_validators: Vec<AccountId> =
+            pallet_belize_staking::Validators::<Runtime>::iter_keys()
+                .take(100)
+                .collect();
+
+        // Pre-SESSION-1 FIX: only validators holding session keys may be returned.
+        // `pallet_session` silently drops every validator whose `NextKeys` entry is
+        // absent while it builds `QueuedKeys`. If that empties the queue, BABE
+        // announces a next epoch with zero authorities, after which no slot is ever
+        // claimable again and block production stops permanently. Filtering here
+        // means an empty queue can only coincide with an empty current authority
+        // set, which the fallback below already handles.
+        let mut keyless = 0u32;
+        let validators: Vec<AccountId> = staking_validators
+            .into_iter()
+            .filter(|account| {
+                let keyed = pallet_session::NextKeys::<Runtime>::contains_key(account);
+                if !keyed {
+                    keyless = keyless.saturating_add(1);
+                }
+                keyed
+            })
             .collect();
+
+        if keyless > 0 {
+            log::error!(
+                target: "runtime::session",
+                "BelizeSessionManager: {} staking validator(s) have no session keys and were \
+                 excluded from the queued authority set. They cannot author until they call \
+                 Session::set_keys; join_validators now rejects keyless accounts up front.",
+                keyless
+            );
+        }
+
         if validators.is_empty() {
             let current_validators = pallet_session::Pallet::<Runtime>::validators();
             if current_validators.is_empty() {
@@ -1234,6 +1356,9 @@ impl pallet_belize_staking::Config for Runtime {
     type JusticeProvider = StakingJusticeProvider;
     // S6-2 — per-epoch domain contribution cap
     type MaxDomainContributionsPerEpoch = MaxDomainContributionsPerEpoch;
+    // Session-key gate: a keyless validator is silently dropped by
+    // `pallet_session` and can permanently empty BABE's authority set.
+    type SessionKeys = StakingSessionKeyRegistry;
 }
 
 impl pallet_belize_oracle::Config for Runtime {
@@ -1605,6 +1730,26 @@ pub struct StakingOracleVerifier;
 impl pallet_belize_staking::OracleVerifier<AccountId> for StakingOracleVerifier {
     fn is_authorized_operator(who: &AccountId) -> bool {
         Oracle::oracle_operators(who)
+    }
+}
+
+/// Bridges `pallet_session`'s session-key registry to the staking pallet.
+///
+/// Reports whether an account holds the keys `pallet_session` will accept into a
+/// queued validator set. Must stay consistent with the filter applied by
+/// `BelizeSessionManager::new_session`.
+pub struct StakingSessionKeyRegistry;
+impl pallet_belize_staking::SessionKeyRegistry<AccountId> for StakingSessionKeyRegistry {
+    fn has_session_keys(account: &AccountId) -> bool {
+        // Always perform the lookup, even when the result is overridden below, so
+        // benchmark weight measurements still include the storage read.
+        let registered = pallet_session::NextKeys::<Runtime>::contains_key(account);
+        // Benchmark setup force-joins freshly derived `account("validator", ..)`
+        // accounts that can never appear in genesis, so the gate is relaxed in
+        // `runtime-benchmarks` builds. Those builds only generate weights and are
+        // never deployed; the gate itself is covered by the pallet and runtime unit
+        // tests, which do not enable this feature.
+        registered || cfg!(feature = "runtime-benchmarks")
     }
 }
 

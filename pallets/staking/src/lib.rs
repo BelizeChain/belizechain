@@ -141,6 +141,14 @@ pub mod pallet {
         /// Prevents a validator from flooding contributions to game domain bonuses.
         #[pallet::constant]
         type MaxDomainContributionsPerEpoch: Get<u32>;
+
+        /// Registry used to reject validators that cannot author blocks.
+        ///
+        /// A validator whose session keys are absent is silently dropped from the
+        /// queued validator set by `pallet_session`. If that empties the set, BABE
+        /// announces a next epoch with **zero authorities** and block production
+        /// halts permanently, so a keyless account must never become a validator.
+        type SessionKeys: SessionKeyRegistry<Self::AccountId>;
     }
 
     /// Identity provider trait for Staking pallet
@@ -154,6 +162,16 @@ pub mod pallet {
 
         /// Check if account is sanctioned
         fn is_sanctioned(account: &AccountId) -> bool;
+    }
+
+    /// Session-key registry provider trait for Staking pallet.
+    ///
+    /// Lets the staking pallet confirm that a joining validator has already
+    /// registered the session keys `pallet_session` requires, before accepting it
+    /// into `Validators`.
+    pub trait SessionKeyRegistry<AccountId> {
+        /// Returns `true` if `account` has session keys registered.
+        fn has_session_keys(account: &AccountId) -> bool;
     }
 
     /// Validator information
@@ -522,6 +540,8 @@ pub mod pallet {
         InvalidSlashReason,
         /// S6-2: Operator exceeded per-epoch domain contribution cap
         DomainContributionCapExceeded,
+        /// Validator has no session keys registered, so it could never author
+        SessionKeysNotRegistered,
     }
 
     /// Reasons for slashing validators
@@ -604,6 +624,17 @@ pub mod pallet {
             location: BoundedVec<u8, ConstU32<64>>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
+
+            // A validator without session keys can never become a consensus
+            // authority: `pallet_session` silently drops validators whose
+            // `NextKeys` entry is absent while building the queued validator set,
+            // and an entirely-dropped set makes BABE announce a next epoch with
+            // zero authorities — which halts block production permanently.
+            // Reject the join rather than accepting a validator that cannot author.
+            ensure!(
+                T::SessionKeys::has_session_keys(&who),
+                Error::<T>::SessionKeysNotRegistered
+            );
 
             // TODO: Record participation in Community pallet via trait (Phase 6 integration)
             // Activity code 2 = ValidatorStaking
@@ -1154,6 +1185,16 @@ pub mod pallet {
         ) -> DispatchResult {
             // Require root/sudo origin
             ensure_root(origin)?;
+
+            // Session keys are a structural precondition, not a policy check: root
+            // may override KYC, but a validator without session keys is silently
+            // dropped from the queued authority set by `pallet_session` and can
+            // therefore never author. Reject it here rather than creating an inert
+            // validator that only a later error log would reveal.
+            ensure!(
+                T::SessionKeys::has_session_keys(&who),
+                Error::<T>::SessionKeysNotRegistered
+            );
 
             // Ensure minimum stake (keep this check for safety)
             ensure!(

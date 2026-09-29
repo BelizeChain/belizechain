@@ -22,8 +22,8 @@ pub struct MockIdentity;
 impl StakingIdentityProvider<u64> for MockIdentity {
     fn get_kyc_level(account: &u64) -> Option<u8> {
         // Validators must have L2 KYC (SSN + Passport)
-        if (*account >= 10 && *account < 200) || *account == 666 {
-            Some(2) // Validators range and SANCTIONED have L2
+        if (*account >= 10 && *account < 200) || *account == 666 || *account == NO_SESSION_KEYS {
+            Some(2) // Validators range, SANCTIONED and NO_SESSION_KEYS have L2
         } else if *account == 999 {
             None // Restricted account
         } else {
@@ -44,6 +44,15 @@ impl StakingIdentityProvider<u64> for MockIdentity {
 impl OracleVerifier<u64> for MockIdentity {
     fn is_authorized_operator(_who: &u64) -> bool {
         true // All accounts are authorized operators in tests
+    }
+}
+
+// Mock session-key registry: every account has session keys except the one
+// reserved to exercise the keyless-validator rejection path.
+pub struct MockSessionKeys;
+impl pallet_belize_staking::SessionKeyRegistry<u64> for MockSessionKeys {
+    fn has_session_keys(account: &u64) -> bool {
+        *account != NO_SESSION_KEYS
     }
 }
 
@@ -151,6 +160,7 @@ impl pallet_belize_staking::Config for Test {
     type WeightInfo = ();
     type JusticeProvider = MockJustice;
     type MaxDomainContributionsPerEpoch = ConstU32<100>;
+    type SessionKeys = MockSessionKeys;
 }
 
 // Test accounts
@@ -161,6 +171,7 @@ pub const DAVE: u64 = 13; // Validator with L2 KYC
 pub const EVE: u64 = 1; // Regular account L1
 pub const SANCTIONED: u64 = 666; // Sanctioned account
 pub const NO_KYC: u64 = 999; // No KYC account
+pub const NO_SESSION_KEYS: u64 = 777; // L2 KYC + stake, but no session keys
 
 pub fn new_test_ext() -> sp_io::TestExternalities {
     let mut t = frame_system::GenesisConfig::<Test>::default()
