@@ -21,6 +21,7 @@
 - **Live Image**: `belizechain/ceiba-node:509830c-emptyauth-20260929`
 - **Live Genesis**: `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef` — re-genesised 2026-09-29 after the empty-authority stall; the previous chain (`0x631fb936…`) is dead and superseded
 - **Live Epoch**: `BabeEpochDuration = 300` slots (~30 min). This is the **`testnet-fast-epoch` build feature**, used so a session rotation can be observed in minutes; the default build keeps 14,400 slots (~24 h) for mainnet
+- **Live Runtime**: `spec_version = 108` (upgraded 2026-09-29 by a hot `sudo.sudo(System::set_code(…))` — no node restart). The genesis runtime embedded in `testnet-spec.json` is still **107**, so a re-genesis would boot at 107 and upgrade forward. Rollback blob: `/data/upgrade-108/onchain-code-107.wasm` on Ceiba
 - **Primary Access**: `ssh wicked@ceiba` or `ssh wicked@100.81.45.25` (Tailscale; may require browser auth)
 - **LAN Fallback**: `ssh wicked@10.0.0.222` (wired; run `ssh-keyscan 10.0.0.222 >> ~/.ssh/known_hosts` first if unseen)
 - **Node Args**: `--chain /data/chain/testnet-spec.json --base-path /data/chain --rpc-port 9944 --prometheus-port 9615`

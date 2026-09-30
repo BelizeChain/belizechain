@@ -388,10 +388,8 @@ Full write-up: [EMPTY_EPOCH_STALL_AND_REGENESIS_2026-09-29.md](EMPTY_EPOCH_STALL
   `/data/regenesis-backup-20260929-115324/`
 
 ### Pitfalls hit (and rules of thumb)
-- **`ceiba-nawal` does not retry its chain connection.** It latched
-  `blockchain_connected: false` at startup and logged nothing but health checks for
-  six days; it needed a manual restart. Any chain outage strands it — expect to
-  restart dependents after a chain recovery.
+- **`ceiba-nawal` used to latch a dropped chain connection** — fixed later the
+  same day; see the runtime-108 entry below.
 - **A `Dockerfile.runtime` start failure can be a permissions problem wearing a
   "missing file" costume.** `scp` drops the execute bit, `COPY` preserves the
   source mode, and the result is `exec: "belizechain-node": executable file not
@@ -403,4 +401,50 @@ Full write-up: [EMPTY_EPOCH_STALL_AND_REGENESIS_2026-09-29.md](EMPTY_EPOCH_STALL
   against the archive before promising a rollback.
 - `ceiba-explorer` is Polkadot.js Apps (a client-side UI), not an indexer — a
   re-genesis requires nothing of it.
+- **Accounts have two representations.** The chain sets its own `SS58Prefix`
+  (**1981**), so one account renders as `r1Wm6WgK…` on-chain and `5GrwvaEF…`
+  under the default prefix 42. Compare accounts by their 32 raw bytes, never by
+  the rendered address.
+
+## Ops Log — 2026-09-29 (later): Runtime 108 hot upgrade
+
+Relaxes the session-key precondition added earlier the same day, which was
+stricter than the failure required and blocked a legitimate path.
+
+### Why
+`scripts/register-nawal-signer.js` registers the A1 PoUW signer through
+`staking.joinValidators` **without** session keys — it earns rewards and never
+authors. The hard `ensure!` made that call fail with `SessionKeysNotRegistered`.
+The actual protection against the empty-authority deadlock is
+`BelizeSessionManager::new_session`, which was correct and is untouched.
+
+### Change
+The check is now a `log::warn!` on both join paths, and the
+`SessionKeysNotRegistered` error variant is deleted. It was the **last** variant,
+so no other error index moved, and there is no storage migration.
+
+### Deployed
+```
+sudo.sudo(System::set_code(1421085 bytes))   extrinsic 0xe47e3b10…8448f
+spec_version   : 107 -> 108     (no node restart; RestartCount stayed 0)
+on-chain :code : 1421085 bytes  blake2b 8ad7ea9d18a02e7b5150cf68e455a68c06f84fa6a18c6e4db7c53befcaa45c0d
+```
+
+Afterwards: `Babe::Authorities` and `NextAuthorities` each hold 1 authority,
+`Session::QueuedKeys` is non-empty, `epoch_length` is still 300, and the raw
+metadata no longer mentions `SessionKeysNotRegistered` (its neighbour
+`DomainContributionCapExceeded` is still present, so the absence is meaningful).
+
+**Rollback:** `/data/upgrade-108/onchain-code-107.wasm` (1,420,530 bytes, blake2b
+`cd7d2112…`) is the runtime the chain was running immediately before the change,
+verified byte-identical at capture time. Re-deploy with
+`scripts/upgrade-runtime.py <file> --execute`.
+
+**Tooling:** `scripts/upgrade-runtime.py` — dry run by default, refuses to sign
+unless the local key matches the on-chain sudo key, and re-verifies `spec_version`
+and `:code` after submission.
+
+**Note:** the genesis runtime inside `testnet-spec.json` is still **107**, so a
+future re-genesis would boot at 107 and upgrade forward. Re-run
+`scripts/set-spec-code.py` if that matters.
 

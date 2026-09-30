@@ -388,7 +388,12 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     // `mesh::EmergencyAuthorityCount`, `MaxEmergencyAuthorities` and the
     // `add_/remove_emergency_authority` extrinsics — all `ValueQuery`-backed, so
     // they read empty on upgrade and need no storage migration.
-    spec_version: 107,
+    // EMPTY-EPOCH: bumped to 108 — the session-key check on the staking join
+    // paths is relaxed from a hard rejection to a warning, so PoUW-only
+    // participants (the A1 Nawal signer) can register again. The
+    // `SessionKeysNotRegistered` error variant is removed; it was the last
+    // variant, so no other error index moved. No storage migration.
+    spec_version: 108,
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 1,

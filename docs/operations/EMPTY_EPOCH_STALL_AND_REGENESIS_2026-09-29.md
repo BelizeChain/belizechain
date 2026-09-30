@@ -285,6 +285,7 @@ stall).
   but health checks for six days: **it latches the failure and never retries its
   RPC connection.** A restart cleared it immediately. Any chain outage will
   silently strand this service until someone restarts it.
+  **Fixed — see §10 item 2.**
 - **`Dockerfile.runtime` had lost its `chmod +x`.** The image built cleanly and
   every start failed with `exec: "belizechain-node": executable file not found in
   $PATH` — a permissions problem wearing a "missing file" costume, because `COPY`
@@ -298,8 +299,10 @@ stall).
 
 1. **Decide the `join_validators` guard question** (§5 open item) — it currently
    blocks PoUW-only validator registration, including the A1 Nawal signer.
+   **Resolved and deployed — see §10 item 1.**
 2. **Make dependent services retry.** Nawal should reconnect to the chain with
    backoff instead of latching a failed startup state. Highest-value item here.
+   **Resolved — see §10 item 2.**
 3. **Alert on zero block production.** The stall guard logs a loud `ERROR`, and
    nothing consumes it. A six-day outage should page someone on the first
    occurrence, not be found by chance.
@@ -307,3 +310,80 @@ stall).
 5. **Report the `enact_epoch_change` asymmetry upstream** (§3).
 6. Consider a pre-deploy check that runs `generate-testnet-spec.sh --verify`
    automatically — the gap flagged in the 2026-09-21 doc is still open.
+
+## 10. Follow-up completion (2026-09-29, same day)
+
+### 1. Session-key precondition relaxed — shipped as runtime **108**
+
+The `ensure!` added in §5 was stricter than the failure required, and it broke the
+PoUW-only path: `scripts/register-nawal-signer.js` joins through
+`staking.joinValidators` **without** session keys, so registration failed with
+`SessionKeysNotRegistered`. What actually prevents the empty-authority deadlock is
+`BelizeSessionManager::new_session`, which was already correct and is untouched.
+
+Change: the check becomes a `log::warn!` on both join paths, and the
+`SessionKeysNotRegistered` error variant is deleted (it was the **last** variant,
+so no other error index moved). A keyless validator now registers, warns at join
+time, and is excluded from the authority set at the next rotation with an
+`ERROR`-level log naming the count.
+
+Deployed by **hot runtime upgrade, no node restart**:
+
+```
+sudo.sudo(System::set_code(1421085 bytes))   extrinsic 0xe47e3b10…8448f
+included       : SUCCESS
+spec_version   : 107 -> 108
+on-chain :code : 1421085 bytes  blake2b 8ad7ea9d18a02e7b5150cf68e455a68c06f84fa6a18c6e4db7c53befcaa45c0d
+```
+
+Verified independently after the upgrade: `Babe::Authorities` and
+`Babe::NextAuthorities` both hold 1 authority, `Session::QueuedKeys` is non-empty,
+blocks continue at exactly 6 s, `epoch_length` is still 300, and the raw metadata
+no longer contains `SessionKeysNotRegistered` (its neighbour
+`DomainContributionCapExceeded` is still present, so the absence is meaningful).
+`ceiba-node` restarted **0** times across the upgrade.
+
+Rollback artifact: the previous runtime is saved as
+`/data/upgrade-108/onchain-code-107.wasm` (1,420,530 bytes, blake2b `cd7d2112…`),
+verified byte-identical to what the chain was running before the change.
+
+Tooling added: `scripts/upgrade-runtime.py` — dry run by default, refuses to sign
+unless the local key matches the on-chain sudo key, and re-reads
+`spec_version` plus `:code` afterwards to confirm the upgrade actually applied.
+
+> **Note on SS58.** The chain sets its own `SS58Prefix` (**1981**), so the same
+> account renders as `r1Wm6WgK…` on-chain and `5GrwvaEF…` under the default
+> prefix 42. The first dry run compared *address strings* and reported a false
+> "not the sudo key" failure; it now compares raw public keys. Verify accounts by
+> their 32 bytes, not their rendered address.
+
+### 2. Nawal reconnects without inbound traffic
+
+The real mechanism was narrower than §8 first implied. Log evidence contradicts
+the "latched a failed startup state" reading: **every** startup connected
+successfully, including a restart on 2026-09-24 *inside* the outage — there is no
+`Failed to connect` or `degraded mode` line anywhere in the container's life.
+Health responses form only seven contiguous runs, ending in **7,785 consecutive
+503s** cleared by a manual restart.
+
+What actually happened is two separate facts, and the second is the important one:
+
+1. **A frozen chain answers RPC fine.** While the node was stalled, health returned
+   **12,588 × 200**; `System.Number` still reads on a node that produces no blocks.
+   Health is therefore no evidence of block production.
+2. **The socket later dropped, and nothing drove reconnection.** The connector's
+   `is_connected` flag stayed stale-`True`, the liveness probe went false, every
+   chain-backed endpoint answered 503 — so no request ever reached
+   `_ensure_connected()`, which is only called from those same endpoints. Recovery
+   depended on the very traffic the failure suppressed.
+
+Two fixes (`nawal-ai`): a failed initial connect no longer discards the connector
+(it was set to `None`, leaving nothing to retry with), and a connection supervisor
+drives the existing reconnect path on a timer, decoupling recovery from request
+traffic. `connect()` now builds its client in a worker thread so an unreachable
+node cannot block the event loop while the supervisor polls.
+
+Proven against the live node with a real outage and a real reconnect: the
+connector is retained, the probe correctly reports the dead socket, and the
+supervisor restores the connection in **4.0 s with zero API traffic**.
+
