@@ -448,3 +448,53 @@ and `:code` after submission.
 future re-genesis would boot at 107 and upgrade forward. Re-run
 `scripts/set-spec-code.py` if that matters.
 
+`scripts/generate-testnet-spec.sh --check` now reports that drift without
+modifying anything (read-only; exits non-zero on drift).
+
+### A1 signer re-registered (2026-09-30) — proof the guard is safe
+
+`staking.joinValidators` for the A1 Nawal signer previously failed with
+`SessionKeysNotRegistered`; it now succeeds. This deliberately recreates the
+precondition that emptied the authority set on 2026-09-23 (the signer is
+`0xce2f6ecf…b902d054`, keyless by design). The next epoch boundary
+(**53 → 54**, slot `298465741`) crossed with it registered:
+
+| Evidence | Value |
+|---|---|
+| `Babe::Authorities` after the boundary | **1** (was **0** in the incident) |
+| Runtime filter | `BelizeSessionManager: 1 staking validator(s) have no session keys and were excluded` |
+| `STALL DETECTED` / empty-epoch / skipped | **0 / 0 / 0** |
+| Blocks after the boundary | 63 and climbing |
+
+Re-run it any time with:
+
+```bash
+NAWAL_SEED="$(ssh wicked@ceiba 'sudo grep -m1 "^NAWAL_KEYPAIR_URI=" /opt/belizechain/.env | cut -d= -f2-')" \
+  NODE_PATH=/home/wicked/Projects/Belizechain/ui/node_modules \
+  node scripts/register-nawal-signer.js
+```
+
+It is idempotent, self-funds from the issuer, and never logs the key.
+
+### Monitoring now actually reports a stall
+
+- **There is no Alertmanager.** Every rule in `deploy/prometheus-alerts.yml` is
+  evaluated and shown on `/alerts` and notifies nobody. Treat that file as
+  dashboards, not paging. A header in the file says so.
+- What *does* report: `deploy/health-check.sh` (every 5 min via
+  `ceiba-health-log.timer`) reads the chain head twice, 15 s apart, and fails if it
+  has not advanced. A halted chain shows up in `/data/log/health` within minutes.
+- **A responsive node is not an authoring node.** On 2026-09-23 the chain was
+  frozen for six days while `system_health` answered normally and the container
+  stayed `Up`; health checks passed the whole time. Only block progress is
+  evidence of block production.
+
+### Chain archives now record what they contain
+
+`deploy/backup-chain.sh` writes `<archive>.manifest.json` next to each archive with
+`head_block`, `finalized_block`, `spec_version`, `genesis_hash` and `taken_utc`.
+Before restoring, compare an archive's `head_block` against the incident's block:
+an archive whose head is **above** the incident **cannot** roll it back, however
+recent its mtime looks. (On 2026-09-29 the newest archive was taken six hours after
+the chain froze.)
+

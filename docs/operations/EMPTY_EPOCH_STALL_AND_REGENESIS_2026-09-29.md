@@ -297,21 +297,27 @@ stall).
 
 ## 9. Follow-ups
 
+All six were completed on 2026-09-29/30; §10 records each with its evidence.
+
 1. **Decide the `join_validators` guard question** (§5 open item) — it currently
    blocks PoUW-only validator registration, including the A1 Nawal signer.
-   **Resolved and deployed — see §10 item 1.**
+   **Resolved, deployed as runtime 108, and re-proven live — §10 item 1.**
 2. **Make dependent services retry.** Nawal should reconnect to the chain with
    backoff instead of latching a failed startup state. Highest-value item here.
-   **Resolved — see §10 item 2.**
+   **Resolved and deployed — §10 item 2.**
 3. **Alert on zero block production.** The stall guard logs a loud `ERROR`, and
    nothing consumes it. A six-day outage should page someone on the first
    occurrence, not be found by chance.
+   **Resolved — §10 item 3.**
 4. **Record block ranges in chain backups** so "age vs. failure time" is checkable.
+   **Resolved — §10 item 4.**
 5. **Report the `enact_epoch_change` asymmetry upstream** (§3).
+   **Report written and ready to file — §10 item 5.**
 6. Consider a pre-deploy check that runs `generate-testnet-spec.sh --verify`
    automatically — the gap flagged in the 2026-09-21 doc is still open.
+   **Resolved as `--check` — §10 item 6.**
 
-## 10. Follow-up completion (2026-09-29, same day)
+## 10. Follow-up completion
 
 ### 1. Session-key precondition relaxed — shipped as runtime **108**
 
@@ -386,4 +392,129 @@ node cannot block the event loop while the supervisor polls.
 Proven against the live node with a real outage and a real reconnect: the
 connector is retained, the probe correctly reports the dead socket, and the
 supervisor restores the connection in **4.0 s with zero API traffic**.
+
+Deployed to Ceiba as `belizechain/nawal:ae33d89-reconnect-20260930` (`.env`
+backup: `.env.bak-pre-reconnect-20260930`). The supervisor logs its own start, and
+health reports `blockchain_connected: true`.
+
+### 3. A1 signer re-registered — and the fix proven at a real epoch boundary
+
+`scripts/register-nawal-signer.js` was re-run against runtime 108. This is the
+**live regression test**: the A1 signer (`5Gj3p3X5…` = `0xce2f6ecf…b902d054`) is
+the very account whose missing session keys emptied the authority set on
+2026-09-23, so re-registering it recreates the exact precondition.
+
+The call that used to fail now succeeds:
+
+```
+[3] staking.joinValidators
+  joinValidators         in block 0x02f5eab0181569fe…  ext 0xaabd5fd2aaa68fd9…
+  identity id           : 1        (SSN + Passport present → KYC L2)
+  staking validator     : stake 1,000 DALLA, capacity 100, location Belize City
+  validator count       : 1
+```
+
+Confirmed keyless and therefore excluded from authoring:
+
+```
+signer has session keys : False
+Staking::Validators     : 1 entry   (the keyless signer)
+```
+
+The next epoch boundary then crossed **with that keyless validator registered**:
+
+| Evidence | Value |
+|---|---|
+| Boundary | epoch **53 → 54**, slot `298465741`, block `#16201` |
+| Node log | `👶 New epoch 54 launching … (block slot 298465741 >= start slot 298465741)` |
+| `Babe::Authorities` after the boundary | **1** — this is the number that was **0** on 2026-09-23 |
+| `Babe::NextAuthorities` | 1 |
+| The runtime filter firing | `BelizeSessionManager: 1 staking validator(s) have no session keys and were excluded from the queued authority set` |
+| `STALL DETECTED` / `Ignoring empty epoch change` / `Epoch(s) skipped` | **0 / 0 / 0** |
+| Blocks authored after the boundary | 63 (`Pre-sealed block`) |
+
+Watcher verdict: `PASS: the chain rotated its epoch and kept a populated authority
+set`. The failure was reproduced under live conditions and did not recur.
+
+### 4. A stall in block production is now reported
+
+The gap was not the missing rule — `CeibaChainStalled` already existed in
+`deploy/prometheus-alerts.yml`. The gap was that **there is no Alertmanager** in
+`docker-compose.ceiba.yml`, so every rule in that file is evaluated, displayed on
+`/alerts`, and delivered to nobody. During the six-day stall the alert would have
+been ready to fire and reached no one. (`promtool check rules` reports the rules
+valid; that is exactly the false confidence the file invited.)
+
+Two changes, neither adding infrastructure:
+
+- `deploy/health-check.sh` — runs every 5 minutes via `ceiba-health-log.timer` and
+  now reads the chain head twice, 15 s apart, and fails if it has not advanced. A
+  stalled chain is therefore visible in `/data/log/health` within minutes, and the
+  failure count is non-zero. Verified live (`Block production: authoring
+  (#16003 -> #16006 in 15s)`) and the failure branch exercised against frozen,
+  advancing and unreadable inputs — frozen → `STALLED`, advancing → pass,
+  unreadable → warn without a false failure.
+- `deploy/prometheus-alerts.yml` — a header stating plainly that these rules reach
+  nobody and naming the mechanisms that do. Cheap, and it stops the next reader
+  from assuming coverage.
+
+### 5. Chain archives carry their own block metadata
+
+`deploy/backup-chain.sh` now writes `<archive>.manifest.json` alongside each
+archive, capturing `head_block`, `finalized_block`, `spec_version`, `genesis_hash`
+and `taken_utc`. `head_block` is what answers the rollback question — *does this
+archive predate incident X?* — which the filename actively obscured on 2026-09-29:
+the newest archive was five days old and still taken six hours **after** the chain
+froze at `#28791`.
+
+Metadata is captured *before* the node is stopped (the RPC is needed and is
+unavailable during the copy) and published only after the archive exists, so a
+manifest can never describe an archive that was not written. Retention sweeps
+orphaned manifests and any stale temp files. Verified against the live chain, which
+reported `spec_version 108` and the current genesis hash.
+
+### 6. Spec drift is checkable before deploy
+
+`scripts/generate-testnet-spec.sh --check` is a new read-only mode: it decompresses
+the runtime embedded in the spec, reads its `spec_version` from the
+`runtime_version` custom section, and compares it against the current build and the
+version the sources declare. It reports drift and exits non-zero, without modifying
+the spec — the previous mode only ever *rewrote* the spec, so nothing could inspect
+one as-is.
+
+Run against the live state it correctly reports the real, intentional drift:
+
+```
+declared spec: 108 (runtime/src/lib.rs)
+embedded     : spec_version 107 (from the embedded runtime)
+built wasm   : 1421085 bytes  blake2b 8ad7ea9d…
+DRIFT: the spec does NOT embed the current build.
+```
+
+That is the expected state after a hot upgrade — the chain moves forward, the
+embedded genesis runtime does not — and the point is that it can no longer go
+unnoticed, which is how the spec-105/107 drift shipped on 2026-09-21.
+
+**Known limitation, discovered by using it:** the staleness heuristic (`wasm older
+than the sources`) is mtime-based and can false-positive. It did here:
+`runtime/src/lib.rs` carried a newer mtime than the wasm, yet a forced rebuild
+produced a **byte-identical** wasm (`8ad7ea9d…`), proving the source had not
+changed and the warning was an artifact. The wasm-builder is content-addressed and
+does not rewrite an unchanged artifact, so the mtime comparison can drift out of
+step with content. The hash comparison in `--check` is the authoritative answer.
+
+### 7. Upstream report prepared
+
+`docs/operations/UPSTREAM_REPORT_BABE_EMPTY_NEXT_AUTHORITIES.md` is a
+ready-to-file polkadot-sdk issue covering the `enact_epoch_change` asymmetry:
+`pallet-babe` guards an empty **current** authority set (warning and returning) but
+writes and announces an empty **next** set unconditionally
+(`substrate/frame/babe/src/lib.rs` lines 631, 693, 706, 709 at rev
+`2e4dd0bc22366a5af820492528869a493b5a5208`). It includes the live evidence, the
+`pallet_session` code path that makes the state reachable, and a suggested guard.
+
+Written to be accurate rather than persuasive: it states that `pallet_session`
+*does* warn once per skipped validator (so the condition is not wholly silent) and
+that the halt is not self-reporting. **Not filed** — that is the operator's call.
+
 
