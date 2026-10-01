@@ -4,15 +4,34 @@
 **Prepared:** 2026-09-30
 **Affected:** `pallet-babe` (verified against `46.0.0`)
 
+**Still applicable upstream — re-verified 2026-09-30 against five pinned revisions.**
+The asymmetry is present in every one of them, including the newest stable branch:
+
+| Revision | Commit | `enact_epoch_change` | guard on current set | guard on next set |
+|---|---|---|---|---|
+| `master` | `d2e08992098a` | 623 | **yes** (632) | **no** |
+| `stable2609` | `3c87d294a1a7` | 623 | **yes** (632) | **no** |
+| `stable2606` | `672a7bb6b81c` | 623 | **yes** (632) | **no** |
+| `stable2603` | `0b045b7d9dfb` | 622 | **yes** (631) | **no** |
+| `stable2512` | `54f11b102d8b` | 617 | **yes** (626) | **no** |
+| *(BelizeChain)* | `2e4dd0bc2236` | 622 | **yes** (631) | **no** |
+
+The most recent commit to touch `substrate/frame/babe/src/lib.rs` is `e3865cf72`
+(2026-04-02, `ValidateUnsigned` deprecation) and is unrelated. `pallet-session`'s
+rotation path is byte-identical to ours apart from an unrelated benchmark helper and a
+`set_keys` consumer-count check. Quoted line numbers below give both, as
+`<master> / <our rev>`.
+
 ## Environment
 
 | Item | Value |
 |---|---|
 | Repo | `paritytech/polkadot-sdk` |
-| Rev | `2e4dd0bc22366a5af820492528869a493b5a5208` |
+| Rev verified | `2e4dd0bc22366a5af820492528869a493b5a5208` |
+| Also checked | `master`, `stable2609`, `stable2606`, `stable2603`, `stable2512` (see table above) |
 | Crate | `pallet-babe 46.0.0` |
 | File | `substrate/frame/babe/src/lib.rs` |
-| Function | `enact_epoch_change` (line 622) |
+| Function | `enact_epoch_change` (line 623 master / 622 our rev) |
 
 ## Summary
 
@@ -27,12 +46,12 @@ across a restart**, because every client rebuilds its epoch tree from the same
 on-chain digest. Recovery requires a re-genesis or a `--wasm-runtime-overrides`
 patch.
 
-The asymmetry looks unintentional: the guard exists, is commented, and covers the
-set that is *already live* while leaving the set that will become live unguarded.
+The asymmetry looks unintentional: the guard covers the set that is *already live*,
+while the set that will become live is left unchecked.
 
 ## The code
 
-Guard on the current set — line 631:
+Guard on the current set — line **632** (master) / 631 (our rev):
 
 ```rust
 if authorities.is_empty() {
@@ -41,26 +60,47 @@ if authorities.is_empty() {
 }
 ```
 
-Unconditional writes of the next set — lines 693, 706 and 709:
+Unconditional uses of the next set — lines **694**, **707** and **710** (master) /
+693, 706 and 709 (our rev):
 
 ```rust
-NextAuthorities::<T>::put(&next_authorities);          // 693
+NextAuthorities::<T>::put(&next_authorities);          // 694
 ...
 let next_epoch = NextEpochDescriptor {
-        authorities: next_authorities.into_inner(),     // 706
+        authorities: next_authorities.into_inner(),     // 707
         randomness: next_randomness,
 };
-Self::deposit_consensus(ConsensusLog::NextEpochData(next_epoch));   // 709
+Self::deposit_consensus(ConsensusLog::NextEpochData(next_epoch));   // 710
 ```
 
-There is no `next_authorities.is_empty()` check anywhere between the guard at 631
-and the write at 693.
+There is no `next_authorities.is_empty()` check anywhere in the function — confirmed
+by re-reading all 101 lines of it (623-723) on both `master` and `stable2609`.
 
-## Why the empty set is reachable without operator error
+### The documented contract does not forbid it
+
+The doc comment on the function (lines 616-622 on master) says:
+
+> DANGEROUS: Enact an epoch change. Should be done on every block where
+> `should_epoch_change` has returned `true`, and the caller is the only caller of
+> this function.
+> ...
+> This doesn't do anything if `authorities` is empty.
+
+That sentence covers the **current** set only. Nothing in the function or its
+documentation says an empty *next* set is acceptable. And the one in-tree caller that
+supplies both sets itself, `SameAuthoritiesForever` (line 103), clones the current set
+into the next — so it structurally cannot reach this. The only way in is
+`ExternalTrigger`, which is what every chain wiring `pallet-session` uses.
+
+It is also worth noting that `do_try_state` (added by #11216, 2026-03-12) does bound
+both authority lists *upwards* (`decode_len() <= MaxAuthorities`) but never asserts
+that either is non-empty — so `try-runtime` will not catch this either.
+
+## Why the empty set is reachable through documented pallet behaviour
 
 `pallet_session::rotate_session` builds `QueuedKeys` by *filtering out* every
 validator whose session keys cannot be loaded
-(`substrate/frame/session/src/lib.rs`, ~line 848):
+(`substrate/frame/session/src/lib.rs`, lines 838-847 on master, 845-848 on our rev):
 
 ```rust
 let queued_amalgamated =
@@ -129,18 +169,37 @@ For contrast, before the change, the same digest carried **1** authority
 Step 4 happens with no `pallet-babe` log line, no panic, and no error. The only
 signal is the per-validator `warn` from `pallet_session` at step 3.
 
+## Related prior art (checked — this is not a duplicate)
+
+Searched before preparing this, and re-searched on 2026-09-30 across all of GitHub (not
+just this repo) for `enact_epoch_change`, `NextAuthorities`, `empty epoch change`,
+`zero authorities babe`, `babe no authorities`, `chain halt babe authorities`,
+`pallet-session empty validators`, plus the archived `paritytech/substrate` tracker and
+open PRs. Exactly one adjacent issue exists, and it is a **different path**:
+
+| Issue | State | Why it is not this |
+|---|---|---|
+| [#5064](https://github.com/paritytech/polkadot-sdk/issues/5064) — *Chain halts after runtime upgrade \| Getting `Ignoring empty epoch change.`* | closed, `COMPLETED`, 0 comments, 2024-07-18 → 2024-07-20 | Theirs is the **guarded current-set** branch: a corrupt `OneSessionHandler` produced an empty *current* set, which logged and returned — and the chain then died from a *different* error (`Import failed: Expected epoch change to happen at …, s286882962`). This report is the **unguarded next-set** branch, which produces no log line at all. |
+
+No PR mentioning `enact_epoch_change` was found, and no issue matched "empty next
+authorities" or "enact_epoch_change empty authorities".
+
+Worth noting about #5064: it was closed `COMPLETED` two days after opening with **no
+comments**, which reads more like an abandonment than a fix — so it is worth linking
+rather than ignoring.
+
 ## Suggested fix
 
-Mirror the existing guard onto the next set. The conservative form is to treat an
-empty next set the same way as an empty current set — ignore the change rather than
-publish an unclaimable epoch:
+Mirror the existing guard onto the next set, so an empty next set can never be
+written to storage or announced in a digest.
+
+The minimal form treats it like the empty-current case — refuse the change:
 
 ```rust
 if next_authorities.is_empty() {
         log::error!(
                 target: LOG_TARGET,
-                "Refusing to announce an epoch with no authorities; \
-                 retaining the current authority set."
+                "Refusing to announce an epoch with no authorities."
         );
         return;
 }
@@ -150,6 +209,13 @@ if authorities.is_empty() {
         return;
 }
 ```
+
+One trade-off is worth flagging, since it is the maintainer's call and not ours: an
+early `return` is consistent with the existing guard, but it leaves `EpochIndex`
+un-advanced while `CurrentSlot` keeps moving. The alternative is to carry the live set
+forward — assign `next_authorities = authorities.clone()` before the writes — which
+keeps the epoch advancing and the chain producing blocks. Either way the unclaimable
+epoch is never published, which is the part that matters.
 
 An alternative is to keep announcing the epoch but fall back to the current
 authorities for `NextAuthorities`, which preserves liveness while a runtime bug is
