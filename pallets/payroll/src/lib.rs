@@ -1550,9 +1550,8 @@ pub mod pallet {
             });
 
             // Privacy: emit amount commitment, NOT plaintext
-            let amount_commitment = sp_io::hashing::blake2_256(
-                &(amount, employer.clone(), employee.clone()).encode(),
-            );
+            let amount_commitment =
+                sp_io::hashing::blake2_256(&(amount, employer.clone(), employee.clone()).encode());
             Self::deposit_event(Event::BonusIssued {
                 employer,
                 employee,
