@@ -1388,7 +1388,7 @@ pub mod pallet {
             let payload_bounded: BoundedVec<u8, ConstU32<2048>> = payload
                 .try_into()
                 .map_err(|_| Error::<T>::InvalidConfiguration)?;
-            let message_hash = sp_core::blake2_256(payload_bounded.as_slice());
+            let message_hash = sp_io::hashing::blake2_256(payload_bounded.as_slice());
             // SAFETY: BlockNumber fits in u64 (runtime uses u32 block numbers)
             let timestamp = frame_system::Pallet::<T>::block_number().saturated_into::<u64>();
 

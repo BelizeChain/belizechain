@@ -1327,7 +1327,7 @@ pub mod pallet {
                 let mut dedup_input = [0u8; 8];
                 dedup_input[..4].copy_from_slice(&alert_id.to_le_bytes());
                 dedup_input[4..].copy_from_slice(&confirmer_node_id);
-                let dedup_key = sp_core::hashing::blake2_256(&dedup_input);
+                let dedup_key = sp_io::hashing::blake2_256(&dedup_input);
                 let dedup_hash = H256::from(dedup_key);
 
                 ensure!(
