@@ -25,6 +25,7 @@ sp-consensus-grandpa = { workspace = true, default-features = false }
 sp-core = { workspace = true, default-features = false }
 sp-genesis-builder = { workspace = true, default-features = false }
 sp-inherents = { workspace = true, default-features = false }
+sp-io = { workspace = true, default-features = false }
 sp-offchain = { workspace = true, default-features = false }
 sp-runtime = { workspace = true, default-features = false }
 sp-session = { workspace = true, default-features = false }
@@ -136,6 +137,7 @@ std = [
     "sp-core/std",
     "sp-genesis-builder/std",
     "sp-inherents/std",
+    "sp-io/std",
     "sp-offchain/std",
     "sp-runtime/std",
     "sp-session/std",

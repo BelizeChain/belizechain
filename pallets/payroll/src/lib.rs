@@ -1267,7 +1267,7 @@ pub mod pallet {
             });
 
             // Privacy: emit batch commitment hash, NOT total amount
-            let batch_commitment = sp_core::hashing::blake2_256(&total_gross.encode());
+            let batch_commitment = sp_io::hashing::blake2_256(&total_gross.encode());
             Self::deposit_event(Event::BatchPaymentCompleted {
                 employer,
                 count,
@@ -1458,7 +1458,7 @@ pub mod pallet {
 
             // Privacy: emit deduction commitment, NOT plaintext amount
             let deduction_commitment =
-                sp_core::hashing::blake2_256(&(deduction_type.clone(), amount).encode());
+                sp_io::hashing::blake2_256(&(deduction_type.clone(), amount).encode());
             Self::deposit_event(Event::DeductionUpdated {
                 employer,
                 employee,
@@ -1550,9 +1550,8 @@ pub mod pallet {
             });
 
             // Privacy: emit amount commitment, NOT plaintext
-            let amount_commitment = sp_core::hashing::blake2_256(
-                &(amount, employer.clone(), employee.clone()).encode(),
-            );
+            let amount_commitment =
+                sp_io::hashing::blake2_256(&(amount, employer.clone(), employee.clone()).encode());
             Self::deposit_event(Event::BonusIssued {
                 employer,
                 employee,
@@ -1574,7 +1573,7 @@ pub mod pallet {
             employer: &T::AccountId,
             employee: &T::AccountId,
         ) -> [u8; 32] {
-            sp_core::hashing::blake2_256(&(salary, employer, employee).encode())
+            sp_io::hashing::blake2_256(&(salary, employer, employee).encode())
         }
 
         /// Compute payment commitment: blake2_256(gross || deductions || net || employer || employee)
@@ -1586,7 +1585,7 @@ pub mod pallet {
             employer: &T::AccountId,
             employee: &T::AccountId,
         ) -> [u8; 32] {
-            sp_core::hashing::blake2_256(&(gross, deductions, net, employer, employee).encode())
+            sp_io::hashing::blake2_256(&(gross, deductions, net, employer, employee).encode())
         }
 
         /// Calculate total active deductions for an employee
@@ -1691,7 +1690,7 @@ pub mod pallet {
             });
 
             // Privacy: emit batch commitment, NOT total amount
-            let batch_commitment = sp_core::hashing::blake2_256(&total_amount.encode());
+            let batch_commitment = sp_io::hashing::blake2_256(&total_amount.encode());
             Self::deposit_event(Event::ScheduledPaymentProcessed {
                 employer: employer.clone(),
                 employee_count: count,

@@ -801,7 +801,7 @@ fn issue_bonus_works() {
         assert_eq!(record.deductions, 0);
         assert_eq!(record.category, PaymentCategory::Bonus);
 
-        let amount_commitment = sp_core::hashing::blake2_256(&(bonus, 1u64, 3u64).encode());
+        let amount_commitment = sp_io::hashing::blake2_256(&(bonus, 1u64, 3u64).encode());
         System::assert_has_event(
             Event::BonusIssued {
                 employer: 1,
@@ -1064,7 +1064,7 @@ fn batch_payment_emits_batch_completed_event() {
         assert_ok!(Payroll::batch_payment(RuntimeOrigin::signed(1)));
 
         let total_gross = salary * 2;
-        let batch_commitment = sp_core::hashing::blake2_256(&total_gross.encode());
+        let batch_commitment = sp_io::hashing::blake2_256(&total_gross.encode());
         System::assert_has_event(
             Event::BatchPaymentCompleted {
                 employer: 1,
@@ -1127,7 +1127,7 @@ fn scheduled_payment_emits_processed_event() {
         System::set_block_number(51);
         Payroll::on_idle(51, Weight::from_parts(u64::MAX, u64::MAX));
 
-        let batch_commitment = sp_core::hashing::blake2_256(&salary.encode());
+        let batch_commitment = sp_io::hashing::blake2_256(&salary.encode());
         System::assert_has_event(
             Event::ScheduledPaymentProcessed {
                 employer: 1,
@@ -1154,7 +1154,7 @@ fn set_deduction_emits_deduction_updated_event() {
         ));
 
         let deduction_commitment =
-            sp_core::hashing::blake2_256(&(DeductionType::IncomeTax, amount).encode());
+            sp_io::hashing::blake2_256(&(DeductionType::IncomeTax, amount).encode());
         System::assert_has_event(
             Event::DeductionUpdated {
                 employer: 1,
@@ -2206,7 +2206,7 @@ fn batch_payment_emits_correct_count_with_mixed_status() {
 
         // Batch event should show count=2 (only active employees)
         let total_gross = salary * 2;
-        let batch_commitment = sp_core::hashing::blake2_256(&total_gross.encode());
+        let batch_commitment = sp_io::hashing::blake2_256(&total_gross.encode());
         System::assert_has_event(
             Event::BatchPaymentCompleted {
                 employer: 1,

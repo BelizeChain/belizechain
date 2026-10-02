@@ -18,6 +18,7 @@ frame-system = { workspace = true }
 sp-core = { workspace = true }
 sp-runtime = { workspace = true }
 sp-std = { workspace = true }
+sp-io = { workspace = true }
 frame-benchmarking = { workspace = true, optional = true }
 
 # Additional dependencies for interoperability
@@ -41,6 +42,7 @@ std = [
     "sp-core/std",
     "sp-runtime/std",
     "sp-std/std",
+    "sp-io/std",
     "frame-benchmarking?/std",
     "pallet-balances/std",
     "pallet-timestamp/std",

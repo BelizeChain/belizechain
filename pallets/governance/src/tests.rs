@@ -2360,7 +2360,7 @@ fn apply_pending_runtime_upgrade_hash_mismatch_fails() {
 /// Code bytes plus the blake2-256 hash governance would have approved.
 fn pending_upgrade_code() -> (Vec<u8>, [u8; 32]) {
     let code = b"governance-gated runtime wasm".to_vec();
-    let hash = sp_core::blake2_256(&code);
+    let hash = sp_io::hashing::blake2_256(&code);
     (code, hash)
 }
 

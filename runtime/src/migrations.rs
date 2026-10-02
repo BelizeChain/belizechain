@@ -52,13 +52,13 @@ const MIGRATION_VERSION_KEY: &[u8] = b"belizechain::migration_version";
 /// Read the on-chain migration version.
 /// MG-1 FIX: Uses twox_128 hashed key for proper storage namespacing.
 fn on_chain_version() -> u32 {
-    let key = sp_core::hashing::twox_128(MIGRATION_VERSION_KEY);
+    let key = sp_io::hashing::twox_128(MIGRATION_VERSION_KEY);
     frame_support::storage::unhashed::get::<u32>(&key).unwrap_or(0)
 }
 
 /// Write the on-chain migration version.
 fn set_on_chain_version(v: u32) {
-    let key = sp_core::hashing::twox_128(MIGRATION_VERSION_KEY);
+    let key = sp_io::hashing::twox_128(MIGRATION_VERSION_KEY);
     frame_support::storage::unhashed::put::<u32>(&key, &v);
 }
 
