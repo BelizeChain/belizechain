@@ -376,7 +376,8 @@ impl pallet_belize_consensus::Config for Runtime {
     type Currency = Balances;
     type Randomness = RandomnessCollectiveFlip;
     type UnixTime = Timestamp;
-    type AIAuthorityOrigin = EnsureRoot<AccountId>;
+    // Runtime wiring: >2/3 TechnicalCouncil motion (or Root) — see CONS-006.
+    type AIAuthorityOrigin = TechnicalCouncilSuperMajority;
     type MaxValidators = ConstU32<100>;
     type MinConsensusStake = ConstU128<10_000_000_000_000_000>; // 10K DALLA
     type MinModelQualityScore = ConstU32<60>;

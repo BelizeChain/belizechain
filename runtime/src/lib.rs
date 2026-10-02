@@ -393,7 +393,11 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     // participants (the A1 Nawal signer) can register again. The
     // `SessionKeysNotRegistered` error variant is removed; it was the last
     // variant, so no other error index moved. No storage migration.
-    spec_version: 108,
+    // CONS-006: bumped to 109 — `AIAuthorityOrigin` moves from any single
+    // TechnicalCouncil member to `TechnicalCouncilSuperMajority` (>2/3 council
+    // motion, or Root) for `validate_ai_model`, `start_consensus_round`, and
+    // `finalize_consensus_round`. No storage migration.
+    spec_version: 109,
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 1,
@@ -1488,7 +1492,11 @@ impl pallet_belize_consensus::Config for Runtime {
     type Currency = Balances;
     type Randomness = pallet_babe::RandomnessFromOneEpochAgo<Runtime>;
     type UnixTime = Timestamp;
-    type AIAuthorityOrigin = TechnicalCouncilMember;
+    // CONS-006: AI-authority actions (`validate_ai_model`,
+    // `start_consensus_round`, `finalize_consensus_round`) require a >2/3
+    // TechnicalCouncil motion (or Root) — no single member can drive the
+    // federated-AI round lifecycle alone.
+    type AIAuthorityOrigin = TechnicalCouncilSuperMajority;
     type Staking = ConsensusStakingProvider;
     type MaxValidators = ConstU32<100>;
     type MinConsensusStake = ConstU128<{ 50 * DOLLARS }>; // 50 DALLA

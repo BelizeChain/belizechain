@@ -840,8 +840,9 @@ pub mod pallet {
         ) -> DispatchResult {
             T::AIAuthorityOrigin::ensure_origin(origin)?;
 
-            // SECURITY TODO(CONS-006): Require governance multisig M-of-N for AI
-            // authority key rotation. Currently a single key controls model validation.
+            // CONS-006: `AIAuthorityOrigin` is wired to
+            // `TechnicalCouncilSuperMajority` in the runtime — a >2/3 council
+            // motion (or Root). No single member controls model validation.
 
             // WARN-002: Cap accuracy_score to 10000 basis points (100.00%)
             let capped_score = accuracy_score.min(10_000);

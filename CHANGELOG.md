@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - CONS-006: AI Authority M-of-N Gating (October 2026)
+
+`AIAuthorityOrigin` moves from any single TechnicalCouncil member to
+`TechnicalCouncilSuperMajority` — a >2/3 council motion, or Root. No single
+account can validate models or drive the federated-AI round lifecycle alone
+(audit C-CON-2 / CONS-006).
+
+- **Runtime** — `spec_version` 108 → 109
+  - `pallet_belize_consensus::Config::AIAuthorityOrigin = TechnicalCouncilSuperMajority`
+  - Affects `validate_ai_model`, `start_consensus_round`, `finalize_consensus_round`
+  - No storage migration; benchmark smoke path unchanged (originates as `RawOrigin::Root`)
+
 ### Changed - ZK Proof Audit & Privacy Remediation (February 2026) ⚠️ BREAKING
 
 Comprehensive audit of zero-knowledge proof usage across all 16 pallets. Removed
