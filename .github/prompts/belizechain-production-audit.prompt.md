@@ -110,7 +110,7 @@ For each: `lib.rs`, `types.rs`, `weights.rs`, `benchmarking.rs`, `mock.rs`, test
 - `tests/` — the Python (pytest) end-to-end, security, cross-pallet, economic, governance,
   oracle, and belizex suites, and how/where they run
 - `chain-specs/`, `generated_specs/`, `generated_keys/`, root `testnet-spec.json`
-- `audit_results/` including `old_audits/`, and root `dep_audit_raw.txt`
+- `audit_results/` including `old_audits/`
 - `.github/workflows/deploy.yml`, `.github/workflows/security-audit.yml`, `.github/dependabot.yml`
 - `Dockerfile`, `Dockerfile.runtime`
 - `docs/` — every claim it makes about runtime behaviour, spec versions, or production status
