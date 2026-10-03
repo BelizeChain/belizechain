@@ -44,9 +44,9 @@
 
 ## Current Task Context
 - Phase 1 COMPLETE: Ceiba host hardening + BelizeChain node running via Tailscale
-- Phase 2 COMPLETE (2026-05-02): Pakit, Nawal, Kinich, GEM contracts, and Blue Hole Portal UI deployed and verified on Ceiba; chain recovered from epoch-rotation stall and progressing
+- Phase 2 COMPLETE (2026-05-02; Maya Wallet added 2026-09-21): Pakit, Nawal, Kinich, GEM contracts, Blue Hole Portal UI, and Maya Wallet (nginx `/wallet/`, HTTP 200) deployed and verified on Ceiba; chain recovered from epoch-rotation stall and progressing
 - **2026-09-29: chain re-genesised** after a 6-day stall caused by a zero-authority BABE epoch. See `docs/operations/EMPTY_EPOCH_STALL_AND_REGENESIS_2026-09-29.md` — it is the authoritative record for the current chain, and it supersedes the 2026-09-21 reset in part.
-- Phase 3 IN PROGRESS: Productionize observability, backup/restore drills, security hygiene queue (Dependabot backlog), and host-level automation
+- Phase 3 IN PROGRESS: alerting live (Alertmanager → Telegram armed 2026-10-02); nightly postgres/chain/pakit backups live; backup/restore drill complete 2026-09-17 (non-destructive — live-restore drill awaits a maintenance window); Dependabot backlog cleared except flwr-blocked nawal `cryptography` ×2. Remaining: live-restore drill, host-console stability items (memtest/BIOS/kernel), multi-node testnet expansion
 - Authoritative live ops docs: `docs/operations/EMPTY_EPOCH_STALL_AND_REGENESIS_2026-09-29.md` (current chain), `CEIBA_OPERATIONS_RUNBOOK.md` (node ops), `CEIBA_BASELINE_2026-05-02.md` (superseded snapshot), and `docs/deployment/PHASE2_CEIBA_SERVICES_PLAN.md`
 
 ## Dev Commands
