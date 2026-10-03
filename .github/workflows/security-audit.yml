@@ -26,6 +26,10 @@ on:
     - cron: '0 6 * * 1'
   workflow_dispatch:
 
+# Least privilege — scans only read the repo.
+permissions:
+  contents: read
+
 jobs:
   # ── 1. cargo audit — advisory database scan ─────────────
   audit:
