@@ -652,10 +652,10 @@ curl -H "Content-Type: application/json" \
 
 ## Next Steps
 
-- ✅ **Validator Registration**: [VALIDATOR_GUIDE.md](VALIDATOR_GUIDE.md)
-- ✅ **Monitoring Setup**: [MONITORING_GUIDE.md](MONITORING_GUIDE.md)
-- ✅ **Disaster Recovery**: [DISASTER_RECOVERY.md](DISASTER_RECOVERY.md)
-- ✅ **Security Best Practices**: [SECURITY.md](SECURITY.md)
+- ✅ **Validator Registration**: [VALIDATOR_GUIDE.md](../validators/validator-setup.md)
+- ✅ **Monitoring Setup**: [MONITORING_GUIDE.md](monitoring.md)
+- ✅ **Disaster Recovery**: [DISASTER_RECOVERY.md](../operations/DISASTER_RECOVERY.md)
+- ✅ **Security Best Practices**: [SECURITY.md](security.md)
 
 ---
 

@@ -596,4 +596,4 @@ pub enum Error<T> {
 - [Multi-Repo Overview](../architecture/multi-repo-overview.md)
 - [Economics Documentation](../economics/tokenomics.md)
 - [Governance System](../governance/democracy.md)
-- [Compliance Guide](../security/compliance.md)
+- [Compliance Guide](../security/COMPLIANCE_REGULATORY.md)

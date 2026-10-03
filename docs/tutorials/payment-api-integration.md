@@ -1473,8 +1473,8 @@ You now know how to:
 ---
 
 **Next Steps**:
-- 📱 [Build a Mobile App Integration](./mobile-app-integration.md)
-- 🔄 [Setup Subscription Billing](./subscription-billing.md)
-- 🛒 [E-commerce Best Practices](../developer-guides/ecommerce-patterns.md)
+- 📱 Build a Mobile App Integration
+- 🔄 [Setup Subscription Billing](setup-recurring-payment.md)
+- 🛒 E-commerce Best Practices
 
 **Need help?** Email developers@belizechain.org or visit our forum!

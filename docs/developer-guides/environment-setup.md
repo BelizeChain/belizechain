@@ -492,7 +492,7 @@ After successful environment setup:
 
 1. **Build and run local node:** [Blockchain Development Guide](./blockchain-development.md)
 2. **Deploy smart contracts:** [Smart Contract Development](./smart-contract-development.md)
-3. **Run integration tests:** [Testing Guide](../testing/integration-tests.md)
+3. **Run integration tests:** [Testing Guide](testing.md)
 4. **Set up validator:** [Validator Guide](../validators/validator-setup.md)
 
 ---

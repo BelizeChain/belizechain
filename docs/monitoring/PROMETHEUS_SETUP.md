@@ -632,7 +632,7 @@ amtool alert add alertname=test severity=critical
 ## Next Steps
 
 - ✅ **Setup disaster recovery**: [../operations/DISASTER_RECOVERY.md](../operations/DISASTER_RECOVERY.md)
-- ✅ **Configure security**: [../security/VALIDATOR_SECURITY.md](../security/VALIDATOR_SECURITY.md)
+- ✅ **Configure security**: [../security/VALIDATOR_SECURITY.md](../security/SECURITY_BEST_PRACTICES.md)
 - ✅ **Join validator community**: [Discord](https://discord.gg/belizechain)
 
 ---

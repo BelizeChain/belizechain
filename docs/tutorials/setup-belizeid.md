@@ -1264,6 +1264,6 @@ You now have a **sovereign digital identity** that:
 **Next Steps**:
 - 🏛️ [Complete KYC Verification](./kyc-verification.md)
 - 💳 [Use BelizeID for Government Services](../user-guides/government.md)
-- 🔐 [Advanced Privacy Features](../user-guides/privacy.md)
+- 🔐 Advanced Privacy Features
 
 **Questions?** Visit https://belizeid.gov.bz or call +501-ID-HELP!

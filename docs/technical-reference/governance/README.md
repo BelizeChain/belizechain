@@ -16,7 +16,7 @@ The BelizeChain Governance Pallet implements a sophisticated multi-tiered democr
 
 ### High-Level Documents
 
-#### [GOVERNANCE_STATUS.md](./GOVERNANCE_STATUS.md) *(BROKEN — file does not exist; flagged 2026-09-10 docs audit. Executive summary as of 2026-09-10: governance pallets implemented and exercised on testnet, but "87.5% complete / Phase 7" claims are UNVERIFIED — no dated per-phase ledger exists.)*
+#### [GOVERNANCE_STATUS.md](../../governance/OVERVIEW.md) *(BROKEN — file does not exist; flagged 2026-09-10 docs audit. Executive summary as of 2026-09-10: governance pallets implemented and exercised on testnet, but "87.5% complete / Phase 7" claims are UNVERIFIED — no dated per-phase ledger exists.)*
 **Current development status and metrics**
 - Overall progress tracker (87.5% complete - Phase 7)
 - Test coverage summary (137/137 tests passing)
@@ -24,7 +24,7 @@ The BelizeChain Governance Pallet implements a sophisticated multi-tiered democr
 - Code metrics and statistics
 - Production readiness assessment
 
-#### [GOVERNANCE_IMPLEMENTATION_PLAN.md](./GOVERNANCE_IMPLEMENTATION_PLAN.md)
+#### [GOVERNANCE_IMPLEMENTATION_PLAN.md](BELIZECHAIN_GOVERNANCE_COMPLETE.md)
 **Complete 8-phase development roadmap**
 - Phase-by-phase feature breakdown
 - Technical specifications
@@ -361,20 +361,20 @@ test result: ok. 137 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fi
 ## Resources
 
 ### Documentation
-- [Implementation Plan](./GOVERNANCE_IMPLEMENTATION_PLAN.md)
-- [Current Status](./GOVERNANCE_STATUS.md)
+- [Implementation Plan](BELIZECHAIN_GOVERNANCE_COMPLETE.md)
+- [Current Status](../../governance/OVERVIEW.md)
 - [Phase Completion Reports](../../) - Root directory
 
 ### Code
-- [Pallet Source](../../belizechain/pallets/governance/src/lib.rs)
-- [Tests](../../belizechain/pallets/governance/src/)
-- [Mock Runtime](../../belizechain/pallets/governance/src/mock.rs)
+- [Pallet Source](../../../pallets/governance/src/lib.rs)
+- [Tests](../../../pallets/governance/src)
+- [Mock Runtime](../../../pallets/governance/src/mock.rs)
 
 ### Related Documents
 - [BelizeChain Whitepaper](../whitepaper.md)
 - [Architecture Overview](../architecture.md)
-- [Compliance Pallet](../../belizechain/pallets/compliance/)
-- [Economy Pallet](../../belizechain/pallets/economy/)
+- [Compliance Pallet](../../../pallets/compliance)
+- [Economy Pallet](../../../pallets/economy)
 
 ## Support
 

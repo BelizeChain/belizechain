@@ -410,7 +410,7 @@ Merchant benefits:
 ## Related Documentation
 
 - [Tokenomics Overview](./tokenomics.md)
-- [Staking Guide](../validators/staking.md)
+- [Staking Guide](../validators/INCENTIVES.md)
 - [Governance Voting](../governance/voting.md)
-- [Tourism Ecosystem](../user-guides/tourism.md)
+- Tourism Ecosystem
 - [Economy Pallet API](../developer-guides/pallet-apis-core.md#economy-pallet)

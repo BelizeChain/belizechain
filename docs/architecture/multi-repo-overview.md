@@ -244,4 +244,4 @@ Query: {component="nawal"} |= "ERROR"
 - [Pakit Integration](./pakit-integration.md)
 - [GEM Integration](./gem-integration.md)
 - [UI Integration](./ui-integration.md)
-- [INTEGRATION_ARCHITECTURE.md](../../INTEGRATION_ARCHITECTURE.md)
+- [INTEGRATION_ARCHITECTURE.md](../../../ui/INTEGRATION_ARCHITECTURE.md)

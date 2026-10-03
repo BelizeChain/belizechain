@@ -41,7 +41,7 @@ Technical terminology and BelizeChain-specific concepts.
 
 **BABE (Blind Assignment for Blockchain Extension)**: Block production algorithm selecting validators via VRF (Verifiable Random Function). 6-second block times.
 
-→ See [Consensus](architecture/consensus.md)
+→ See [Consensus](technical-reference/concensus/POUW_CONSENSUS_DESIGN.md)
 
 **BelizeID**: National digital identity linked to SSN/passport. Required for all KYC levels. Stored encrypted on-chain.
 
@@ -65,7 +65,7 @@ Technical terminology and BelizeChain-specific concepts.
 - **Produced every**: 6 seconds
 - **Finalized**: 12 seconds (2 blocks via GRANDPA)
 
-→ See [Architecture](architecture/overview.md)
+→ See [Architecture](technical-reference/architecture.md)
 
 **Bonding**: Locking DALLA for staking. Minimum 1,000 DALLA. Unbonding period 14 days.
 
@@ -77,7 +77,7 @@ Technical terminology and BelizeChain-specific concepts.
 
 **CID (Content Identifier)**: Hash-based identifier for Pakit DAG storage. Compatible with IPFS CIDv1 (multibase encoding).
 
-→ See [DAG Storage](architecture/dag-storage-pakit.md)
+→ See [DAG Storage](architecture/dag-storage-design.md)
 
 **Compression**: Pakit supports:
 - **Classical**: zstd (2.6x), gzip (5.4x), lz4 (1.8x)
@@ -98,7 +98,7 @@ Technical terminology and BelizeChain-specific concepts.
 - **Locked2x**: 2x (14 days)
 - **Locked6x**: 6x (42 days)
 
-→ See [Voting Mechanisms](governance/voting-mechanisms.md)
+→ See [Voting Mechanisms](governance/voting.md)
 
 **Cross-Chain**: Interoperability via bridges:
 - **Ethereum**: Lock-and-mint, 150s finality, 0.1% fee
@@ -110,7 +110,7 @@ Technical terminology and BelizeChain-specific concepts.
 
 **DAG (Directed Acyclic Graph)**: Pakit storage structure using IPLD. Content-addressed, deduplication, quantum compression.
 
-→ See [DAG Storage](architecture/dag-storage-pakit.md)
+→ See [DAG Storage](architecture/dag-storage-design.md)
 
 **DALLA**: Native blockchain token:
 - **Decimals**: 12 (1 DALLA = 1,000,000,000,000 units)
@@ -122,7 +122,7 @@ Technical terminology and BelizeChain-specific concepts.
 
 **DAO (Decentralized Autonomous Organization)**: Smart contract-based governance. GEM platform provides templates.
 
-→ See [DAO Templates](smart-contracts/dao-templates.md)
+→ See [DAO Templates](smart-contracts/gem-dao-templates.md)
 
 **Deduplication**: Content-addressable chunking eliminates duplicate data in Pakit. 2.3x storage savings average.
 
@@ -180,7 +180,7 @@ Technical terminology and BelizeChain-specific concepts.
 - **Time**: 12 seconds (2 blocks)
 - **Mechanism**: Byzantine fault-tolerant voting
 
-→ See [Consensus](architecture/consensus.md)
+→ See [Consensus](technical-reference/concensus/POUW_CONSENSUS_DESIGN.md)
 
 **FSC (Financial Services Commission)**: Belize regulator overseeing:
 - KYC/AML compliance
@@ -197,7 +197,7 @@ Technical terminology and BelizeChain-specific concepts.
 - **Standards**: PSP22, PSP34
 - **Templates**: Tokens, NFTs, DAOs
 
-→ See [GEM Platform](smart-contracts/gem-platform-overview.md)
+→ See [GEM Platform](smart-contracts/gem-platform.md)
 
 **Governance**: On-chain decision-making:
 - **Democracy**: Public referendums (7-day voting)
@@ -208,7 +208,7 @@ Technical terminology and BelizeChain-specific concepts.
 
 **GRANDPA (GHOST-based Recursive Ancestor Deriving Prefix Agreement)**: Finality mechanism. Validators vote on chains, not blocks. 12-second finality.
 
-→ See [Consensus](architecture/consensus.md)
+→ See [Consensus](technical-reference/concensus/POUW_CONSENSUS_DESIGN.md)
 
 **GST (Goods and Services Tax)**: 12.5% tax on goods purchases. Auto-deducted in payroll system.
 
@@ -243,7 +243,7 @@ Technical terminology and BelizeChain-specific concepts.
 
 **IPLD (InterPlanetary Linked Data)**: DAG data model used by Pakit. Compatible with IPFS CIDv1.
 
-→ See [DAG Storage](architecture/dag-storage-pakit.md)
+→ See [DAG Storage](architecture/dag-storage-design.md)
 
 ## K
 
@@ -283,7 +283,7 @@ Technical terminology and BelizeChain-specific concepts.
 
 **MerkleDAG**: Directed acyclic graph with Merkle tree properties. Enables cryptographic verification of Pakit storage.
 
-→ See [DAG Storage](architecture/dag-storage-pakit.md)
+→ See [DAG Storage](architecture/dag-storage-design.md)
 
 **Multi-Sig (Multi-Signature)**: Account requiring M-of-N signatures. Treasury uses 4-of-7 (4 district representatives out of 7 total).
 
@@ -300,7 +300,7 @@ Technical terminology and BelizeChain-specific concepts.
 
 **NFT (Non-Fungible Token)**: Unique tokens (PSP34 standard). Examples: property titles, identity documents, digital art.
 
-→ See [PSP34 NFTs](smart-contracts/psp34-nfts.md)
+→ See [PSP34 NFTs](smart-contracts/gem-psp34-nfts.md)
 
 **Nonce**: Transaction sequence number preventing replay attacks. Increments with each transaction from account.
 
@@ -324,7 +324,7 @@ Technical terminology and BelizeChain-specific concepts.
 - **Deduplication**: 2.3x storage savings
 - **Encryption**: AES-256 optional
 
-→ See [DAG Storage](architecture/dag-storage-pakit.md)
+→ See [DAG Storage](architecture/dag-storage-design.md)
 
 **Pallet**: Modular runtime component. BelizeChain has 15 custom pallets:
 - **Core**: Economy, Identity, Governance, Compliance
@@ -361,11 +361,11 @@ Technical terminology and BelizeChain-specific concepts.
 
 **PSP22**: Polkadot Standard Proposal 22 (fungible token standard like ERC-20). Implemented in ink!.
 
-→ See [PSP22 Tokens](smart-contracts/psp22-tokens.md)
+→ See [PSP22 Tokens](smart-contracts/gem-psp22-tokens.md)
 
 **PSP34**: Polkadot Standard Proposal 34 (NFT standard like ERC-721). Implemented in ink!.
 
-→ See [PSP34 NFTs](smart-contracts/psp34-nfts.md)
+→ See [PSP34 NFTs](smart-contracts/gem-psp34-nfts.md)
 
 ## Q
 
@@ -385,7 +385,7 @@ Technical terminology and BelizeChain-specific concepts.
 
 **Referendum**: Public vote on governance proposals. 7-day voting period, conviction voting enabled.
 
-→ See [Voting Mechanisms](governance/voting-mechanisms.md)
+→ See [Voting Mechanisms](governance/voting.md)
 
 **RPC (Remote Procedure Call)**: Blockchain API methods:
 - **chain_***: Block/header queries
@@ -397,7 +397,7 @@ Technical terminology and BelizeChain-specific concepts.
 
 **Runtime**: State transition function defining blockchain logic. Compiled to WebAssembly, upgradeable via governance.
 
-→ See [Architecture](architecture/overview.md)
+→ See [Architecture](technical-reference/architecture.md)
 
 ## S
 
@@ -434,7 +434,7 @@ Technical terminology and BelizeChain-specific concepts.
 
 **Substrate**: Blockchain framework by Parity Technologies. BelizeChain built on Substrate 3.0.
 
-→ See [Architecture](architecture/overview.md)
+→ See [Architecture](technical-reference/architecture.md)
 
 ## T
 
@@ -513,7 +513,7 @@ Technical terminology and BelizeChain-specific concepts.
 
 ## See Also
 
-- **Architecture**: [Overview](architecture/overview.md)
+- **Architecture**: [Overview](technical-reference/architecture.md)
 - **Developer Guides**: [Getting Started](developer-guides/environment-setup.md)
 - **Economics**: [Tokenomics](economics/tokenomics.md)
 - **FAQ**: [Frequently Asked Questions](FAQ.md)

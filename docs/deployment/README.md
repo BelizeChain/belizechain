@@ -182,7 +182,7 @@ These guides are for **system administrators**, **DevOps engineers**, and **infr
 
 ---
 
-### 8. [High Availability Setup](./high-availability.md)
+### 8. High Availability Setup
 **Deploy fault-tolerant infrastructure**
 
 **What you'll learn**:
@@ -204,7 +204,7 @@ These guides are for **system administrators**, **DevOps engineers**, and **infr
 
 ---
 
-### 9. [Docker Deployment](./docker-deployment.md)
+### 9. Docker Deployment
 **Deploy using Docker containers**
 
 **What you'll learn**:
@@ -284,7 +284,7 @@ These guides are for **system administrators**, **DevOps engineers**, and **infr
 2. ✅ [Testnet Deployment (Ceiba)](./TESTNET_DEPLOYMENT.md)
 3. ✅ [Configuration Guide](./configuration.md)
 4. ✅ [Security Guide](./security.md)
-5. ✅ [High Availability Setup](./high-availability.md)
+5. ✅ High Availability Setup
 6. ✅ [Monitoring & Alerting](./monitoring.md)
 7. ✅ [Maintenance Guide](./maintenance.md)
 
@@ -470,31 +470,31 @@ cargo build --release
 - **Instances**: t3.medium (basic), m5.xlarge (production)
 - **Pros**: Reliable, global, well-supported
 - **Cons**: Expensive
-- **Guide**: [AWS Deployment Guide](./cloud-providers/aws.md)
+- **Guide**: AWS Deployment Guide
 
 ### Google Cloud Platform (GCP)
 - **Instances**: n2-standard-2 (basic), n2-standard-4 (production)
 - **Pros**: Good performance, competitive pricing
 - **Cons**: Complex billing
-- **Guide**: [GCP Deployment Guide](./cloud-providers/gcp.md)
+- **Guide**: GCP Deployment Guide
 
 ### DigitalOcean
 - **Instances**: $40 droplet (basic), $160 droplet (production)
 - **Pros**: Simple, affordable, good docs
 - **Cons**: Limited regions
-- **Guide**: [DigitalOcean Deployment Guide](./cloud-providers/digitalocean.md)
+- **Guide**: DigitalOcean Deployment Guide
 
 ### Hetzner
 - **Instances**: CX31 (basic), CPX51 (production)
 - **Pros**: Cheapest, good hardware
 - **Cons**: Limited support
-- **Guide**: [Hetzner Deployment Guide](./cloud-providers/hetzner.md)
+- **Guide**: Hetzner Deployment Guide
 
 ### Bare Metal (On-Premises)
 - **Setup**: Dell PowerEdge, HP ProLiant
 - **Pros**: Full control, no monthly fees
 - **Cons**: High upfront cost, maintenance
-- **Guide**: [Bare Metal Deployment Guide](./bare-metal.md)
+- **Guide**: Bare Metal Deployment Guide
 
 ---
 

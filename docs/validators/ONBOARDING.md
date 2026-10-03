@@ -747,7 +747,7 @@ sudo systemctl restart belizechain-validator
 
 - ✅ **Monitor performance**: [../monitoring/PROMETHEUS_SETUP.md](../monitoring/PROMETHEUS_SETUP.md)
 - ✅ **Setup disaster recovery**: [../operations/DISASTER_RECOVERY.md](../operations/DISASTER_RECOVERY.md)
-- ✅ **Learn security best practices**: [../security/VALIDATOR_SECURITY.md](../security/VALIDATOR_SECURITY.md)
+- ✅ **Learn security best practices**: [../security/VALIDATOR_SECURITY.md](../security/SECURITY_BEST_PRACTICES.md)
 - ✅ **Join community**: [Discord](https://discord.gg/belizechain) #validators channel
 
 ---

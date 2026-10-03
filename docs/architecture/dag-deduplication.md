@@ -499,5 +499,5 @@ exists = engine.check_exists(content_id)  # < 0.001 ms
 
 - [DAG Storage Design](./dag-storage-design.md)
 - [Compression Engine](./dag-compression-engine.md)
-- [Content Addressing](../technical-reference/content-addressing.md)
+- Content Addressing
 - [Performance Benchmarks](./dag-performance-benchmarks.md)

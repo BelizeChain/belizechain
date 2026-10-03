@@ -586,7 +586,7 @@ def select_parents_sovereignty_aware(
 - [On-Chain Proofs](./dag-on-chain-proofs.md)
 - [Performance Benchmarks](./dag-performance-benchmarks.md)
 - [BNS Web Hosting](../services/bns-ipfs-hosting.md)
-- [LandLedger Integration](../user-guides/landledger-guide.md)
+- LandLedger Integration
 
 ---
 

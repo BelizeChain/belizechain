@@ -152,7 +152,7 @@ docs/
 - 🔄 [Setup Recurring Payments](./tutorials/setup-recurring-payment.md)
 - 💰 [Batch Payments (Payroll)](./tutorials/send-batch-payments.md)
 - 🏗️ [Build a DApp](./developer-guides/build-dapp.md)
-- ⚡ [Become a Validator](./tutorials/stake-validator.md)
+- ⚡ [Become a Validator](tutorials/become-validator.md)
 
 ---
 
@@ -200,7 +200,7 @@ Found a typo? Want to improve a guide? We welcome contributions!
 
 - [Privacy Policy](https://belizechain.org/privacy)
 - [Terms of Service](https://belizechain.org/terms)
-- [Compliance Framework](./technical-reference/compliance.md)
+- [Compliance Framework](security/COMPLIANCE_REGULATORY.md)
 
 ---
 

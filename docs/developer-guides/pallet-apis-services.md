@@ -555,5 +555,5 @@ pub type DistrictId = u8;  // 0-5 for 6 districts
 - [Financial Pallet APIs](./pallet-apis-financial.md)
 - [Infrastructure Pallet APIs](./pallet-apis-infrastructure.md)
 - [BNS Overview](../services/bns-overview.md)
-- [LandLedger Guide](../user-guides/landledger.md)
+- LandLedger Guide
 - [GEM Contracts](../smart-contracts/gem-platform.md)

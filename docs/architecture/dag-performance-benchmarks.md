@@ -522,4 +522,4 @@ python benchmarks/generate_report.py > BENCHMARKS.md
 - [Compression Engine](./dag-compression-engine.md)
 - [Deduplication System](./dag-deduplication.md)
 - [DAG vs IPFS](./dag-vs-ipfs.md)
-- [Performance Tuning Guide](../operations/performance-tuning.md)
+- [Performance Tuning Guide](../performance/benchmarks-optimization.md)

@@ -608,5 +608,5 @@ function renderUserContent(content: string) {
 - [Multi-Repo Overview](./multi-repo-overview.md)
 - [UI Repository](https://github.com/BelizeChain/ui)
 - [Maya Wallet User Guide](../user-guides/maya-wallet.md)
-- [Blue Hole Portal Admin Guide](../user-guides/blue-hole-portal.md)
+- [Blue Hole Portal Admin Guide](../user-guides/blue-hole-explorer.md)
 - [Polkadot.js Documentation](https://polkadot.js.org/docs/)

@@ -711,4 +711,4 @@ curl -H "Content-Type: application/json" \
 
 ---
 
-**Questions?** Check our [FAQ](../getting-started/faq.md) or join [Discord](https://discord.gg/belizechain)! ⚙️🇧🇿
+**Questions?** Check our [FAQ](../FAQ.md) or join [Discord](https://discord.gg/belizechain)! ⚙️🇧🇿

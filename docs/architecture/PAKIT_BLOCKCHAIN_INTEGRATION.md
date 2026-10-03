@@ -437,7 +437,7 @@ sudo ufw allow 9944/tcp
 ## References
 
 - [Substrate Interface Documentation](https://polkascan.github.io/py-substrate-interface/)
-- [BelizeChain LandLedger Pallet](../belizechain/pallets/landledger/src/lib.rs)
+- [BelizeChain LandLedger Pallet](../../pallets/landledger/src/lib.rs)
 - [IPFS CID Specification](https://docs.ipfs.tech/concepts/content-addressing/)
 - [Arweave Transaction Format](https://docs.arweave.org/developers/server/http-api)
 

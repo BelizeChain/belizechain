@@ -547,7 +547,7 @@ For mission-critical validators, setup automated failover:
 - ✅ **Test your backups** (quarterly drill)
 - ✅ **Document custom procedures** (unique to your setup)
 - ✅ **Train backup operator** (if you have one)
-- ✅ **Review security practices**: [../security/VALIDATOR_SECURITY.md](../security/VALIDATOR_SECURITY.md)
+- ✅ **Review security practices**: [../security/VALIDATOR_SECURITY.md](../security/SECURITY_BEST_PRACTICES.md)
 
 ---
 

@@ -963,9 +963,9 @@ What's Next:
 ## 📚 Resources
 
 **Templates**:
-- [Proposal Template](./proposal-template.md)
-- [Budget Template](./budget-template.xlsx)
-- [Timeline Template](./timeline-template.xlsx)
+- Proposal Template
+- Budget Template
+- Timeline Template
 
 **Guides**:
 - [Governance Guide](../user-guides/governance.md) - Full democracy guide

@@ -543,5 +543,5 @@ Cost per compression:
 - [Core Pallet APIs](./pallet-apis-core.md)
 - [Financial Pallet APIs](./pallet-apis-financial.md)
 - [Services Pallet APIs](./pallet-apis-services.md)
-- [Bridge Documentation](../bridges/ethereum-bridge.md)
+- Bridge Documentation
 - [Kinich Quantum Integration](../architecture/kinich-integration.md)

@@ -414,4 +414,4 @@ December: Year-end audit publication
 - [Treasury Management](../economics/tokenomics.md#treasury-management)
 - [Governance Pallet API](../developer-guides/pallet-apis-core.md#governance-pallet)
 - [Community Pallet](../developer-guides/pallet-apis-services.md#community-pallet)
-- [Blue Hole Portal Guide](../user-guides/blue-hole-portal.md) (Government dashboard)
+- [Blue Hole Portal Guide](../user-guides/blue-hole-explorer.md) (Government dashboard)

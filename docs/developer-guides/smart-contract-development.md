@@ -403,7 +403,7 @@ mod my_nft {
 
 ## DAO Contract (Governance)
 
-**See:** [gem/simple_dao/lib.rs](../../gem/simple_dao/lib.rs) for full implementation
+**See:** [gem/simple_dao/lib.rs](../../../gem/simple_dao/lib.rs) for full implementation
 
 **Key features:**
 - Proposal submission (1,000 DALLA deposit)
@@ -680,9 +680,9 @@ pub fn admin_function(&mut self) -> Result<()> {
 
 ## Related Documentation
 
-- [GEM Platform Overview](../smart-contracts/platform-overview.md)
-- [PSP22 Token Standard](../smart-contracts/psp22-tokens.md)
-- [PSP34 NFT Standard](../smart-contracts/psp34-nfts.md)
-- [DAO Templates](../smart-contracts/dao-templates.md)
-- [GEM Faucet](../smart-contracts/faucet.md)
+- [GEM Platform Overview](../smart-contracts/gem-platform.md)
+- [PSP22 Token Standard](../smart-contracts/gem-psp22-tokens.md)
+- [PSP34 NFT Standard](../smart-contracts/gem-psp34-nfts.md)
+- [DAO Templates](../smart-contracts/gem-dao-templates.md)
+- [GEM Faucet](../smart-contracts/gem-faucet.md)
 - [ink! Documentation](https://use.ink)

@@ -173,5 +173,5 @@ Quantum (Kinich optimization level 2):
 
 - [Multi-Repo Overview](./multi-repo-overview.md)
 - [Kinich Repository](https://github.com/BelizeChain/kinich-quantum)
-- [Consensus Pallet](../developer-guides/pallet-consensus.md)
+- [Consensus Pallet](../technical-reference/concensus/POUW_CONSENSUS_DESIGN.md)
 - [configured quantum backend Docs](https://learn.microsoft.com/azure/quantum/)

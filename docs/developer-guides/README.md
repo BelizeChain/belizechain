@@ -96,7 +96,7 @@
 
 ---
 
-### 🦀 [Build Custom Pallets](./custom-pallets.md)
+### 🦀 [Build Custom Pallets](smart-pallets.md)
 **Create your own Substrate pallets**
 - Pallet structure
 - Storage design
@@ -158,7 +158,7 @@
    - Setup test environment
    - Write unit tests
    - Integration tests
-3. [Build Custom Pallets](./custom-pallets.md) (if Rust developer)
+3. [Build Custom Pallets](smart-pallets.md) (if Rust developer)
    - Create simple pallet
    - Deploy to local chain
    - Test thoroughly
@@ -372,6 +372,6 @@ Choose your path:
 - **New to blockchain?** → [Setup Environment](./setup-environment.md)
 - **Want to code now?** → [Build Your First DApp](./build-dapp.md)
 - **Need API docs?** → [API Reference](./api-reference.md)
-- **Building pallets?** → [Custom Pallets Guide](./custom-pallets.md)
+- **Building pallets?** → [Custom Pallets Guide](smart-pallets.md)
 
 **Let's build the future of Belize together!** 🇧🇿💻

@@ -308,4 +308,4 @@ Options:
 - [Economy Pallet API](../developer-guides/pallet-apis-core.md#economy-pallet)
 - [Tourism Cashback Details](../economics/staking-rewards.md)
 - [KYC/AML Procedures](../security/kyc-aml-procedures.md)
-- [Business User Guide](./business-user-guide.md)
+- [Business User Guide](business-government-guides.md)

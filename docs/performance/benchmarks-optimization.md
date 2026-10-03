@@ -588,4 +588,4 @@ print(f"  Processing time: {processing_time:.1f}s ({processing_time/60:.2f} min)
 
 ## Performance Monitoring
 
-See [Monitoring & Observability](monitoring-observability.md) for Prometheus/Grafana dashboard setup and alerting configuration.
+See [Monitoring & Observability](../monitoring/PROMETHEUS_SETUP.md) for Prometheus/Grafana dashboard setup and alerting configuration.

@@ -408,4 +408,4 @@ def engagement_score(user):
 - [Governance Pallet API](../developer-guides/pallet-apis-core.md#governance-pallet)
 - [Treasury Management](../economics/tokenomics.md#treasury-management)
 - [Maya Wallet Voting Guide](../user-guides/maya-wallet.md#governance)
-- [Blue Hole Portal Dashboard](../user-guides/blue-hole-portal.md)
+- [Blue Hole Portal Dashboard](../user-guides/blue-hole-explorer.md)

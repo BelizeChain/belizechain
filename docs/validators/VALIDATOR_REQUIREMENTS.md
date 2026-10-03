@@ -319,7 +319,7 @@ Validators must:
 
 ### Step 1: Self-Assessment
 
-Use our [Validator Readiness Checklist](VALIDATOR_CHECKLIST.md):
+Use our Validator Readiness Checklist:
 - ☐ Hardware meets requirements
 - ☐ Budget covers operational costs
 - ☐ Technical skills verified
@@ -437,7 +437,7 @@ Validators may be removed for:
 ### Documentation
 - [Testnet Deployment Guide](../deployment/TESTNET_DEPLOYMENT.md)
 - [Monitoring Setup](../monitoring/PROMETHEUS_SETUP.md)
-- [Security Best Practices](../security/VALIDATOR_SECURITY.md)
+- [Security Best Practices](../security/SECURITY_BEST_PRACTICES.md)
 - [Disaster Recovery](../operations/DISASTER_RECOVERY.md)
 
 ### Community

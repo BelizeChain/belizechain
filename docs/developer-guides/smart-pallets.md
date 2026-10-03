@@ -1275,7 +1275,7 @@ Before deploying your pallet:
 2. **[Testing Guide →](testing.md)**  
    Advanced testing strategies
 
-3. **[Benchmarking →](../technical-reference/benchmarking.md)**  
+3. **[Benchmarking →](../technical-reference/BENCHMARKING_PREPARATION.md)**  
    Measure pallet performance
 
 **Join Community**:

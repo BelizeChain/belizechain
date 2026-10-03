@@ -713,7 +713,7 @@ Expires: Block 2,592,000 from listing
 - [Ethereum Name Service (ENS)](https://ens.domains/) - Domain system inspiration
 - [Unstoppable Domains](https://unstoppabledomains.com/) - NFT domain model
 - [Handshake](https://handshake.org/) - Decentralized DNS root
-- [Pakit Storage](../pakit/README.md) - DAG storage backend
+- [Pakit Storage](../../../pakit-storage/README.md) - DAG storage backend
 - [Identity Pallet](../identity/README.md) - KYC verification system
 - [Economy Pallet](../economy/README.md) - DALLA payment system
 - [ICANN Domain Guidelines](https://www.icann.org/) - Traditional DNS standards

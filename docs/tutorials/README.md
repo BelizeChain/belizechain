@@ -95,7 +95,7 @@
 
 ### Advanced Tutorials
 
-#### ⚡ [Become a Validator](./stake-validator.md)
+#### ⚡ [Become a Validator](become-validator.md)
 **Secure the network and earn rewards**
 
 **What you'll learn**:
@@ -119,7 +119,7 @@
 
 ---
 
-#### 🔄 [Setup Cross-Chain Bridge](./cross-chain-bridge.md)
+#### 🔄 Setup Cross-Chain Bridge
 **Transfer assets between BelizeChain and Ethereum**
 
 **What you'll learn**:
@@ -242,7 +242,7 @@
 👉 [Create a Proposal](./create-proposal.md)
 
 ### "I want to earn rewards"
-👉 [Become a Validator](./stake-validator.md)
+👉 [Become a Validator](become-validator.md)
 
 ### "I run a business"
 👉 [Accept Crypto Payments](./accept-payments.md)
@@ -302,7 +302,7 @@ Each tutorial follows this structure:
 ### Developer Path 💻
 1. [Developer Guides](../developer-guides/README.md)
 2. [Integrate Payment API](./payment-api-integration.md)
-3. [Setup Cross-Chain Bridge](./cross-chain-bridge.md)
+3. Setup Cross-Chain Bridge
 
 **Time**: 5-6 hours  
 **Outcome**: Build applications on BelizeChain
@@ -311,7 +311,7 @@ Each tutorial follows this structure:
 
 ### Advanced Path ⚡
 1. Complete Business or Developer Path ↑
-2. [Become a Validator](./stake-validator.md)
+2. [Become a Validator](become-validator.md)
 3. [Technical Reference](../technical-reference/README.md)
 
 **Time**: 10+ hours  
@@ -406,7 +406,7 @@ After completing tutorials:
 
 Have a great tutorial idea?
 
-1. Write it following our [template](./tutorial-template.md)
+1. Write it following our template
 2. Test with 3 people
 3. Submit to: tutorials@belizechain.org
 4. Get featured + 1,000 DALLA reward!

@@ -218,7 +218,7 @@ node examples/01-deploy-token.js
 ```
 
 For detailed tutorials, see:
-- [GEM Quick Start Guide](gem-quick-start.md)
+- [GEM Quick Start Guide](gem-deployment-guide.md)
 - [Deploying Your First Contract](gem-deployment-guide.md)
 - [Building PSP22 Tokens](gem-psp22-tokens.md)
 - [Creating NFT Collections](gem-psp34-nfts.md)
@@ -228,7 +228,7 @@ For detailed tutorials, see:
 
 - **GitHub**: [github.com/BelizeChain/gem](https://github.com/BelizeChain/gem)
 - **SDK Documentation**: [GEM SDK Reference](gem-sdk-reference.md)
-- **API Reference**: [Complete Contract APIs](gem-api-reference.md)
+- **API Reference**: [Complete Contract APIs](gem-sdk-reference.md)
 - **Security Audits**: [Audit Results](gem-security-audit.md)
 - **Code Examples**: [GEM Examples](gem-examples.md)
 - **Discord**: [discord.belizechain.org](https://discord.belizechain.org)

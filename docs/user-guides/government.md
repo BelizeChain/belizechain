@@ -882,8 +882,8 @@ Each fee type gets unique QR code + payment link
 ## 📚 Resources
 
 **Documentation**:
-- [Multi-Signature Wallet Guide](../technical-reference/multi-signature.md)
-- [KYC/AML Compliance](../technical-reference/kyc-aml.md)
+- Multi-Signature Wallet Guide
+- [KYC/AML Compliance](../security/kyc-aml-procedures.md)
 - [Government API Reference](../developer-guides/api-reference.md)
 
 **Tutorials**:

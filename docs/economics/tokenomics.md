@@ -314,7 +314,7 @@ Total BZD M2: ~$1B ($2B BZD)
 ## Related Documentation
 
 - [Staking Rewards](./staking-rewards.md)
-- [Tourism Cashback](./tourism-cashback.md)
-- [Treasury Governance](../governance/treasury.md)
-- [BelizeX Trading](../user-guides/belizex-trading.md)
+- Tourism Cashback
+- Treasury Governance
+- [BelizeX Trading](../defi/DEVELOPER_GUIDE.md)
 - [Economy Pallet API](../developer-guides/pallet-apis-core.md#economy-pallet)

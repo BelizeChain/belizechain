@@ -386,4 +386,4 @@ engine = CompressionEngine(
 - [DAG Storage Design](./dag-storage-design.md)
 - [Deduplication Engine](./dag-deduplication.md)
 - [Performance Benchmarks](./dag-performance-benchmarks.md)
-- [Kinich Quantum Integration](../services/kinich-quantum-overview.md)
+- [Kinich Quantum Integration](../services/kinich-quantum-computing.md)

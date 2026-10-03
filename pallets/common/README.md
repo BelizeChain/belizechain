@@ -482,7 +482,7 @@ fn test_anchor_chain_integrity() {
 - [Git Version Control](https://git-scm.com/) - Inspiration for content-addressable storage
 - [LandLedger Pallet](../landledger/README.md) - Primary user of temporal anchoring
 - [Governance Pallet](../governance/README.md) - Proposal versioning
-- [Pakit Storage](../../pakit/README.md) - Content storage backend
+- [Pakit Storage](../../../pakit-storage/README.md) - Content storage backend
 
 ## License
 This pallet is part of BelizeChain and is licensed under GPL-3.0.

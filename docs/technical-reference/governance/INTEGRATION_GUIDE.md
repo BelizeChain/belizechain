@@ -631,4 +631,4 @@ belize_governance: BelizeGovernanceConfig {
 - **Discord**: #governance-dev channel
 - **GitHub Issues**: Report integration problems
 
-For more details, see the [main governance documentation](./README.md) and [implementation plan](../../GOVERNANCE_IMPLEMENTATION_PLAN.md).
+For more details, see the [main governance documentation](./README.md) and [implementation plan](BELIZECHAIN_GOVERNANCE_COMPLETE.md).

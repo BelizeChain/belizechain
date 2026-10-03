@@ -394,7 +394,7 @@ Use testnet for integration testing before mainnet deployment.
 
 ### Can I contribute to BelizeChain?
 
-**Yes!** See [Contributing Guide](CONTRIBUTING.md):
+**Yes!** See [Contributing Guide](../CONTRIBUTING.md):
 - Code contributions (Rust, Python, TypeScript)
 - Documentation improvements
 - Bug reports and feature requests

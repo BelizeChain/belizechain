@@ -909,7 +909,7 @@ Lock 32 weeks: 16x voting power
    - Advanced voting strategies
    - Become governance expert
 
-3. **[Become a Validator](./stake-validator.md)**
+3. **[Become a Validator](become-validator.md)**
    - Even more governance influence
    - Earn rewards
    - Secure the network

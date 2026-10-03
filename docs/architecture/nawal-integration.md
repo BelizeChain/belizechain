@@ -260,5 +260,5 @@ Results:
 
 - [Multi-Repo Overview](./multi-repo-overview.md)
 - [Nawal Repository](https://github.com/BelizeChain/nawal-ai)
-- [Staking Pallet](../developer-guides/pallet-staking.md)
+- [Staking Pallet](../developer-guides/pallet-apis-financial.md)
 - [Differential Privacy Guide](https://www.microsoft.com/research/wp-content/uploads/2016/02/dwork.pdf)

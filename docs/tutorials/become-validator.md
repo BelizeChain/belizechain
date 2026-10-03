@@ -46,7 +46,7 @@ Learn how to become a BelizeChain validator - set up your node, bond DALLA stake
 - Server: $50-150/month
 - Backup server: $50/month (recommended)
 
-**Are you ready?** If not, consider [delegating to a validator](./delegate-stake.md) instead (easier, same rewards, no technical work).
+**Are you ready?** If not, consider delegating to a validator instead (easier, same rewards, no technical work).
 
 ---
 
@@ -93,9 +93,9 @@ Learn how to become a BelizeChain validator - set up your node, bond DALLA stake
 
 ### Knowledge Requirements
 
-- [ ] Read [Staking Guide](../getting-started/staking-guide.md)
-- [ ] Understand [Consensus](../technical-reference/consensus.md)
-- [ ] Read [Validator Economics](../technical-reference/validator-economics.md)
+- [ ] Read [Staking Guide](../economics/staking-rewards.md)
+- [ ] Understand [Consensus](../technical-reference/concensus/POUW_CONSENSUS_DESIGN.md)
+- [ ] Read [Validator Economics](../validators/INCENTIVES.md)
 
 **Ready?** Let's begin! 🚀
 
@@ -696,7 +696,7 @@ crontab -e
 
 **Use Prometheus + Grafana dashboard**:
 
-Full guide: [Validator Monitoring Setup](../deployment/validator-monitoring.md)
+Full guide: [Validator Monitoring Setup](../deployment/monitoring.md)
 
 **Benefits**:
 - Real-time graphs
@@ -915,10 +915,10 @@ journalctl -u belizechain -n 100 --no-pager
 ## 📚 Resources
 
 **Documentation**:
-- [Staking Guide](../getting-started/staking-guide.md) - For nominators
-- [Consensus Technical Reference](../technical-reference/consensus.md)
-- [Validator Economics](../technical-reference/validator-economics.md)
-- [Validator Monitoring](../deployment/validator-monitoring.md)
+- [Staking Guide](../economics/staking-rewards.md) - For nominators
+- [Consensus Technical Reference](../technical-reference/concensus/POUW_CONSENSUS_DESIGN.md)
+- [Validator Economics](../validators/INCENTIVES.md)
+- [Validator Monitoring](../deployment/monitoring.md)
 
 **Tools**:
 - [Telemetry Dashboard](https://telemetry.belizechain.org)

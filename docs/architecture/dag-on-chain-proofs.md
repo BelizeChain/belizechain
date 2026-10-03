@@ -535,7 +535,7 @@ substrate.subscribe_block_headers(on_proof_registered)
 ## Related Documentation
 
 - [DAG Storage Design](./dag-storage-design.md)
-- [LandLedger Pallet API](../user-guides/landledger-guide.md)
+- LandLedger Pallet API
 - [BNS Website Hosting](../services/bns-ipfs-hosting.md)
-- [Merkle Trees Explanation](../technical-reference/merkle-trees.md)
-- [Substrate Proof Verification](../technical-reference/substrate-proofs.md)
+- Merkle Trees Explanation
+- Substrate Proof Verification

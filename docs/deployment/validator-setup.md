@@ -229,7 +229,7 @@ You need DALLA to:
 
 **Option A: Using Wallet**
 
-1. Open [Maya Wallet](../user-guides/using-wallet.md)
+1. Open [Maya Wallet](../user-guides/maya-wallet.md)
 2. Send 10,500 DALLA to your validator address
 3. Wait 1 block confirmation (~6 seconds)
 
