@@ -94,6 +94,14 @@ Scratch space was cleaned after validation (13G freed). `/tmp` usage confirmed b
 4. **`backup_root` perms**: files created `root:root`; `wicked` could not write SHA256SUMS initially — use `sudo bash -c` for anything in the backup root or chown the root to `wicked`.
 5. **Prometheus/Grafana and /data service dirs** (`nawal`, `ipfs`, `prometheus`, `grafana`, `redis`, `logs`, `nginx`) were not archived this pass (2026-05-02 doc lists them as "scratch extraction and manifest validation" targets). Low risk, but list them for the next drill if those services accumulate meaningful state.
 
+## Follow-Up Status (added 2026-10-03, verified live)
+
+- **Gap 2 (`db.bak`)** — resolved: no `db.bak` remains in the live chain dir; chain backups are ~112M instead of 12G.
+- **Gap 3 (no automated chain backup schedule)** — resolved: `belizechain-backup.timer` runs nightly (~04:30 + 15m jitter) via `belizechain-backup.service` (`infra/deploy/backup-{postgres,chain,pakit}.sh`). The chain backup is now crash-consistent: it stops `ceiba-node`, snapshots, restarts, and verifies authoring resumes. Artifacts land in `/data/backups/{chain,postgres,pakit}/` with `<archive>.manifest.json` sidecars; rotation keeps 7 chain archives / 7 days of postgres dumps / 4 pakit archives. Verified: the 2026-10-03 nightly run completed cleanly at head block 50810.
+- **Host stability follow-up 4 (trim `/var/crash`, was 7G)** — resolved: now 4.0K.
+- **Host stability follow-ups 1-3 (memtester / BIOS / kernel update)** — not re-verified on 2026-10-03; host-console work, still open.
+- **Gaps 1, 4, 5** — guidance unchanged; still applies to the next drill.
+
 ## Blast Radius & Rollback
 
 Unchanged from `CEIBA_BACKUP_RESTORE_DRILL_2026-05-02.md` — that doc's rollback rules remain authoritative. This drill never touched a live path, so no rollback was needed.

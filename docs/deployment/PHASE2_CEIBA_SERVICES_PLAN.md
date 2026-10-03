@@ -1,6 +1,6 @@
 # Phase 2 Ceiba Services Plan
 
-Status: Live on Ceiba; stabilization and activation in progress *(flagged 2026-09-10 docs audit: "live on Ceiba" here is the ops-host runbook view — the full Ceiba stack including Pakit is not running locally, and the Nawal sovereign-signer gate is still open; see `infra/docs/NEXT3_ROADMAP_LANDED_2026-09-10.md`)*
+Status: Live on Ceiba; stabilization complete, multi-node expansion pending. *(Updated 2026-10-03 — both 2026-09-10 docs-audit flags are resolved: the Nawal sovereign-signer gate closed on 2026-09-13 with the first sovereign-signed FL round (`nawal-ai/docs/development/C2_SOVEREIGN_FL_ROUND_2026-09-13.md`), and Maya Wallet is activated on Ceiba since 2026-09-21. "Live on Ceiba" remains the ops-host runbook view — the stack is not run locally on a workstation. See `infra/docs/NEXT3_ROADMAP_LANDED_2026-09-10.md`.)*
 Goal: Keep the live sibling services reproducible, observable, and ready for
 real workflows with deterministic rollback steps.
 
@@ -40,11 +40,10 @@ on the active Ceiba testnet on 2026-05-02:
 | Simple DAO | `r1VnpeWtfLmtZ2W2UJhYXSLoHhwo7tAY48RZyVirRu5ucLi7i` |
 | Faucet | `r1TDXUdxgeLC5BAkFQeZnZNSAX67FwRAaavmG19TzPtc2Szcg` |
 
-Current frontend deployment decision:
-- Keep the single public Ceiba `ui` slot on Blue Hole Portal for the stabilization window.
-- Maya Wallet is source-wired to GEM contract env through the `ui` repo, but it is not separately exposed on Ceiba.
-- The latest `infra` source has `NEXT_PUBLIC_*_CONTRACT` defaults for the `ui` service. The live `/opt/belizechain/docker-compose.ceiba.yml` captured on 2026-05-02 does not yet include those env keys, so syncing live compose/env remains a separate deployment step.
-- Expose Maya only after the post-push CI sweep and backup/restore drill are complete, using an explicit infra route/image contract and rollback plan.
+Current frontend deployment (verified live 2026-10-03):
+- Blue Hole Portal remains the single public Ceiba `ui` slot (`belizechain/blue-hole-portal` behind nginx).
+- Maya Wallet is **activated** on Ceiba since 2026-09-21: container `ceiba-maya` runs image `belizechain/maya-wallet:20260918-ceiba`, the live service carries the `NEXT_PUBLIC_*_CONTRACT` env keys, and `/wallet/` (redirecting to `/wallet`) returns HTTP 200 through nginx.
+- Rollout/rollback contract: `infra/docs/B1_MAYA_EXPOSURE_2026-06-13.md` — rollback = pin `MAYA_IMAGE` back to the previous known-good tag, or disable the `/wallet/` route.
 
 ## Completed Rollout Order
 
@@ -62,7 +61,7 @@ Current frontend deployment decision:
 3. Add missing Nawal Prometheus-format metrics. Completed on 2026-05-02.
 4. Run real activation workflows for Pakit, Nawal, and Kinich. Completed on 2026-05-02.
 5. Deploy and record GEM contract addresses for the testnet. Completed on 2026-05-02.
-6. Finish backup/restore drill validation before exposing additional frontend surfaces.
+6. Finish backup/restore drill validation before exposing additional frontend surfaces. Completed 2026-09-17 — non-destructive pass, all restore paths validated into scratch targets (`../operations/CEIBA_BACKUP_RESTORE_DRILL_2026-09-17.md`); live-restore drill deferred to a maintenance window by design. Maya exposure followed 2026-09-21; nightly automated postgres/chain/pakit backups (`belizechain-backup.timer`) now run on Ceiba.
 7. Prepare multi-node testnet expansion after the single-node baseline is stable.
 
 ## Preflight
@@ -96,4 +95,4 @@ Current frontend deployment decision:
 - Nawal has either a Prometheus exporter or native `/metrics` endpoint. Completed with native `/metrics`.
 - Pakit, Nawal, and Kinich each complete one real activation workflow on Ceiba.
 - GEM testnet contracts are deployed, recorded, and wired into UI/GEM env files.
-- Backup snapshot and restore drill are documented and validated.
+- Backup snapshot and restore drill are documented and validated. Done 2026-09-17 (non-destructive; live restore deferred by design); nightly automated postgres/chain/pakit backups are live on Ceiba.
