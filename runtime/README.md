@@ -7,7 +7,7 @@ Substrate FRAME v42 runtime implementation for BelizeChain sovereign blockchain.
 The BelizeChain runtime is the core state transition function that defines:
 - **Blockchain logic**: How transactions modify state
 - **Consensus rules**: Block validation and finality
-- **Pallets integration**: 13 custom pallets + 8 system pallets
+- **Pallets integration**: 19 custom pallets + 8 system pallets
 - **Governance mechanisms**: Democratic decision-making
 - **Economic model**: DALLA/bBZD dual-token system
 
@@ -30,7 +30,7 @@ BelizeChain Runtime
 │   ├── TransactionPayment - Transaction fees
 │   └── Sudo - Superuser access (testnet only)
 │
-└── Custom Pallets (13)
+└── Custom Pallets (19)
     ├── Economy - DALLA/bBZD tokens + treasury
     ├── Identity - BelizeID + KYC/AML
     ├── Governance - Democratic governance
@@ -43,7 +43,13 @@ BelizeChain Runtime
     ├── LandLedger - Property registry
     ├── Consensus - PoUW implementation
     ├── Quantum - Quantum workload integration
-    └── Community - Community governance
+    ├── Community - Community governance
+    ├── BNS - .bz domain registry + marketplace
+    ├── Mesh - Meshtastic LoRa mesh networking
+    ├── Justice - Dispute resolution + slash review
+    ├── Whistleblower - Pseudonymous reporting + escrowed rewards
+    ├── Moderation - Community flagging + Nawal AI auto-queue
+    └── StorageProof - On-chain verification of Pakit storage proofs
 ```
 
 ## Key Features

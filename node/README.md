@@ -8,7 +8,7 @@ This package implements the BelizeChain node binary, which runs the blockchain n
 - P2P networking for block propagation and consensus
 - RPC endpoints for client applications (Maya Wallet, Blue Hole Portal)
 - Consensus mechanism (BABE + GRANDPA)
-- Runtime integration with all 18 Belize-specific pallets plus runtime-level contracts support
+- Runtime integration with all 19 Belize-specific pallets plus runtime-level contracts support
 
 ## 🏗️ Architecture
 

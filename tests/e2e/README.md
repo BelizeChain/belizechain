@@ -7,7 +7,7 @@ Full-stack scenario tests that validate complete workflows across all BelizeChai
 ```
 ┌─────────┐     ┌────────┐     ┌──────────┐     ┌────────────┐
 │  Nawal  │ ──▶ │ Kinich │ ──▶ │  Pakit   │ ──▶ │ Blockchain │
-│   AI    │     │Quantum │     │ Storage  │     │  (13 pallets)│
+│   AI    │     │Quantum │     │ Storage  │     │  (19 pallets)│
 └─────────┘     └────────┘     └──────────┘     └────────────┘
      │               │               │                  │
      └───────────────┴───────────────┴──────────────────┘

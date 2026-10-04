@@ -326,11 +326,11 @@ Technical terminology and BelizeChain-specific concepts.
 
 → See [DAG Storage](architecture/dag-storage-design.md)
 
-**Pallet**: Modular runtime component. BelizeChain has 15 custom pallets:
-- **Core**: Economy, Identity, Governance, Compliance
-- **Financial**: Staking, BelizeX, Treasury
-- **Infrastructure**: Oracle, Interoperability, Consensus, Quantum
-- **Services**: BNS, LandLedger, Payroll, Community, Contracts
+**Pallet**: Modular runtime component. BelizeChain has 19 custom pallets:
+- **Economy**: Economy, Staking, Payroll, BelizeX
+- **Identity**: Identity, Compliance
+- **Governance**: Governance, Community, LandLedger, Justice, Whistleblower, Moderation
+- **Infrastructure**: Oracle, Interoperability, Consensus, Quantum, BNS, Mesh, StorageProof
 
 → See [Pallet APIs](developer-guides/pallet-apis-core.md)
 

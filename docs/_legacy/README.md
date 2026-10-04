@@ -7,10 +7,10 @@ here for historical reference only.
 Do **not** use these as a source of truth for:
 
 - Runtime pallet counts, indexes, or names (see `runtime/src/lib.rs` and the
-  current `belizechain.org` Appendix B for the live list of 18 custom pallets
-  at indexes 20\u201337).
+  current `belizechain.org` Appendix B for the live list of 19 custom pallets
+  at indexes 20–38).
 - Polkadot SDK / Substrate version (see `Cargo.toml` workspace dependencies
-  for the current `stable2603` rev).
+  for the current `stable2606` rev).
 - Service ports or endpoints (see `infra/nginx/nginx.conf` and the
   `belizechain.org` Appendix A / D for the current local + Ceiba testnet
   layout).

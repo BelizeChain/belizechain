@@ -19,7 +19,7 @@
 [![Coverage](https://img.shields.io/badge/coverage-gated-informational.svg)](.tarpaulin.toml)
 [![Testnet](https://img.shields.io/badge/testnet-ready-blue.svg)](https://testnet.belizechain.org)
 
-**Enterprise-grade blockchain runtime** powering Belize's sovereign digital infrastructure with 18 Belize-specific pallets, a dual-currency system (DALLA + bBZD), built-in compliance, and WebAssembly smart contracts.
+**Enterprise-grade blockchain runtime** powering Belize's sovereign digital infrastructure with 19 Belize-specific pallets, a dual-currency system (DALLA + bBZD), built-in compliance, and WebAssembly smart contracts.
 
 [**Quick Start**](#-quick-start) • [**Documentation**](docs/) • [**Testnet**](#-testnet-access) • [**Contributing**](#-contributing)
 
@@ -36,7 +36,7 @@ BelizeChain is a **Substrate blockchain in active development** for Belize's nat
 <td width="50%">
 
 ### Core Features
-- 🏛️ **18 Belize-Specific Pallets**: Complete governance, finance, compliance, justice, moderation, and mesh networking stack
+- 🏛️ **19 Belize-Specific Pallets**: Complete governance, finance, compliance, justice, moderation, and mesh networking stack
 - 💰 **Dual Currency System**: DALLA (native) + bBZD (BZD-pegged stablecoin)
 - ⚖️ **Regulatory Compliance**: Built-in KYC/AML, FSC oversight, sanctions enforcement
 - 🗳️ **Democratic Governance**: District councils, on-chain voting, emergency powers
@@ -70,9 +70,9 @@ BelizeChain is a **Substrate blockchain in active development** for Belize's nat
 | **UI Suite** | Maya Wallet + Blue Hole Portal | [ui](https://github.com/BelizeChain/ui) |
 | **Infrastructure** | Ceiba Docker Compose and host automation manifests | [infra](https://github.com/BelizeChain/infra) |
 
-## 💎 The 18 Belize-Specific Pallets
+## 💎 The 19 Belize-Specific Pallets
 
-BelizeChain implements **18 Belize-specific pallets** covering the complete national infrastructure stack. The current source of truth is `Cargo.toml` plus `runtime/src/lib.rs`.
+BelizeChain implements **19 Belize-specific pallets** covering the complete national infrastructure stack. The current source of truth is `Cargo.toml` plus `runtime/src/lib.rs`.
 
 <details>
 <summary><b>💰 Financial & Economic (3 pallets)</b></summary>
@@ -101,13 +101,14 @@ BelizeChain implements **18 Belize-specific pallets** covering the complete nati
 </details>
 
 <details>
-<summary><b>🔗 Infrastructure & Interoperability (5 pallets)</b></summary>
+<summary><b>🔗 Infrastructure & Interoperability (6 pallets)</b></summary>
 
 - **Staking** (`pallets/staking/`) - PoUW validator staking, rewards distribution, federated learning integration
 - **Consensus** (`pallets/consensus/`) - Proof of Useful Work, block production, quality scoring
 - **Interoperability** (`pallets/interoperability/`) - Ethereum & Polkadot bridges, cross-chain messaging
 - **Quantum** (`pallets/quantum/`) - Quantum workload orchestration, PQW rewards
 - **Mesh** (`pallets/mesh/`) - Meshtastic LoRa mesh networking, off-grid P2P payments, emergency broadcast
+- **StorageProof** (`pallets/storage-proof/`) - On-chain verification of Pakit storage proofs (Merkle proofs fully verified)
 
 </details>
 

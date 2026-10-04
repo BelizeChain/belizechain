@@ -99,7 +99,7 @@ cargo check -p pallet-belize-economy
 belizechain/
 ├── belizechain/          # Substrate blockchain runtime
 │   ├── node/             # Node implementation
-│   ├── pallets/          # 12 custom pallets
+│   ├── pallets/          # 19 custom pallets
 │   └── runtime/          # Runtime configuration
 ├── nawal/                # Federated AI evolution system
 │   ├── orchestrator.py   # Evolution orchestrator

@@ -10,7 +10,7 @@ BelizeChain uses a multi-repository architecture for independent development, de
 
 | Repository | Purpose | Language | Size | Status |
 |------------|---------|----------|------|--------|
-| **belizechain/belizechain** | Core blockchain (18 Belize-specific pallets + runtime) | Rust | ~500 MB | Active on Ceiba |
+| **belizechain/belizechain** | Core blockchain (19 Belize-specific pallets + runtime) | Rust | ~500 MB | Active on Ceiba |
 | **belizechain/kinich-quantum** | Quantum computing integration | Python | ~50 MB | Live on Ceiba; activation workflows pending |
 | **belizechain/nawal-ai** | Federated learning AI | Python | ~120 MB | Live on Ceiba; FL workload and Prometheus metrics pending |
 | **belizechain/pakit-storage** | DAG storage system | Python | ~80 MB | Live on Ceiba; DAG activation workflows pending |
@@ -25,7 +25,7 @@ BelizeChain uses a multi-repository architecture for independent development, de
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    BelizeChain Core                      │
-│  Substrate Runtime + 18 Belize Pallets (Rust)           │
+│  Substrate Runtime + 19 Belize Pallets (Rust)           │
 │  Ceiba RPC: http://100.81.45.25:9944                     │
 └──────┬────────┬────────┬────────┬────────┬─────────────┘
        │        │        │        │        │

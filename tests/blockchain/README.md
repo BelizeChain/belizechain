@@ -2,7 +2,7 @@
 
 ## Purpose
 Tests for BelizeChain's core blockchain functionality:
-- Pallet integration (13 custom pallets)
+- Pallet integration (14 custom pallets + contracts)
 - Runtime operations
 - Cross-pallet dependencies
 - Node RPC/WebSocket connectivity

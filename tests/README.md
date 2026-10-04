@@ -63,7 +63,7 @@ tests/
 ├── TEST_OVERVIEW.md             # Complete testing strategy
 ├── test_security.py             # Security-focused tests
 │
-├── blockchain/                  # Core pallet tests (15 custom + system pallets)
+├── blockchain/                  # Core pallet tests (14 custom pallets + contracts, consolidated)
 │   ├── __init__.py
 │   ├── README.md
 │   ├── test_economy.py          # Economy pallet (DALLA/bBZD)

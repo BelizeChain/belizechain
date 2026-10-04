@@ -30,7 +30,7 @@ This is the master instruction file for AI coding agents working on BelizeChain.
 │                   LAYER 1: BLOCKCHAIN CORE                      │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐               │
 │  │  Economy   │  │ Governance │  │ Compliance │               │
-│  │  Staking   │  │  Identity  │  │   Oracle   │  13 Pallets  │
+│  │  Staking   │  │  Identity  │  │   Oracle   │  19 Pallets  │
 │  │  BelizeX   │  │ LandLedger │  │ Payroll    │               │
 │  │Interop│Quantum│Consensus│Community│...      │               │
 │  └────────────┘  └────────────┘  └────────────┘               │
