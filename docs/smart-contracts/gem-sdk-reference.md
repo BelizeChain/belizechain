@@ -78,7 +78,7 @@ Create a new SDK instance.
 - `nodeUrl` (optional): WebSocket URL
   - Default: `ws://localhost:9944`
     - Testnet: `wss://<current-public-testnet-rpc>`
-  - Mainnet: `wss://rpc.belizechain.org`
+  - Mainnet: not launched yet (planned `wss://rpc.belizechain.org`)
 
 **Example:**
 ```typescript

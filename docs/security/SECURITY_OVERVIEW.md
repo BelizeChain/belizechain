@@ -126,7 +126,7 @@ let _guard = self.lock.lock();
 ### Emergency Contacts
 - **Security Team**: security@belizechain.org
 - **24/7 Hotline**: +501-223-SECURITY (+501-223-7328)
-- **Public Incident Log**: https://status.belizechain.org
+- **Public Incident Log**: planned (not yet published)
 
 ### JaguarMode (Emergency Governance)
 For **national emergencies only** (hurricanes, banking panics):

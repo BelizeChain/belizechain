@@ -62,40 +62,39 @@ Welcome to the BelizeChain Bug Bounty Program! We're committed to building the m
   - `pallet-contracts` (ink! smart contract execution)
 
 #### **Smart Contracts (ink! WASM)**
-- **PSP22 Token Contract** (`contracts/defi/tokens/lib.rs`)
-  - Token minting, burning, transfers
-  - Allowance mechanism
-  - Access control
-  
-- **AMM Pool Contract** (`contracts/defi/amm/lib.rs`)
+
+Source: the `gem` repository. All eight contracts build with ink! 5.1.1 and run
+on the `pallet-contracts` runtime pallet.
+
+- **DALLA Token** (`dalla_token/lib.rs`) - PSP22 fungible token
+  - Minting, burning, transfers, allowances
+  - Owner-gated minting
+
+- **BeliNFT** (`beli_nft/lib.rs`) - PSP34 non-fungible token
+
+- **PSP37 Multi-Token** (`psp37_multi_token/lib.rs`) - PSP37 multi-token with batch operations
+
+- **BelizeX DEX** (`dex/factory/lib.rs`, `dex/pair/lib.rs`, `dex/router/lib.rs`) - AMM
   - Liquidity provision (add/remove)
   - Token swaps (constant product formula)
   - LP token management
-  - Fee distribution
-  
-- **Lending Protocol Contract** (`contracts/defi/lending/lib.rs`)
-  - Collateralized borrowing
-  - Interest accrual
-  - Liquidation mechanism
-  - Oracle price integration
-  
-- **Ethereum Bridge Contract** (`contracts/defi/bridges/lib.rs`)
-  - ERC-20 ↔ PSP22 transfers
-  - 3-of-5 validator multi-sig
-  - Merkle proof verification
-  - Daily limits, emergency pause
-  
-- **Polkadot XCM Bridge Contract** (`contracts/defi/bridges/xcm/lib.rs`)
-  - XCM v3 message handling
-  - Reserve asset transfers
-  - Teleport transfers
-  - 5-of-9 relayer multi-sig
-  - Parachain registry
+
+- **Simple DAO** (`simple_dao/lib.rs`) - Governance DAO
+
+- **Faucet** (`faucet/lib.rs`) - Testnet token distribution
+
+- **Access Control** (`access_control/lib.rs`) - Shared Ownable / RBAC / Pausable library
+
+- **Hello BelizeChain** (`hello-belizechain/lib.rs`) - Example contract
+
+> Bridge functionality lives in the `pallet-belize-interoperability` runtime
+> pallet, not in an ink! contract. Lending and standalone bridge contracts are
+> not implemented.
 
 #### **Node Infrastructure**
-- **RPC Endpoints:**
-  - `https://rpc.belizechain.org`
-  - `wss://ws.belizechain.org`
+- **RPC Endpoints:** not yet published. Use the operator-provided RPC URL for the
+  active network. The public names (`rpc.belizechain.org`, `wss://ws.belizechain.org`)
+  are planned, not configured.
   
 - **P2P Networking:**
   - Libp2p peer discovery
@@ -108,28 +107,18 @@ Welcome to the BelizeChain Bug Bounty Program! We're committed to building the m
   - Snapshot/backup mechanisms
 
 #### **Cross-Chain Infrastructure**
-- **Ethereum Bridge:**
-  - Validator relayers (5 nodes)
-  - Multi-sig contracts (Ethereum side)
-  - Withdrawal proof verification
-  
-- **Polkadot XCM Bridge:**
-  - Relayer network (9 nodes)
-  - Parachain connections (Acala, Moonbeam, Astar)
-  - Asset registry
+> Design stage - not deployed. Relayer host names do not resolve yet.
+
+- **Ethereum Bridge (planned):** relayer set, Ethereum-side multi-sig, withdrawal proofs
+- **Polkadot XCM Bridge (planned):** relayer network, parachain connections, asset registry
 
 #### **Web Interfaces (UI Portals)**
 - **Maya Wallet** (`ui/maya-wallet`) - Citizen wallet
 - **Blue Hole Portal** (`ui/blue-hole-portal`) - Government dashboard
-- **Winik Governance** (`ui/winik-governance`) - Voting interface
-- **Pek Business** (`ui/pek-business`) - Merchant POS
-- **Gúbida Validator** (`ui/gubida-validator`) - Validator dashboard
-- **Kijka Explorer** (`ui/kijka-explorer`) - Block explorer
 
-**Live Deployments:**
-- **Mainnet:** `https://mainnet.belizechain.org`
-- **Public testnet:** Operator-published endpoints for the current bounty window
-- **Staging:** `https://staging.belizechain.org`
+**Deployments:**
+- **Mainnet:** not launched yet (planned host `mainnet.belizechain.org`)
+- **Public testnet (Ceiba):** operator-provided access while public hosting is staged
 
 ---
 
@@ -153,7 +142,7 @@ Welcome to the BelizeChain Bug Bounty Program! We're committed to building the m
   
 - **Known Issues:**
   - Public testnet faucet abuse (by design)
-  - Validator centralization (5 validators in testnet)
+  - Validator centralization (single-node Ceiba testnet)
   - Gas price volatility (expected behavior)
   
 - **Theoretical Attacks:**
@@ -163,7 +152,7 @@ Welcome to the BelizeChain Bug Bounty Program! We're committed to building the m
   - Physical access attacks (data center security)
 
 **Recently Patched:**
-- See `/docs/security/PATCHED_VULNERABILITIES.md` for list of fixed issues
+- See `security-audit-results.md` and the repository changelog for fixed issues
 
 ---
 

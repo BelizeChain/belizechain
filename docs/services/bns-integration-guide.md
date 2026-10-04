@@ -35,7 +35,7 @@ npm install @polkadot/api @polkadot/api-contract @polkadot/types
 const { ApiPromise, WsProvider } = require('@polkadot/api');
 
 async function connect() {
-    const provider = new WsProvider('wss://rpc.belizechain.org');
+    const provider = new WsProvider('<operator-provided-rpc-url>');
     const api = await ApiPromise.create({ provider });
     
     await api.isReady;
@@ -368,7 +368,7 @@ const app = express();
 // Connect to BelizeChain
 let api;
 (async () => {
-    const provider = new WsProvider('wss://rpc.belizechain.org');
+    const provider = new WsProvider('<operator-provided-rpc-url>');
     api = await ApiPromise.create({ provider });
 })();
 

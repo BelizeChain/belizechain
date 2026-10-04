@@ -15,7 +15,7 @@ BelizeChain provides multiple APIs for interacting with the blockchain:
 - **REST API**: HTTP endpoints (via middleware)
 
 **Connection Details**:
-- **Mainnet**: `wss://mainnet.belizechain.org`
+- **Mainnet**: not launched yet (planned `wss://mainnet.belizechain.org`)
 - **Testnet**: Use the current operator-provided RPC URL or your own node
 - **Local Dev**: `ws://localhost:9944`
 
@@ -33,7 +33,7 @@ npm install @polkadot/api
 import { ApiPromise, WsProvider } from '@polkadot/api';
 
 // Connect to blockchain
-const provider = new WsProvider('wss://mainnet.belizechain.org');
+const provider = new WsProvider('<operator-provided-rpc-url>');
 const api = await ApiPromise.create({ provider });
 
 // Query data
@@ -57,7 +57,7 @@ from substrateinterface import SubstrateInterface
 
 # Connect to blockchain
 substrate = SubstrateInterface(
-    url="wss://mainnet.belizechain.org"
+    url="<operator-provided-rpc-url>"
 )
 
 # Query data
@@ -551,7 +551,7 @@ console.log(human); // { free: "1.0000 DALLA", reserved: "0" }
 ```python
 from substrateinterface import SubstrateInterface
 
-substrate = SubstrateInterface(url="wss://mainnet.belizechain.org")
+substrate = SubstrateInterface(url="<operator-provided-rpc-url>")
 
 # Query balance
 result = substrate.query(
@@ -569,7 +569,7 @@ print(f"Reserved: {result.value['data']['reserved']}")
 ```python
 from substrateinterface import SubstrateInterface, Keypair
 
-substrate = SubstrateInterface(url="wss://mainnet.belizechain.org")
+substrate = SubstrateInterface(url="<operator-provided-rpc-url>")
 keypair = Keypair.create_from_mnemonic('your twelve word mnemonic here...')
 
 # Create transaction
@@ -695,7 +695,7 @@ try {
 
 ```javascript
 // Handle connection failures
-const provider = new WsProvider('wss://mainnet.belizechain.org');
+const provider = new WsProvider('<operator-provided-rpc-url>');
 
 provider.on('error', (error) => {
   console.error('Provider error:', error);
@@ -734,7 +734,7 @@ const balances = await api.query.system.account.multi(addresses);
 **BelizeChain**:
 - Discord: https://discord.gg/belizechain
 - GitHub: https://github.com/BelizeChain/belizechain
-- API Playground: https://api.belizechain.org
+- API Playground: planned (not yet published)
 
 **Tools**:
 - Polkadot.js Apps: https://polkadot.js.org/apps

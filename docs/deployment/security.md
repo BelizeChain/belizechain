@@ -286,6 +286,10 @@ sudo apt install nginx certbot python3-certbot-nginx
 
 **Configure Nginx** (`/etc/nginx/sites-available/belizechain-rpc`):
 
+> **Note:** the example uses `rpc.example.org` - substitute your own hostname.
+> The planned public name `rpc.belizechain.org` is not configured yet
+> (verified 2026-10-04).
+
 ```nginx
 # Rate limiting
 limit_req_zone $binary_remote_addr zone=rpc_limit:10m rate=10r/s;
@@ -302,18 +306,18 @@ upstream belizechain_ws {
 # HTTP redirect to HTTPS
 server {
     listen 80;
-    server_name rpc.belizechain.org;
+    server_name rpc.example.org;
     return 301 https://$server_name$request_uri;
 }
 
 # HTTPS RPC server
 server {
     listen 443 ssl http2;
-    server_name rpc.belizechain.org;
+    server_name rpc.example.org;
 
     # SSL certificates (Let's Encrypt)
-    ssl_certificate /etc/letsencrypt/live/rpc.belizechain.org/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/rpc.belizechain.org/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/rpc.example.org/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/rpc.example.org/privkey.pem;
 
     # SSL configuration
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -374,7 +378,7 @@ sudo systemctl reload nginx
 **Get SSL certificate**:
 
 ```bash
-sudo certbot --nginx -d rpc.belizechain.org
+sudo certbot --nginx -d rpc.example.org
 
 # Auto-renewal (certbot installs cron job automatically)
 sudo certbot renew --dry-run

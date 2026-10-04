@@ -47,7 +47,7 @@ Before listing a domain:
 const { GemSDK } = require('@belizechain/gem-sdk');
 
 async function listDomain() {
-    const sdk = new GemSDK('wss://rpc.belizechain.org');
+    const sdk = new GemSDK('<operator-provided-rpc-url>');
     await sdk.connect();
 
     const alice = sdk.getAccount(process.env.SEED_PHRASE);
@@ -164,7 +164,7 @@ console.log('Active Listings:', activeListings);
 **Via SDK:**
 ```javascript
 async function buyDomain() {
-    const sdk = new GemSDK('wss://rpc.belizechain.org');
+    const sdk = new GemSDK('<operator-provided-rpc-url>');
     await sdk.connect();
 
     const bob = sdk.getAccount(process.env.BUYER_SEED);

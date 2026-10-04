@@ -98,14 +98,14 @@ cargo contract instantiate \
   --constructor new \
   --args 1000000000000 \
   --suri //Alice \
-  --url wss://testnet-rpc.belizechain.org
+  --url <operator-provided-rpc-url>
 
 # Interact with contract
 cargo contract call \
   --contract <CONTRACT_ADDRESS> \
   --message total_supply \
   --suri //Alice \
-  --url wss://testnet-rpc.belizechain.org
+  --url <operator-provided-rpc-url>
 ```
 
 ## Available Templates
@@ -180,7 +180,7 @@ import { GemSDK } from '@belizechain/gem-sdk';
 
 // Connect to testnet
 const sdk = new GemSDK({
-  rpc: 'wss://testnet-rpc.belizechain.org',
+  rpc: '<operator-provided-rpc-url>',
   signer: '//Alice'
 });
 

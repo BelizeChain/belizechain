@@ -446,7 +446,7 @@ sudo systemctl start belizechain
 4. **Bond additional stake** (if needed):
    ```bash
    polkadot-js-api \
-     --ws wss://mainnet.belizechain.org \
+     --ws <operator-provided-rpc-url> \
      --seed "your seed" \
      tx.staking.bondExtra \
      AMOUNT

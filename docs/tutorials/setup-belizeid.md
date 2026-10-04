@@ -1196,7 +1196,7 @@ Ana applied for 10 jobs. Each required:
 
 ### **For Developers**
 - Integration Guide: https://docs.belizechain.org/belizeid-integration
-- API Reference: https://api.belizechain.org/belizeid
+- API Reference: planned (not yet published)
 - Code Examples: https://github.com/belizechain/belizeid-examples
 
 ### **Support**

@@ -1,5 +1,13 @@
 # DeFi API Reference
 
+> **Status: partially implemented.** See the `gem` repository for the deployed
+> contracts: `dalla_token` (PSP22), `beli_nft` (PSP34), `psp37_multi_token`,
+> `dex` (BelizeX AMM: factory / pair / router), `simple_dao`, `faucet`, and
+> `access_control`. The **Lending Protocol** and **Ethereum Bridge** sections
+> describe proposed contracts that are **not implemented**; bridge functionality
+> lives in the `pallet-belize-interoperability` runtime pallet. Signatures shown
+> are indicative - see the `gem` source for exact interfaces.
+
 ## Table of Contents
 1. [PSP22 Token Contract](#psp22-token-contract)
 2. [AMM Pool Contract](#amm-pool-contract)
@@ -18,27 +26,16 @@ Standard fungible token implementation with extensions for pausability, minting,
 
 ```rust
 #[ink(constructor)]
-pub fn new(
-    name: String,
-    symbol: String,
-    decimals: u8,
-    initial_supply: u128
-) -> Self
+pub fn new(initial_supply: u128) -> Self
 ```
 
 **Parameters:**
-- `name`: Token name (e.g., "BelizeChain USD")
-- `symbol`: Token symbol (e.g., "bBZD")
-- `decimals`: Number of decimals (typically 12 for DALLA)
 - `initial_supply`: Initial token supply minted to deployer
 
 **Example:**
 ```typescript
-const token = await deploy('PSP22Token', [
-  'BelizeChain USD',
-  'bBZD',
-  12,
-  1000000000000000000  // 1 million tokens
+const token = await deploy('dalla_token', [
+  1000000000000000000  // initial_supply (12 decimals)
 ]);
 ```
 

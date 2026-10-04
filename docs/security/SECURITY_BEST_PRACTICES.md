@@ -634,12 +634,12 @@ cargo contract call \
 # - Review transaction logs
 # - Verify state transitions
 
-# 5. Deploy to mainnet (if testnet successful)
+# 5. Deploy to mainnet (when mainnet launches)
 cargo contract upload --suri //Deployer \
-  --url wss://rpc.belizechain.org
+  --url <operator-provided-rpc-url>
 
 # 6. Verify contract code (block explorer)
-# Upload source code + metadata to Kijka Explorer
+# Upload source code + metadata once a block explorer is available
 ```
 
 ---
@@ -681,7 +681,7 @@ cargo contract upload --suri //Deployer \
 We're investigating a security incident affecting [pallet/service].
 As a precaution, we've temporarily paused [functionality].
 
-Status: https://status.belizechain.org
+Status: [status page - not yet published]
 ETA: Services restored by [TIME]
 Updates: Every 30 minutes on Twitter
 

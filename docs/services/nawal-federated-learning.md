@@ -142,7 +142,7 @@ encrypted_gradients = homomorphic_encrypt(
 # Submit to blockchain
 from nawal.blockchain.staking_connector import StakingConnector
 
-connector = StakingConnector(ws_endpoint='wss://rpc.belizechain.org')
+connector = StakingConnector(ws_endpoint='<operator-provided-rpc-url>')
 tx_hash = await connector.report_training(
     validator_id=trainer.validator_id,
     round_id=42,

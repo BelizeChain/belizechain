@@ -716,7 +716,7 @@ npm install -g artillery
 `load-test.yml`:
 ```yaml
 config:
-  target: 'https://api.belizechain.org'
+  target: '<operator-provided-rest-host>'
   phases:
     - duration: 60
       arrivalRate: 10

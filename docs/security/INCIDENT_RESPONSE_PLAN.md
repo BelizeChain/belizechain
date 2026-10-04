@@ -534,7 +534,7 @@ This Incident Response Plan (IRP) defines BelizeChain's procedures for detecting
 
 **Public Communication Channels:**
 - **Twitter/X:** @BelizeChain (primary, fastest)
-- **Blog:** belizechain.org/blog (detailed post-mortem)
+- **Blog:** post-mortems to be published on belizechain.org
 - **Discord:** Announcement channel (community updates)
 - **Email:** Notify affected users directly
 
@@ -547,7 +547,7 @@ This Incident Response Plan (IRP) defines BelizeChain's procedures for detecting
 We're investigating a security incident affecting the Economy pallet. 
 As a precaution, we've temporarily paused transfers to protect user funds.
 
-Status: https://status.belizechain.org
+Status: [status page - not yet published]
 Updates: Every 30 minutes
 
 Thank you for your patience. User funds are safe. 🇧🇿
@@ -565,7 +565,7 @@ Summary:
 • Resolution: Patched within 4 hours
 • Compensation: In progress
 
-Full report: https://belizechain.org/blog/incident-2025-11-04
+Full report: [post-mortem URL]
 
 Thank you for your patience and trust. 💎
 ```
@@ -850,10 +850,10 @@ BelizeChain
 
 2. **Diagnose Issue (10 minutes)**
    ```bash
-   # Check validator status
-   for i in {1..5}; do
-     curl https://validator$i.belizechain.org/health
-   done
+   # Check node health
+   curl -H "Content-Type: application/json" \
+     -d '{"id":1,"jsonrpc":"2.0","method":"system_health","params":[]}' \
+     <operator-provided-rpc-url>
    
    # Check GRANDPA finality
    polkadot-js-api rpc.grandpa.roundState
@@ -871,12 +871,12 @@ BelizeChain
 
    **If Validator Offline:**
    ```bash
-   # Restart validator node
-   ssh validator3.belizechain.org
-   sudo systemctl restart belizechain-node
+   # Restart the node container (Ceiba)
+   ssh <operator-provided-host>
+   cd /opt/belizechain && docker compose restart ceiba-node
    
    # Monitor logs
-   journalctl -u belizechain-node -f
+   docker logs -f ceiba-node
    ```
 
    **If Network Partition:**
@@ -993,12 +993,12 @@ BelizeChain
 5. **Monitor Attack Mitigation (60 minutes)**
    ```bash
    # Watch request rate (should decrease)
-   watch -n 10 'curl -s https://rpc.belizechain.org/metrics | \
+   watch -n 10 'curl -s <operator-provided-rpc-url>/metrics | \
      grep rpc_requests_total'
    
    # Watch latency (should return to normal)
    curl -w "@curl-format.txt" -o /dev/null -s \
-     https://rpc.belizechain.org
+     <operator-provided-rpc-url>
    
    # Target: <500ms response time
    ```
@@ -1123,9 +1123,9 @@ BelizeChain
    - Cloudflare admin (DDoS mitigation)
 
 4. **Monitoring Access:**
-   - Grafana (read/write): https://grafana.belizechain.org
-   - Prometheus (read-only): https://prometheus.internal.belizechain.org
-   - Loki (logs): https://loki.internal.belizechain.org
+   - Grafana (read/write): bound to the operator network (Ceiba)
+   - Prometheus (read-only): bound to the operator network (Ceiba)
+   - Loki (logs): not deployed yet
    - Sentry (errors): https://sentry.io/belizechain
 
 5. **Communication Access:**

@@ -2,6 +2,11 @@
 
 **Complete guide to becoming a BelizeChain validator**
 
+> **Status:** Mainnet is not launched yet. The planned public endpoint
+> `wss://mainnet.belizechain.org` does not resolve yet (verified 2026-10-04).
+> Substitute `<operator-provided-rpc-url>` in the commands below with the RPC
+> URL for the network you are targeting.
+
 ---
 
 ## 📋 Prerequisites
@@ -241,7 +246,7 @@ npm install -g @polkadot/api-cli
 
 # Transfer (replace with your addresses)
 polkadot-js-api \
-  --ws wss://mainnet.belizechain.org \
+  --ws <operator-provided-rpc-url> \
   tx.balances.transfer \
   5GrwvaEF... \
   10500000000000000  # 10,500 DALLA (12 decimals)
@@ -269,7 +274,7 @@ curl -H "Content-Type: application/json" \
 1. Go to [https://polkadot.js.org/apps](https://polkadot.js.org/apps)
 2. Connect to BelizeChain:
    - Settings → Custom endpoint
-   - `wss://mainnet.belizechain.org`
+   - `<operator-provided-rpc-url>`
 3. Go to **Network → Staking → Account actions**
 4. Click **+ Stash**
 5. Fill in:
@@ -286,7 +291,7 @@ curl -H "Content-Type: application/json" \
 ```bash
 # Bond 10,000 DALLA
 polkadot-js-api \
-  --ws wss://mainnet.belizechain.org \
+  --ws <operator-provided-rpc-url> \
   --seed "your validator seed phrase" \
   tx.staking.bond \
   5GrwvaEF...  # controller account (can be same) \
@@ -328,7 +333,7 @@ Tell the chain your validator's session keys.
 ```bash
 # Set session keys
 polkadot-js-api \
-  --ws wss://mainnet.belizechain.org \
+  --ws <operator-provided-rpc-url> \
   --seed "your validator seed phrase" \
   tx.session.setKeys \
   0xYOUR_SESSION_KEYS_FROM_STEP_2 \
@@ -355,7 +360,7 @@ Signal your intention to validate.
 ```bash
 # Start validating with 5% commission
 polkadot-js-api \
-  --ws wss://mainnet.belizechain.org \
+  --ws <operator-provided-rpc-url> \
   --seed "your validator seed phrase" \
   tx.staking.validate \
   '{"commission": 50000000}'  # 5% (in per billion: 5% = 50,000,000)
@@ -419,7 +424,7 @@ curl -s http://localhost:9933 -H "Content-Type: application/json" \
 ```bash
 # Bond additional 5,000 DALLA
 polkadot-js-api \
-  --ws wss://mainnet.belizechain.org \
+  --ws <operator-provided-rpc-url> \
   --seed "your seed" \
   tx.staking.bondExtra \
   5000000000000000  # 5,000 DALLA
@@ -432,7 +437,7 @@ polkadot-js-api \
 ```bash
 # Unbond 1,000 DALLA
 polkadot-js-api \
-  --ws wss://mainnet.belizechain.org \
+  --ws <operator-provided-rpc-url> \
   --seed "your seed" \
   tx.staking.unbond \
   1000000000000000
@@ -441,7 +446,7 @@ polkadot-js-api \
 
 # Withdraw unbonded funds
 polkadot-js-api \
-  --ws wss://mainnet.belizechain.org \
+  --ws <operator-provided-rpc-url> \
   --seed "your seed" \
   tx.staking.withdrawUnbonded \
   0  # slashing spans
@@ -454,7 +459,7 @@ polkadot-js-api \
 ```bash
 # Change to 10% commission
 polkadot-js-api \
-  --ws wss://mainnet.belizechain.org \
+  --ws <operator-provided-rpc-url> \
   --seed "your seed" \
   tx.staking.validate \
   '{"commission": 100000000}'  # 10% in per billion
@@ -467,7 +472,7 @@ polkadot-js-api \
 ```bash
 # Stop validating (chill)
 polkadot-js-api \
-  --ws wss://mainnet.belizechain.org \
+  --ws <operator-provided-rpc-url> \
   --seed "your seed" \
   tx.staking.chill
 
@@ -645,7 +650,7 @@ See [Monitoring Guide](monitoring.md) for setup.
 
 ```bash
 # Check stake ranking
-curl -s https://api.belizechain.org/validators | jq '.[].stake' | sort -n
+curl -s <operator-provided-rest-host>/validators | jq '.[].stake' | sort -n
 
 # Check node status
 curl -s http://localhost:9933 -H "Content-Type: application/json" \

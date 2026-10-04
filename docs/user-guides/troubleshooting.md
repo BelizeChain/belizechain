@@ -146,7 +146,7 @@
 
 **Solutions**:
 1. **Wait 2 minutes**: Might be temporary server issue
-2. **Check status**: https://status.belizechain.org
+2. **Check status**: status page planned (not yet published)
 3. **Change RPC endpoint**:
    - Settings → Advanced → Network
    - Tap "RPC Endpoint"

@@ -388,7 +388,7 @@ All support same functionality.
 **3 environments**:
 1. **Local dev node**: `./belizechain-node --dev --tmp`
 2. **Testnet**: Use the current operator-provided RPC URL or your own node
-3. **Mainnet**: `wss://rpc.belizechain.org` (production, real value)
+3. **Mainnet**: not launched yet (planned `wss://rpc.belizechain.org`)
 
 Use testnet for integration testing before mainnet deployment.
 

@@ -224,7 +224,7 @@ WORKERS=8            # Scale based on CPU cores
 # Production domains
 POSTGRES_HOST=your-postgres-server.amazonaws.com
 REDIS_HOST=your-redis-host.example.com
-BLOCKCHAIN_RPC=wss://mainnet.belizechain.org:9944
+BLOCKCHAIN_RPC=<operator-provided-rpc-url>
 
 # Enable all security features
 GRAFANA_USERS_ALLOW_SIGN_UP=false

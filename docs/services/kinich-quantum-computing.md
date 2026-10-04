@@ -276,7 +276,7 @@ quantum_signature = generate_quantum_signature(
 )
 
 # Submit PQW to blockchain
-connector = ConsensusConnector(ws_endpoint='wss://rpc.belizechain.org')
+connector = ConsensusConnector(ws_endpoint='<operator-provided-rpc-url>')
 tx_hash = await connector.submit_quantum_work(
     validator_id='5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY',
     job_id=job_id,

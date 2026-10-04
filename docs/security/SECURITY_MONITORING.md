@@ -60,16 +60,9 @@ scrape_configs:
   - job_name: 'substrate-nodes'
     scrape_interval: 15s
     static_configs:
+      # Operator-provided target; public host names are not published yet.
       - targets:
-          - 'validator1.belizechain.org:9615'
-          - 'validator2.belizechain.org:9615'
-          - 'validator3.belizechain.org:9615'
-          - 'validator4.belizechain.org:9615'
-          - 'validator5.belizechain.org:9615'
-          - 'rpc1.belizechain.org:9615'
-          - 'rpc2.belizechain.org:9615'
-          - 'rpc3.belizechain.org:9615'
-          - 'archive.belizechain.org:9615'
+          - 'ceiba-node:9615'
     relabel_configs:
       - source_labels: [__address__]
         target_label: instance
@@ -161,7 +154,8 @@ positions:
   filename: /tmp/positions.yaml
 
 clients:
-  - url: https://loki.internal.belizechain.org/loki/api/v1/push
+  # Loki is not deployed yet; point this at your log backend.
+  - url: http://loki:3100/loki/api/v1/push
 
 scrape_configs:
   # Substrate node logs
@@ -767,10 +761,6 @@ groups:
 **Monitored Portals:**
 1. Maya Wallet (citizen portal)
 2. Blue Hole Portal (government dashboard)
-3. Winik Governance (district democracy)
-4. Pek Business (merchant POS)
-5. Gúbida Validator (validator dashboard)
-6. Kijka Explorer (public blockchain explorer)
 
 **Real User Monitoring (RUM):**
 

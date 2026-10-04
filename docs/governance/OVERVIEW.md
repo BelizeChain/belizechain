@@ -107,8 +107,8 @@ await api.tx.governance
 
 ## Resources
 
-- **Winik Portal**: https://governance.belizechain.org (governance dashboard)
-- **Forums**: https://forum.belizechain.org (proposal discussions)
+- **Governance UI**: Maya Wallet governance section (see the `ui` repository)
+- **Forums**: planned (not yet published)
 - **Discord**: #governance channel (community chat)
 - **Council Meetings**: First Thursday each month, 7 PM BZT
 - **Documentation**: [Technical Reference](../technical-reference/governance/)

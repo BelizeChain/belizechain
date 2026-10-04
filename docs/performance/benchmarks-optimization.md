@@ -18,7 +18,7 @@ Comprehensive performance metrics for BelizeChain's blockchain, storage, AI, and
 ```bash
 # TPS load test command
 polkadot-js-tools benchmark \
-  --endpoint wss://rpc.belizechain.org \
+  --endpoint <operator-provided-rpc-url> \
   --transactions 10000 \
   --concurrent 100 \
   --duration 300s

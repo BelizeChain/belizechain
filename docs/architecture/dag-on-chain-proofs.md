@@ -187,7 +187,7 @@ impl<T: Config> Pallet<T> {
 from substrateinterface import SubstrateInterface
 
 # Connect to BelizeChain
-substrate = SubstrateInterface(url="wss://rpc.belizechain.org")
+substrate = SubstrateInterface(url="<operator-provided-rpc-url>")
 
 # Query document proof for property
 property_id = 12345
@@ -335,7 +335,7 @@ class StorageProofConnector:
 
 # Usage
 connector = StorageProofConnector(
-    node_url="wss://rpc.belizechain.org",
+    node_url="<operator-provided-rpc-url>",
     keypair=alice_keypair
 )
 

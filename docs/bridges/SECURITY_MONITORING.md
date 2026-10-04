@@ -477,11 +477,11 @@ Generated on 1st of each month:
 
 ## Resources
 
-- **Security Dashboard**: https://security.belizechain.org
-- **Grafana**: https://grafana.belizechain.org
-- **Prometheus**: https://prometheus.belizechain.org
-- **Bug Bounty**: https://hackerone.com/belizechain
-- **Incident History**: https://status.belizechain.org
+- **Security Dashboard**: not published yet
+- **Grafana**: bound to the operator network (Ceiba)
+- **Prometheus**: bound to the operator network (Ceiba)
+- **Bug Bounty**: program not yet launched
+- **Incident History**: status page planned (not yet published)
 - **Contact**: security@belizechain.org
 
 ---

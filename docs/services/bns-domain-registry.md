@@ -48,7 +48,7 @@ polkadot-js-api query.bns.domainRegistry alice.bz
 ```javascript
 const { GemSDK } = require('@belizechain/gem-sdk');
 
-const sdk = new GemSDK('wss://rpc.belizechain.org');
+const sdk = new GemSDK('<operator-provided-rpc-url>');
 await sdk.connect();
 
 // Check if domain exists
@@ -133,7 +133,7 @@ console.log('KYC Level:', kycLevel.level);
 const { GemSDK } = require('@belizechain/gem-sdk');
 
 async function registerDomain() {
-    const sdk = new GemSDK('wss://rpc.belizechain.org');
+    const sdk = new GemSDK('<operator-provided-rpc-url>');
     await sdk.connect();
 
     const alice = sdk.getAccount(process.env.SEED_PHRASE);

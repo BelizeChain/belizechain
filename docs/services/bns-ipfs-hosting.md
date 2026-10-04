@@ -134,7 +134,7 @@ pakit upload --dir . --manifest
 const { GemSDK } = require('@belizechain/gem-sdk');
 
 async function activateHosting() {
-    const sdk = new GemSDK('wss://rpc.belizechain.org');
+    const sdk = new GemSDK('<operator-provided-rpc-url>');
     await sdk.connect();
 
     const alice = sdk.getAccount(process.env.SEED_PHRASE);
@@ -618,5 +618,5 @@ if (cert.expiresAt < currentBlock) {
 
 - **Hosting Portal**: https://bns.belizechain.org/hosting
 - **Discord**: #hosting-support
-- **Status Page**: https://status.belizechain.org
+- **Status Page**: planned (not yet published)
 - **Pakit CLI Docs**: https://docs.belizechain.org/pakit/cli

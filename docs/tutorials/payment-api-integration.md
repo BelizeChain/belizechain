@@ -692,7 +692,7 @@ const refund = await bc.refunds.create({
 Generate payment link without SDK:
 
 ```bash
-curl -X POST https://api.belizechain.org/v1/payments \
+curl -X POST <operator-provided-rest-host>/v1/payments \
   -H "Authorization: Bearer sk_live_z9y8x7w6v5u4t3s2r1q0" \
   -H "Content-Type: application/json" \
   -d '{
@@ -894,7 +894,7 @@ Now BelizeChain can send webhooks to your local dev server!
 
 ```bash
 # Trigger test webhook from dashboard
-curl -X POST https://api.belizechain.org/v1/webhooks/test \
+curl -X POST <operator-provided-rest-host>/v1/webhooks/test \
   -H "Authorization: Bearer sk_test_1a2b3c4d5e6f7g8h" \
   -d '{
     "event": "payment.succeeded",
@@ -1408,8 +1408,8 @@ await bc.paymentIntents.confirm(intent.id);
 
 ### **Tools**
 - Postman Collection: https://postman.com/belizechain
-- API Status: https://status.belizechain.org
-- Sandbox Environment: https://sandbox.belizechain.org
+- API Status: planned (not yet published)
+- Sandbox Environment: planned (not yet published)
 
 ### **Support**
 - Email: developers@belizechain.org

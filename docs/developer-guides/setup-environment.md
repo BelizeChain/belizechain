@@ -359,21 +359,15 @@ pnpm install
 
 # This installs dependencies for all UI apps:
 # - maya-wallet (citizen wallet)
-# - pek-business (business dashboard)
-# - winik-governance (governance portal)
-# - gubida-validator (validator dashboard)
-# - kijka-explorer (blockchain explorer)
+# - blue-hole-portal (government dashboard)
 ```
 
 **Expected output**:
 ```
 Progress: resolved 1247, reused 1189, downloaded 58, added 1247, done
 
-+ @belizechain/maya-wallet 1.0.0
-+ @belizechain/pek-business 1.0.0
-+ @belizechain/winik-governance 1.0.0
-+ @belizechain/gubida-validator 1.0.0
-+ @belizechain/kijka-explorer 1.0.0
++ maya-wallet 1.0.0
++ blue-hole-portal 2.0.0
 
 Done in 45.2s
 ```
@@ -425,11 +419,8 @@ cd ~/projects/belizechain
 2. **Federated learning server** (localhost:8080)
 3. **Quantum orchestrator** (localhost:8765)
 4. **All UI applications**:
-   - Maya Wallet (localhost:3000)
-   - Pek Business (localhost:3001)
-   - Winik Governance (localhost:3002)
-   - Gubida Validator (localhost:3003)
-   - Kijka Explorer (localhost:3004)
+   - Maya Wallet (localhost:3001)
+   - Blue Hole Portal (localhost:3002)
 
 **Expected output**:
 ```
@@ -446,11 +437,8 @@ cd ~/projects/belizechain
    API: http://localhost:8765
 
 ✅ UI applications starting...
-   Maya Wallet:       http://localhost:3000
-   Pek Business:      http://localhost:3001
-   Winik Governance:  http://localhost:3002
-   Gubida Validator:  http://localhost:3003
-   Kijka Explorer:    http://localhost:3004
+   Maya Wallet:       http://localhost:3001
+   Blue Hole Portal:  http://localhost:3002
 
 🎉 Development environment ready!
 ```

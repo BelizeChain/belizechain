@@ -1334,7 +1334,7 @@ vercel
 **Configure environment variables**:
 1. Go to Vercel dashboard
 2. Project settings → Environment Variables
-3. Add: `NEXT_PUBLIC_WS_PROVIDER=wss://mainnet.belizechain.org`
+3. Add: `NEXT_PUBLIC_WS_PROVIDER=<operator-provided-rpc-url>`
 
 ---
 

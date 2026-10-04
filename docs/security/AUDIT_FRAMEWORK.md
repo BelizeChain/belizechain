@@ -442,149 +442,160 @@ This framework defines the comprehensive security audit requirements for BelizeC
 
 ### 2.2 Smart Contracts (ink! WASM)
 
-#### PSP22 Token Contract (`contracts/defi/tokens/lib.rs`)
-**Lines of Code:** ~400  
+#### DALLA Token (`dalla_token/lib.rs`)
+**Lines of Code:** 1,145
 **Risk Level:** 🟡 HIGH
 
 **Audit Focus:**
-- **ERC-20 Compliance:**
-  - transfer(), approve(), transferFrom() implementations
+- **PSP22 Compliance:**
+  - transfer(), approve(), transfer_from() implementations
   - Allowance mechanism security
   - Balance overflow protection
   
 - **Minting/Burning:**
-  - Access control (owner-only minting)
+  - Access control (owner-gated minting)
   - Total supply tracking
-  - Burn-from authorization
+  - Burn authorization
   
 **Known Vulnerabilities to Test:**
 - Approval race condition (ERC-20 classic bug)
 - Integer overflow/underflow
-- Reentrancy in callbacks
-- Front-running approvals
+- Unauthorized minting
 
 ---
 
-#### AMM Pool Contract (`contracts/defi/amm/lib.rs`)
-**Lines of Code:** ~700  
+#### BeliNFT (`beli_nft/lib.rs`)
+**Lines of Code:** 929
+**Risk Level:** 🟡 HIGH
+
+**Audit Focus:**
+- **PSP34 Compliance:** ownership transfers, approvals, enumeration
+- **Metadata:** token metadata management, collection behavior
+
+**Known Vulnerabilities to Test:**
+- Unauthorized transfers or approvals
+- Metadata tampering
+
+---
+
+#### PSP37 Multi-Token (`psp37_multi_token/lib.rs`)
+**Lines of Code:** 1,608
+**Risk Level:** 🟡 HIGH
+
+**Audit Focus:**
+- **PSP37 Compliance:** per-token-id balances, transfers, approvals
+- **Batch Operations:** batch transfer/approve correctness
+- **Mixed FT / NFT behavior**
+
+**Known Vulnerabilities to Test:**
+- Batch operation overflow
+- Authorization bypass
+
+---
+
+#### BelizeX DEX - Factory (`dex/factory/lib.rs`)
+**Lines of Code:** 994
 **Risk Level:** 🔴 CRITICAL
 
 **Audit Focus:**
-- **Liquidity Provision:**
-  - add_liquidity() formula verification
-  - LP token minting accuracy
-  - remove_liquidity() calculations
-  
-- **Swap Mechanics:**
-  - Constant product formula (x * y = k)
-  - Fee calculation (0.3%)
-  - Slippage protection
-  - Price impact calculation
-  
-- **Flash Loan Resistance:**
-  - No intra-block price manipulation
-  - TWAP integration (if applicable)
-  
+- Pair creation and registry
+- Duplicate pair prevention
+- Fee configuration
+
+**Known Vulnerabilities to Test:**
+- Duplicate or spoofed pairs
+- Fee manipulation
+
+---
+
+#### BelizeX DEX - Pair (`dex/pair/lib.rs`)
+**Lines of Code:** 1,264
+**Risk Level:** 🔴 CRITICAL
+
+**Audit Focus:**
+- **Liquidity Provision:** add/remove liquidity, LP token minting accuracy
+- **Swap Mechanics:** constant product formula (x * y = k), slippage protection
+- **Reserves:** get_reserves() consistency
+
 **Known Vulnerabilities to Test:**
 - Sandwich attacks
 - Liquidity pool draining
-- Flash loan attacks
-- Price oracle manipulation
+- Flash loan / price manipulation
 - Reentrancy in swap callbacks
 
 ---
 
-#### Lending Protocol Contract (`contracts/defi/lending/lib.rs`)
-**Lines of Code:** ~650  
+#### BelizeX DEX - Router (`dex/router/lib.rs`)
+**Lines of Code:** 1,062
 **Risk Level:** 🔴 CRITICAL
 
 **Audit Focus:**
-- **Collateralization:**
-  - Collateral ratio enforcement (150% minimum)
-  - Liquidation threshold (130%)
-  - Collateral valuation (oracle integration)
-  
-- **Interest Accrual:**
-  - Interest rate model (utilization-based)
-  - Compound interest calculation
-  - Accrual timing accuracy
-  
-- **Liquidation Mechanism:**
-  - Liquidator authorization (anyone can liquidate)
-  - Liquidation incentive (5% bonus)
-  - Partial liquidation support
-  
+- Multi-hop swap path validation
+- Deadline and slippage enforcement
+- Liquidity add/remove wrappers
+
 **Known Vulnerabilities to Test:**
-- Undercollateralized loans
-- Interest calculation errors
-- Oracle price manipulation (liquidation exploit)
-- Liquidation front-running
-- Flash loan attacks (borrow + repay in one tx)
+- Path manipulation
+- Deadline bypass
 
 ---
 
-#### Ethereum Bridge Contract (`contracts/defi/bridges/lib.rs`)
-**Lines of Code:** ~550  
-**Risk Level:** 🔴 CRITICAL
+#### Simple DAO (`simple_dao/lib.rs`)
+**Lines of Code:** 1,732
+**Risk Level:** 🟡 HIGH
 
 **Audit Focus:**
-- **Cross-Chain Deposits:**
-  - ERC-20 lock on Ethereum
-  - PSP22 mint on BelizeChain
-  - Validator signature verification (3-of-5)
-  
-- **Cross-Chain Withdrawals:**
-  - PSP22 burn on BelizeChain
-  - ERC-20 unlock on Ethereum
-  - Merkle proof validation
-  
-- **Validator Set Management:**
-  - Validator rotation
-  - Signature threshold enforcement
-  - Emergency pause mechanism
-  
+- Proposal lifecycle and voting
+- Treasury execution
+- Membership management
+
 **Known Vulnerabilities to Test:**
-- Bridge draining attacks
-- Validator collusion (threshold bypass)
-- Replay attacks (nonce verification)
-- Double-spending across chains
-- Front-running deposits/withdrawals
+- Vote manipulation
+- Proposal spam
+- Unauthorized execution
 
 ---
 
-#### Polkadot XCM Bridge Contract (`contracts/defi/bridges/xcm/lib.rs`)
-**Lines of Code:** ~850  
-**Risk Level:** 🔴 CRITICAL
+#### Faucet (`faucet/lib.rs`)
+**Lines of Code:** 401
+**Risk Level:** 🟢 LOW
 
 **Audit Focus:**
-- **XCM Message Handling:**
-  - ReserveAssetDeposited processing
-  - ReceiveTeleportedAsset processing
-  - Multi-location validation
-  
-- **Asset Transfers:**
-  - Reserve-backed transfers (lock/mint, burn/unlock)
-  - Teleport transfers (burn/mint, trusted chains only)
-  - Asset mapping accuracy (native ↔ wrapped)
-  
-- **Relayer Network:**
-  - 5-of-9 multi-sig validation
-  - Relayer stake requirements (100K DALLA)
-  - Slashing conditions (10% for malicious behavior)
-  
-- **Security Controls:**
-  - Daily transfer limits (5M DALLA per user)
-  - Parachain whitelist enforcement
-  - Replay protection (nonce-based)
-  - Emergency pause mechanism
-  
+- Per-account rate limiting
+- Distribution amount enforcement
+
 **Known Vulnerabilities to Test:**
-- XCM message spoofing
-- Relayer collusion (threshold bypass)
-- Cross-chain double-spending
-- Parachain impersonation
-- Replay attacks across parachains
-- Asset mapping errors (wrong token minted)
+- Rate-limit bypass
+- Faucet drainage
+
+---
+
+#### Access Control (`access_control/lib.rs`)
+**Lines of Code:** 669
+**Risk Level:** 🟡 HIGH
+
+**Audit Focus:**
+- Ownable / RBAC role checks
+- Pausable behavior
+
+**Known Vulnerabilities to Test:**
+- Role escalation
+- Pause bypass
+
+---
+
+#### Hello BelizeChain (`hello-belizechain/lib.rs`)
+**Lines of Code:** 305
+**Risk Level:** 🟢 LOW (tutorial/example)
+
+**Audit Focus:** none - reference contract used in tutorials
+
+---
+
+> Per-contract audit reports live in the `gem` repository (`gem/docs/audits/`).
+> Bridge functionality is implemented in the `pallet-belize-interoperability`
+> runtime pallet, not as an ink! contract. Lending and standalone bridge
+> contracts are not implemented.
 
 ---
 
@@ -1423,9 +1434,9 @@ This framework defines the comprehensive security audit requirements for BelizeC
 ### Appendix C: Reference Materials
 
 **Technical Documentation:**
-- BelizeChain Architecture Guide: `/docs/DEVELOPMENT_GUIDE.md`
-- Pallet Specifications: `/docs/technical-reference/pallets/`
-- Smart Contract Docs: `/contracts/defi/docs/`
+- BelizeChain Architecture Guide: `docs/developer-guides/DEVELOPMENT_GUIDE.md`
+- Pallet Specifications: `docs/developer-guides/pallet-apis-*.md`
+- Smart Contract Docs: `gem` repository (`gem/docs/`)
 - Threat Model: `/docs/security/THREAT_MODEL.md` (to be created)
 
 **Industry Standards:**

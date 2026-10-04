@@ -55,11 +55,11 @@ This is the master instruction file for AI coding agents working on BelizeChain.
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                    LAYER 5: USER INTERFACES                     │
-│  ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐  │
-│  │ Maya │  │ Blue │  │Winik │  │ Pek  │  │Gúbida│  │Kijka │  │
-│  │Wallet│  │ Hole │  │  Gov │  │ Biz  │  │Valid.│  │Explor│  │
-│  └──────┘  └──────┘  └──────┘  └──────┘  └──────┘  └──────┘  │
-│  Citizens  Govt     Districts  Tourism  Validators  Public     │
+│  ┌──────┐  ┌──────┐                                            │
+│  │ Maya │  │ Blue │                                            │
+│  │Wallet│  │ Hole │                                            │
+│  └──────┘  └──────┘                                            │
+│  Citizens  Govt                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 

@@ -1,5 +1,13 @@
 # DeFi Developer Guide
 
+> **Status: partially implemented.** The deployed contract suite lives in the
+> `gem` repository: `dalla_token` (PSP22), `beli_nft` (PSP34),
+> `psp37_multi_token`, `dex` (BelizeX AMM: factory / pair / router),
+> `simple_dao`, `faucet`, and `access_control`. The **lending** and **bridge**
+> examples describe proposed contracts that are **not implemented** - bridge
+> functionality lives in the `pallet-belize-interoperability` runtime pallet.
+> Paths below are relative to the `gem` repository.
+
 ## Quick Start
 
 ### Prerequisites
@@ -21,7 +29,7 @@ cargo contract --version  # Should show 4.0+
 
 1. **Build the contract:**
 ```bash
-cd contracts/defi/tokens
+cd dalla_token  # from the gem repo
 cargo contract build --release
 ```
 
@@ -33,7 +41,7 @@ cargo contract build --release
 # Deploy contract
 cargo contract instantiate \
   --constructor new \
-  --args "BelizeChain USD" "bBZD" 12 1000000000000 \
+  --args 1000000000000 \
   --suri //Alice \
   --url ws://localhost:9944
 ```
@@ -44,7 +52,7 @@ cargo contract instantiate \
 cargo contract call \
   --contract <CONTRACT_ADDRESS> \
   --message transfer \
-  --args <RECIPIENT> 1000000 \
+  --args <RECIPIENT> 1000000 0x \
   --suri //Alice
 ```
 
@@ -62,7 +70,7 @@ async function swapTokens() {
   const api = await ApiPromise.create({ provider: wsProvider });
   
   // Load contract ABI
-  const ammAbi = require('./contracts/defi/amm/metadata.json');
+  const ammAbi = require('./dex/pair/metadata.json');
   const ammContract = new ContractPromise(
     api,
     ammAbi,

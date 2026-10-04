@@ -31,31 +31,18 @@ This document defines the comprehensive penetration testing requirements for Bel
 
 #### **Network Infrastructure**
 
-**Blockchain Nodes:**
-- **Validator Nodes** (Production):
-  - validator1.belizechain.org (18.233.45.67)
-  - validator2.belizechain.org (52.201.123.89)
-  - validator3.belizechain.org (34.192.78.45)
-  - validator4.belizechain.org (54.163.92.123)
-  - validator5.belizechain.org (18.209.156.78)
-  
-- **RPC Nodes** (Public):
-  - rpc.belizechain.org (Load balancer: 3 backend nodes)
-  - rpc-eu.belizechain.org (European region)
-  - rpc-ap.belizechain.org (Asia-Pacific region)
-  
-- **Archive Nodes** (Historical Data):
-  - archive.belizechain.org (1TB+ storage)
-  
-- **Boot Nodes** (Peer Discovery):
-  - boot1.belizechain.org
-  - boot2.belizechain.org
+**Blockchain Nodes (current):**
+- **Ceiba testnet:** single-node deployment; access is operator-provided while
+  public hosting is staged
 
 **Network Endpoints:**
-- **RPC:** `https://rpc.belizechain.org` (HTTP/HTTPS, port 443)
-- **WebSocket:** `wss://ws.belizechain.org` (port 443)
+- **RPC / WebSocket:** operator-provided URL for the active network
 - **P2P:** TCP port 30333 (libp2p)
-- **Prometheus Metrics:** `https://metrics.belizechain.org` (port 9615, internal only)
+- **Prometheus Metrics:** bound to the operator network (port 9615)
+
+> Host names previously listed here (validator1-5, rpc/rpc-eu/rpc-ap, archive,
+> boot nodes, metrics) do not resolve today (verified 2026-10-04). They are
+> planned for mainnet and will be published once deployed.
 
 ---
 
@@ -65,48 +52,32 @@ This document defines the comprehensive penetration testing requirements for Bel
 - Maya Wallet (citizen/business interface)
 - Blue Hole Portal (government dashboard)
 
-1. **Maya Wallet** - `https://wallet.belizechain.org`
+1. **Maya Wallet**
    - Citizen wallet interface
    - Transaction submission, balance queries
    - QR code payments (3-tap design)
-   
-2. **Blue Hole Portal** - `https://gov.belizechain.org`
+
+2. **Blue Hole Portal**
    - Government dashboard
    - Treasury management, payroll, KYC oversight
    - Multi-sig transaction approval
-   
-3. **Winik Governance** - `https://vote.belizechain.org`
-   - Referendum creation, voting
-   - Proposal browsing, discussion forums
-   - District council interface
-   
-4. **Pek Business** - `https://business.belizechain.org`
-   - Merchant POS system
-   - Payment processing, inventory
-   - Tourism incentive claiming
-   
-5. **Gúbida Validator** - `https://validator.belizechain.org`
-   - Validator dashboard
-   - Node monitoring, rewards tracking
-   - Slashing history, uptime stats
-   
-6. **Kijka Explorer** - `https://explorer.belizechain.org`
-   - Public block explorer
-   - Transaction search, block details
-   - Analytics, charts
+
+> Public portal host names (e.g. `wallet.belizechain.org`) are planned, not
+> configured. The testnet portals are reached via operator-provided access until
+> DNS is published.
 
 **APIs:**
-- **REST API:** `https://api.belizechain.org/v1/`
+- **REST API:** not published (planned `https://api.belizechain.org/v1/`)
   - Account balances, transaction history
   - Pallet queries, RPC proxying
-  
-- **GraphQL API:** `https://graphql.belizechain.org`
+
+- **GraphQL API:** not published (planned `https://graphql.belizechain.org`)
   - Indexed blockchain data (SubQuery)
   - Complex queries, analytics
-  
-- **Faucet API:** `https://<current-public-testnet-faucet>/api`
+
+- **Faucet API:** operator-provided for the active testnet
   - Testnet token distribution
-  - Rate limiting, Captcha verification
+  - Rate limiting, captcha verification
 
 ---
 
@@ -117,12 +88,8 @@ This document defines the comprehensive penetration testing requirements for Bel
   - Bridge Contract: `0xBelizeEthBridge...` (Ethereum)
   - Validator Multi-Sig: `0xValidatorMultiSig...` (Gnosis Safe)
   
-- **Relayer Infrastructure:**
-  - relayer-eth-1.belizechain.org
-  - relayer-eth-2.belizechain.org
-  - relayer-eth-3.belizechain.org
-  - relayer-eth-4.belizechain.org
-  - relayer-eth-5.belizechain.org
+- **Relayer Infrastructure (planned):** relayer hosts are not deployed; the
+  relayer network is at design stage
   
 - **Withdrawal Processing:**
   - Merkle proof validation
@@ -167,36 +134,31 @@ This document defines the comprehensive penetration testing requirements for Bel
 
 #### **Supporting Infrastructure**
 
-**Kubernetes Cluster:**
-- **Production:** belizechain-prod.k8s.local (3 master nodes, 10 worker nodes)
-- **Staging:** belizechain-staging.k8s.local (1 master, 3 workers)
-- **Testnet:** belizechain-testnet.k8s.local (1 master, 2 workers)
+**Hosting (current):**
+- Single Ceiba server running Docker Compose (no Kubernetes)
 
 **Databases:**
-- **PostgreSQL:** blockchain-db.internal.belizechain.org (indexed data)
-- **TimescaleDB:** metrics-db.internal.belizechain.org (time-series metrics)
-- **Redis:** cache.internal.belizechain.org (session caching)
+- **PostgreSQL:** containerized on Ceiba (indexed data)
+- **Redis:** containerized on Ceiba (session caching)
 
 **Monitoring Stack:**
-- **Prometheus:** prometheus.internal.belizechain.org
-- **Grafana:** grafana.belizechain.org (public dashboards)
-- **Loki:** loki.internal.belizechain.org (log aggregation)
-- **Jaeger:** jaeger.internal.belizechain.org (distributed tracing)
+- **Prometheus:** bound to the operator network
+- **Grafana:** bound to the operator network
+- **Alertmanager:** Telegram alert delivery
 
 ---
 
 ### 2.2 Out-of-Scope Targets
 
 **Excluded Systems:**
-- **Nawal AI Infrastructure:** ai.belizechain.org (separate pentest)
-- **Kinich Quantum Infrastructure:** quantum.belizechain.org (separate pentest)
-- **Pakit Storage Infrastructure:** storage.belizechain.org (separate pentest)
-- **Physical Data Centers:** AWS us-east-1, eu-west-1 (infrastructure security handled by AWS)
+- **Nawal AI Infrastructure:** separate pentest
+- **Kinich Quantum Infrastructure:** separate pentest
+- **Pakit Storage Infrastructure:** separate pentest
+- **Host Infrastructure:** self-hosted single server (physical security handled separately)
 - **Third-Party Services:**
   - GitHub (code hosting)
   - NPM registry (package dependencies)
   - Docker Hub (container images)
-  - AWS CloudFront (CDN)
 
 **Out-of-Scope Activities:**
 - **Social Engineering:** No phishing emails to core team (unless pre-coordinated)
@@ -216,7 +178,7 @@ This document defines the comprehensive penetration testing requirements for Bel
 
 **Attack Steps:**
 1. Deploy 100+ malicious nodes on testnet
-2. Target victim validator (validator1.belizechain.org)
+2. Target victim validator node
 3. Flood peer connections (libp2p)
 4. Block legitimate peer discovery
 5. Measure: Time to isolate, detection lag
@@ -238,7 +200,7 @@ This document defines the comprehensive penetration testing requirements for Bel
 
 **Attack Steps:**
 1. Simulate BGP announcement (testnet only)
-2. Advertise shorter route to rpc.belizechain.org
+2. Advertise shorter route to an RPC endpoint
 3. Intercept RPC requests
 4. Man-in-the-middle attack (modify transactions)
 
@@ -259,7 +221,7 @@ This document defines the comprehensive penetration testing requirements for Bel
 
 **Attack Steps:**
 1. Coordinate with BelizeChain (pre-scheduled test)
-2. Generate 10,000+ req/s to rpc.belizechain.org
+2. Generate 10,000+ req/s to an RPC endpoint
 3. Target expensive RPC calls (state_getStorage, chain_getBlock)
 4. Measure: RPS before failure, recovery time
 
@@ -1222,8 +1184,8 @@ This letter authorizes SR Labs to conduct penetration testing on BelizeChain inf
 
 AUTHORIZED SCOPE:
 - Testnet nodes: operator-published public testnet endpoints for the active engagement
-- Staging environment: staging.belizechain.org
-- All UI portals (staging): wallet-staging.belizechain.org, etc.
+- Staging environment: operator-provided (no public staging DNS)
+- UI portals: Maya Wallet and Blue Hole Portal (operator-provided access)
 
 PROHIBITED ACTIONS:
 - No mainnet exploitation
