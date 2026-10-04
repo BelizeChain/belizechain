@@ -165,7 +165,7 @@ The BelizeChain bridge relayer network securely facilitates cross-chain asset tr
 - Ubuntu 22.04 LTS
 - Docker 24.0+
 - Python 3.11+
-- Rust 1.75+
+- Rust 1.90+
 
 ### Installation
 

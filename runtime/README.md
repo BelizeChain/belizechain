@@ -1,13 +1,13 @@
 # BelizeChain Runtime
 
-Substrate FRAME v42 runtime implementation for BelizeChain sovereign blockchain.
+Substrate FRAME v48 runtime implementation for BelizeChain sovereign blockchain.
 
 ## Overview
 
 The BelizeChain runtime is the core state transition function that defines:
 - **Blockchain logic**: How transactions modify state
 - **Consensus rules**: Block validation and finality
-- **Pallets integration**: 19 custom pallets + 8 system pallets
+- **Pallets integration**: 19 custom pallets + 14 standard pallets
 - **Governance mechanisms**: Democratic decision-making
 - **Economic model**: DALLA/bBZD dual-token system
 
@@ -17,7 +17,7 @@ The BelizeChain runtime is the core state transition function that defines:
 
 ```
 BelizeChain Runtime
-├── System Pallets (8)
+├── Standard Pallets (14)
 │   ├── System - Core blockchain functionality
 │   ├── Timestamp - Block timestamps
 │   ├── Babe - Block production (VRF-based, PoUW-weighted)
@@ -28,7 +28,10 @@ BelizeChain Runtime
 │   ├── Offences - Equivocation reporting and slashing
 │   ├── Balances - Account balances
 │   ├── TransactionPayment - Transaction fees
-│   └── Sudo - Superuser access (testnet only)
+│   ├── Sudo - Superuser access (testnet only)
+│   ├── TechnicalCouncil - Technical council (collective)
+│   ├── GovernanceCouncil - Governance council (collective)
+│   └── Contracts - ink! smart contract execution
 │
 └── Custom Pallets (19)
     ├── Economy - DALLA/bBZD tokens + treasury
@@ -222,7 +225,7 @@ pub name: BoundedVec<u8, ConstU32<64>>,  // Max 64 bytes
 ## Migration from Previous Versions
 
 ### Polkadot SDK stable2509 Migration
-Key changes in current version:
+Key changes in that migration:
 - ✅ Removed `RuntimeEvent` from Config traits (auto-appended)
 - ✅ Migrated to `WasmExecutor` from deprecated `NativeElseWasmExecutor`
 - ✅ Added `sp-io` dependency for substrate host functions
@@ -261,4 +264,4 @@ When modifying the runtime:
 
 ---
 
-**Note**: This runtime is production-ready and has been migrated to Polkadot SDK stable2509 (FRAME v42).
+**Note**: This runtime is production-ready and has been migrated to Polkadot SDK stable2606 (FRAME v48).

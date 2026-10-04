@@ -10,7 +10,7 @@ Complete guide to developing and modifying BelizeChain's core blockchain.
 
 ### Substrate-based Stack
 
-BelizeChain uses **Polkadot SDK stable2603**:
+BelizeChain uses **Polkadot SDK stable2606**:
 
 ```
 ┌─────────────────────────────────────┐
@@ -28,7 +28,7 @@ BelizeChain uses **Polkadot SDK stable2603**:
 ┌──────────────▼──────────────────────┐
 │   Runtime (WASM + Native)           │
 │   - 19 Belize-specific pallets      │
-│   - 8 System Pallets                │
+│   - 14 Standard Pallets             │
 │   - Consensus (BABE + GRANDPA)       │
 └─────────────────────────────────────┘
 ```

@@ -77,7 +77,7 @@ RHEL 8+ (supported)
 
 # Node Software
 BelizeChain Node (current belizechain branch build)
-Rust 1.75+
+Rust 1.90+
 Docker (optional)
 
 # Monitoring

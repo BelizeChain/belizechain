@@ -35,7 +35,7 @@ This is the master instruction file for AI coding agents working on BelizeChain.
 │  │Interop│Quantum│Consensus│Community│...      │               │
 │  └────────────┘  └────────────┘  └────────────┘               │
 │                                                                 │
-│  Runtime: Substrate + Polkadot SDK stable2509                  │
+│  Runtime: Substrate + Polkadot SDK stable2606                  │
 │  Consensus: Proof of Useful Work (PoUW)                        │
 │  Tokens: DALLA (native), bBZD (fiat-backed stablecoin, 1:1 BZD)  │
 └─────────────────────────────────────────────────────────────────┘

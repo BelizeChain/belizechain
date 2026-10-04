@@ -452,7 +452,7 @@ Monitoring & Backup Setup (1 week)
 - **Documentation**: Technical writing team
 
 ### Technology Stack
-- **Framework**: Substrate FRAME v42
+- **Framework**: Substrate FRAME v48
 - **Language**: Rust (1.75+)
 - **Testing**: Rust native testing + mock runtime
 - **Documentation**: Rustdoc + Markdown

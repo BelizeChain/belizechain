@@ -13,7 +13,7 @@ This Incident Response Plan (IRP) defines BelizeChain's procedures for detecting
 
 **Scope:** All BelizeChain infrastructure, including:
 - Blockchain runtime (19 pallets)
-- 5 smart contracts (ink! WASM)
+- 8 smart contracts (ink! WASM)
 - Cross-chain bridges (Ethereum + Polkadot XCM)
 - Node infrastructure (validators, RPC, archive)
 - Web applications (6 UI portals)

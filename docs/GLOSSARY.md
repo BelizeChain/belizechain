@@ -193,7 +193,7 @@ Technical terminology and BelizeChain-specific concepts.
 ## G
 
 **GEM (Genesis Ecosystem for Modules)**: Smart contract platform:
-- **Language**: ink! 4.0 (Rust → WebAssembly)
+- **Language**: ink! 5.1.1 (Rust → WebAssembly)
 - **Standards**: PSP22, PSP34
 - **Templates**: Tokens, NFTs, DAOs
 

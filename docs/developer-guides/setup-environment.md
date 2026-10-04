@@ -1221,7 +1221,7 @@ docker run hello-world
 Before proceeding to building your first dApp, verify:
 
 - [ ] Node.js 20+ installed (`node --version`)
-- [ ] Rust 1.75+ installed (`rustc --version`)
+- [ ] Rust 1.90+ installed (`rustc --version`)
 - [ ] Docker 24+ installed (`docker --version`)
 - [ ] BelizeChain repository cloned
 - [ ] Blockchain builds successfully (`cargo build --release`)

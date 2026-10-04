@@ -218,7 +218,7 @@ Each council has 3-5 elected members serving 2-year terms.
 ### What is the GEM platform?
 
 **GEM** (Genesis Ecosystem for Modules) is BelizeChain's smart contract platform:
-- **Language**: ink! 4.0 (Rust compiled to WebAssembly)
+- **Language**: ink! 5.1.1 (Rust compiled to WebAssembly)
 - **Standards**: PSP22 (tokens), PSP34 (NFTs)
 - **Templates**: ERC-20/721 equivalents, DAOs, governance
 - **Faucet**: 1,000 DALLA/claim for testnet development

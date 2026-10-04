@@ -158,7 +158,7 @@ UI ────→ Blockchain ←──── Nawal
 
 ## Compatibility Policy
 
-- The core runtime currently targets Polkadot SDK `stable2603`.
+- The core runtime currently targets Polkadot SDK `stable2606`.
 - Exact sibling compatibility must be verified from each repo's active branch, PRs, workflow runs, or releases before rollout.
 - Do not treat this document as the source of truth for exact sibling version numbers.
 - Runtime upgrades may require connector updates in Nawal, Kinich, Pakit, UI, or GEM integration paths.

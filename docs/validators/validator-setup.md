@@ -101,7 +101,7 @@ cargo build --release
 
 # Verify binary
 ./target/release/belizechain-node --version
-# Expected: a BelizeChain node version string for the current stable2603-based build
+# Expected: a BelizeChain node version string for the current stable2606-based build
 ```
 
 ### 4. Install as Systemd Service

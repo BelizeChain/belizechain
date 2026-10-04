@@ -11,7 +11,7 @@ GEM (Generic Execution Machine) enables Wasm smart contracts following PSP22/PSP
 ```
 ┌────────────────────────────────────────┐
 │ BelizeChain Runtime                    │
-│ pallet-contracts (ink! 4.0 support)    │
+│ pallet-contracts (ink! 5.1.1 support)  │
 └────────────┬───────────────────────────┘
              │ Contract execution
              ↓

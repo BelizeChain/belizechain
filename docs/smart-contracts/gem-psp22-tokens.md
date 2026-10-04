@@ -289,7 +289,7 @@ pub fn transfer(&mut self, to: AccountId, value: u128) -> Result<()> {
 ```
 
 ### 2. Overflow Protection
-ink! 4.0 provides automatic overflow checks:
+ink! 5.1.1 provides automatic overflow checks:
 ```rust
 // This will panic on overflow in debug mode, saturate in release
 let new_balance = old_balance + amount;

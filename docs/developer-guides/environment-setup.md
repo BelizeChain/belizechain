@@ -339,7 +339,7 @@ cargo build --release --features runtime-benchmarks
 ```bash
 # 1. Test blockchain node
 ./target/release/belizechain-node --version
-# Expected: a BelizeChain node version string for the current stable2603-based build
+# Expected: a BelizeChain node version string for the current stable2606-based build
 
 # 2. Test Python environment
 source .venv/bin/activate

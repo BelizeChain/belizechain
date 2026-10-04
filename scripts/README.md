@@ -109,7 +109,7 @@ Check individual pallet compilation (fast validation).
 ./scripts/testing/check_pallets.sh
 ```
 
-Verifies the pallets listed in the script compile without errors.
+Verifies all 19 custom pallets compile without errors.
 
 ---
 
@@ -400,5 +400,5 @@ When adding new scripts:
 
 ---
 
-**Last Updated**: January 31, 2026  
-**BelizeChain Version**: stable2603
+**Last Updated**: October 4, 2026  
+**BelizeChain Version**: stable2606

@@ -1,8 +1,8 @@
 # BelizeChain Phase Status
 
-> **Last Updated**: 2026-09-21
-> **Runtime**: `spec_version = 107`, `impl_version = 1`, `tx_version = 1`
-> **SDK**: Polkadot SDK `stable2603` (rev `2e4dd0bc22366a5af820492528869a493b5a5208`)
+> **Last Updated**: 2026-10-04
+> **Runtime**: `spec_version = 109`, `impl_version = 1`, `tx_version = 1`
+> **SDK**: Polkadot SDK `stable2606` (rev `660acefe66599a3e54363797007befcb01bd610b`)
 > **Network**: Ceiba testnet (`chain_id = belizechain_testnet`, SS58 prefix `1981`)
 
 ---

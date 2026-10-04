@@ -13,7 +13,7 @@ BelizeChain supports WebAssembly (Wasm) smart contracts via the **GEM Platform**
 
 ## GEM Platform Features
 
-### 🦀 ink! 4.0 Support
+### 🦀 ink! 5.1.1 Support
 - **Language**: Rust with ink! smart contract framework
 - **Runtime**: WebAssembly (Wasm) execution
 - **Standards**: PSP22 (tokens), PSP34 (NFTs), PSP37 (multi-token)

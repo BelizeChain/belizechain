@@ -1,6 +1,6 @@
 # Smart Contract Development
 
-**ink! 4.0 • PSP22/PSP34 Standards • GEM Platform • Testing & Deployment**
+**ink! 5.1.1 • PSP22/PSP34 Standards • GEM Platform • Testing & Deployment**
 
 Complete guide to developing and deploying smart contracts on BelizeChain.
 
@@ -8,7 +8,7 @@ Complete guide to developing and deploying smart contracts on BelizeChain.
 
 ## ink! Smart Contracts Overview
 
-BelizeChain uses **ink! 4.0**, a Rust-based eDSL for writing Wasm smart contracts compatible with Substrate's `pallet-contracts`.
+BelizeChain uses **ink! 5.1.1**, a Rust-based eDSL for writing Wasm smart contracts compatible with Substrate's `pallet-contracts`.
 
 **Key features:**
 - ✅ Rust safety guarantees (no buffer overflows, null pointers)

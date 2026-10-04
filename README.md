@@ -12,9 +12,9 @@
 ### 🇧🇿 Sovereign Blockchain Infrastructure for the Nation of Belize 🇧🇿
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-stable2603-orange.svg?logo=rust)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/rust-stable2606-orange.svg?logo=rust)](https://www.rust-lang.org/)
 [![Substrate](https://img.shields.io/badge/substrate-3.0-purple.svg)](https://substrate.io/)
-[![Polkadot SDK](https://img.shields.io/badge/polkadot_sdk-stable2603-E6007A.svg)](https://github.com/paritytech/polkadot-sdk)
+[![Polkadot SDK](https://img.shields.io/badge/polkadot_sdk-stable2606-E6007A.svg)](https://github.com/paritytech/polkadot-sdk)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/)
 [![Coverage](https://img.shields.io/badge/coverage-gated-informational.svg)](.tarpaulin.toml)
 [![Testnet](https://img.shields.io/badge/testnet-ready-blue.svg)](https://testnet.belizechain.org)
@@ -40,14 +40,14 @@ BelizeChain is a **Substrate blockchain in active development** for Belize's nat
 - 💰 **Dual Currency System**: DALLA (native) + bBZD (BZD-pegged stablecoin)
 - ⚖️ **Regulatory Compliance**: Built-in KYC/AML, FSC oversight, sanctions enforcement
 - 🗳️ **Democratic Governance**: District councils, on-chain voting, emergency powers
-- 📜 **Smart Contracts**: WebAssembly (ink! 4.0) with PSP22/PSP34 standards
+- 📜 **Smart Contracts**: WebAssembly (ink! 5.1.1) with PSP22/PSP34 standards
 - 🔐 **Enterprise Security**: Continuous audits, coverage-gated CI
 
 </td>
 <td width="50%">
 
 ### Technical Stack
-- 🦀 **Rust**: Substrate framework (Polkadot SDK stable2603)
+- 🦀 **Rust**: Substrate framework (Polkadot SDK stable2606)
 - 🌐 **Consensus**: Proof of Useful Work (PoUW)
 - 🔗 **Interoperability**: Ethereum & Polkadot bridges
 - 📊 **Performance**: ~2,000 TPS, 6-second block time
@@ -117,7 +117,7 @@ BelizeChain implements **19 Belize-specific pallets** covering the complete nati
 
 - **LandLedger** (`pallets/landledger/`) - Property registry, land titles, document storage proofs
 - **BNS** (`pallets/bns/`) - .bz domain registry, IPFS hosting, domain marketplace
-- **Contracts** (via `pallet-contracts`) - WebAssembly smart contracts, ink! 4.0, PSP22/PSP34 tokens
+- **Contracts** (via `pallet-contracts`) - WebAssembly smart contracts, ink! 5.1.1, PSP22/PSP34 tokens
 
 </details>
 
@@ -163,7 +163,7 @@ graph LR
 
 Ensure you have the following installed:
 
-- **Rust** (toolchain compatible with Polkadot SDK stable2603) - [Install via rustup](https://rustup.rs/)
+- **Rust** (toolchain compatible with Polkadot SDK stable2606) - [Install via rustup](https://rustup.rs/)
 - **Substrate dependencies** - [Installation Guide](https://docs.substrate.io/install/)
 - **Python 3.13+** (for integration tests) - [Download](https://www.python.org/)
 - **Git** - [Download](https://git-scm.com/)

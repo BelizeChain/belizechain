@@ -123,7 +123,7 @@ cat src/lib.rs
 ## Technical Specifications
 
 ### Substrate Framework
-- **Version**: FRAME v42
+- **Version**: FRAME v48
 - **Runtime**: Custom BelizeChain runtime
 - **Dependencies**: pallet-balances, pallet-belize-compliance
 - **Storage**: BoundedVec for MaxEncodedLen compliance

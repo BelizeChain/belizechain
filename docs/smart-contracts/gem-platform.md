@@ -1,6 +1,6 @@
 # GEM Smart Contracts Platform
 
-**The Gem** is BelizeChain's smart contract execution environment powered by ink! 4.0 and `pallet-contracts`.
+**The Gem** is BelizeChain's smart contract execution environment powered by ink! 5.1.1 and `pallet-contracts`.
 
 ## Overview
 
@@ -157,7 +157,7 @@ const result = await sdk.callContract(
 
 ### Best Practices
 1. **Reentrancy Protection**: Use check-effects-interaction pattern
-2. **Integer Overflow**: ink! 4.0 provides built-in overflow checks
+2. **Integer Overflow**: ink! 5.1.1 provides built-in overflow checks
 3. **Access Control**: Implement role-based permissions (see [simple_dao](https://github.com/BelizeChain/gem/tree/main/simple_dao))
 4. **Upgradeability**: Use proxy pattern for future upgrades
 5. **Audits**: Submit production contracts to BelizeChain security bounty program
@@ -194,7 +194,7 @@ const result = await sdk.callContract(
 ## Getting Started
 
 ### Prerequisites
-- Rust 1.75+ with `wasm32-unknown-unknown` target
+- Rust 1.90+ with `wasm32-unknown-unknown` target
 - cargo-contract 3.2+
 - Node.js 18+ (for SDK)
 - Polkadot.js browser extension (for testing)
