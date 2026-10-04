@@ -33,25 +33,33 @@ Welcome to the BelizeChain Bug Bounty Program! We're committed to building the m
 ### 2.1 In-Scope Assets (✅ Eligible for Bounties)
 
 #### **Blockchain Runtime (Polkadot Substrate)**
-- **13 Custom Pallets:**
+- **19 Custom Pallets:**
   - `pallet-belize-economy` - DALLA/bBZD tokens, multi-sig treasury
   - `pallet-belize-identity` - BelizeID, SSN validation, KYC
   - `pallet-belize-governance` - District councils, referendums
   - `pallet-belize-compliance` - KYC/AML, FSC oversight
   - `pallet-belize-staking` - PoUW consensus, validator rewards
   - `pallet-belize-oracle` - Merchant verification (tourism cashback eligibility)
-  - `pallet-payroll` - Enterprise payroll, departments, deductions
-  - `pallet-interoperability` - Cross-chain bridges (Ethereum/Polkadot)
-  - `pallet-belizex` - DEX, liquidity pools
-  - `pallet-land-ledger` - Property registry
+  - `pallet-belize-payroll` - Enterprise payroll, departments, deductions
+  - `pallet-belize-interoperability` - Cross-chain bridges (Ethereum/Polkadot)
+  - `pallet-belize-belizex` - DEX, liquidity pools
+  - `pallet-belize-landledger` - Property registry
   - `pallet-belize-consensus` - Proof of Useful Work
-  - `pallet-quantum` - Quantum workload orchestration
-  - `pallet-community` - Community governance
+  - `pallet-belize-quantum` - Quantum workload orchestration
+  - `pallet-belize-community` - Community governance
+  - `pallet-belize-bns` - .bz domain registry, marketplace
+  - `pallet-belize-mesh` - Meshtastic LoRa mesh networking
+  - `pallet-belize-justice` - Dispute resolution, slash review
+  - `pallet-belize-whistleblower` - Pseudonymous reporting, escrowed rewards
+  - `pallet-belize-moderation` - Community flagging, Nawal AI auto-queue
+  - `pallet-storage-proof` - On-chain verification of Pakit storage proofs
   
-- **System Pallets:**
-  - `frame-system`, `pallet-balances`, `pallet-timestamp`
-  - `pallet-babe`, `pallet-grandpa`, `pallet-session`, `pallet-offences` (consensus)
-  - `pallet-transaction-payment`, `pallet-sudo`
+- **Standard Pallets (14 runtime entries):**
+  - `frame-system`, `pallet-timestamp`, `pallet-babe`, `pallet-grandpa`
+  - `pallet-session`, `pallet-session::historical`, `pallet-authorship`, `pallet-offences` (consensus)
+  - `pallet-balances`, `pallet-transaction-payment`, `pallet-sudo`
+  - `pallet-collective` (TechnicalCouncil + GovernanceCouncil instances)
+  - `pallet-contracts` (ink! smart contract execution)
 
 #### **Smart Contracts (ink! WASM)**
 - **PSP22 Token Contract** (`contracts/defi/tokens/lib.rs`)
