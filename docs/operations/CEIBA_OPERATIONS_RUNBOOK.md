@@ -20,6 +20,8 @@ Dated baseline snapshots:
 - Core container: `ceiba-node`
 - Node image: `belizechain/ceiba-node:509830c-emptyauth-20260929`
 - Genesis: `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef`
+- On-chain runtime: `spec_version = 109` (hot-upgraded 2026-10-04 from 108 — see
+  the 109 ops-log entry at the end of this file)
 - Epoch: `BabeEpochDuration = 300` slots (~30 min) via the `testnet-fast-epoch`
   build feature. The default build keeps 14,400 slots (~24 h), which is the
   mainnet value; 300 is a testnet convenience for observing rotations.
@@ -497,4 +499,37 @@ Before restoring, compare an archive's `head_block` against the incident's block
 an archive whose head is **above** the incident **cannot** roll it back, however
 recent its mtime looks. (On 2026-09-29 the newest archive was taken six hours after
 the chain froze.)
+
+## Ops Log — 2026-10-04: Runtime 109 hot upgrade (CONS-006)
+
+Ships CONS-006 (merged 2026-10-02): `AIAuthorityOrigin` moves from any single
+TechnicalCouncil member to `TechnicalCouncilSuperMajority` — a >2/3 council
+motion, or Root. No storage migration; affects `validate_ai_model`,
+`start_consensus_round`, `finalize_consensus_round`.
+
+### Deployed
+```
+sudo.sudo(System::set_code(1420195 bytes))   extrinsic 0x06d6f422b4301a2f80c104e53d78afbda90742f06ee538dd4f3a680bbe6792a3
+spec_version   : 108 -> 109     (no node restart; container uptime predates the upgrade)
+on-chain :code : 1420195 bytes  blake2b 00a1c38a7bc9463fe07f0e6880a1625f8e15951ee88c6fe4ae3e7c839287375c
+```
+
+Applied in **block #70616**, which carries `System.CodeUpdated` +
+`Sudo.Sudid { sudo_result: Ok }` from the sudo key. Verified on fresh connections:
+`specVersion = 109`, the on-chain `:code` is byte-identical to the submitted blob,
+and authoring + GRANDPA finality stayed healthy across the upgrade.
+
+**Rollback:** `/data/upgrade-109/onchain-code-108.wasm` (1,421,085 bytes, blake2b
+`8ad7ea9d…`) — the runtime the chain was running immediately before the change,
+captured from `:code` and verified byte-identical at capture time. Re-deploy with
+`scripts/upgrade-runtime.py <file> --execute`.
+
+**Build note:** rebuild the runtime before extracting the deploy blob
+(`cargo build --release -p belizechain-runtime`, no feature flags) and confirm the
+artifact is fresh — the cached `wbuild` output from 2026-09-29 predated the 109
+source change, and `system.set_code` rejects a blob whose `spec_version` does not
+strictly increase.
+
+The genesis runtime inside `testnet-spec.json` is still **107**; a future
+re-genesis would boot at 107 and upgrade forward (107 → 108 → 109 so far).
 
