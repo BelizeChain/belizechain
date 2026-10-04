@@ -1210,8 +1210,8 @@ Signed:
 1. Send RFP to SR Labs, Trail of Bits, Kudelski Security
 2. Evaluate proposals (scoring rubric)
 3. Select vendor (target: SR Labs)
-4. Contract signing (December 2025)
-5. Pentest execution (January-February 2026)
+4. Contract signing
+5. Pentest execution
 
 ---
 

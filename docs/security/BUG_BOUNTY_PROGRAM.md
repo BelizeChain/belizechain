@@ -1,7 +1,7 @@
 # BelizeChain Bug Bounty Program
 
 **Program Name:** BelizeChain Security Bounty  
-**Launch Date:** December 2025 (Post-Audit)  
+**Launch Date:** 2026 (Post-Audit)  
 **Platform:** HackerOne (Primary) + Immunefi (Secondary)  
 **Total Bounty Pool:** $500,000 (First Year)  
 **Maximum Bounty:** $100,000 (Critical Vulnerabilities)  
@@ -1043,13 +1043,13 @@ fn test_overflow_prevented() {
 - Set up HackerOne/Immunefi accounts
 - Allocate bounty pool
 
-**Launch (December 2025):**
+**Launch (2026):**
 - Announce program publicly (blog post, Twitter)
 - Open submissions on HackerOne/Immunefi
 - Deploy testnet with faucet
 - Host AMA on Discord
 
-**Post-Launch (Q1 2026):**
+**Post-Launch:**
 - Monthly public reports (vulnerabilities, bounties)
 - Quarterly program review (scope, bounties)
 - Yearly awards (top researchers)

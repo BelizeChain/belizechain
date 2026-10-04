@@ -585,7 +585,7 @@ If your account was affected, you've received a direct email. Compensation will 
 ## What We're Doing
 1. Accelerating security audit (Trail of Bits, starting immediately)
 2. Implementing formal verification for all critical pallets
-3. Launching bug bounty program (December 2025)
+3. Launching bug bounty program
 
 ## Transparency Commitment
 We believe in full transparency. This incident report will remain public indefinitely.
