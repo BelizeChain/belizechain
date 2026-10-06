@@ -753,6 +753,6 @@ The future of Belize's digital sovereignty is in our hands. Together, we will bu
 
 **Document Status**: Version 1.0 - Final  
 **Last Updated**: September 28, 2025  
-**Next Review**: December 2025  
+**Next Review**: December 2026  
 
 **Legal Notice**: This whitepaper is for informational purposes only and does not constitute investment advice, financial advice, trading advice, or any other sort of advice. The information contained herein is subject to change without notice.

@@ -15,7 +15,7 @@ BelizeChain implements enterprise-grade security with multiple layers of protect
 ### 🔐 Layer 1: Blockchain Security
 - **Consensus**: GRANDPA + BABE (Byzantine fault-tolerant)
 - **Finality**: 12 seconds (irreversible after confirmation)
-- **Validator Network**: 200 nodes (geographic distribution)
+- **Validator Network**: single-node Ceiba testnet (multi-node expansion planned)
 - **Slashing**: Malicious validators lose staked DALLA
 
 ### 🛡️ Layer 2: Cryptography

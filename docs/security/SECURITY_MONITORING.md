@@ -1,7 +1,7 @@
 # BelizeChain Security Monitoring Infrastructure
 
 **Version:** 1.0  
-**Last Updated:** November 4, 2025  
+**Last Updated:** October 6, 2026  
 **Status:** Implementation Ready  
 **Budget:** $75k setup + $30k/year operational  
 
@@ -425,7 +425,7 @@ query LargeTransfers {
   transfers(
     filter: {
       amount: { greaterThan: "100000000000000000" }  # >100K DALLA
-      timestamp: { greaterThan: "2025-11-04T00:00:00Z" }
+      timestamp: { greaterThan: "[UTC-TIMESTAMP]" }
     }
     orderBy: TIMESTAMP_DESC
   ) {

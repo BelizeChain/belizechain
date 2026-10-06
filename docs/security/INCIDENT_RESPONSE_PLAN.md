@@ -1,7 +1,7 @@
 # BelizeChain Incident Response Plan
 
 **Version:** 1.0  
-**Last Updated:** November 4, 2025  
+**Last Updated:** October 6, 2026  
 **Status:** Active testing and hardening  
 **Compliance:** FSC Security Requirements, ISO 27001, NIST Cybersecurity Framework  
 
@@ -380,10 +380,10 @@ This Incident Response Plan (IRP) defines BelizeChain's procedures for detecting
 ```markdown
 # Post-Incident Report: [Incident Title]
 
-**Incident ID:** INC-2025-11-04-001
-**Severity:** SEV-1 (Critical)
+**Incident ID:** INC-YYYY-MM-DD-NNN
+**Severity:** [SEV level]
 **Incident Commander:** [Name]
-**Date:** November 4, 2025
+**Date:** [DATE]
 **Duration:** 3 hours 42 minutes (detection → resolution)
 
 ## 1. Executive Summary
@@ -408,19 +408,19 @@ This Incident Response Plan (IRP) defines BelizeChain's procedures for detecting
 [Technical explanation of vulnerability]
 
 **Why It Happened:**
-- Direct cause: Code used wrapping_add() instead of checked_add()
+- Direct cause: [direct cause]
 - Contributing factors: Missed in code review, no fuzz testing
 
 **Why We Didn't Catch It Earlier:**
-- Audit hadn't started yet (scheduled Q1 2026)
+- Third-party audit not yet started
 - Test coverage for overflow cases was incomplete
 - Automated analysis (Clippy) doesn't catch all overflow cases
 
 ## 4. Impact Assessment
-**Users Affected:** 47 accounts
-**Funds Lost:** 1.2M DALLA ($1.8M USD)
-**Services Disrupted:** Economy pallet (3.5 hours), BelizeX DEX (4 hours)
-**Reputational Impact:** Moderate (handled transparently, quick resolution)
+**Users Affected:** [N] accounts
+**Funds Lost:** [amount] DALLA ([USD amount])
+**Services Disrupted:** [components] ([durations])
+**Reputational Impact:** [assessment]
 
 ## 5. Response Effectiveness
 **What Went Well:**
@@ -437,11 +437,11 @@ This Incident Response Plan (IRP) defines BelizeChain's procedures for detecting
 ## 6. Action Items
 | Action | Owner | Due Date | Status |
 |--------|-------|----------|--------|
-| Add overflow fuzz tests | @alice | 2025-11-11 | Open |
-| Automate runtime upgrade | @bob | 2025-11-18 | Open |
-| Improve public comms SOP | @carol | 2025-11-08 | Open |
-| Schedule emergency audit | @security-lead | 2025-11-05 | Complete |
-| Compensate affected users | @treasury | 2025-11-15 | In Progress |
+| Add overflow fuzz tests | @alice | [DUE] | Open |
+| Automate runtime upgrade | @bob | [DUE] | Open |
+| Improve public comms SOP | @carol | [DUE] | Open |
+| Schedule emergency audit | @security-lead | [DUE] | Complete |
+| Compensate affected users | @treasury | [DUE] | In Progress |
 
 ## 7. Lessons Learned
 1. **Prevention:** Prioritize formal verification for critical pallets
@@ -451,7 +451,7 @@ This Incident Response Plan (IRP) defines BelizeChain's procedures for detecting
 5. **Communication:** Need better template for public announcements
 
 ## 8. Related Incidents
-- None (first critical incident)
+- None on record
 
 ## 9. Attachments
 - Exploit POC code: [link]
@@ -484,15 +484,15 @@ This Incident Response Plan (IRP) defines BelizeChain's procedures for detecting
 ```
 🚨 SEV-1 INCIDENT DECLARED 🚨
 
-**Incident ID:** INC-2025-11-04-001
-**Title:** Treasury Draining Exploit Active
-**Detected:** 2025-11-04 14:23 UTC
+**Incident ID:** INC-YYYY-MM-DD-NNN
+**Title:** [short incident title]
+**Detected:** [YYYY-MM-DD HH:MM UTC]
 **Status:** Containment in progress
 
 **Impact:**
 - Economy pallet: PAUSED
-- Affected users: ~50 accounts
-- Estimated loss: 1-2M DALLA
+- Affected users: [N]
+- Estimated loss: [amount] DALLA
 
 **Actions Taken:**
 - Emergency pause activated (14:35 UTC)
@@ -500,7 +500,7 @@ This Incident Response Plan (IRP) defines BelizeChain's procedures for detecting
 - Patch development started
 
 **Incident Commander:** @security-lead
-**War Room:** #incident-2025-11-04-001
+**War Room:** #incident-YYYY-MM-DD-NNN
 
 **Next Update:** 15:00 UTC (every 15 minutes)
 
@@ -516,8 +516,8 @@ This Incident Response Plan (IRP) defines BelizeChain's procedures for detecting
 **ETA:** Services restored by 17:00 UTC
 
 **What Changed:**
-- Identified vulnerable function: Economy::transfer()
-- Integer overflow via wrapping_add()
+- Identified vulnerable function: [pallet::function]
+- Root cause: [description]
 - Patch in review (checked_add() replacement)
 
 **Next Steps:**
@@ -560,9 +560,9 @@ Thank you for your patience. User funds are safe. 🇧🇿
 The security incident has been resolved. Services are now restored.
 
 Summary:
-• Issue: Smart contract vulnerability
-• Impact: 47 users, 1.2M DALLA
-• Resolution: Patched within 4 hours
+• Issue: [issue type]
+• Impact: [users affected], [amount]
+• Resolution: [resolution summary]
 • Compensation: In progress
 
 Full report: [post-mortem URL]
@@ -572,10 +572,10 @@ Thank you for your patience and trust. 💎
 
 **Blog Post (Post-Mortem):**
 ```markdown
-# Security Incident Post-Mortem: November 4, 2025
+# Security Incident Post-Mortem: [DATE]
 
 ## What Happened
-On November 4, 2025 at 14:23 UTC, we detected an active exploit targeting the Economy pallet...
+On [DATE] at [TIME] UTC, we detected an active exploit targeting [component]...
 
 [Full PIR content, slightly sanitized for public]
 
@@ -583,7 +583,7 @@ On November 4, 2025 at 14:23 UTC, we detected an active exploit targeting the Ec
 If your account was affected, you've received a direct email. Compensation will be processed within 7 days.
 
 ## What We're Doing
-1. Accelerating security audit (Trail of Bits, starting immediately)
+1. Accelerating the third-party security audit (firm TBD)
 2. Implementing formal verification for all critical pallets
 3. Launching bug bounty program
 
@@ -1063,38 +1063,38 @@ BelizeChain
 ```markdown
 # On-Call Handoff: Alice → Bob
 
-**Date:** 2025-11-08
+**Date:** [DATE]
 **Outgoing:** Alice
 **Incoming:** Bob
 
 ## Current Incidents
-- [x] INC-2025-11-04-001: Resolved, PIR published
-- [ ] INC-2025-11-07-002: In progress (SEV-3, investigating XSS report)
+- [x] INC-YYYY-MM-DD-NNN: Resolved, PIR published
+- [ ] INC-YYYY-MM-DD-NNN: In progress (SEV-3)
   - Status: Waiting for bug bounty researcher to provide more details
   - Next action: Follow up on Monday if no response
 
 ## Ongoing Issues
-- Validator3 intermittent connectivity (monitoring, non-critical)
+- A validator has intermittent connectivity (monitoring, non-critical)
 - GraphQL API latency increased 20% (investigating, ticket #1234)
 
 ## Upcoming Maintenance
-- Runtime upgrade scheduled 2025-11-15 (planned, non-emergency)
-- RPC node OS patching 2025-11-12 (coordinated with DevOps)
+- Runtime upgrade scheduled [DATE] (planned, non-emergency)
+- RPC node OS patching [DATE] (coordinated with DevOps)
 
 ## Recent Changes
-- Deployed patch for overflow vulnerability (2025-11-04)
-- Updated rate limiting rules (2025-11-06)
-- Rotated validator keys (routine, 2025-11-05)
+- Deployed patch for [vulnerability] ([DATE])
+- Updated rate limiting rules ([DATE])
+- Rotated validator keys (routine, [DATE])
 
 ## Notes
-- Audit firm (Trail of Bits) starts next week, expect questions
-- Bug bounty program launches Dec 1, prepare for influx of reports
-- CTO out of office Nov 10-12, escalate critical incidents to CEO
+- Third-party audit firm engagement pending, expect questions once scheduled
+- Bug bounty program launch planned, prepare for influx of reports
+- CTO out of office [dates], escalate critical incidents to CEO
 
 ## Handoff Call
-- Completed: 2025-11-08 17:00 UTC
+- Completed: [DATE] [TIME] UTC
 - Duration: 30 minutes
-- Next handoff: 2025-11-15 17:00 UTC (Bob → Carol)
+- Next handoff: [DATE] (Bob → Carol)
 
 **Acknowledged:**
 - [x] Alice (outgoing)
@@ -1272,7 +1272,7 @@ BelizeChain
 **Monthly Security Report (To Board of Directors):**
 
 ```markdown
-# BelizeChain Security Report - November 2025
+# BelizeChain Security Report - [MONTH YEAR]
 
 ## Incidents This Month
 - Total incidents: 3 (1 SEV-2, 2 SEV-3)
@@ -1281,19 +1281,19 @@ BelizeChain
 - False positive rate: 5% (target: <10%) ✅
 
 ## Notable Incidents
-- INC-2025-11-04-001 (SEV-1): Treasury exploit, resolved in 3.7 hours
-  - Impact: 47 users, $1.8M
-  - Root cause: Integer overflow (patched)
-  - Compensation: In progress
+- INC-YYYY-MM-DD-NNN (SEV-1): [summary], resolved in [time]
+  - Impact: [users], [amount]
+  - Root cause: [cause] (patched)
+  - Compensation: [status]
 
 ## Security Improvements
-- Deployed overflow fuzz testing (100% coverage for Economy pallet)
-- Launched bug bounty program (7 submissions, 2 valid)
+- Deployed overflow fuzz testing for the Economy pallet
+- Bug bounty program (planned)
 - Completed tabletop exercise (consensus failure scenario)
 
 ## Upcoming Initiatives
-- Trail of Bits audit starting December 2025
-- Penetration testing (SR Labs) scheduled Q1 2026
+- Third-party audit (firm TBD)
+- Penetration testing (vendor TBD)
 - Formal verification for 5 critical pallets
 
 ## KPIs

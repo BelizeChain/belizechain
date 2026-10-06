@@ -4,6 +4,11 @@
 
 Comprehensive guide to BelizeChain's economic incentive mechanisms.
 
+> [!NOTE]
+> All reward figures and APY numbers in this document are illustrative examples
+> with placeholder parameters. No yield is published or promised; live values
+> are set by the staking pallet on the running network and are not yet final.
+
 ---
 
 ## Staking Rewards (Proof of Useful Work)
@@ -38,7 +43,7 @@ your_share = (validator_stake / total_stake) * daily_rewards
 # = 7,450 DALLA/day
 
 annual_return = (your_share * 365) / validator_stake
-# = 544% APY (early network, high rewards)
+# = illustrative APY (example parameters only; no published figure)
 ```
 
 #### Proof of Useful Work (PoUW) Bonuses
@@ -106,7 +111,7 @@ await api.tx.staking.nominate([
 Validator commission: 5-20% (set by validator)
 Nominator share: 80-95% of rewards
 
-Example:
+Illustrative example (placeholder parameters):
 Stake: 10,000 DALLA
 Validator APY: 544%
 Commission: 10%
@@ -283,8 +288,8 @@ await api.tx.governance.delegate(
 - Launch: 298K DALLA/day
 
 **Staking bonus:** 1.5x APY
-- Regular: 544% APY
-- Launch: 816% APY
+- Regular: baseline APY
+- Launch: boosted APY
 
 **Rationale:** Incentivize early network security
 
@@ -385,7 +390,7 @@ Note: Shared among 21 validators, individual
 ```
 Nominator stake: 10,000 DALLA
 Validator commission: 10%
-Base APY: 544%
+Base APY: 544% (illustrative example)
 
 Annual earnings: 48,960 DALLA
 + Governance participation: ~30 DALLA

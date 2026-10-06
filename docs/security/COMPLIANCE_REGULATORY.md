@@ -1,8 +1,8 @@
 # BelizeChain Compliance & Regulatory Security
 
 **Version:** 1.0  
-**Last Updated:** November 4, 2025  
-**Status:** FSC Approved (Preliminary)  
+**Last Updated:** October 6, 2026  
+**Status:** Draft framework (no regulatory approval claimed)  
 **Authority:** Legal + Compliance + Security Leads  
 
 ---
@@ -26,11 +26,11 @@ This document defines BelizeChain's comprehensive compliance framework for meeti
 - GDPR-equivalent data protection (for EU citizens)
 
 **Compliance Status:**
-- ✅ FSC Registration: In progress (expected Q1 2026)
+- 🔲 FSC Registration: Not yet submitted
 - ✅ KYC/AML Framework: Implemented (Compliance pallet)
-- ✅ Data Sovereignty: Achieved (local IPFS/Arweave)
+- ✅ Data Sovereignty: Achieved (Pakit DAG storage, legacy IPFS/Arweave optional)
 - 🟡 Annual Audit: Pending (professional audit firm TBD, not yet engaged)
-- 🟡 Penetration Testing: Pending (SR Labs scheduled Q1 2026)
+- 🔲 Penetration Testing: Planned (no vendor engaged)
 
 ---
 
@@ -42,9 +42,9 @@ This document defines BelizeChain's comprehensive compliance framework for meeti
 - **Entity:** BelizeChain Foundation (Non-Profit)
 - **Registration:** FSC Virtual Asset Service Provider (VASP)
 - **License Type:** Digital Currency Exchange + Custodian
-- **Application Status:** Submitted October 2025, under review
+- **Application Status:** Not yet submitted
 
-**Required Documentation (Submitted to FSC):**
+**Required Documentation (To be submitted to FSC):**
 - Business plan (5-year projection)
 - Source of funds (initial treasury allocation)
 - AML/CFT policies and procedures
@@ -586,13 +586,13 @@ pub enum Event<T: Config> {
 
 ### 4.2 Audit Reports
 
-**Monthly Compliance Report (To FSC):**
+**Monthly Compliance Report (To FSC) — template:**
 
 ```markdown
 # BelizeChain Monthly Compliance Report
-**Month:** November 2025
+**Month:** [MONTH YEAR]
 **Submitted By:** Compliance Officer
-**Date:** December 5, 2025
+**Date:** [SUBMISSION DATE]
 
 ## 1. KYC Statistics
 - New accounts: 1,247 (Citizen: 1,100, Business: 147)

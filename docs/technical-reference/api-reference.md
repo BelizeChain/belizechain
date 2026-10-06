@@ -263,7 +263,7 @@ curl "$BELIZECHAIN_API/v1/staking/validators?active=true"
       "own_stake": "1000000000000000",
       "nominators_count": 42,
       "commission": "10%",
-      "apy": "544%",
+      "apy": "TBD",
       "uptime": "99.95%",
       "pouw_score": 0.85,
       "validator_type": ["Standard", "Nawal"]

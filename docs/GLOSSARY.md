@@ -27,13 +27,13 @@ Technical terminology and BelizeChain-specific concepts.
 
 → See [API Reference](technical-reference/api-reference.md)
 
-**APY (Annual Percentage Yield)**: Staking rewards:
-- **Base**: 3-6% (adjusts with staking participation)
-- **With PoUW**: Up to 544% (Nawal + Kinich bonuses)
+**APY (Annual Percentage Yield)**: Staking rewards are defined by the staking
+pallet's reward configuration and PoUW scoring. No public APY figure is
+published; testnet values are simulated protocol parameters.
 
 → See [Staking Rewards](economics/staking-rewards.md)
 
-**Quantum Backend Provider**: External quantum compute service. Kinich integrates IonQ, Quantinuum, IBM, Rigetti, and simulator backends.
+**Quantum Backend Provider**: External quantum compute service. Kinich integrates Azure Quantum, IBM, Google Cirq, SpinQ, and PennyLane backends.
 
 → See [Kinich Quantum](services/kinich-quantum-computing.md)
 
@@ -428,11 +428,11 @@ Technical terminology and BelizeChain-specific concepts.
 
 **Staking**: Locking DALLA to:
 - **Secure network**: Validators produce blocks
-- **Earn rewards**: Base 3-6% APY + PoUW bonuses = 544% effective
+- **Earn rewards**: Protocol-defined staking rewards plus PoUW bonuses (parameters live in the staking pallet)
 
 → See [Staking Rewards](economics/staking-rewards.md)
 
-**Substrate**: Blockchain framework by Parity Technologies. BelizeChain built on Substrate 3.0.
+**Substrate**: Blockchain framework by Parity Technologies. BelizeChain is built on the Polkadot SDK (`stable2606`).
 
 → See [Architecture](technical-reference/architecture.md)
 
@@ -440,10 +440,7 @@ Technical terminology and BelizeChain-specific concepts.
 
 **TLS 1.3**: Transport Layer Security for encrypted connections. All BelizeChain RPC/WebSocket endpoints use TLS 1.3.
 
-**TPS (Transactions Per Second)**: 
-- **Sustained**: 1,000 TPS
-- **Peak**: 2,500 TPS
-- **Theoretical max**: 5,000 TPS
+**TPS (Transactions Per Second)**: Throughput is benchmarked against the runtime; no verified public benchmark figures are published yet.
 
 → See [Performance Benchmarks](performance/benchmarks-optimization.md)
 

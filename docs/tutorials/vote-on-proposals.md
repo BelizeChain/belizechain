@@ -206,7 +206,7 @@ Sort by:
 ║  • 50,000 new social media followers       ║
 ║  • 15% increase in tourist arrivals        ║
 ║                                            ║
-║  Timeline: Feb 2025 - July 2025            ║
+║  Timeline: Feb 2026 - July 2026            ║
 ║  ROI estimate: $5 million additional       ║
 ║  tourism revenue                           ║
 ╠════════════════════════════════════════════╣
@@ -558,7 +558,7 @@ The proposal will be executed within 3 days.
 ║  PROPOSAL #42 - FINAL RESULTS              ║
 ╠════════════════════════════════════════════╣
 ║  Status: ✅ PASSED                          ║
-║  Ended: Jan 28, 2025 at 5:00 PM            ║
+║  Ended: Jan 28, 2026 at 5:00 PM            ║
 ║                                            ║
 ║  💰 Fund Tourism Marketing Campaign        ║
 ║  Amount: 50,000 bBZD                       ║
@@ -574,11 +574,11 @@ The proposal will be executed within 3 days.
 ║  Threshold: ✅ Passed (needed 50% + 1)     ║
 ║                                            ║
 ║  EXECUTION:                                ║
-║  Funds released: Jan 29, 2025              ║
+║  Funds released: Jan 29, 2026              ║
 ║  To: Belize Tourism Board                  ║
 ║  Tx: 0x7d4e...f3a1                         ║
 ║                                            ║
-║  Timeline: Feb 2025 - July 2025            ║
+║  Timeline: Feb 2026 - July 2026            ║
 ║  Progress reports: Monthly                 ║
 ╚════════════════════════════════════════════╝
 
@@ -663,8 +663,8 @@ Ad reach: 2.3M people
 
 **Result**:
 - Proposal PASSED (52% YES, 38% NO, 10% ABSTAIN)
-- Construction started March 2025
-- Center opened December 2025
+- Construction started March 2026
+- Center opened December 2026
 - **Ana participated in democracy!** 🎉
 
 ---

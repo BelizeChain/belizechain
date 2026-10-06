@@ -145,7 +145,7 @@ Spend DALLA at verified merchants → earn 5-8% bBZD cashback
 
 ---
 
-## Staking (Earn 544% APY)
+## Staking
 
 ### Nominate Validators
 
@@ -161,10 +161,10 @@ Spend DALLA at verified merchants → earn 5-8% bBZD cashback
 3. Enter stake amount (e.g., 10,000 DALLA)
 4. Review rewards estimate:
    - **Stake:** 10,000 DALLA
-   - **APY:** 544% (assumes 10% commission)
-   - **Effective APY:** 489.6% after commission
-   - **Monthly rewards:** ~4,080 DALLA
-   - **Annual rewards:** ~49,000 DALLA
+   - **APY:** display-only estimate (no published rate; testnet parameters are simulated)
+   - **Effective APY:** estimated after commission
+   - **Monthly rewards:** estimated
+   - **Annual rewards:** estimated
 5. Enter PIN to confirm
 6. ✅ Staking active after 6 hours (1 era)
 

@@ -1,7 +1,7 @@
 # BelizeChain Security Best Practices
 
 **Version:** 1.0  
-**Last Updated:** November 4, 2025  
+**Last Updated:** October 6, 2026  
 **Status:** Mandatory for All Contributors  
 **Authority:** CTO + Security Lead  
 
