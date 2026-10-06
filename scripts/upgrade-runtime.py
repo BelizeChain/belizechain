@@ -8,12 +8,25 @@ anything is signed, so a wrong key fails loudly instead of silently.
 
 `system.set_code` rejects code whose `spec_version` is not greater than the
 running one, so a stale artifact is refused by the chain rather than applied.
+A **rollback** (spec down, e.g. 109 -> 108) therefore needs
+``--without-checks``, which dispatches `system.set_code_without_checks`
+instead; that variant is root-only and skips the version check.
+
+**Epoch-duration guard.** `BabeEpochDuration` is a *compile-time* constant
+(300 with the `testnet-fast-epoch` feature, 14400 without). Deploying a blob
+built without that feature onto a chain that is running 300 changes the epoch
+length under the live chain and every subsequent block import fails with
+"Expected epoch change to happen at ...". This script therefore reads the
+chain's duration from `BabeApi_current_epoch` before and after the upgrade and
+**fails loudly if it changed** — so a wrongly-built artifact is caught
+immediately instead of one epoch boundary later.
 
 Dry run by default; pass ``--execute`` to actually submit.
 
 Usage:
     upgrade-runtime.py <runtime.compact.compressed.wasm> --key //Alice
     upgrade-runtime.py <runtime.compact.compressed.wasm> --key //Alice --execute
+    upgrade-runtime.py <older.wasm> --without-checks --execute   # rollback
 """
 
 from __future__ import annotations
@@ -28,6 +41,18 @@ from substrateinterface import Keypair, SubstrateInterface
 
 def blake2b_256(data: bytes) -> str:
     return hashlib.blake2b(data, digest_size=32).hexdigest()
+
+
+def read_epoch_duration(api: SubstrateInterface) -> int:
+    """Return the live BABE epoch duration, in slots.
+
+    `BabeApi_current_epoch` encodes `CurrentEpoch` as
+    `(index: u64, start_slot: u64, duration: u64, authorities: Vec<..>)`
+    little-endian, so `duration` sits at byte offset 16.
+    """
+    raw = api.rpc_request("state_call", ["BabeApi_current_epoch", "0x"])["result"]
+    data = bytes.fromhex(raw[2:] if raw.startswith("0x") else raw)
+    return int.from_bytes(data[16:24], "little")
 
 
 def _to_account_bytes(value: object) -> bytes:
@@ -59,6 +84,11 @@ def main() -> int:
         help="sudo key URI (default: //Alice, the testnet genesis sudo key)",
     )
     parser.add_argument("--execute", action="store_true", help="actually submit the upgrade")
+    parser.add_argument(
+        "--without-checks",
+        action="store_true",
+        help="dispatch set_code_without_checks (root-only) — required for a spec DOWN rollback",
+    )
     args = parser.parse_args()
 
     wasm = args.wasm.read_bytes()
@@ -77,6 +107,15 @@ def main() -> int:
         current_spec = spec["specVersion"] if isinstance(spec, dict) else spec.spec_version
         print(f"on-chain spec_version : {current_spec}")
 
+        # Capture the live epoch length so a blob that changes it is caught here
+        # rather than one epoch boundary later (2026-10-04 stall).
+        try:
+            epoch_duration_before = read_epoch_duration(api)
+            print(f"epoch duration (pre)  : {epoch_duration_before} slots")
+        except Exception as exc:  # metadata/runtime without BabeApi — non-fatal
+            epoch_duration_before = None
+            print(f"epoch duration (pre)  : unavailable ({exc})")
+        print()
         sudo_key = api.query("Sudo", "Key")
         sudo_raw = _to_account_bytes(sudo_key.value)
         print(f"on-chain sudo key     : 0x{sudo_raw.hex()}")
@@ -93,9 +132,10 @@ def main() -> int:
             return 1
         print()
 
+        call_function = "set_code_without_checks" if args.without_checks else "set_code"
         inner = api.compose_call(
             call_module="System",
-            call_function="set_code",
+            call_function=call_function,
             call_params={"code": code_hex},
         )
         outer = api.compose_call(
@@ -108,7 +148,7 @@ def main() -> int:
 
         if not args.execute:
             print("DRY RUN — nothing submitted.")
-            print(f"would submit   : sudo.sudo(System::set_code(<{len(wasm)} bytes>))")
+            print(f"would submit   : sudo.sudo(System::{call_function}(<{len(wasm)} bytes>))")
             print(f"extrinsic hash : {tx_hash}")
             print("\nre-run with --execute to submit.")
             return 0
@@ -136,13 +176,53 @@ def main() -> int:
 
     print(f"new spec_version: {new_spec}")
     print(f"on-chain :code  : {len(onchain)} bytes  blake2b {blake2b_256(onchain)}")
-    if new_spec == current_spec:
-        print("\nWARNING: spec_version did not change — the upgrade did not apply.")
-        return 1
     if blake2b_256(onchain) != blake2b_256(wasm):
         print("\nWARNING: on-chain code hash differs from the submitted wasm.")
         return 1
-    print("\nupgrade verified: spec_version advanced and :code matches the submitted wasm.")
+    if new_spec == current_spec:
+        print("\nWARNING: spec_version did not change — the upgrade did not apply.")
+        return 1
+
+    # The defect that stalled the chain on 2026-10-04: a runtime built without
+    # `testnet-fast-epoch` silently changed EpochDuration 300 -> 14400.
+    #
+    # A forward upgrade must NOT change the live epoch length. A rollback
+    # (--without-checks) is expected to change it back, so it only reports.
+    with SubstrateInterface(url=args.rpc) as api:
+        try:
+            epoch_duration_after = read_epoch_duration(api)
+        except Exception as exc:
+            epoch_duration_after = None
+            print(f"epoch duration (post) : unavailable ({exc})")
+
+    direction = "advanced" if new_spec > current_spec else "rolled back"
+    if epoch_duration_after is not None:
+        changed = epoch_duration_after != epoch_duration_before
+        print(f"epoch duration (post) : {epoch_duration_after} slots")
+        if changed and not args.without_checks:
+            print(
+                f"\n*** WARNING: EPOCH DURATION CHANGED "
+                f"{epoch_duration_before} -> {epoch_duration_after} slots ***"
+            )
+            print(
+                "This artifact was built with different features than the running runtime\n"
+                "(almost certainly a missing `testnet-fast-epoch`). The chain WILL stop\n"
+                "importing blocks at the next epoch boundary. Roll back immediately,\n"
+                "then rebuild with: cargo build --release -p belizechain-runtime \\\n"
+                "  --features testnet-fast-epoch"
+            )
+            return 1
+        if changed:
+            print(
+                f"(expected on rollback: {epoch_duration_before} -> {epoch_duration_after} slots)"
+            )
+        elif args.without_checks:
+            print(
+                "NOTE: epoch duration unchanged by this rollback — if the chain was\n"
+                "stalled on an epoch-boundary mismatch, this blob does NOT fix it."
+            )
+
+    print(f"\nupgrade verified: spec_version {direction} and :code matches the submitted wasm.")
     return 0
 
 
