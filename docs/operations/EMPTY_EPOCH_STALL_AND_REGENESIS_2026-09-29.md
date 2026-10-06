@@ -9,6 +9,12 @@ chain** and supersedes the chain identity established in
 dead**. It is not a rollback target and its blocks will never resume. Current
 chain: genesis `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef`.
 
+> **This chain later died too.** Genesis `0xb2664568…` stalled at block #70,795 on
+> 2026-10-04 — a runtime 109 deployed without the `testnet-fast-epoch` feature
+> changed the BABE epoch duration under the live chain. See
+> [CHAIN_LINEAGE.md](CHAIN_LINEAGE.md) for the full history of every chain, the
+> runtime lineage, and what a re-genesis does and does not reset.
+
 ## 1. Summary
 
 Block production stopped at **#28791 on 2026-09-23 16:02:36** and never resumed.

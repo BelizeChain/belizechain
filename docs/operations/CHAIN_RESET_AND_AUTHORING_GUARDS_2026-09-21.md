@@ -8,6 +8,12 @@
 > diagnosed the later stall — but the §A1 Nawal signer registration procedure
 > does not currently run against the new chain (see §5 of the new document).
 > Kept as the record of that reset and of the guards it introduced.
+>
+> **Not recorded in this document:** this genesis was set on **21 September —
+> Belize Independence Day — deliberately** (confirmed by the operator
+> 2026-10-06). Read as a purely emergency response here, the symbolic intent is
+> invisible. See [CHAIN_LINEAGE.md](CHAIN_LINEAGE.md) for that intent and for the
+> full list of chains.
 
 **Status:** Executed and verified. The Ceiba testnet runs a fresh chain that is
 **spec 107 from genesis**, with a validator that can no longer stall silently.
