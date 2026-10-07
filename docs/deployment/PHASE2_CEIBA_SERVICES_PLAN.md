@@ -55,6 +55,12 @@ hostname through the `$root_backend` map in `infra/nginx/nginx.conf`:
   so a name that does not serve those paths cannot run the app on it.
 - `/wallet` on any name other than `wallet.*` is a **301 to `wallet.belizechain.org` with
   the prefix stripped** — the wallet is no longer path-mounted.
+- **Both frontends are gated behind a signed session**, verified server-side in each app's root
+  layout, so the dashboard markup is never sent to an unauthenticated visitor. The Portal
+  additionally requires BelizeID KYC level 2+; Maya Wallet gates on key ownership only, so a
+  citizen can still onboard. A missing `AUTH_SESSION_SECRET` denies every session (fails closed).
+- **`/rpc`, `/ws`, `/api/*` and `/ipfs/` remain public by decision.** The explorer on a separate
+  host cannot be given a session cookie, and the developer docs publish these URLs.
 - Rollout/rollback contract: `infra/deploy/CEIBA_UI_ROLLOUT.md` (current).
   `infra/docs/B1_MAYA_EXPOSURE_2026-06-13.md` is the historical first cut. Rollback = pin
   the relevant `*_IMAGE` back to the previous known-good tag and re-run compose.
