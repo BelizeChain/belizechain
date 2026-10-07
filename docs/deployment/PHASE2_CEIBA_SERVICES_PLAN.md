@@ -40,10 +40,24 @@ on the active Ceiba testnet on 2026-05-02:
 | Simple DAO | `r1VnpeWtfLmtZ2W2UJhYXSLoHhwo7tAY48RZyVirRu5ucLi7i` |
 | Faucet | `r1TDXUdxgeLC5BAkFQeZnZNSAX67FwRAaavmG19TzPtc2Szcg` |
 
-Current frontend deployment (verified live 2026-10-03):
-- Blue Hole Portal remains the single public Ceiba `ui` slot (`belizechain/blue-hole-portal` behind nginx).
-- Maya Wallet is **activated** on Ceiba since 2026-09-21: container `ceiba-maya` runs image `belizechain/maya-wallet:20260918-ceiba`, the live service carries the `NEXT_PUBLIC_*_CONTRACT` env keys, and `/wallet/` (redirecting to `/wallet`) returns HTTP 200 through nginx.
-- Rollout/rollback contract: `infra/docs/B1_MAYA_EXPOSURE_2026-06-13.md` — rollback = pin `MAYA_IMAGE` back to the previous known-good tag, or disable the `/wallet/` route.
+Current frontend deployment (verified live 2026-10-07). Each public name is routed by
+hostname through the `$root_backend` map in `infra/nginx/nginx.conf`:
+
+| Name | Frontend |
+|---|---|
+| `belizechain.org`, `www` | org site (`org`) |
+| `testnet.*`, `portal.*` | Blue Hole Portal (`ui`) |
+| `wallet.*` | Maya Wallet (`maya`), served at the root |
+| `explorer.*` | Polkadot-JS apps (`explorer`) |
+
+- **All names serve the stack paths** (`/rpc`, `/ws`, `/api/*`, `/ipfs/`, `/health`). The
+  frontends are built without absolute URLs and derive them from `window.location.origin`,
+  so a name that does not serve those paths cannot run the app on it.
+- `/wallet` on any name other than `wallet.*` is a **301 to `wallet.belizechain.org` with
+  the prefix stripped** — the wallet is no longer path-mounted.
+- Rollout/rollback contract: `infra/deploy/CEIBA_UI_ROLLOUT.md` (current).
+  `infra/docs/B1_MAYA_EXPOSURE_2026-06-13.md` is the historical first cut. Rollback = pin
+  the relevant `*_IMAGE` back to the previous known-good tag and re-run compose.
 
 ## Completed Rollout Order
 

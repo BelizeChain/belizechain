@@ -46,7 +46,8 @@ Simple DAO, Faucet, Access Control library, and the Hello BelizeChain example.
 
 ### Services live on the Ceiba testnet
 
-Maya Wallet (`/wallet/`), Blue Hole Portal, Pakit storage API, Nawal AI API,
+Maya Wallet (`wallet.belizechain.org`), Blue Hole Portal (`portal.belizechain.org`),
+the belizechain.org site (`belizechain.org`), Pakit storage API, Nawal AI API,
 Kinich quantum API, IPFS gateway, block explorer, nginx TLS front end,
 Prometheus + Grafana + Alertmanager (Telegram alerting live since 2026-10-02),
 and nightly Postgres / chain / Pakit backups with integrity manifests.
@@ -68,11 +69,12 @@ been removed.
 |------------|-----------------------------------------------------------------------|
 | 2026-05-02 | Ceiba Phase 2: Pakit, Nawal, Kinich, GEM contracts, and Blue Hole Portal deployed to the testnet stack |
 | 2026-09-17 | Non-destructive backup/restore drill completed |
-| 2026-09-21 | Maya Wallet exposed on the testnet (`/wallet/` route) |
+| 2026-09-21 | Maya Wallet exposed on the testnet (originally the `/wallet/` path route) |
 | 2026-09-23 | Chain stalled after a zero-authority BABE epoch; root cause diagnosed |
 | 2026-09-29 | Chain re-genesis; session-key filtering fix prevents a repeat of the empty-authority stall |
 | 2026-10-02 | Alertmanager → Telegram alerting armed and delivery-verified; nightly backups verified |
 | 2026-10-04 | Runtime 109 hot-upgraded on the live chain (rollback blob retained) |
+| 2026-10-07 | Hostname routing: apex/`www` serve the org site, `testnet.*`/`portal.*` the Portal, `wallet.*` the wallet, `explorer.*` the explorer |
 
 
 
