@@ -27,7 +27,7 @@ import time
 from substrateinterface import Keypair, SubstrateInterface
 
 # No hardcoded fallback: a literal host silently targets whatever was live when
-# this was written. Live testnet (Chain D on ceiba2): ws://100.119.97.38:9944
+# this was written. Live testnet (Chain D on ceiba): ws://100.119.97.38:9944
 RPC_URL = os.environ.get("SMOKE_RPC_URL") or os.environ.get("CEIBA_RPC_URL")
 TRANSFER_AMOUNT = 1_000_000_000_000  # 1 UNIT assuming 12 decimals; irrelevant in --dev
 
@@ -36,7 +36,7 @@ def main() -> int:
     if not RPC_URL:
         print(
             "ERROR: SMOKE_RPC_URL (or CEIBA_RPC_URL) is not set.\n"
-            "  Live testnet (Chain D on ceiba2): ws://100.119.97.38:9944\n",
+            "  Live testnet (Chain D on ceiba): ws://100.119.97.38:9944\n",
             file=sys.stderr,
         )
         return 2

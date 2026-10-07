@@ -4,8 +4,8 @@
 **Last verified:** 2026-10-07
 
 This file exists because the lineage was **not written down anywhere**, and that gap
-cost real time. Four separate chains have run (three on `ceiba`, the current one on
-`ceiba2`), and confusion between them produced wrong conclusions during the 2026-10-06
+cost real time. Four separate chains have run — A, B and C on the original Ceiba host,
+D on its replacement — and confusion between them produced wrong conclusions during the 2026-10-06
 investigation (an operator reasonably believed the current chain's genesis was
 Independence Day; it is not — that was the *previous* chain).
 
@@ -20,17 +20,19 @@ Independence Day; it is not — that was the *previous* chain).
 | A | *not recorded* | before 2026-08-17 | 2026-08-17 | Re-generisised (see backup `chain-pre-reset-20260817`) |
 | **B** | `0x631fb936…` | **2026-09-21 16:02:42** | 2026-09-23 16:02:36 | Empty BABE authority set → total deadlock at block #28,791 |
 | **C** | `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef` | **2026-09-29 ~15:00** | 2026-10-04 | Runtime 109 deployed without `testnet-fast-epoch` → epoch-duration mismatch → no block imported after #70,795 |
-| **D** | `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef` — **same hash as C** | **2026-10-06** (on `ceiba2`) | — | — |
+| **D** | `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef` — **same hash as C** | **2026-10-06** (on `ceiba`) | — | — |
 
 ⚠️ **D reuses C's genesis hash.** D was re-genesised from the *same spec* C was, and a
 chain spec fully determines the genesis state — so the hash is byte-identical. The
 genesis hash therefore does **not** uniquely identify a chain across a re-genesis:
-C and D share it while being different chains at different blocks. Use the host
-(`ceiba` vs `ceiba2`) plus the head height to disambiguate, never the hash alone.
+C and D share it while being different chains at different blocks. Disambiguate by
+**birth date plus head height**, never the hash alone — and note that host name no
+longer helps, since the replacement host was renamed to `ceiba` on 2026-10-07 and the
+original `ceiba` was decommissioned.
 
-## Chain D — current, live on `ceiba2` (2026-10-06 →)
+## Chain D — current, live on `ceiba` (2026-10-06 →)
 
-Re-genesised from the Chain C spec onto the replacement host `ceiba2`, which is why the
+Re-genesised from the Chain C spec onto the replacement host `ceiba`, which is why the
 genesis hash matches C. The spec embeds runtime **107** (blake2b `cd7d21125c…`,
 1,420,530 B — the same blob as C), so D was **born at 107**.
 
@@ -52,7 +54,7 @@ cargo build -p belizechain-runtime --release --features testnet-fast-epoch
   `Babe::Authorities = 1`, block production continuing and GRANDPA finality keeping
   pace. This is the exact transition that ended Chain C.
 
-**Rollback blob:** `/data/upgrade-109/onchain-code-107.wasm` on `ceiba2` — the
+**Rollback blob:** `/data/upgrade-109/onchain-code-107.wasm` on `ceiba` — the
 pre-upgrade on-chain 107, verified `cd7d21125c…`. Roll back with
 `upgrade-runtime.py <blob> --without-checks --execute` (`set_code` refuses a spec
 *down*).

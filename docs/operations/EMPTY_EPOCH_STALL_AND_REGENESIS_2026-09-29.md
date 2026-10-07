@@ -451,6 +451,14 @@ The gap was not the missing rule — `CeibaChainStalled` already existed in
 been ready to fire and reached no one. (`promtool check rules` reports the rules
 valid; that is exactly the false confidence the file invited.)
 
+> ✅ **Superseded 2026-10-02 — Alertmanager was added and Telegram paging is live.**
+> `ceiba-alertmanager` is now a service in `docker-compose.ceiba.yml`, Prometheus
+> points at `alertmanager:9093`, and delivery was verified end-to-end. The paragraph
+> above was accurate on 2026-09-29 and is preserved as the record of why the gap
+> existed. For current alerting state see
+> [CEIBA_OPERATIONS_RUNBOOK.md](CEIBA_OPERATIONS_RUNBOOK.md) → "Monitoring now actually
+> reports a stall".
+
 Two changes, neither adding infrastructure:
 
 - `deploy/health-check.sh` — runs every 5 minutes via `ceiba-health-log.timer` and

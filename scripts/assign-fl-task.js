@@ -13,11 +13,11 @@ const { ApiPromise, WsProvider, Keyring } = require('@polkadot/api');
 const { decodeAddress, encodeAddress } = require('@polkadot/util-crypto');
 
 // No hardcoded fallback: a literal host silently targets whatever was live when
-// this was written. Live testnet (Chain D on ceiba2): ws://100.119.97.38:9944
+// this was written. Live testnet (Chain D on ceiba): ws://100.119.97.38:9944
 const WS_ENDPOINT = process.env.RPC_ENDPOINT;
 if (!WS_ENDPOINT) {
   console.error('ERROR: RPC_ENDPOINT is not set.');
-  console.error('  Live testnet (Chain D on ceiba2): ws://100.119.97.38:9944');
+  console.error('  Live testnet (Chain D on ceiba): ws://100.119.97.38:9944');
   console.error('  Usage: RPC_ENDPOINT=ws://<host>:9944 node scripts/assign-fl-task.js');
   process.exit(2);
 }

@@ -7,7 +7,7 @@ from collections import defaultdict
 from substrateinterface import SubstrateInterface
 
 # No default: a literal host silently queries whatever was live when this was
-# written. State the target. Live testnet (Chain D on ceiba2): ws://100.119.97.38:9944
+# written. State the target. Live testnet (Chain D on ceiba): ws://100.119.97.38:9944
 RPC_URL = os.environ.get("CEIBA_RPC_URL")
 
 EXPECTED_CUSTOM_PALLETS = {
@@ -22,7 +22,7 @@ def main():
     if not RPC_URL:
         print(
             "ERROR: CEIBA_RPC_URL is not set.\n"
-            "  Live testnet (Chain D on ceiba2): ws://100.119.97.38:9944\n"
+            "  Live testnet (Chain D on ceiba): ws://100.119.97.38:9944\n"
             "  Usage: CEIBA_RPC_URL=ws://<host>:9944 python3 "
             "scripts/test/pallet_storage_sweep.py",
             file=sys.stderr,

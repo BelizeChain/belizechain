@@ -16,15 +16,15 @@
 - Ports: 30333 (P2P), 9944 (RPC, unified HTTP+WS), 9615 (Prometheus). Legacy 9933 is not exposed by current SDK.
 
 ## Production Deployment (LIVE)
-- **Primary Host**: `ceiba2` (Ubuntu 26.04 LTS, `100.119.97.38` over Tailscale) — the stack moved here 2026-10-06. The old `ceiba` box still exists but runs the **dead** Chain C; do not point new work at it.
+- **Primary Host**: `ceiba` (Ubuntu 26.04 LTS, `100.119.97.38` over Tailscale) — the stack moved here 2026-10-06; provisioned as `ceiba2`, renamed `ceiba` on 2026-10-07. The original host is **decommissioned and wiped** — it ran the dead Chain C and no longer exists on the network.
 - **Runtime**: Docker Compose at `/opt/belizechain` (not `--dev`, not raw systemd)
 - **Live Chain**: **Chain D ("Jade")** — see `docs/operations/CHAIN_LINEAGE.md`
 - **Live Genesis**: `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef` — **identical to Chain C's**, because D was re-genesised from C's spec. The hash alone does **not** identify the chain; use host + head height.
 - **Live Epoch**: `BabeEpochDuration = 300` slots (~30 min). This is the **`testnet-fast-epoch` build feature**, used so a session rotation can be observed in minutes; the default build keeps 14,400 slots (~24 h) for mainnet
-- **Live Runtime**: `spec_version = 109`. Hot `sudo.sudo(System::set_code(…))` upgrade **2026-10-07 on Chain D**, from 107 — no node restart. The genesis runtime embedded in `testnet-spec.json` is still **107**, so a re-genesis would boot at 107 and upgrade forward. Rollback blob: `/data/upgrade-109/onchain-code-107.wasm` on `ceiba2`
+- **Live Runtime**: `spec_version = 109`. Hot `sudo.sudo(System::set_code(…))` upgrade **2026-10-07 on Chain D**, from 107 — no node restart. The genesis runtime embedded in `testnet-spec.json` is still **107**, so a re-genesis would boot at 107 and upgrade forward. Rollback blob: `/data/upgrade-109/onchain-code-107.wasm` on `ceiba`
 - ⚠️ **Any forward runtime upgrade MUST be built with `--features testnet-fast-epoch`.** A blob built without it silently changes the epoch length from 300 to 14,400 and permanently halts block import — that is exactly how Chain C died on 2026-10-04. `scripts/upgrade-runtime.py` refuses to proceed if the duration would change; always run its dry run first.
 - ⚠️ `scripts/upgrade-runtime.py` still defaults `--rpc` to the decommissioned `ws://100.81.45.25:9944`. Pass `--rpc ws://100.119.97.38:9944` explicitly.
-- **Primary Access**: `ssh wicked@ceiba2` or `ssh wicked@100.119.97.38` (Tailscale)
+- **Primary Access**: `ssh wicked@ceiba` or `ssh wicked@100.119.97.38` (Tailscale)
 - **LAN Fallback**: `ssh wicked@10.0.0.229` (wired)
 - **Node Args**: `--chain /data/chain/testnet-spec.json --base-path /data/chain --rpc-port 9944 --prometheus-port 9615`
 - **Chain Data**: `/data/chain/chains/belizechain_testnet`

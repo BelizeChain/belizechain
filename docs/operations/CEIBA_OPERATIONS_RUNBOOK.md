@@ -5,18 +5,20 @@ Scope: BelizeChain self-hosted runtime
 
 ## Host Access
 
-The live stack moved to the replacement host **`ceiba2`** on 2026-10-06. The old
-`ceiba` box still exists and is intact, but it runs the **dead** Chain C and is
-kept only as a fallback / forensic source. Point new work at `ceiba2`.
+The live stack moved to the replacement host on 2026-10-06 (provisioned as `ceiba2`,
+**renamed `ceiba` on 2026-10-07** once the original box was retired). The original
+Ceiba — which ran the dead Chain C — has been **decommissioned and wiped**; it is no
+longer on the network and is not a fallback.
 
-- **Primary: `ssh wicked@ceiba2`** (`100.119.97.38` over Tailscale)
-- Fallback (old host, dead chain): `ssh wicked@100.81.45.25` / `10.0.0.222`
+- **Primary: `ssh wicked@ceiba`** (`100.119.97.38` over Tailscale)
+- LAN: `ssh wicked@10.0.0.19` (ethernet) — WiFi is disabled; `10.0.0.229` is stale
 
-⚠️ The old host's WAN address (`174.161.1.222`) no longer accepts connections.
+⚠️ The original host's addresses (`100.81.45.25` / `10.0.0.222` / WAN `174.161.1.222`)
+are **dead** — nothing answers there.
 
 ## Runtime Baseline
 
-Current chain identity: **Chain D ("Jade") on `ceiba2`** — see
+Current chain identity: **Chain D ("Jade") on `ceiba`** — see
 [CHAIN_LINEAGE.md](CHAIN_LINEAGE.md) for the full lineage, including why D reuses
 Chain C's genesis hash. Chain C's stall is recorded in
 [EMPTY_EPOCH_STALL_AND_REGENESIS_2026-09-29.md](EMPTY_EPOCH_STALL_AND_REGENESIS_2026-09-29.md).
@@ -51,10 +53,18 @@ Dated baseline snapshots:
 - Prometheus: 9615 (bound to the host's Tailscale address)
 
 Health checks worth running after any restart or re-genesis:
+
 `scripts/verify_epoch_config.py <rpc-url> <expected-duration>` — asserts the
 on-chain BABE authority set is **non-empty**. An empty set is unrecoverable and
 is what stalled the chain on 2026-09-23; it is worth checking on every boot
 rather than discovering days later from a silent `Idle` log.
+
+`sudo systemctl start ceiba-live-actions.service` — the functional smoke test:
+Pakit upload/download/delete round-trip, Nawal chain connectivity **and validator
+registration**, Kinich backend + jobs. Writes
+`/data/log/live-actions/live-actions-YYYYMMDD.log`; expect `FAIL = 0`. This is the
+check that catches a re-genesis silently dropping the Nawal operator registration —
+see "Post-Reset: Re-register The Nawal Operator" below.
 
 Validator mode requires `--unsafe-rpc-external` instead of `--rpc-external`.
 Keep `--rpc-methods Safe` and the host binding on Ceiba's Tailscale address.
@@ -75,7 +85,7 @@ the active Ceiba authority keys.
 
 ### Scope And Blast Radius
 
-- Target host: Ceiba (`ssh wicked@100.81.45.25`).
+- Target host: `ceiba` (`ssh wicked@ceiba`, or `100.119.97.38` over Tailscale).
 - Target stack: `/opt/belizechain` Docker Compose.
 - Target chain data: `/data/chain/chains/belizechain_testnet`.
 - Target spec: `/data/chain/testnet-spec.json`.
@@ -93,7 +103,7 @@ grep -E '^(CHAIN|VALIDATOR|NODE_NAME|TAILSCALE_IP)=' .env
 docker compose -f docker-compose.ceiba.yml --env-file .env ps
 curl -sS -H "Content-Type: application/json" \
   -d '{"id":1,"jsonrpc":"2.0","method":"chain_getHeader","params":[]}' \
-  http://100.81.45.25:9944
+  http://100.119.97.38:9944
 find /data/chain/chains/belizechain_testnet/keystore -maxdepth 1 -type f | wc -l
 jq -c '.genesis.runtimeGenesis.patch | {babe,grandpa}' /data/chain/testnet-spec.json
 ```
@@ -219,19 +229,57 @@ docker compose -f docker-compose.ceiba.yml --env-file .env ps ceiba-node nginx
 
 curl -sS -H "Content-Type: application/json" \
   -d '{"id":1,"jsonrpc":"2.0","method":"system_health","params":[]}' \
-  http://100.81.45.25:9944
+  http://100.119.97.38:9944
 curl -sS -H "Content-Type: application/json" \
   -d '{"id":2,"jsonrpc":"2.0","method":"chain_getHeader","params":[]}' \
-  http://100.81.45.25:9944
+  http://100.119.97.38:9944
 curl -k -sS -H "Content-Type: application/json" \
   -d '{"id":3,"jsonrpc":"2.0","method":"system_health","params":[]}' \
-  https://100.81.45.25/rpc
+  https://100.119.97.38/rpc
 docker logs --tail 120 ceiba-node | grep -E "Idle|best: #|Imported|Starting consensus|Local node identity" || true
 ```
 
 Successful recovery means `ceiba-node` is healthy, `/rpc` works through Nginx,
 the header advances beyond `0x0`, and logs show authored/imported blocks after
 the reset.
+
+### Post-Reset: Re-register The Nawal Operator
+
+**Required after every re-genesis — and easy to forget.** Identity and staking state
+do not survive a genesis reset, so the Nawal AI operator silently drops out of
+`Staking::Validators`. The chain keeps producing blocks, so nothing looks broken —
+but `deploy/ceiba-live-actions.sh` starts failing with
+`Nawal operator is not registered as a validator on chain`.
+
+```bash
+cd <repo>
+export NODE_PATH="$PWD/ui/node_modules"      # this repo has no @polkadot deps; ui does
+export RPC_ENDPOINT=ws://100.119.97.38:9944
+export NAWAL_SEED="$(ssh wicked@ceiba 'docker exec ceiba-nawal printenv NAWAL_KEYPAIR_URI')"
+node scripts/register-nawal-signer.js
+```
+
+The signer is the **keyless A1 account** (`ce2f6ecf…b902d054`) — it holds no session
+keys by design and is PoUW-only. `BelizeSessionManager::new_session` filters it out of
+the queued authority set, and that filter is exactly what keeps BABE at one authority
+instead of announcing an empty next epoch. A log line naming it as excluded is
+**expected, not an error**.
+
+Verify after registering — `ValidatorCount` should be ≥ 1, the session set should
+still be Alice alone, and BABE authorities must **not** be empty:
+
+```bash
+docker exec ceiba-nawal python -c "
+from substrateinterface import SubstrateInterface
+s = SubstrateInterface(url='ws://ceiba-node:9944')
+print('validator count :', s.query('Staking','ValidatorCount').value)
+print('session set     :', s.query('Session','Validators').value)
+print('BABE authorities:', s.query('Babe','Authorities').value)
+"
+```
+
+Then re-run the smoke test — expect `FAIL = 0`:
+`sudo systemctl start ceiba-live-actions.service`
 
 ### Rollback
 
@@ -484,21 +532,40 @@ precondition that emptied the authority set on 2026-09-23 (the signer is
 Re-run it any time with:
 
 ```bash
-NAWAL_SEED="$(ssh wicked@ceiba 'sudo grep -m1 "^NAWAL_KEYPAIR_URI=" /opt/belizechain/.env | cut -d= -f2-')" \
-  NODE_PATH=/home/wicked/Projects/Belizechain/ui/node_modules \
-  node scripts/register-nawal-signer.js
-```
+  RPC_ENDPOINT=ws://100.119.97.38:9944 \
+    NAWAL_SEED="$(ssh wicked@ceiba 'docker exec ceiba-nawal printenv NAWAL_KEYPAIR_URI')" \
+    NODE_PATH=/home/wicked/Projects/Belizechain/ui/node_modules \
+    node scripts/register-nawal-signer.js
+  ```
+  
+  It is idempotent, self-funds from the issuer, and never logs the key.
+  `RPC_ENDPOINT` is **required** — the script exits 2 without it, because a hardcoded
+  fallback silently targets whichever host was live when the script was written.
 
-It is idempotent, self-funds from the issuer, and never logs the key.
+  **Re-done on Jade (Chain D) 2026-10-07** — see "Post-Reset: Re-register The Nawal
+  Operator" above. The registration does **not** survive a re-genesis, so this is a
+  standing post-reset step, not a one-off. On Jade the epoch boundary **31 → 32**
+  crossed with the signer registered and `Babe::Authorities` stayed **1**.
 
 ### Monitoring now actually reports a stall
 
-- **There is no Alertmanager.** Every rule in `deploy/prometheus-alerts.yml` is
-  evaluated and shown on `/alerts` and notifies nobody. Treat that file as
-  dashboards, not paging. A header in the file says so.
-- What *does* report: `deploy/health-check.sh` (every 5 min via
-  `ceiba-health-log.timer`) reads the chain head twice, 15 s apart, and fails if it
-  has not advanced. A halted chain shows up in `/data/log/health` within minutes.
+- **Alertmanager IS deployed and pages Telegram.** Added 2026-10-02
+  (`ceiba-alertmanager`, Tailscale `:9093`); Prometheus has an `alerting:` block
+  pointing at `alertmanager:9093`, and the rendered config routes to Telegram
+  (`TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` in `/opt/belizechain/.env`). **Delivery
+  was verified end-to-end on 2026-10-02** — a test alert reached the operator's phone.
+  Re-confirmed 2026-10-07: container up, 1 active Alertmanager in Prometheus,
+  `telegram_configs` present, **0 unsubstituted placeholders**, default route →
+  telegram. ⚠️ *An earlier version of this section claimed "there is no Alertmanager…
+  notifies nobody" — that was true before 2026-10-02 and is now wrong.*
+- **Reading the logs:** Alertmanager logs a successful notify at **DEBUG only**.
+  Absence of "Notify" lines is **not** evidence of failure — only `ERROR` or
+  `Notify attempt failed` lines are. Silence in the log means nothing either way.
+- What *also* reports, independently of Alertmanager: `deploy/health-check.sh` (every
+  5 min via `ceiba-health-log.timer`) reads the chain head twice, 15 s apart, and fails
+  if it has not advanced. A halted chain shows up in `/data/log/health` within minutes.
+  `ceiba-live-actions.timer` (4×/day) adds a functional smoke test. Both propagate a
+  failed status to systemd, so `systemctl --failed` shows them.
 - **A responsive node is not an authoring node.** On 2026-09-23 the chain was
   frozen for six days while `system_health` answered normally and the container
   stayed `Up`; health checks passed the whole time. Only block progress is
@@ -595,15 +662,18 @@ on-chain :code : 1419740 bytes  blake2b 6c9b884cdf6633ace3efa452d93d3ebebd5112d3
 This is the same transition that ended Chain C, and it succeeded — which is the
 evidence that the epoch-duration defect is fixed, not merely avoided.
 
-**Rollback:** `/data/upgrade-109/onchain-code-107.wasm` on `ceiba2` (1,420,530 bytes,
+**Rollback:** `/data/upgrade-109/onchain-code-107.wasm` on `ceiba` (1,420,530 bytes,
 blake2b `cd7d21125cf4c1fac0f2d21c228c8feab5f0ed42089bcdf04eb779cd2b17c48d`). Spec
 goes *down* on rollback, so it needs the `--without-checks` path:
 `scripts/upgrade-runtime.py <file> --without-checks --execute`.
 
-⚠️ **`scripts/upgrade-runtime.py` still defaults `--rpc` to `ws://100.81.45.25:9944`,
-the decommissioned host.** Always pass `--rpc ws://100.119.97.38:9944` explicitly
-until that default is fixed. Several other `scripts/` entries carry the same stale
-default — see the follow-up note below.
+✅ **FIXED 2026-10-07 — `scripts/upgrade-runtime.py` no longer carries a hardcoded
+default.** `--rpc` is now **required** (or `CEIBA_RPC_URL`), and the script exits 2
+naming the live endpoint instead of silently targeting whichever host was live when it
+was written. The same sweep removed the stale literal from
+`regenesis-ceiba-emptyauth.sh`, the `scripts/test/*` helpers, and
+`register-nawal-signer.js` / `assign-fl-task.js`. Still state the endpoint explicitly:
+`--rpc ws://100.119.97.38:9944`.
 
 The genesis runtime inside `testnet-spec.json` is still **107**; a future
 re-genesis would boot at 107 and upgrade forward (107 → 108 → 109 so far).

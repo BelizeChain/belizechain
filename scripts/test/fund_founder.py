@@ -16,7 +16,7 @@ import sys
 from substrateinterface import Keypair, SubstrateInterface
 
 # No default: a literal host silently funds an account on whatever chain was live
-# when this was written. Live testnet (Chain D on ceiba2): ws://100.119.97.38:9944
+# when this was written. Live testnet (Chain D on ceiba): ws://100.119.97.38:9944
 URL = os.environ.get("CEIBA_RPC_URL")
 DEFAULT_RECIPIENT = "5Cg3Ez7Upm8caDfjonnMKPZ14B3H5daWM75DkYj7yEt4XSKt"  # founder key, generic SS58
 DECIMALS = 12
@@ -26,7 +26,7 @@ def main() -> int:
     if not URL:
         print(
             "ERROR: CEIBA_RPC_URL is not set.\n"
-            "  Live testnet (Chain D on ceiba2): ws://100.119.97.38:9944\n",
+            "  Live testnet (Chain D on ceiba): ws://100.119.97.38:9944\n",
             file=sys.stderr,
         )
         return 2

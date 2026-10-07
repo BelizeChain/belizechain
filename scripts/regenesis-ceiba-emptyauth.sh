@@ -24,8 +24,8 @@ set -euo pipefail
 # No defaults for the target: this script WIPES a chain database, so the host must
 # be stated rather than inherited from whatever was live when the default was
 # written. (It used to default to `wicked@ceiba`, which now runs a dead chain.)
-# Live testnet (Chain D on ceiba2):
-#   CEIBA_HOST=wicked@ceiba2 CEIBA_RPC=http://100.119.97.38:9944
+# Live testnet (Chain D on ceiba):
+#   CEIBA_HOST=wicked@ceiba CEIBA_RPC=http://100.119.97.38:9944
 CEIBA_HOST="${CEIBA_HOST:-}"
 CEIBA_RPC="${CEIBA_RPC:-}"
 CEIBA_ROOT="${CEIBA_ROOT:-/opt/belizechain}"
@@ -58,9 +58,9 @@ step() { echo; echo "=== $* ==="; }
 # Validate the TARGET here, with the other required inputs, and before the dry-run
 # summary — so a dry run can never print an empty host and look like a valid plan.
 [[ -n "$CEIBA_HOST" ]] || fail "CEIBA_HOST is required — this script wipes a chain database, so it will not guess the target.
-  Live testnet (Chain D on ceiba2): CEIBA_HOST=wicked@ceiba2 CEIBA_RPC=http://100.119.97.38:9944"
+  Live testnet (Chain D on ceiba): CEIBA_HOST=wicked@ceiba CEIBA_RPC=http://100.119.97.38:9944"
 [[ -n "$CEIBA_RPC" ]]  || fail "CEIBA_RPC is required (the host's JSON-RPC URL, used to watch block production).
-  Live testnet (Chain D on ceiba2): http://100.119.97.38:9944"
+  Live testnet (Chain D on ceiba): http://100.119.97.38:9944"
 
 if [[ "$ASSUME_YES" != "1" ]]; then
     cat <<EOF
@@ -187,5 +187,17 @@ Re-genesis complete. Next:
     Expect a session/epoch change WITHOUT the chain going idle.
   - Confirm no stall guard fires:
       ssh ${CEIBA_HOST} 'docker logs ceiba-node 2>&1 | grep "STALL DETECTED" | tail'
+  - Re-register the Nawal AI operator. REQUIRED, and easy to miss: identity and
+    staking state do NOT survive a re-genesis, so the operator silently drops out
+    of Staking::Validators. Nothing breaks visibly - the chain keeps producing
+    blocks - but the live-actions smoke test starts failing with
+    "Nawal operator is not registered as a validator on chain".
+      RPC_ENDPOINT=ws://<host>:9944 NODE_PATH=<repo>/ui/node_modules \\
+        NAWAL_SEED="\$(ssh ${CEIBA_HOST} 'docker exec ceiba-nawal printenv NAWAL_KEYPAIR_URI')" \\
+        node scripts/register-nawal-signer.js
+    The signer holds NO session keys by design (it is PoUW-only). BelizeSessionManager
+    filters it out of the queued authority set - that is what keeps BABE at one
+    authority instead of announcing an empty next epoch. Expect a log line naming it
+    as excluded; that is correct, not an error.
   - Backups: /data/regenesis-backup-${STAMP}/
 EOF

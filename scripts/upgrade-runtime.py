@@ -26,7 +26,7 @@ Dry run by default; pass ``--execute`` to actually submit.
 The RPC endpoint is required (``--rpc``, or ``CEIBA_RPC_URL``). It used to
 default to a literal host, which silently targeted whatever machine was live
 when the default was written — for a runtime upgrade that means upgrading the
-wrong chain. Live testnet (Chain D on ceiba2): ``ws://100.119.97.38:9944``.
+wrong chain. Live testnet (Chain D on ceiba): ``ws://100.119.97.38:9944``.
 
 Usage:
     upgrade-runtime.py <runtime.compact.compressed.wasm> --rpc <url> --key //Alice
@@ -106,7 +106,7 @@ def main() -> int:
         print(
             "ERROR: no RPC endpoint.\n"
             "  Pass --rpc <url>, or set CEIBA_RPC_URL.\n"
-            "  Live testnet (Chain D on ceiba2): ws://100.119.97.38:9944\n",
+            "  Live testnet (Chain D on ceiba): ws://100.119.97.38:9944\n",
             file=sys.stderr,
         )
         return 2
