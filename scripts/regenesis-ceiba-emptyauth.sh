@@ -13,9 +13,21 @@
 #
 # SAFETY: every mutating step is gated behind --assume-yes and prints what it
 # will do first. Without the flag it is a dry run.
+#
+# shellcheck disable=SC2016
+# SC2016 fires on the `'"${VAR}"'` idiom used below. Those expansions are
+# deliberately deferred to the REMOTE host: the strings are arguments to
+# `ssh_run`, so they must survive the local shell unexpanded. ShellCheck cannot
+# see across the ssh boundary and reports them as unexpanded by mistake.
 set -euo pipefail
 
-CEIBA_HOST="${CEIBA_HOST:-wicked@ceiba}"
+# No defaults for the target: this script WIPES a chain database, so the host must
+# be stated rather than inherited from whatever was live when the default was
+# written. (It used to default to `wicked@ceiba`, which now runs a dead chain.)
+# Live testnet (Chain D on ceiba2):
+#   CEIBA_HOST=wicked@ceiba2 CEIBA_RPC=http://100.119.97.38:9944
+CEIBA_HOST="${CEIBA_HOST:-}"
+CEIBA_RPC="${CEIBA_RPC:-}"
 CEIBA_ROOT="${CEIBA_ROOT:-/opt/belizechain}"
 CHAIN_DIR="/data/chain"
 CHAIN_SUBDIR="${CHAIN_DIR}/chains/belizechain_testnet"
@@ -43,6 +55,13 @@ step() { echo; echo "=== $* ==="; }
 [[ -n "$NEW_IMAGE_TAG" ]] || fail "--image-tag is required (e.g. belizechain/ceiba-node:<sha>-emptyauth-<date>)"
 [[ -n "$NEW_SPEC" ]]      || fail "--spec is required (path to the newly generated testnet spec)"
 
+# Validate the TARGET here, with the other required inputs, and before the dry-run
+# summary — so a dry run can never print an empty host and look like a valid plan.
+[[ -n "$CEIBA_HOST" ]] || fail "CEIBA_HOST is required — this script wipes a chain database, so it will not guess the target.
+  Live testnet (Chain D on ceiba2): CEIBA_HOST=wicked@ceiba2 CEIBA_RPC=http://100.119.97.38:9944"
+[[ -n "$CEIBA_RPC" ]]  || fail "CEIBA_RPC is required (the host's JSON-RPC URL, used to watch block production).
+  Live testnet (Chain D on ceiba2): http://100.119.97.38:9944"
+
 if [[ "$ASSUME_YES" != "1" ]]; then
     cat <<EOF
 DRY RUN — nothing will change. Re-run with --assume-yes to execute.
@@ -68,7 +87,7 @@ ssh_run 'set -e
   echo "keystore files (must survive):"
   ls -1 '"${CHAIN_SUBDIR}"'/keystore | sed "s/^/  /"
   echo "chain dir size: $(du -sh '"${CHAIN_SUBDIR}"'/db 2>/dev/null | cut -f1)"
-  echo "current block: $(curl -s -m 10 http://100.81.45.25:9944 -H "Content-Type: application/json" \
+  echo "current block: $(curl -s -m 10 '"${CEIBA_RPC}"' -H "Content-Type: application/json" \
       -d "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"chain_getHeader\",\"params\":[]}" \
       | python3 -c "import sys,json;print(int(json.load(sys.stdin)[\"result\"][\"number\"],16))" 2>/dev/null || echo unreachable)"
   echo "free disk: $(df -h /data | tail -1 | awk "{print \$4}")"
@@ -137,7 +156,7 @@ ssh_run 'set -e
   echo "waiting for the chain to boot…"
   for i in $(seq 1 30); do
     sleep 4
-    H=$(curl -s -m 5 http://100.81.45.25:9944 -H "Content-Type: application/json" \
+    H=$(curl -s -m 5 '"${CEIBA_RPC}"' -H "Content-Type: application/json" \
         -d "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"chain_getHeader\",\"params\":[]}" 2>/dev/null || true)
     if [[ -n "$H" ]]; then
       N=$(echo "$H" | python3 -c "import sys,json;print(int(json.load(sys.stdin)[\"result\"][\"number\"],16))" 2>/dev/null || echo "")
@@ -150,7 +169,7 @@ ssh_run 'set -e
   echo
   echo "--- blocks over 24s (expect ~6s cadence) ---"
   for i in 1 2 3 4; do
-    curl -s -m 5 http://100.81.45.25:9944 -H "Content-Type: application/json" \
+    curl -s -m 5 '"${CEIBA_RPC}"' -H "Content-Type: application/json" \
       -d "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"chain_getHeader\",\"params\":[]}" \
       | python3 -c "import sys,json,datetime;print(\"   \", datetime.datetime.now().strftime(\"%H:%M:%S\"), \"block\", int(json.load(sys.stdin)[\"result\"][\"number\"],16))"
     sleep 6

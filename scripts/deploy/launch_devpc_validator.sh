@@ -12,7 +12,7 @@ PROM_PORT="${PROM_PORT:-9615}"
 
 # Ceiba validator's multiaddr for peer bootstrap.
 # Set CEIBA_MULTIADDR env before running, e.g.:
-#   /ip4/100.81.45.25/tcp/30333/p2p/<CEIBA_PEER_ID>
+#   /ip4/100.119.97.38/tcp/30333/p2p/<CEIBA_PEER_ID>
 CEIBA_MULTIADDR="${CEIBA_MULTIADDR:-}"
 if [[ -z "$CEIBA_MULTIADDR" ]]; then
     echo "ERROR: set CEIBA_MULTIADDR env var (see Ceiba's startup log for peer id)" >&2

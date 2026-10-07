@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Deployment Tooling Targeted a Decommissioned Host (October 2026)
+
+Ten scripts under `scripts/` carried the pre-migration Ceiba address
+(`100.81.45.25`, which now runs a dead chain) as either a hardcoded literal or a
+`${VAR:-…}` default. A default is exactly what applies when the variable is
+unset, so each of these silently targeted the wrong machine:
+
+- **`scripts/upgrade-runtime.py`** — `--rpc` defaulted to the old host. For a
+  runtime upgrade that means submitting to the wrong chain. `--rpc` (or
+  `CEIBA_RPC_URL`) is now required, and the error names the live endpoint.
+- **`scripts/regenesis-ceiba-emptyauth.sh`** — `CEIBA_HOST` defaulted to
+  `wicked@ceiba` and three RPC calls hardcoded the address. This script **wipes a
+  chain database**, so the target is now required and validated *before* the
+  dry-run summary — it previously printed an empty `host :` line and still looked
+  like a valid plan.
+- **`scripts/register-nawal-signer.js`**, **`scripts/assign-fl-task.js`** —
+  dropped the `RPC_ENDPOINT` fallback; unset now exits 2 naming the live endpoint.
+- **`scripts/test/fund_founder.py`**, **`scripts/test/pallet_storage_sweep.py`**,
+  **`scripts/test/smoke_extrinsic.py`**, **`scripts/test/quick_test.sh`** — dropped
+  the literal/default. Unset is reported as its own skip/error rather than
+  querying a dead host and producing a misleading result.
+- **`scripts/assign_fl_task.py`**, **`scripts/deploy/launch_devpc_validator.sh`** —
+  stale example addresses updated.
+
+No script in the repo now embeds a host address; each requires the target
+explicitly, so the next host move cannot silently retarget anything.
+
 ### Changed - CONS-006: AI Authority M-of-N Gating (October 2026)
 
 `AIAuthorityOrigin` moves from any single TechnicalCouncil member to

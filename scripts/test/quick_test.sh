@@ -13,7 +13,10 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-CEIBA_RPC_URL="${CEIBA_RPC_URL:-http://100.81.45.25:9944}"
+# No hardcoded default: a literal host silently tests whatever was live when this
+# was written, and the resulting "SKIP (unreachable)" reads like a real result.
+# Unset is reported as its own skip. Live testnet: http://100.119.97.38:9944
+CEIBA_RPC_URL="${CEIBA_RPC_URL:-}"
 LOCAL_RPC_URL="${LOCAL_RPC_URL:-http://localhost:9933}"
 
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
@@ -29,11 +32,13 @@ has_cmd() {
 }
 
 # Test blockchain RPC (Ceiba first)
-echo -n "Testing Blockchain RPC (Ceiba)... "
-if curl -s -X POST -H "Content-Type: application/json" -d '{"id":1,"jsonrpc":"2.0","method":"system_health","params":[]}' "$CEIBA_RPC_URL" | grep -q "result"; then
+echo -n "Testing Blockchain RPC (remote)... "
+if [[ -z "$CEIBA_RPC_URL" ]]; then
+    echo -e "${YELLOW}⚠️  SKIP (CEIBA_RPC_URL not set; live testnet: http://100.119.97.38:9944)${NC}"
+elif curl -s -X POST -H "Content-Type: application/json" -d '{"id":1,"jsonrpc":"2.0","method":"system_health","params":[]}' "$CEIBA_RPC_URL" | grep -q "result"; then
     echo -e "${GREEN}✅ PASS${NC}"
 else
-    echo -e "${YELLOW}⚠️  SKIP (Ceiba RPC unreachable at $CEIBA_RPC_URL)${NC}"
+    echo -e "${YELLOW}⚠️  SKIP (remote RPC unreachable at $CEIBA_RPC_URL)${NC}"
 fi
 
 echo -n "Testing Blockchain RPC (Local)... "

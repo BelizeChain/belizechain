@@ -23,16 +23,22 @@ immediately instead of one epoch boundary later.
 
 Dry run by default; pass ``--execute`` to actually submit.
 
+The RPC endpoint is required (``--rpc``, or ``CEIBA_RPC_URL``). It used to
+default to a literal host, which silently targeted whatever machine was live
+when the default was written — for a runtime upgrade that means upgrading the
+wrong chain. Live testnet (Chain D on ceiba2): ``ws://100.119.97.38:9944``.
+
 Usage:
-    upgrade-runtime.py <runtime.compact.compressed.wasm> --key //Alice
-    upgrade-runtime.py <runtime.compact.compressed.wasm> --key //Alice --execute
-    upgrade-runtime.py <older.wasm> --without-checks --execute   # rollback
+    upgrade-runtime.py <runtime.compact.compressed.wasm> --rpc <url> --key //Alice
+    upgrade-runtime.py <runtime.compact.compressed.wasm> --rpc <url> --key //Alice --execute
+    upgrade-runtime.py <older.wasm> --rpc <url> --without-checks --execute   # rollback
 """
 
 from __future__ import annotations
 
 import argparse
 import hashlib
+import os
 import sys
 from pathlib import Path
 
@@ -77,7 +83,12 @@ def _as_hex(value: object) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("wasm", type=Path, help="compressed runtime WASM to deploy")
-    parser.add_argument("--rpc", default="ws://100.81.45.25:9944", help="node RPC endpoint")
+    parser.add_argument(
+        "--rpc",
+        default=os.environ.get("CEIBA_RPC_URL"),
+        help="node RPC endpoint (or set CEIBA_RPC_URL). Required: the target chain must be "
+        "stated, not defaulted.",
+    )
     parser.add_argument(
         "--key",
         default="//Alice",
@@ -90,6 +101,15 @@ def main() -> int:
         help="dispatch set_code_without_checks (root-only) — required for a spec DOWN rollback",
     )
     args = parser.parse_args()
+
+    if not args.rpc:
+        print(
+            "ERROR: no RPC endpoint.\n"
+            "  Pass --rpc <url>, or set CEIBA_RPC_URL.\n"
+            "  Live testnet (Chain D on ceiba2): ws://100.119.97.38:9944\n",
+            file=sys.stderr,
+        )
+        return 2
 
     wasm = args.wasm.read_bytes()
     code_hex = "0x" + wasm.hex()

@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Step 2: query every pallet in the runtime for at least one real storage item."""
+import os
 import sys
 from collections import defaultdict
 
 from substrateinterface import SubstrateInterface
 
-RPC_URL = "ws://100.81.45.25:9944"
+# No default: a literal host silently queries whatever was live when this was
+# written. State the target. Live testnet (Chain D on ceiba2): ws://100.119.97.38:9944
+RPC_URL = os.environ.get("CEIBA_RPC_URL")
 
 EXPECTED_CUSTOM_PALLETS = {
     "BelizeX", "Bns", "BelizeJustice", "BelizeModeration", "BelizeWhistleblower",
@@ -16,6 +19,15 @@ EXPECTED_CUSTOM_PALLETS = {
 
 
 def main():
+    if not RPC_URL:
+        print(
+            "ERROR: CEIBA_RPC_URL is not set.\n"
+            "  Live testnet (Chain D on ceiba2): ws://100.119.97.38:9944\n"
+            "  Usage: CEIBA_RPC_URL=ws://<host>:9944 python3 "
+            "scripts/test/pallet_storage_sweep.py",
+            file=sys.stderr,
+        )
+        return 2
     substrate = SubstrateInterface(url=RPC_URL)
     storage_fns = substrate.get_metadata_storage_functions()
 

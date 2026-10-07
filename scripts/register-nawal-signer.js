@@ -24,7 +24,15 @@ const { ApiPromise, WsProvider, Keyring } = require('@polkadot/api');
 const { decodeAddress, encodeAddress, blake2AsHex } = require('@polkadot/util-crypto');
 const { stringToU8a, u8aToHex } = require('@polkadot/util');
 
-const WS_ENDPOINT = process.env.RPC_ENDPOINT || 'ws://100.81.45.25:9944';
+// No hardcoded fallback: a literal host silently targets whatever was live when
+// this was written. Live testnet (Chain D on ceiba2): ws://100.119.97.38:9944
+const WS_ENDPOINT = process.env.RPC_ENDPOINT;
+if (!WS_ENDPOINT) {
+  console.error('ERROR: RPC_ENDPOINT is not set.');
+  console.error('  Live testnet (Chain D on ceiba2): ws://100.119.97.38:9944');
+  console.error('  Usage: RPC_ENDPOINT=ws://<host>:9944 node scripts/register-nawal-signer.js');
+  process.exit(2);
+}
 const NAVAL_SEED = process.env.NAWAL_SEED;
 const ISSUER_SEED = process.env.ISSUER_SEED || '//Alice';
 const SIGNER_ADDRESS = process.env.SIGNER_ADDRESS || '5Gj3p3X5HLdBaLFQ7xuXCw8DRPLhaVdQ4N1XA22dYdj3hxvU';

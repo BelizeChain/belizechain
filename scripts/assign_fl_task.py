@@ -10,7 +10,7 @@ Required env:
 
 Usage:
     SUDO_SURI='//YourSudo' \\
-    BLOCKCHAIN_WS_URL=ws://100.81.45.25:9944 \\
+    BLOCKCHAIN_WS_URL=ws://100.119.97.38:9944 \\
     python3 scripts/assign_fl_task.py \\
         --task-id 1 \\
         --model-hash 0x$(printf 'belizechain-fl-bootstrap' | sha256sum | cut -d' ' -f1) \\
