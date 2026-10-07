@@ -1,13 +1,13 @@
 # Chain Lineage — BelizeChain Testnet
 
 **Status:** Authoritative record of every testnet chain, its genesis, and why it ended.
-**Last verified:** 2026-10-06
+**Last verified:** 2026-10-07
 
 This file exists because the lineage was **not written down anywhere**, and that gap
-cost real time. Three separate chains have run on Ceiba, and confusion between them
-produced wrong conclusions during the 2026-10-06 investigation (an operator reasonably
-believed the current chain's genesis was Independence Day; it is not — that was the
-*previous* chain).
+cost real time. Four separate chains have run (three on `ceiba`, the current one on
+`ceiba2`), and confusion between them produced wrong conclusions during the 2026-10-06
+investigation (an operator reasonably believed the current chain's genesis was
+Independence Day; it is not — that was the *previous* chain).
 
 > **Rule:** whenever the chain is re-genesised, add a row here **in the same commit**
 > as the operation. A genesis hash with no lineage entry is indistinguishable from a
@@ -20,7 +20,47 @@ believed the current chain's genesis was Independence Day; it is not — that wa
 | A | *not recorded* | before 2026-08-17 | 2026-08-17 | Re-generisised (see backup `chain-pre-reset-20260817`) |
 | **B** | `0x631fb936…` | **2026-09-21 16:02:42** | 2026-09-23 16:02:36 | Empty BABE authority set → total deadlock at block #28,791 |
 | **C** | `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef` | **2026-09-29 ~15:00** | 2026-10-04 | Runtime 109 deployed without `testnet-fast-epoch` → epoch-duration mismatch → no block imported after #70,795 |
-| **D** | *set on creation* | **2026-10-06** | — | — |
+| **D** | `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef` — **same hash as C** | **2026-10-06** (on `ceiba2`) | — | — |
+
+⚠️ **D reuses C's genesis hash.** D was re-genesised from the *same spec* C was, and a
+chain spec fully determines the genesis state — so the hash is byte-identical. The
+genesis hash therefore does **not** uniquely identify a chain across a re-genesis:
+C and D share it while being different chains at different blocks. Use the host
+(`ceiba` vs `ceiba2`) plus the head height to disambiguate, never the hash alone.
+
+## Chain D — current, live on `ceiba2` (2026-10-06 →)
+
+Re-genesised from the Chain C spec onto the replacement host `ceiba2`, which is why the
+genesis hash matches C. The spec embeds runtime **107** (blake2b `cd7d21125c…`,
+1,420,530 B — the same blob as C), so D was **born at 107**.
+
+**2026-10-07: D hot-upgraded 107 → 109** — the first *correct* deployment of 109.
+Done with `sudo.sudo(System::set_code)`; the node was never restarted (`restarts=0`).
+
+The blob was rebuilt with the feature the previous attempt omitted:
+
+```
+cargo build -p belizechain-runtime --release --features testnet-fast-epoch
+```
+
+- new `:code` `6c9b884cdf6633ace3efa452d93d3ebebd5112d332d76d1ae9f4a0ce5a104c9e`, 1,419,740 B
+- the feature is proven present: a throwaway chain booted from the artifact reports
+  `BabeApi_current_epoch.duration = 300`; the *previous* artifact (built without the
+  feature) reports **14400**. Same test, opposite answers — that pair is the evidence
+  that the Oct-4 blob was the Chain C killer.
+- **The epoch boundary was crossed live** (epoch 4 → 5, start slot +300) with
+  `Babe::Authorities = 1`, block production continuing and GRANDPA finality keeping
+  pace. This is the exact transition that ended Chain C.
+
+**Rollback blob:** `/data/upgrade-109/onchain-code-107.wasm` on `ceiba2` — the
+pre-upgrade on-chain 107, verified `cd7d21125c…`. Roll back with
+`upgrade-runtime.py <blob> --without-checks --execute` (`set_code` refuses a spec
+*down*).
+
+⚠️ **A fresh re-genesis from `testnet-spec.json` still boots at 107**, because the
+spec was never re-embedded. That is not a defect — the spec is operator-managed and
+gitignored — but it means a re-genesis silently returns the chain to 107 and needs
+this same upgrade re-applied.
 
 ## Chain B — the Independence Day genesis (2026-09-21)
 

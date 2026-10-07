@@ -1,16 +1,24 @@
 # Ceiba Operations Runbook
 
 Status: Active testnet operations
-Scope: BelizeChain self-hosted runtime on Ceiba
+Scope: BelizeChain self-hosted runtime
 
 ## Host Access
 
-- Primary: ssh wicked@100.81.45.25
-- Fallback: ssh wicked@10.0.0.222
+The live stack moved to the replacement host **`ceiba2`** on 2026-10-06. The old
+`ceiba` box still exists and is intact, but it runs the **dead** Chain C and is
+kept only as a fallback / forensic source. Point new work at `ceiba2`.
+
+- **Primary: `ssh wicked@ceiba2`** (`100.119.97.38` over Tailscale)
+- Fallback (old host, dead chain): `ssh wicked@100.81.45.25` / `10.0.0.222`
+
+⚠️ The old host's WAN address (`174.161.1.222`) no longer accepts connections.
 
 ## Runtime Baseline
 
-Current chain identity (2026-09-29):
+Current chain identity: **Chain D ("Jade") on `ceiba2`** — see
+[CHAIN_LINEAGE.md](CHAIN_LINEAGE.md) for the full lineage, including why D reuses
+Chain C's genesis hash. Chain C's stall is recorded in
 [EMPTY_EPOCH_STALL_AND_REGENESIS_2026-09-29.md](EMPTY_EPOCH_STALL_AND_REGENESIS_2026-09-29.md).
 Dated baseline snapshots:
 [CEIBA_BASELINE_2026-05-02.md](CEIBA_BASELINE_2026-05-02.md) (superseded),
@@ -18,24 +26,29 @@ Dated baseline snapshots:
 
 - Runtime: Docker Compose stack in `/opt/belizechain`
 - Core container: `ceiba-node`
-- Node image: `belizechain/ceiba-node:509830c-emptyauth-20260929`
 - Genesis: `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef`
-- On-chain runtime: `spec_version = 109` (hot-upgraded 2026-10-04 from 108 — see
+  — **shared with Chain C**; the hash alone does not identify the chain
+- On-chain runtime: `spec_version = 109` (hot-upgraded 2026-10-07 from 107 — see
   the 109 ops-log entry at the end of this file)
 - Epoch: `BabeEpochDuration = 300` slots (~30 min) via the `testnet-fast-epoch`
   build feature. The default build keeps 14,400 slots (~24 h), which is the
   mainnet value; 300 is a testnet convenience for observing rotations.
+  **Any forward runtime upgrade must be built with `--features testnet-fast-epoch`** —
+  deploying a blob built without it silently changes the epoch length and halts
+  block import. That is exactly how Chain C died.
 - Active chain spec: `/data/chain/testnet-spec.json`
   (operator-managed on the host; **not tracked in git** since 2026-09-20 because it
   carries the live sudo/session keys — see RULE 4 in [TESTNET_ONLY_RULE_2026-09-18.md](TESTNET_ONLY_RULE_2026-09-18.md))
+  — it still embeds runtime **107**, so a re-genesis boots at 107 and must be
+  upgraded forward
 - Active chain data: `/data/chain/chains/belizechain_testnet`
 - Command shape: `belizechain-node --chain /data/chain/testnet-spec.json --base-path /data/chain --port 30333 --rpc-port 9944 --prometheus-port 9615 --prometheus-external --rpc-cors all --unsafe-rpc-external --rpc-methods Safe --name Ceiba-Node-1 --validator --force-authoring`
   (`--force-authoring` is REQUIRED for Ceiba's single-node-before-peers state;
   the libp2p `--node-key`/`--node-key-file` is supplied from the host environment
   and is deliberately not recorded here)
 - P2P: 30333 (public)
-- RPC: 9944 (bound to Ceiba's Tailscale address)
-- Prometheus: 9615 (bound to Ceiba's Tailscale address)
+- RPC: 9944 (bound to the host's Tailscale address)
+- Prometheus: 9615 (bound to the host's Tailscale address)
 
 Health checks worth running after any restart or re-genesis:
 `scripts/verify_epoch_config.py <rpc-url> <expected-duration>` — asserts the
@@ -502,6 +515,12 @@ the chain froze.)
 
 ## Ops Log — 2026-10-04: Runtime 109 hot upgrade (CONS-006)
 
+> 🔴 **THIS UPGRADE KILLED CHAIN C.** It looked successful for ~179 blocks and is
+> preserved here as the failure record, not as a procedure to copy. The build note
+> below is the **defect**: it instructs building "no feature flags", which produces
+> `BabeEpochDuration = 14_400` instead of `300`. See the 2026-10-07 entry for the
+> correct build.
+
 Ships CONS-006 (merged 2026-10-02): `AIAuthorityOrigin` moves from any single
 TechnicalCouncil member to `TechnicalCouncilSuperMajority` — a >2/3 council
 motion, or Root. No storage migration; affects `validate_ai_model`,
@@ -516,19 +535,75 @@ on-chain :code : 1420195 bytes  blake2b 00a1c38a7bc9463fe07f0e6880a1625f8e15951e
 
 Applied in **block #70616**, which carries `System.CodeUpdated` +
 `Sudo.Sudid { sudo_result: Ok }` from the sudo key. Verified on fresh connections:
-`specVersion = 109`, the on-chain `:code` is byte-identical to the submitted blob,
-and authoring + GRANDPA finality stayed healthy across the upgrade.
+`specVersion = 109`, the on-chain `:code` is byte-identical to the submitted blob.
+
+⚠️ **The "authoring stayed healthy" claim was true only briefly.** Block import
+continued to #70,795, then stopped permanently at the next epoch boundary
+(#70,800) — the blob carried a 14,400-slot epoch while the chain had been running
+300, so producer and verifier went out of step and every subsequent block failed
+with `Expected epoch change to happen at …`. The chain was unrecoverable in place
+and was re-genesised as Chain D. The `00a1c38a…` blob is confirmed to report
+`duration = 14400` when booted; the 2026-10-07 blob reports `300`.
 
 **Rollback:** `/data/upgrade-109/onchain-code-108.wasm` (1,421,085 bytes, blake2b
 `8ad7ea9d…`) — the runtime the chain was running immediately before the change,
 captured from `:code` and verified byte-identical at capture time. Re-deploy with
 `scripts/upgrade-runtime.py <file> --execute`.
 
-**Build note:** rebuild the runtime before extracting the deploy blob
-(`cargo build --release -p belizechain-runtime`, no feature flags) and confirm the
-artifact is fresh — the cached `wbuild` output from 2026-09-29 predated the 109
-source change, and `system.set_code` rejects a blob whose `spec_version` does not
-strictly increase.
+**Build note (SUPERSEDED — this is the bug):** "rebuild the runtime before
+extracting the deploy blob (`cargo build --release -p belizechain-runtime`, no
+feature flags)". The `no feature flags` instruction is what changed the epoch
+length. `system.set_code` rejects a blob whose `spec_version` does not strictly
+increase, so a *stale* blob is caught — but a blob with the wrong **features** and
+a higher version is accepted and then halts the chain. Version monotonicity does
+not protect against a wrong build.
+
+## Ops Log — 2026-10-07: Runtime 109 hot upgrade on Chain D (correct build)
+
+The first *correct* deployment of 109. Same code change as the 2026-10-04 attempt
+(CONS-006); the difference is the build.
+
+### Build
+```
+cargo build -p belizechain-runtime --release --features testnet-fast-epoch
+```
+The feature is **required**. Proven present by booting a throwaway chain from the
+artifact and reading `BabeApi_current_epoch`:
+```
+new blob      duration = 300     <- correct
+Oct-4 blob    duration = 14400   <- the Chain C killer
+```
+Same test, opposite answers. `scripts/upgrade-runtime.py` performs this check
+automatically and **refuses to proceed if the duration would change**, which is the
+guard that would have caught the 2026-10-04 mistake.
+
+### Deployed
+```
+sudo.sudo(System::set_code(1419740 bytes))
+spec_version   : 107 -> 109     (no node restart; restarts=0 throughout)
+on-chain :code : 1419740 bytes  blake2b 6c9b884cdf6633ace3efa452d93d3ebebd5112d332d76d1ae9f4a0ce5a104c9e
+```
+
+### Verified
+- `specVersion = 109`, on-chain `:code` byte-identical to the submitted blob.
+- **Epoch boundary crossed live** — epoch 4 → 5, start slot `298555045 → 298555345`
+  (exactly +300). `Babe::Authorities = 1` across the transition.
+- Block production continued (head 1461 → 1516+) and GRANDPA finality kept pace
+  (finalized ~2 blocks behind head).
+- No errors, panics, stall guards, or `Expected epoch change` lines in the node log.
+
+This is the same transition that ended Chain C, and it succeeded — which is the
+evidence that the epoch-duration defect is fixed, not merely avoided.
+
+**Rollback:** `/data/upgrade-109/onchain-code-107.wasm` on `ceiba2` (1,420,530 bytes,
+blake2b `cd7d21125cf4c1fac0f2d21c228c8feab5f0ed42089bcdf04eb779cd2b17c48d`). Spec
+goes *down* on rollback, so it needs the `--without-checks` path:
+`scripts/upgrade-runtime.py <file> --without-checks --execute`.
+
+⚠️ **`scripts/upgrade-runtime.py` still defaults `--rpc` to `ws://100.81.45.25:9944`,
+the decommissioned host.** Always pass `--rpc ws://100.119.97.38:9944` explicitly
+until that default is fixed. Several other `scripts/` entries carry the same stale
+default — see the follow-up note below.
 
 The genesis runtime inside `testnet-spec.json` is still **107**; a future
 re-genesis would boot at 107 and upgrade forward (107 → 108 → 109 so far).
