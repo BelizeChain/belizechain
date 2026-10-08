@@ -403,7 +403,13 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     // seeds `interoperability::ChainConfigurations`, which no extrinsic can
     // create, so the bridge is usable on a chain that launched without the
     // interoperability genesis patch.
-    spec_version: 110,
+    // BNS-2: bumped to 111 — `pallet-belize-bns` weights regenerated from the
+    // current pallet source. The 110 file predated the 2026-10-07 pallet edits
+    // and carried hand-set placeholders for `set_text_record`,
+    // `remove_text_record`, `set_avatar`, `set_primary_domain`, and
+    // `clear_primary_domain`; benchmarks for those five were missing entirely
+    // and have now been added. No storage migration.
+    spec_version: 111,
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 1,

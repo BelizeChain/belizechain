@@ -1,7 +1,9 @@
 # BelizeChain Phase Status
 
 > **Last Updated**: 2026-10-08
-> **Runtime**: `spec_version = 110`, `impl_version = 1`, `tx_version = 1`
+> **Runtime**: `spec_version = 111` in source, `impl_version = 1`, `tx_version = 1`.
+> The **live** Ceiba testnet still runs **110** — 111 carries regenerated
+> `pallet-belize-bns` weights and has **not** been deployed yet.
 > **SDK**: Polkadot SDK `stable2606` (rev `660acefe66599a3e54363797007befcb01bd610b`)
 > **Network**: Ceiba testnet (`chain_id = belizechain_testnet`, SS58 prefix `1981`)
 

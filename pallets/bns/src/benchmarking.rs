@@ -137,6 +137,31 @@ fn insert_hosting<T: Config>(subscriber: &T::AccountId, domain_name: &[u8]) {
     HostedWebsites::<T>::insert(&domain, hosting);
 }
 
+/// Insert a `DomainResolution` holding `count` text records.
+///
+/// Keys are `key00`, `key01`, ... so every record is distinct.
+fn insert_text_records<T: Config>(domain_name: &[u8], count: u32) {
+    let domain: BoundedVec<u8, T::MaxDomainLength> =
+        BoundedVec::try_from(domain_name.to_vec()).expect("domain within bounds");
+
+    let mut resolution = Pallet::<T>::empty_resolution();
+    for i in 0..count {
+        let mut key = b"key".to_vec();
+        key.push(b'0' + ((i / 10) % 10) as u8);
+        key.push(b'0' + (i % 10) as u8);
+
+        resolution
+            .text_records
+            .try_push(TextRecord {
+                key: BoundedVec::try_from(key).expect("key within bounds"),
+                value: BoundedVec::try_from(b"value".to_vec()).expect("value within bounds"),
+            })
+            .expect("count is within MaxTextRecords");
+    }
+
+    DomainResolution::<T>::insert(&domain, resolution);
+}
+
 /// Insert an ExternalDomainInfo record
 fn insert_external_domain<T: Config>(
     owner: &T::AccountId,
@@ -451,6 +476,73 @@ mod benchmarks {
             [b'i'; 128].to_vec(), // issuer, max 128
             expires_at,
         );
+    }
+
+    #[benchmark]
+    fn set_text_record() {
+        let caller = funded_account::<T>("owner", 0);
+        let domain_name = make_domain_name(1);
+        insert_domain::<T>(&caller, &domain_name);
+
+        // Worst case: the record list sits one short of the cap, so this call
+        // pushes into a nearly-full vector.
+        insert_text_records::<T>(&domain_name, T::MaxTextRecords::get().saturating_sub(1));
+
+        #[extrinsic_call]
+        set_text_record(
+            RawOrigin::Signed(caller),
+            domain_name,
+            b"email".to_vec(),
+            b"alice@example.bz".to_vec(),
+        );
+    }
+
+    #[benchmark]
+    fn remove_text_record() {
+        let caller = funded_account::<T>("owner", 0);
+        let domain_name = make_domain_name(1);
+        insert_domain::<T>(&caller, &domain_name);
+
+        // Worst case: removing from a list at the cap.
+        insert_text_records::<T>(&domain_name, T::MaxTextRecords::get());
+
+        #[extrinsic_call]
+        remove_text_record(RawOrigin::Signed(caller), domain_name, b"key00".to_vec());
+    }
+
+    #[benchmark]
+    fn set_avatar() {
+        let caller = funded_account::<T>("owner", 0);
+        let domain_name = make_domain_name(1);
+        insert_domain::<T>(&caller, &domain_name);
+
+        #[extrinsic_call]
+        set_avatar(RawOrigin::Signed(caller), domain_name, [9u8; 32]);
+    }
+
+    #[benchmark]
+    fn set_primary_domain() {
+        let caller = funded_account::<T>("owner", 0);
+        let domain_name = make_domain_name(1);
+        insert_domain::<T>(&caller, &domain_name);
+
+        #[extrinsic_call]
+        set_primary_domain(RawOrigin::Signed(caller), domain_name);
+    }
+
+    #[benchmark]
+    fn clear_primary_domain() {
+        let caller = funded_account::<T>("owner", 0);
+        let domain_name = make_domain_name(1);
+        insert_domain::<T>(&caller, &domain_name);
+
+        // The extrinsic requires an existing primary domain to clear.
+        let domain: BoundedVec<u8, T::MaxDomainLength> =
+            BoundedVec::try_from(domain_name).expect("domain within bounds");
+        PrimaryDomain::<T>::insert(&caller, domain);
+
+        #[extrinsic_call]
+        clear_primary_domain(RawOrigin::Signed(caller));
     }
 
     impl_benchmark_test_suite!(Pallet, crate::mock::new_test_ext(), crate::mock::Test);
