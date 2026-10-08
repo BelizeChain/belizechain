@@ -93,7 +93,7 @@ on the `pallet-contracts` runtime pallet.
 
 #### **Node Infrastructure**
 - **RPC Endpoints:** not yet published. Use the operator-provided RPC URL for the
-  active network. The public names (`rpc.belizechain.org`, `wss://ws.belizechain.org`)
+  active network. The public names (`rpc.belizechain.org`, `wss://testnet.belizechain.org/ws`)
   are planned, not configured.
   
 - **P2P Networking:**

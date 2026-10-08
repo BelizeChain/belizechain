@@ -72,7 +72,7 @@ Before starting:
 ### 1. Have Maya Wallet Installed
 - iOS: App Store
 - Android: Google Play
-- Desktop: maya.belizechain.org
+- Desktop: wallet.belizechain.org
 
 **Need help?** See [Create Wallet](../getting-started/create-wallet.md)
 
@@ -862,7 +862,7 @@ Lock 32 weeks: 16x voting power
 
 **Solution**:
 1. Pull down to refresh
-2. Check website: gov.belizechain.org
+2. Check website: portal.belizechain.org
 3. Update Maya Wallet to latest version
 
 ---
@@ -967,7 +967,7 @@ Recent Votes:
 ### Community Recognition
 
 **Top voters recognized**:
-- Featured on gov.belizechain.org
+- Featured on portal.belizechain.org
 - Community appreciation
 - Influence in governance discussions
 - Trusted voice

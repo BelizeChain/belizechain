@@ -276,7 +276,7 @@ if hosting_info:
     # Fetch from Pakit using content hash
     from pakit.client import PakitClient
     
-    client = PakitClient(node_url="https://pakit.belizechain.org")
+    client = PakitClient(node_url="https://testnet.belizechain.org/api/pakit")
     website_content = client.get_content(content_hash)
     
     print(f"✅ Resolved alice.bz → {content_hash[:16]}...")

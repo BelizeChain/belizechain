@@ -700,4 +700,4 @@ interface MarketplaceListing {
 
 - **Developer Discord**: #dev-support channel
 - **GitHub Examples**: https://github.com/BelizeChain/bns-examples
-- **API Documentation**: https://docs.belizechain.org/api
+- **API Documentation**: https://belizechain.org/docs

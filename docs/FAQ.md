@@ -335,7 +335,7 @@ Check [Troubleshooting Guide](operations/troubleshooting.md).
 
 ### Where can I get help?
 
-- **Documentation**: https://docs.belizechain.org
+- **Documentation**: https://belizechain.org/docs
 - **Discord**: Community support (fastest response)
 - **Stack Overflow**: Tag `belizechain`
 - **Email**: support@belizechain.org (1 business day response)

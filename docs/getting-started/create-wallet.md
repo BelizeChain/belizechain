@@ -166,7 +166,7 @@ The process is identical:
 **Step 1: Download Installer**
 
 1. Open your web browser (Chrome, Edge, Firefox)
-2. Go to: **https://maya.belizechain.org/download**
+2. Go to: **https://wallet.belizechain.org**
 3. Click **"Download for Windows"**
 4. Save file: `MayaWallet-Setup.exe`
 5. Wait for download (50 MB, ~1 minute)
@@ -214,7 +214,7 @@ The process is identical:
 
 **Step 1: Download**
 
-1. Go to: **https://maya.belizechain.org/download**
+1. Go to: **https://wallet.belizechain.org**
 2. Click **"Download for Mac"**
 3. Save file: `MayaWallet.dmg`
 
@@ -245,7 +245,7 @@ Create wallet, set password, save 12 words.
 
 ```bash
 # Open Terminal and run:
-wget https://maya.belizechain.org/downloads/maya-wallet-linux.AppImage
+wget https://wallet.belizechain.org
 
 # Make it executable:
 chmod +x maya-wallet-linux.AppImage

@@ -138,7 +138,7 @@ Limitations:
 # Direct node connection
 from pakit.client import PakitClient
 
-client = PakitClient(node_url="https://pakit.belizechain.org")
+client = PakitClient(node_url="https://testnet.belizechain.org/api/pakit")
 content = client.get_content(content_hash)
 
 # No third-party gateways!
@@ -581,7 +581,7 @@ from pakit.migration import IpfsMigrator
 
 migrator = IpfsMigrator(
     ipfs_node='http://localhost:5001',
-    pakit_node='https://pakit.belizechain.org'
+    pakit_node='https://testnet.belizechain.org/api/pakit'
 )
 
 # Migrate content

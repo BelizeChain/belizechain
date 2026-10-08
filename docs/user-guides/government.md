@@ -561,7 +561,7 @@ Each fee type gets unique QR code + payment link
 
 ### Access Dashboard
 
-**Web**: https://government.belizechain.org  
+**Web**: https://portal.belizechain.org  
 **Login**: Government agency credentials
 
 ### Dashboard Features
@@ -622,7 +622,10 @@ Each fee type gets unique QR code + payment link
 
 **All government transactions are public!**
 
-**Portal**: https://transparency.belizechain.org
+**Portal**: https://portal.belizechain.org
+
+> The dedicated public-spending view is not published yet; the government
+> portal above is the live entry point.
 
 **Citizens can view**:
 - All government spending

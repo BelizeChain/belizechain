@@ -264,7 +264,7 @@ pub fn redeem_voucher(
 - **Contract Explorer**: https://explorer.belizechain.org/contracts
 - **GitHub**: https://github.com/BelizeChain/gem
 - **Discord**: #smart-contracts channel
-- **Documentation**: https://docs.belizechain.org/smart-contracts
+- **Documentation**: https://belizechain.org/docs
 
 ## Integration with BelizeChain Pallets
 

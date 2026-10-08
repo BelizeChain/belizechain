@@ -12,7 +12,7 @@ Complete guide for citizens using Maya Wallet.
 
 **iOS:** App Store → Search "Maya Wallet Belize"
 **Android:** Google Play → Search "Maya Wallet Belize"  
-**Web:** https://maya.belizechain.org
+**Web:** https://wallet.belizechain.org
 
 ### Create Account
 
@@ -273,7 +273,7 @@ Options:
 3. ✅ **Never share PIN** or seed phrase
 4. ✅ **Verify addresses** before sending (last 4 characters minimum)
 5. ✅ **Use small test transaction** first for new addresses
-6. ⚠️ **Beware phishing** – official domain: maya.belizechain.org ONLY
+6. ⚠️ **Beware phishing** – official domain: wallet.belizechain.org ONLY
 
 ---
 

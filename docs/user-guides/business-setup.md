@@ -123,7 +123,7 @@ This guide helps businesses integrate BelizeChain into their operations - from s
 1. Download Maya Wallet (if you haven't)
    - iOS: App Store
    - Android: Google Play
-   - Desktop: maya.belizechain.org
+   - Desktop: wallet.belizechain.org
 
 2. Open app → **"Create Account"**
 
@@ -463,7 +463,7 @@ payment.on('subscription.cancelled', (event) => {
 
 ### Access Dashboard
 
-**Web**: https://business.maya.belizechain.org  
+**Web**: not published yet — planned `business.maya.belizechain.org`  
 **Login**: Use your Maya Wallet business account
 
 ### Dashboard Overview

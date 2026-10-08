@@ -515,7 +515,7 @@ let tier = BNS::get_domain_tier("business.bz");
 
 ## Support
 
-- **Documentation**: https://docs.belizechain.org/bns
+- **Documentation**: https://belizechain.org/docs/belizechain/bns
 - **Discord**: #bns channel
 - **Domain Search**: https://bns.belizechain.org
 - **Marketplace**: https://bns.belizechain.org/marketplace

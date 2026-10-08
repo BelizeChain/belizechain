@@ -228,7 +228,7 @@ Employee Summary:
 
 ### Access Portal
 
-**URL:** https://blueholeportal.belizechain.org
+**URL:** https://portal.belizechain.org
 
 **Login:**
 1. Enter government official wallet address

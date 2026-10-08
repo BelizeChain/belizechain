@@ -338,7 +338,7 @@ All tutorials also available as videos:
 
 Try tutorials in safe testnet environment:
 
-- **Testnet Wallet**: https://testnet.maya.belizechain.org
+- **Testnet Wallet**: https://wallet.belizechain.org
 - **Testnet Explorer**: https://testnet.explorer.belizechain.org
 - **Free Test Tokens**: https://faucet.belizechain.org
 

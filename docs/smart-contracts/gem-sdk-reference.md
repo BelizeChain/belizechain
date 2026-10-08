@@ -783,6 +783,6 @@ npm test
 
 ## Support
 
-- **Documentation**: https://docs.belizechain.org
+- **Documentation**: https://belizechain.org/docs
 - **Discord**: https://discord.gg/belizechain
 - **GitHub**: https://github.com/BelizeChain/gem-sdk

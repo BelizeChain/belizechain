@@ -101,5 +101,5 @@ pytest tests/integration/governance/test_voting.py::TestVoting::test_citizen_vot
 
 ## Resources
 
-- [BelizeChain Governance Documentation](https://docs.belizechain.org/governance/)
+- [BelizeChain Governance Documentation](https://belizechain.org/docs/belizechain/governance)
 - [Substrate Governance Guide](https://docs.substrate.io/reference/how-to-guides/pallet-design/use-loose-coupling/)

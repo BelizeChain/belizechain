@@ -563,7 +563,7 @@ community center serving 500+ youth in Dangriga.
 
 Vote YES to support our youth! 🗳️
 
-Details: https://gov.belizechain.org/proposal/287
+Details: https://portal.belizechain.org
 
 #BelizeChain #DangrigaYouth #VoteYes
 ```
@@ -614,7 +614,7 @@ TEAM: DYF has 10 years experience running youth programs
 
 QUESTIONS? Ask me anything! I'll be checking daily.
 
-VOTE: https://gov.belizechain.org/proposal/287
+VOTE: https://portal.belizechain.org
 
 Thanks for your support! 🙏
 ```
@@ -673,7 +673,7 @@ AVAILABLE:
 - Email: ana@dyf.org.bz
 - Discord: @AnaM#1234
 
-Proposal: https://gov.belizechain.org/proposal/287
+Proposal: https://portal.belizechain.org
 
 Thank you for your time and consideration!
 
@@ -711,7 +711,7 @@ education programs, sports facilities, and job training...
 [Full details]
 
 VOTING: BelizeChain users can vote on Proposal #287 
-through October 21, 2025 at gov.belizechain.org
+through October 21, 2025 at portal.belizechain.org
 
 CONTACT:
 Ana Martinez
@@ -972,7 +972,7 @@ What's Next:
 - [Vote on Proposals](./vote-on-proposals.md) - Voting tutorial
 
 **Tools**:
-- [Proposal Dashboard](https://gov.belizechain.org)
+- [Proposal Dashboard](https://portal.belizechain.org)
 - [Forum](https://forum.belizechain.org/proposals)
 - [Discord #governance](https://discord.gg/belizechain)
 

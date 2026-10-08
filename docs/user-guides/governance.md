@@ -509,7 +509,7 @@ Fund National Healthcare AI System
 This will bring world-class AI diagnostics 
 to EVERY district in Belize!
 
-Vote YES: https://gov.belizechain.org/proposal/156
+Vote YES: https://portal.belizechain.org
 
 #BelizeChain #Healthcare #AI
 ```
@@ -956,7 +956,7 @@ Risk: Low (tested extensively)
 - [Technical Reference](../technical-reference/governance/) - Governance specs
 
 ### External Resources
-- **Governance Dashboard**: https://gov.belizechain.org
+- **Governance Dashboard**: https://portal.belizechain.org
 - **Proposal Archive**: https://proposals.belizechain.org
 - **Voting Statistics**: https://stats.belizechain.org/governance
 

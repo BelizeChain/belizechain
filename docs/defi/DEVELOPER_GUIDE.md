@@ -508,7 +508,7 @@ self.locked = false;
 
 ## Support
 
-- **Documentation**: https://docs.belizechain.org/defi
+- **Documentation**: https://belizechain.org/docs
 - **Discord**: https://discord.gg/belizechain
 - **Telegram**: https://t.me/belizechain_dev
 - **Email**: dev@belizechain.org

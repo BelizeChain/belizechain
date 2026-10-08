@@ -1190,12 +1190,12 @@ Ana applied for 10 jobs. Each required:
 
 ### **Learn More**
 - BelizeID Website: https://belizeid.gov.bz
-- User Guide: https://docs.belizechain.org/belizeid
+- User Guide: https://belizechain.org/docs
 - Video Tutorials: https://youtube.com/belizechain/belizeid
 - FAQ: https://belizeid.gov.bz/faq
 
 ### **For Developers**
-- Integration Guide: https://docs.belizechain.org/belizeid-integration
+- Integration Guide: https://belizechain.org/docs
 - API Reference: planned (not yet published)
 - Code Examples: https://github.com/belizechain/belizeid-examples
 

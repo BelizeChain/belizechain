@@ -64,7 +64,7 @@ Before starting:
 ### 1. Have Maya Wallet Installed
 - iOS: App Store
 - Android: Google Play
-- Desktop: maya.belizechain.org
+- Desktop: wallet.belizechain.org
 
 **Need help?** See [Create Wallet](../getting-started/create-wallet.md)
 
@@ -585,7 +585,7 @@ Maria,5Grwv...,5000,DALLA,Contractor
 
 **Try this on testnet first** (free test tokens):
 
-1. Get testnet Maya Wallet: https://testnet.maya.belizechain.org
+1. Get testnet Maya Wallet: https://wallet.belizechain.org
 2. Get free test tokens: https://faucet.belizechain.org
 3. Create CSV with 5 test addresses
 4. Send batch payment

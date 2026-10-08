@@ -56,7 +56,7 @@ Think of the blockchain as a **giant public ledger** (record book):
 
 **Official**:
 - https://explorer.belizechain.org (main)
-- https://scan.belizechain.org (faster, simpler)
+- https://explorer.belizechain.org (faster, simpler)
 
 **Community**:
 - https://belizechain.subscan.io (Subscan)
@@ -872,7 +872,7 @@ Language:
 ### "Block Explorer Down"
 
 **Alternatives**:
-- Try: https://scan.belizechain.org
+- Try: https://explorer.belizechain.org
 - Or: https://belizechain.subscan.io
 
 ---

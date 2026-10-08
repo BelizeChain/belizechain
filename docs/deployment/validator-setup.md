@@ -501,7 +501,7 @@ nano config.validator.yaml
 
 ```yaml
 server:
-  url: "https://fl.belizechain.org"
+  url: "https://testnet.belizechain.org/api/nawal"
   port: 8080
 
 client:
@@ -703,7 +703,7 @@ systemctl status belizechain-fl
 journalctl -u belizechain-fl -n 100
 
 # Check quality score
-curl -s https://fl.belizechain.org/api/validators/5GrwvaEF.../score
+curl -s https://testnet.belizechain.org/api/nawal/validators/5GrwvaEF.../score
 
 # Common issues:
 # - FL client not running

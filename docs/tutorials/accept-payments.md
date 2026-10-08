@@ -66,7 +66,7 @@ Before starting:
 
 **iOS**: App Store → Search "Maya Wallet"  
 **Android**: Google Play → Search "Maya Wallet"  
-**Desktop**: https://maya.belizechain.org
+**Desktop**: https://wallet.belizechain.org
 
 **Tap "Install"** → Wait for download → **Open app**
 
@@ -889,7 +889,7 @@ Today's Sales: 892.00 bBZD (20 transactions)
 - [Setup Recurring Payments](./setup-recurring-payment.md) - For subscriptions
 
 **Tools**:
-- [Business Dashboard](https://business.maya.belizechain.org)
+- Business Dashboard — not published yet (planned `business.maya.belizechain.org`)
 - [Block Explorer](https://explorer.belizechain.org)
 - [API Documentation](../developer-guides/api-reference.md)
 

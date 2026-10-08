@@ -393,7 +393,7 @@ When adding new scripts:
 
 ## Resources
 
-- [BelizeChain Documentation](https://docs.belizechain.org)
+- [BelizeChain Documentation](https://belizechain.org/docs)
 - [Substrate Documentation](https://docs.substrate.io)
 - [Polkadot SDK](https://github.com/paritytech/polkadot-sdk)
 - [Deployment Guide](../docs/deployment/)

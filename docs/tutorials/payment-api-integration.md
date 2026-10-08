@@ -1395,10 +1395,10 @@ await bc.paymentIntents.confirm(intent.id);
 ## 📖 Additional Resources
 
 ### **Documentation**
-- API Reference: https://docs.belizechain.org/api
-- SDK Docs (JS): https://docs.belizechain.org/sdk/javascript
-- SDK Docs (Python): https://docs.belizechain.org/sdk/python
-- Webhook Guide: https://docs.belizechain.org/webhooks
+- API Reference: https://belizechain.org/docs
+- SDK Docs (JS): https://belizechain.org/docs
+- SDK Docs (Python): https://belizechain.org/docs
+- Webhook Guide: https://belizechain.org/docs
 
 ### **Code Examples**
 - GitHub: https://github.com/belizechain/examples

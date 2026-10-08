@@ -408,7 +408,7 @@ await sdk.api.tx.bns.updateExternalContent(
 ```
 
 **Access:**
-- Configure CNAME: `example.com → gateway.belizechain.org`
+- Configure CNAME: `example.com → testnet.belizechain.org/ipfs`
 - Users visit `https://example.com`
 - Content served from BelizeChain DAG storage
 
@@ -619,4 +619,4 @@ if (cert.expiresAt < currentBlock) {
 - **Hosting Portal**: https://bns.belizechain.org/hosting
 - **Discord**: #hosting-support
 - **Status Page**: planned (not yet published)
-- **Pakit CLI Docs**: https://docs.belizechain.org/pakit/cli
+- **Pakit CLI Docs**: https://belizechain.org/docs

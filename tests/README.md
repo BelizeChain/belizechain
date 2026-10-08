@@ -321,5 +321,5 @@ fails without the stack.
 
 ## Resources
 
-- [BelizeChain Documentation](https://docs.belizechain.org)
+- [BelizeChain Documentation](https://belizechain.org/docs)
 - [Substrate Testing Guide](https://docs.substrate.io/test/)

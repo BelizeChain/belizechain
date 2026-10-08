@@ -61,7 +61,7 @@ Meshtastic solves all of these by adding LoRa radio mesh networking:
 │                    BelizeChain Substrate Runtime                     │
 │           pallet-belize-mesh (Node Registry, Relay Mining,          │
 │              Emergency Alerts, Block Header Relay)                  │
-│                    ws://node.belizechain.org:9944                   │
+│                    wss://testnet.belizechain.org/ws                   │
 └────────────────────────────────┬────────────────────────────────────┘
                                  │ RPC/WebSocket (Internet)
                                  │
@@ -146,7 +146,7 @@ Step 4: GATEWAY (Bridge to Internet)
 │  Received mesh message (hop 2)               │
 │  Decompressing transaction...                │
 │  Submitting to BelizeChain via RPC           │
-│  → ws://node.belizechain.org:9944            │
+│  → wss://testnet.belizechain.org/ws            │
 └──────────────────────┬──────────────────────┘
                        │ Internet (RPC)
                        ▼

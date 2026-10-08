@@ -170,7 +170,7 @@
 - [Business Setup](https://youtube.com/belizechain) (15 min)
 
 ### Interactive Demos
-- [Try Maya Wallet (Testnet)](https://testnet.maya.belizechain.org)
+- [Try Maya Wallet (Testnet)](https://wallet.belizechain.org)
 - [Explore Test Blockchain](https://testnet.explorer.belizechain.org)
 
 ### Community

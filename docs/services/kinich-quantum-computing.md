@@ -102,7 +102,7 @@ qc.measure(range(4), range(4))
 # Submit to Kinich orchestrator
 node = QuantumNode(
     validator_id='5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY',
-    orchestrator_url='wss://kinich.belizechain.org'
+    orchestrator_url='wss://testnet.belizechain.org/api/kinich'
 )
 
 job_id = await node.submit_job(
@@ -559,7 +559,7 @@ az quantum workspace show \
 # Configure validator
 kinich-cli config \
   --validator-id 5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY \
-  --orchestrator wss://kinich.belizechain.org \
+  --orchestrator wss://testnet.belizechain.org/api/kinich \
   --azure-workspace belizechain-quantum \
   --azure-resource-group belizechain-rg \
   --backend-preference ionq \

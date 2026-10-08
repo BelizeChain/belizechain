@@ -231,5 +231,5 @@ For detailed tutorials, see:
 - **API Reference**: [Complete Contract APIs](gem-sdk-reference.md)
 - **Security Audits**: [Audit Results](gem-security-audit.md)
 - **Code Examples**: [GEM Examples](gem-examples.md)
-- **Discord**: [discord.belizechain.org](https://discord.belizechain.org)
+- **Discord**: [discord.gg/belizechain](https://discord.gg/belizechain)
 - **Forum**: [forum.belizechain.org/c/smart-contracts](https://forum.belizechain.org/c/smart-contracts)

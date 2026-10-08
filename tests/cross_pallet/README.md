@@ -68,5 +68,5 @@ pytest tests/integration/cross_pallet/test_identity_governance.py::TestIdentityG
 
 ## Resources
 
-- [BelizeChain Architecture Guide](https://docs.belizechain.org/architecture/)
+- [BelizeChain Architecture Guide](https://belizechain.org/docs)
 - [Cross-Pallet Communication](https://docs.substrate.io/reference/how-to-guides/pallet-design/use-loose-coupling/)

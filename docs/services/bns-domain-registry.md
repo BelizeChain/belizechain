@@ -519,5 +519,5 @@ await sdk.api.tx.utility.batch(calls).signAndSend(alice, ({ status }) => {
 
 - **Domain Search**: https://bns.belizechain.org
 - **Discord**: #bns-support channel
-- **Troubleshooting**: https://docs.belizechain.org/bns/troubleshooting
+- **Troubleshooting**: https://belizechain.org/docs/belizechain/bns
 - **Report Issues**: security@belizechain.org

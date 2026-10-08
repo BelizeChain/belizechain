@@ -509,4 +509,4 @@ cargo contract build --release
 
 This security audit is reviewed and updated quarterly. Last update: **January 2026**
 
-For the latest security advisories, visit: https://docs.belizechain.org/security
+For the latest security advisories, visit: https://belizechain.org/docs

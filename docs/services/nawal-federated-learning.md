@@ -490,7 +490,7 @@ python -c "import torch; print(f'GPU: {torch.cuda.get_device_name(0)}')"
 # Configure validator
 nawal-cli config \
   --validator-id 5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY \
-  --orchestrator wss://nawal.belizechain.org \
+  --orchestrator wss://testnet.belizechain.org/api/nawal \
   --data-path /mnt/nawal-data \
   --gpu-id 0
 

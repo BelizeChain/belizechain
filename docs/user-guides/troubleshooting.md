@@ -59,7 +59,7 @@
 1. Enable unknown sources (if using APK):
    - Settings → Security → Unknown Sources → ON
 2. Download APK from official site:
-   - https://maya.belizechain.org/apk
+   - https://wallet.belizechain.org
 3. Install manually
 
 **OR** change Google Play region:
@@ -609,7 +609,7 @@ See [Installation Issues](#installation-issues) → Mac section
 
 **Live Chat**:
 - In app: Menu → Help & Support → Chat
-- On website: https://maya.belizechain.org
+- On website: https://wallet.belizechain.org
 - 24/7 available
 
 **In-Person Support Centers**:

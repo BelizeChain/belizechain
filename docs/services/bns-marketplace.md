@@ -601,4 +601,4 @@ async function filterActive(listings) {
 - **Marketplace**: https://bns.belizechain.org/marketplace
 - **Discord**: #marketplace-support
 - **Report Fraud**: security@belizechain.org
-- **FAQs**: https://docs.belizechain.org/bns/marketplace-faq
+- **FAQs**: https://belizechain.org/docs/belizechain/bns

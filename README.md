@@ -424,7 +424,7 @@ Launch your own testnet node in seconds:
 | **Resource** | **Link** |
 |--------------|----------|
 | 🌐 **Website** | [https://belizechain.org](https://belizechain.org) |
-| 📚 **Documentation** | [https://docs.belizechain.org](https://docs.belizechain.org) |
+| 📚 **Documentation** | [https://belizechain.org/docs](https://belizechain.org/docs) |
 | 💬 **GitHub Discussions** | [Discussions](https://github.com/belizechain/belizechain/discussions) |
 | 🐛 **Issues** | [GitHub Issues](https://github.com/belizechain/belizechain/issues) |
 | 📧 **General Inquiries** | info@belizechain.org |

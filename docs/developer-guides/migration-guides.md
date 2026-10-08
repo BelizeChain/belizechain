@@ -271,7 +271,7 @@ import ipfshttpclient
 ipfs_client = ipfshttpclient.connect('/ip4/127.0.0.1/tcp/5001')
 
 # Connect to Pakit
-pakit = DAGStorage(endpoint='https://pakit.belizechain.org')
+pakit = DAGStorage(endpoint='https://testnet.belizechain.org/api/pakit')
 
 # Migrate directory
 ipfs_cid = 'QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco'
@@ -504,4 +504,4 @@ For assistance with complex migrations:
 - **Developer Discord**: https://discord.gg/belizechain
 - **Migration Tool Repository**: https://github.com/belizechain/migration-tools
 - **Professional Services**: migrations@belizechain.org
-- **Documentation**: https://docs.belizechain.org/migrations
+- **Documentation**: https://belizechain.org/docs

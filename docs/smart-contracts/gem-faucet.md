@@ -480,4 +480,4 @@ If faucet is depleted or unavailable:
 
 - **Contract Source**: [github.com/BelizeChain/gem/tree/main/faucet](https://github.com/BelizeChain/gem/tree/main/faucet)
 - **Web Faucet**: `https://<current-public-testnet-faucet>`
-- **Discord**: [discord.belizechain.org](https://discord.belizechain.org)
+- **Discord**: [discord.gg/belizechain](https://discord.gg/belizechain)

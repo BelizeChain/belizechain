@@ -424,7 +424,7 @@ docker run -d \
 ### Install from Binary
 ```bash
 # Download
-wget https://releases.belizechain.org/latest/belizechain
+wget https://github.com/BelizeChain/belizechain/releases/latest/belizechain
 
 # Make executable
 chmod +x belizechain
@@ -552,9 +552,9 @@ max_response_size = 15  # MB
 ## 🆘 Support & Resources
 
 ### Official Documentation
-- **Website**: https://docs.belizechain.org
+- **Website**: https://belizechain.org/docs
 - **GitHub**: https://github.com/belizechain/belizechain
-- **API Docs**: https://api-docs.belizechain.org
+- **API Docs**: https://belizechain.org/docs
 
 ### Community Support
 - **Discord**: #validators, #node-operators channels

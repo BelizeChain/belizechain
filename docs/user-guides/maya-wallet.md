@@ -49,7 +49,7 @@ Already installed? → [Skip to Account Management](#account-management)
 **Quick install**:
 - **iOS**: App Store → "Maya Wallet BelizeChain"
 - **Android**: Play Store → "Maya Wallet BelizeChain"
-- **Desktop**: https://maya.belizechain.org/download
+- **Desktop**: https://wallet.belizechain.org
 
 ---
 

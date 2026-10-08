@@ -433,7 +433,7 @@
 
 ### For Integrators
 - Email: integrations@belizechain.org
-- Technical docs: docs.belizechain.org
+- Technical docs: belizechain.org/docs
 
 ---
 
@@ -449,5 +449,5 @@
 ```
 BelizeChain Core Team. (2025). BelizeChain: Building Belize's Sovereign 
 Digital Infrastructure. Technical Whitepaper v1.0. 
-https://docs.belizechain.org/technical-reference/whitepaper
+https://belizechain.org/docs
 ```

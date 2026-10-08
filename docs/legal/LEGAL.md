@@ -206,7 +206,7 @@ Phone: +501-223-6420
 - Maya Wallet interactions (screen views, feature usage)
 - Blue Hole Portal logins (government users)
 - API requests (developer integration)
-- Website visits (docs.belizechain.org)
+- Website visits (belizechain.org/docs)
 
 **Device information**:
 - IP address (logged for security)
@@ -318,14 +318,14 @@ Phone: +501-223-6420
 
 ### 7. Cookies and Tracking
 
-**Website cookies** (docs.belizechain.org):
+**Website cookies** (belizechain.org/docs):
 - Essential: Session management, authentication
 - Analytics: Google Analytics (anonymized IP)
 - Performance: CDN caching (Cloudflare)
 
 **Control**:
 - Browser settings (Chrome → Settings → Privacy → Cookies)
-- Opt-out link: https://docs.belizechain.org/cookie-policy
+- Opt-out link: https://belizechain.org/docs
 
 **Maya Wallet tracking**:
 - No third-party trackers
@@ -355,7 +355,7 @@ Phone: +501-223-6420
 
 **Notice**: 30 days via email and website banner  
 **Material changes**: Require opt-in consent (checkbox in Maya Wallet)  
-**Version history**: Archived at docs.belizechain.org/privacy/archive
+**Version history**: Archived at belizechain.org/docs
 
 ### 11. Contact Information
 
@@ -556,7 +556,7 @@ BelizeChain Foundation grants:
 ### 8. Consumer Protection
 
 **Disclosure requirements**:
-- Transaction fees published (docs.belizechain.org/fees)
+- Transaction fees published (belizechain.org/docs)
 - Terms of service (updated 30 days notice)
 - Privacy policy (GDPR-compliant)
 

@@ -480,7 +480,7 @@ Monitoring & Backup Setup (1 week)
 ### Community
 - **Discord**: #governance-dev channel
 - **Email**: dev@belizechain.org
-- **Documentation**: docs.belizechain.org (pending deployment)
+- **Documentation**: belizechain.org/docs (pending deployment)
 
 ---
 

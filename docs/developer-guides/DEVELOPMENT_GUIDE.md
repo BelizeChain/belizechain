@@ -561,7 +561,7 @@ User Adoption:
 - **Official Website**: https://belizechain.org
 - **Block Explorer**: https://explorer.belizechain.org (pending)
 - **GitHub**: https://github.com/BelizeChain/belizechain
-- **Documentation**: https://docs.belizechain.org
+- **Documentation**: https://belizechain.org/docs
 - **Polkadot SDK**: https://github.com/paritytech/polkadot-sdk
 - **Substrate Docs**: https://docs.substrate.io
 - **Quantum backend documentation**: use selected provider docs
