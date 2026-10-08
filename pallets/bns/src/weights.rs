@@ -55,6 +55,11 @@ pub trait WeightInfo {
         fn create_subdomain() -> Weight;
         fn rollback_content() -> Weight;
         fn update_ssl_certificate() -> Weight;
+        fn set_text_record() -> Weight;
+        fn remove_text_record() -> Weight;
+        fn set_avatar() -> Weight;
+        fn set_primary_domain() -> Weight;
+        fn clear_primary_domain() -> Weight;
 }
 
 /// Weights for `pallet_belize_bns` using the Substrate node and recommended hardware.
@@ -290,6 +295,41 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
                         .saturating_add(T::DbWeight::get().reads(1_u64))
                         .saturating_add(T::DbWeight::get().writes(1_u64))
         }
+        /// Storage: `Bns::DomainRegistry` (r:1 w:0)
+        /// Storage: `Bns::DomainResolution` (r:1 w:1)
+        fn set_text_record() -> Weight {
+                // Hand-set placeholder: benchmark before mainnet.
+                Weight::from_parts(45_000_000, 7000)
+                        .saturating_add(T::DbWeight::get().reads(2_u64))
+                        .saturating_add(T::DbWeight::get().writes(1_u64))
+        }
+        /// Storage: `Bns::DomainRegistry` (r:1 w:0)
+        /// Storage: `Bns::DomainResolution` (r:1 w:1)
+        fn remove_text_record() -> Weight {
+                Weight::from_parts(45_000_000, 7000)
+                        .saturating_add(T::DbWeight::get().reads(2_u64))
+                        .saturating_add(T::DbWeight::get().writes(1_u64))
+        }
+        /// Storage: `Bns::DomainRegistry` (r:1 w:0)
+        /// Storage: `Bns::DomainResolution` (r:1 w:1)
+        fn set_avatar() -> Weight {
+                Weight::from_parts(40_000_000, 6000)
+                        .saturating_add(T::DbWeight::get().reads(2_u64))
+                        .saturating_add(T::DbWeight::get().writes(1_u64))
+        }
+        /// Storage: `Bns::DomainRegistry` (r:1 w:0)
+        /// Storage: `Bns::PrimaryDomain` (r:0 w:1)
+        fn set_primary_domain() -> Weight {
+                Weight::from_parts(40_000_000, 4000)
+                        .saturating_add(T::DbWeight::get().reads(1_u64))
+                        .saturating_add(T::DbWeight::get().writes(1_u64))
+        }
+        /// Storage: `Bns::PrimaryDomain` (r:1 w:1)
+        fn clear_primary_domain() -> Weight {
+                Weight::from_parts(35_000_000, 3000)
+                        .saturating_add(T::DbWeight::get().reads(1_u64))
+                        .saturating_add(T::DbWeight::get().writes(1_u64))
+        }
 }
 
 /// Fallback weights for the mock runtime, which sets `type WeightInfo = ()`.
@@ -384,6 +424,31 @@ impl WeightInfo for () {
         fn update_ssl_certificate() -> Weight {
                 // Minimum execution time: 24_748_000 picoseconds.
                 Weight::from_parts(26_766_000, 3641)
+                        .saturating_add(RocksDbWeight::get().reads(1_u64))
+                        .saturating_add(RocksDbWeight::get().writes(1_u64))
+        }
+        fn set_text_record() -> Weight {
+                Weight::from_parts(45_000_000, 7000)
+                        .saturating_add(RocksDbWeight::get().reads(2_u64))
+                        .saturating_add(RocksDbWeight::get().writes(1_u64))
+        }
+        fn remove_text_record() -> Weight {
+                Weight::from_parts(45_000_000, 7000)
+                        .saturating_add(RocksDbWeight::get().reads(2_u64))
+                        .saturating_add(RocksDbWeight::get().writes(1_u64))
+        }
+        fn set_avatar() -> Weight {
+                Weight::from_parts(40_000_000, 6000)
+                        .saturating_add(RocksDbWeight::get().reads(2_u64))
+                        .saturating_add(RocksDbWeight::get().writes(1_u64))
+        }
+        fn set_primary_domain() -> Weight {
+                Weight::from_parts(40_000_000, 4000)
+                        .saturating_add(RocksDbWeight::get().reads(1_u64))
+                        .saturating_add(RocksDbWeight::get().writes(1_u64))
+        }
+        fn clear_primary_domain() -> Weight {
+                Weight::from_parts(35_000_000, 3000)
                         .saturating_add(RocksDbWeight::get().reads(1_u64))
                         .saturating_add(RocksDbWeight::get().writes(1_u64))
         }

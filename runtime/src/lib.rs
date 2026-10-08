@@ -397,7 +397,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     // TechnicalCouncil member to `TechnicalCouncilSuperMajority` (>2/3 council
     // motion, or Root) for `validate_ai_model`, `start_consensus_round`, and
     // `finalize_consensus_round`. No storage migration.
-    spec_version: 109,
+    spec_version: 110,
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 1,

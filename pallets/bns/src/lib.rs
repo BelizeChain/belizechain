@@ -58,7 +58,12 @@ pub mod pallet {
     /// On-chain storage version for this pallet.
     ///
     /// Bump this and register a migration in the runtime's `Migrations` tuple
-    /// whenever this pallet's storage layout changes.
+    /// whenever this pallet's storage layout changes in a way that needs existing
+    /// state transformed.
+    ///
+    /// Deliberately still 0: `PrimaryDomain` was added in spec 110, but adding a
+    /// new map is additive — no existing key or value encoding changed, so there is
+    /// nothing to migrate. Bump only when existing entries need rewriting.
     pub const STORAGE_VERSION: frame_support::traits::StorageVersion =
         frame_support::traits::StorageVersion::new(0);
 
@@ -141,6 +146,19 @@ pub mod pallet {
         Blake2_128Concat,
         BoundedVec<u8, T::MaxDomainLength>,
         ResolutionRecords<T::AccountId, T::MaxTextRecords>,
+    >;
+
+    /// Reverse resolution: AccountId → the domain it presents as its primary name.
+    ///
+    /// Set explicitly by the owner via `set_primary_domain`; there is no implicit
+    /// "first registered" default, so this is only populated on request.
+    #[pallet::storage]
+    #[pallet::getter(fn primary_domain)]
+    pub type PrimaryDomain<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        BoundedVec<u8, T::MaxDomainLength>,
     >;
 
     /// Domain marketplace listings
@@ -338,6 +356,35 @@ pub mod pallet {
             cert_hash: [u8; 32],
             expires_at: BlockNumberFor<T>,
         },
+
+        /// Text record added or replaced [domain, owner, key]
+        TextRecordSet {
+            domain: BoundedVec<u8, T::MaxDomainLength>,
+            owner: T::AccountId,
+            key: BoundedVec<u8, ConstU32<32>>,
+        },
+
+        /// Text record removed [domain, owner, key]
+        TextRecordRemoved {
+            domain: BoundedVec<u8, T::MaxDomainLength>,
+            owner: T::AccountId,
+            key: BoundedVec<u8, ConstU32<32>>,
+        },
+
+        /// Profile avatar hash set on a domain [domain, owner]
+        AvatarUpdated {
+            domain: BoundedVec<u8, T::MaxDomainLength>,
+            owner: T::AccountId,
+        },
+
+        /// Primary (reverse-resolution) domain set [account, domain]
+        PrimaryDomainSet {
+            account: T::AccountId,
+            domain: BoundedVec<u8, T::MaxDomainLength>,
+        },
+
+        /// Primary (reverse-resolution) domain cleared [account]
+        PrimaryDomainCleared { account: T::AccountId },
     }
 
     // ==================== ERRORS ====================
@@ -396,6 +443,14 @@ pub mod pallet {
         SellerOwnerMismatch,
         /// Maximum content versions reached
         MaxContentVersionsReached,
+        /// Text record key is empty or longer than the 32-byte limit
+        InvalidTextRecordKey,
+        /// Text record value is empty or longer than the 128-byte limit
+        InvalidTextRecordValue,
+        /// Domain already holds the maximum number of text records
+        MaxTextRecordsReached,
+        /// No text record exists under the supplied key
+        TextRecordNotFound,
     }
 
     // ==================== EXTRINSICS ====================
@@ -519,17 +574,183 @@ pub mod pallet {
                 .try_into()
                 .map_err(|_| Error::<T>::InvalidMetadata)?;
 
+            // Preserve anything this call does not set. Previously `text_records`
+            // and `avatar` were unconditionally reset to empty, so updating the
+            // wallet address silently destroyed every text record on the domain.
+            let existing = DomainResolution::<T>::get(&domain).unwrap_or_else(Self::empty_resolution);
+
             let resolution = ResolutionRecords {
                 wallet_address,
                 content_hash,
-                avatar: None,
+                avatar: existing.avatar,
                 metadata: metadata_bounded,
-                text_records: BoundedVec::default(),
+                text_records: existing.text_records,
             };
 
             DomainResolution::<T>::insert(&domain, resolution);
 
             Self::deposit_event(Event::ResolutionUpdated { domain, owner: who });
+
+            Ok(())
+        }
+
+        /// Add or replace a text record on an owned domain.
+        ///
+        /// Text records are the free-form key/value pairs used for profile data
+        /// (email, url, social handles). Keys are capped at 32 bytes and values at
+        /// 128 bytes by `TextRecord`, and a domain may hold at most `MaxTextRecords`.
+        #[pallet::call_index(15)]
+        #[pallet::weight(T::WeightInfo::set_text_record())]
+        pub fn set_text_record(
+            origin: OriginFor<T>,
+            domain_name: Vec<u8>,
+            key: Vec<u8>,
+            value: Vec<u8>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            let domain = Self::validate_domain_name(domain_name)?;
+
+            let domain_record =
+                DomainRegistry::<T>::get(&domain).ok_or(Error::<T>::DomainNotFound)?;
+            ensure!(domain_record.owner == who, Error::<T>::NotDomainOwner);
+
+            let key: BoundedVec<u8, ConstU32<32>> =
+                key.try_into().map_err(|_| Error::<T>::InvalidTextRecordKey)?;
+            ensure!(!key.is_empty(), Error::<T>::InvalidTextRecordKey);
+
+            let value: BoundedVec<u8, ConstU32<128>> = value
+                .try_into()
+                .map_err(|_| Error::<T>::InvalidTextRecordValue)?;
+            ensure!(!value.is_empty(), Error::<T>::InvalidTextRecordValue);
+
+            let mut resolution =
+                DomainResolution::<T>::get(&domain).unwrap_or_else(Self::empty_resolution);
+
+            // Replace in place when the key already exists, otherwise append.
+            match resolution
+                .text_records
+                .iter_mut()
+                .find(|record| record.key == key)
+            {
+                Some(record) => record.value = value,
+                None => resolution
+                    .text_records
+                    .try_push(TextRecord { key: key.clone(), value })
+                    .map_err(|_| Error::<T>::MaxTextRecordsReached)?,
+            }
+
+            DomainResolution::<T>::insert(&domain, resolution);
+
+            Self::deposit_event(Event::TextRecordSet {
+                domain,
+                owner: who,
+                key,
+            });
+
+            Ok(())
+        }
+
+        /// Remove a text record from an owned domain.
+        #[pallet::call_index(16)]
+        #[pallet::weight(T::WeightInfo::remove_text_record())]
+        pub fn remove_text_record(
+            origin: OriginFor<T>,
+            domain_name: Vec<u8>,
+            key: Vec<u8>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            let domain = Self::validate_domain_name(domain_name)?;
+
+            let domain_record =
+                DomainRegistry::<T>::get(&domain).ok_or(Error::<T>::DomainNotFound)?;
+            ensure!(domain_record.owner == who, Error::<T>::NotDomainOwner);
+
+            let key: BoundedVec<u8, ConstU32<32>> =
+                key.try_into().map_err(|_| Error::<T>::InvalidTextRecordKey)?;
+
+            let mut resolution = DomainResolution::<T>::get(&domain)
+                .ok_or(Error::<T>::TextRecordNotFound)?;
+            let before = resolution.text_records.len();
+            resolution.text_records.retain(|record| record.key != key);
+            ensure!(
+                resolution.text_records.len() < before,
+                Error::<T>::TextRecordNotFound
+            );
+
+            DomainResolution::<T>::insert(&domain, resolution);
+
+            Self::deposit_event(Event::TextRecordRemoved {
+                domain,
+                owner: who,
+                key,
+            });
+
+            Ok(())
+        }
+
+        /// Set the profile avatar hash on an owned domain.
+        #[pallet::call_index(17)]
+        #[pallet::weight(T::WeightInfo::set_avatar())]
+        pub fn set_avatar(
+            origin: OriginFor<T>,
+            domain_name: Vec<u8>,
+            avatar: [u8; 32],
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            let domain = Self::validate_domain_name(domain_name)?;
+
+            let domain_record =
+                DomainRegistry::<T>::get(&domain).ok_or(Error::<T>::DomainNotFound)?;
+            ensure!(domain_record.owner == who, Error::<T>::NotDomainOwner);
+
+            let mut resolution =
+                DomainResolution::<T>::get(&domain).unwrap_or_else(Self::empty_resolution);
+            resolution.avatar = Some(avatar);
+
+            DomainResolution::<T>::insert(&domain, resolution);
+
+            Self::deposit_event(Event::AvatarUpdated { domain, owner: who });
+
+            Ok(())
+        }
+
+        /// Set the caller's primary (reverse-resolution) domain.
+        ///
+        /// The account must own the domain. Setting a new primary replaces any
+        /// previous one.
+        #[pallet::call_index(18)]
+        #[pallet::weight(T::WeightInfo::set_primary_domain())]
+        pub fn set_primary_domain(origin: OriginFor<T>, domain_name: Vec<u8>) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            let domain = Self::validate_domain_name(domain_name)?;
+
+            let domain_record =
+                DomainRegistry::<T>::get(&domain).ok_or(Error::<T>::DomainNotFound)?;
+            ensure!(domain_record.owner == who, Error::<T>::NotDomainOwner);
+
+            PrimaryDomain::<T>::insert(&who, domain.clone());
+
+            Self::deposit_event(Event::PrimaryDomainSet {
+                account: who,
+                domain,
+            });
+
+            Ok(())
+        }
+
+        /// Clear the caller's primary (reverse-resolution) domain.
+        #[pallet::call_index(19)]
+        #[pallet::weight(T::WeightInfo::clear_primary_domain())]
+        pub fn clear_primary_domain(origin: OriginFor<T>) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            ensure!(
+                PrimaryDomain::<T>::contains_key(&who),
+                Error::<T>::DomainNotFound
+            );
+            PrimaryDomain::<T>::remove(&who);
+
+            Self::deposit_event(Event::PrimaryDomainCleared { account: who });
 
             Ok(())
         }
@@ -1457,6 +1678,20 @@ pub mod pallet {
         /// Get treasury account
         pub fn treasury_account() -> T::AccountId {
             BNS_TREASURY_ID.into_account_truncating()
+        }
+
+        /// An empty resolution record, for a domain that has none yet.
+        ///
+        /// `ResolutionRecords` cannot derive `Default`: that would add a
+        /// `MaxTextRecords: Default` bound the runtime's `ConstU32` need not satisfy.
+        pub fn empty_resolution() -> ResolutionRecords<T::AccountId, T::MaxTextRecords> {
+            ResolutionRecords {
+                wallet_address: None,
+                content_hash: None,
+                avatar: None,
+                metadata: BoundedVec::default(),
+                text_records: BoundedVec::default(),
+            }
         }
     }
 }

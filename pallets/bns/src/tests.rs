@@ -4,6 +4,11 @@ use super::*;
 use crate::mock::*;
 use frame_support::{assert_noop, assert_ok};
 
+/// Build a `BoundedVec` domain key for direct storage reads, which cannot take a `Vec`.
+fn domain_key(name: &[u8]) -> BoundedVec<u8, MaxDomainLength> {
+    BoundedVec::try_from(name.to_vec()).expect("test domain name fits MaxDomainLength")
+}
+
 #[test]
 fn register_domain_works() {
     new_test_ext().execute_with(|| {
@@ -1094,5 +1099,252 @@ fn content_history_pruning_at_cap() {
         assert!(!ContentHistory::<Test>::contains_key(&domain, 0));
         // Version 1: pruned when current_version=51 (51-50=1)
         assert!(!ContentHistory::<Test>::contains_key(&domain, 1));
+    });
+}
+
+// ==================== TEXT RECORDS & REVERSE RESOLUTION ====================
+
+#[test]
+fn set_text_record_adds_then_replaces() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Bns::register_domain(
+            RuntimeOrigin::signed(1),
+            b"mysite".to_vec(),
+            0
+        ));
+
+        assert_ok!(Bns::set_text_record(
+            RuntimeOrigin::signed(1),
+            b"mysite".to_vec(),
+            b"email".to_vec(),
+            b"admin@mysite.bz".to_vec()
+        ));
+
+        let records = DomainResolution::<Test>::get(domain_key(b"mysite"))
+            .expect("resolution should exist")
+            .text_records;
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].key.to_vec(), b"email".to_vec());
+        assert_eq!(records[0].value.to_vec(), b"admin@mysite.bz".to_vec());
+
+        // Same key must replace in place rather than append a duplicate.
+        assert_ok!(Bns::set_text_record(
+            RuntimeOrigin::signed(1),
+            b"mysite".to_vec(),
+            b"email".to_vec(),
+            b"new@mysite.bz".to_vec()
+        ));
+
+        let records = DomainResolution::<Test>::get(domain_key(b"mysite"))
+            .expect("resolution should exist")
+            .text_records;
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].value.to_vec(), b"new@mysite.bz".to_vec());
+    });
+}
+
+#[test]
+fn set_text_record_rejects_non_owner_and_bad_bounds() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Bns::register_domain(
+            RuntimeOrigin::signed(1),
+            b"mysite".to_vec(),
+            0
+        ));
+
+        assert_noop!(
+            Bns::set_text_record(
+                RuntimeOrigin::signed(2),
+                b"mysite".to_vec(),
+                b"email".to_vec(),
+                b"x@y.bz".to_vec()
+            ),
+            Error::<Test>::NotDomainOwner
+        );
+
+        assert_noop!(
+            Bns::set_text_record(
+                RuntimeOrigin::signed(1),
+                b"mysite".to_vec(),
+                vec![b'k'; 33],
+                b"value".to_vec()
+            ),
+            Error::<Test>::InvalidTextRecordKey
+        );
+
+        assert_noop!(
+            Bns::set_text_record(
+                RuntimeOrigin::signed(1),
+                b"mysite".to_vec(),
+                b"email".to_vec(),
+                vec![b'v'; 129]
+            ),
+            Error::<Test>::InvalidTextRecordValue
+        );
+
+        assert_noop!(
+            Bns::set_text_record(
+                RuntimeOrigin::signed(1),
+                b"mysite".to_vec(),
+                b"email".to_vec(),
+                vec![]
+            ),
+            Error::<Test>::InvalidTextRecordValue
+        );
+    });
+}
+
+#[test]
+fn remove_text_record_works() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Bns::register_domain(
+            RuntimeOrigin::signed(1),
+            b"mysite".to_vec(),
+            0
+        ));
+        assert_ok!(Bns::set_text_record(
+            RuntimeOrigin::signed(1),
+            b"mysite".to_vec(),
+            b"email".to_vec(),
+            b"a@b.bz".to_vec()
+        ));
+
+        assert_ok!(Bns::remove_text_record(
+            RuntimeOrigin::signed(1),
+            b"mysite".to_vec(),
+            b"email".to_vec()
+        ));
+
+        let records = DomainResolution::<Test>::get(domain_key(b"mysite"))
+            .expect("resolution should still exist")
+            .text_records;
+        assert!(records.is_empty());
+
+        // Removing an absent key is an error, not a silent no-op.
+        assert_noop!(
+            Bns::remove_text_record(
+                RuntimeOrigin::signed(1),
+                b"mysite".to_vec(),
+                b"email".to_vec()
+            ),
+            Error::<Test>::TextRecordNotFound
+        );
+    });
+}
+
+#[test]
+fn set_resolution_preserves_text_records() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Bns::register_domain(
+            RuntimeOrigin::signed(1),
+            b"mysite".to_vec(),
+            0
+        ));
+        assert_ok!(Bns::set_text_record(
+            RuntimeOrigin::signed(1),
+            b"mysite".to_vec(),
+            b"email".to_vec(),
+            b"a@b.bz".to_vec()
+        ));
+        assert_ok!(Bns::set_avatar(
+            RuntimeOrigin::signed(1),
+            b"mysite".to_vec(),
+            [7u8; 32]
+        ));
+
+        // Regression: this used to reset `text_records` and `avatar` to empty.
+        assert_ok!(Bns::set_resolution(
+            RuntimeOrigin::signed(1),
+            b"mysite".to_vec(),
+            Some(1),
+            Some([1u8; 32]),
+            b"{}".to_vec()
+        ));
+
+        let resolution = DomainResolution::<Test>::get(domain_key(b"mysite"))
+            .expect("resolution should exist");
+        assert_eq!(resolution.text_records.len(), 1);
+        assert_eq!(
+            resolution.text_records[0].value.to_vec(),
+            b"a@b.bz".to_vec()
+        );
+        assert_eq!(resolution.avatar, Some([7u8; 32]));
+        assert_eq!(resolution.content_hash, Some([1u8; 32]));
+    });
+}
+
+#[test]
+fn set_text_record_enforces_max_records() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Bns::register_domain(
+            RuntimeOrigin::signed(1),
+            b"mysite".to_vec(),
+            0
+        ));
+
+        // Mock runtime caps text records per domain.
+        for i in 0..MaxTextRecords::get() {
+            assert_ok!(Bns::set_text_record(
+                RuntimeOrigin::signed(1),
+                b"mysite".to_vec(),
+                format!("key{i}").into_bytes(),
+                b"v".to_vec()
+            ));
+        }
+
+        assert_noop!(
+            Bns::set_text_record(
+                RuntimeOrigin::signed(1),
+                b"mysite".to_vec(),
+                b"overflow".to_vec(),
+                b"v".to_vec()
+            ),
+            Error::<Test>::MaxTextRecordsReached
+        );
+    });
+}
+
+#[test]
+fn set_and_clear_primary_domain_works() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Bns::register_domain(
+            RuntimeOrigin::signed(1),
+            b"mysite".to_vec(),
+            0
+        ));
+
+        assert_ok!(Bns::set_primary_domain(
+            RuntimeOrigin::signed(1),
+            b"mysite".to_vec()
+        ));
+        assert_eq!(
+            PrimaryDomain::<Test>::get(1).map(|d| d.to_vec()),
+            Some(b"mysite".to_vec())
+        );
+
+        assert_ok!(Bns::clear_primary_domain(RuntimeOrigin::signed(1)));
+        assert!(PrimaryDomain::<Test>::get(1).is_none());
+
+        // Clearing when nothing is set is an error.
+        assert_noop!(
+            Bns::clear_primary_domain(RuntimeOrigin::signed(1)),
+            Error::<Test>::DomainNotFound
+        );
+    });
+}
+
+#[test]
+fn set_primary_domain_requires_ownership() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Bns::register_domain(
+            RuntimeOrigin::signed(1),
+            b"mysite".to_vec(),
+            0
+        ));
+
+        assert_noop!(
+            Bns::set_primary_domain(RuntimeOrigin::signed(2), b"mysite".to_vec()),
+            Error::<Test>::NotDomainOwner
+        );
     });
 }
