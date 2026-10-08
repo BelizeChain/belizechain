@@ -118,11 +118,18 @@ This document defines the comprehensive penetration testing requirements for Bel
 #### **Smart Contracts (ink! WASM)**
 
 **DeFi Primitives:**
-1. **PSP22 Token Contract:** `5GTokenContract...`
-2. **AMM Pool Contract:** `5GAmmContract...`
-3. **Lending Protocol:** `5GLendingContract...`
-4. **Ethereum Bridge Contract:** `5GEthBridgeContract...`
-5. **Polkadot XCM Bridge Contract:** `5GXcmBridgeContract...`
+
+> ⚠️ Of the contracts below, only the PSP22 token and the AMM pool exist in
+> `gem/`. The **Lending Protocol**, **Ethereum Bridge**, and **Polkadot XCM
+> Bridge** are *proposed* contracts that are **not implemented** — bridge
+> functionality lives in the `pallet-belize-interoperability` runtime pallet.
+> The addresses are illustrative placeholders, not real deployments.
+
+1. **PSP22 Token Contract** (implemented: `gem/dalla_token`) — illustrative address `5GTokenContract...`
+2. **AMM Pool Contract** (implemented: `gem/dex`) — illustrative address `5GAmmContract...`
+3. **Lending Protocol** — ⚠️ not implemented, no address
+4. **Ethereum Bridge Contract** — ⚠️ not implemented, no address
+5. **Polkadot XCM Bridge Contract** — ⚠️ not implemented, no address
 
 **Testing Scenarios:**
 - Deploy malicious contracts (phishing, reentrancy)
@@ -376,6 +383,10 @@ This document defines the comprehensive penetration testing requirements for Bel
 ### 3.4 Smart Contract Attacks
 
 #### **Scenario 10: Reentrancy Attack on Lending Protocol**
+
+> ⚠️ **Forward-looking scenario.** No lending protocol contract exists in `gem/`,
+> so this test cannot be executed today. Retained as a plan for when one ships.
+
 **Objective:** Drain collateral via recursive calls
 
 **Attack Steps:**

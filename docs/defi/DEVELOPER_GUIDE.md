@@ -140,6 +140,9 @@ async function provideLiquidity() {
 
 ### Example 3: Borrow Against Collateral
 
+> ⚠️ **Not implemented.** No lending contract exists in `gem/`; this example is
+> illustrative only.
+
 ```typescript
 async function borrowWithCollateral() {
   const lendingContract = new ContractPromise(api, lendingAbi, lendingAddress);
@@ -175,6 +178,9 @@ async function borrowWithCollateral() {
 ```
 
 ### Example 4: Bridge Assets from Ethereum
+
+> ⚠️ **Not implemented.** Bridging is the `pallet-belize-interoperability`
+> runtime pallet, not an ink! contract; this example is illustrative only.
 
 ```typescript
 async function bridgeFromEthereum() {
@@ -340,6 +346,8 @@ fn balance_of(account: AccountId) -> u128  // LP tokens
 
 ### Lending Protocol
 
+> ⚠️ **Not implemented** — indicative interface only.
+
 ```rust
 // Supply collateral
 fn supply(asset: AccountId, amount: u128) -> Result<()>
@@ -368,6 +376,8 @@ fn get_market_info(asset: AccountId) -> Result<Market>
 ```
 
 ### Ethereum Bridge
+
+> ⚠️ **Not implemented** — bridging is a runtime pallet, not a contract.
 
 ```rust
 // Deposit from Ethereum

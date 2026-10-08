@@ -366,6 +366,9 @@ Get current pool reserves and last update timestamp.
 
 ## Lending Protocol Contract
 
+> ⚠️ **Not implemented.** No lending contract exists in the `gem` repository.
+> The signatures below are an indicative proposal, not a deployable interface.
+
 Over-collateralized lending with dynamic interest rates.
 
 ### Constructor
@@ -600,6 +603,10 @@ struct Market {
 ---
 
 ## Ethereum Bridge Contract
+
+> ⚠️ **Not implemented.** Bridging is handled by the
+> `pallet-belize-interoperability` runtime pallet, not an ink! contract.
+> The signatures below are an indicative proposal.
 
 Cross-chain asset bridge with multi-sig security.
 

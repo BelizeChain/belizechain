@@ -812,11 +812,16 @@ window.addEventListener('error', (event) => {
 ### 4.3 Smart Contract Monitoring
 
 **Monitored Contracts (ink! WASM):**
-1. PSP22 Token (ERC-20 equivalent)
-2. AMM Pool (DEX)
-3. Lending Protocol
-4. Ethereum Bridge
-5. Polkadot XCM Bridge
+
+> ⚠️ Only the PSP22 token and the AMM pool exist in `gem/`. The **Lending
+> Protocol**, **Ethereum Bridge**, and **Polkadot XCM Bridge** are not
+> implemented, so there is nothing to monitor for them yet.
+
+1. PSP22 Token (implemented: `gem/dalla_token`)
+2. AMM Pool (implemented: `gem/dex`)
+3. Lending Protocol — ⚠️ not implemented
+4. Ethereum Bridge — ⚠️ not implemented
+5. Polkadot XCM Bridge — ⚠️ not implemented
 
 **Event Monitoring:**
 
@@ -850,9 +855,10 @@ class ContractMonitor:
     def __init__(self, substrate: SubstrateInterface):
         self.substrate = substrate
         self.contract_addresses = {
+            # Only the PSP22 token and the AMM pool are deployed. A 'lending'
+            # entry used to sit here pointing at a contract that does not exist.
             'psp22': '5GContractPSP22...',
             'amm': '5GContractAMM...',
-            'lending': '5GContractLending...',
         }
     
     async def monitor_events(self):
@@ -886,11 +892,6 @@ class ContractMonitor:
                 price_impact = event['price_impact']
                 if price_impact > 0.05:  # >5% price impact
                     await self.alert_high_slippage(contract, event)
-        
-        elif contract == 'lending':
-            if event['type'] == 'Liquidation':
-                # All liquidations are interesting
-                await self.log_liquidation(contract, event)
 ```
 
 ---

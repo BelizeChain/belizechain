@@ -1433,7 +1433,7 @@ plt.savefig('forecast.png')
 | 1. Developer Ecosystem | ✅ COMPLETE | ink! platform, PSP standards, 5,000+ lines docs |
 | 2. Network Infrastructure | ✅ COMPLETE | Testnet deployment ready, 7,000+ lines docs |
 | 3. Smart Contract Platform | ✅ COMPLETE | WASM runtime, PSP22/34, 3,500+ lines docs |
-| 4. DeFi Primitives | ✅ COMPLETE | AMM, lending, bridges, 2,850 lines code |
+| 4. DeFi Primitives | ✅ COMPLETE | AMM only (BelizeX `gem/dex`). Lending and standalone bridge contracts are **not implemented**; bridging is the `pallet-belize-interoperability` runtime pallet. |
 | 5. Cross-Chain Interoperability | ✅ COMPLETE | Ethereum + Polkadot XCM, 3,350 lines code |
 | 6. Performance & Scalability | ✅ COMPLETE | **Framework documented, testing roadmap defined** |
 | 7. Security & Auditing | ✅ COMPLETE | 7 documents (288KB), audit/pentest planned |
