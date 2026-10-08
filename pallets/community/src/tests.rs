@@ -1101,13 +1101,16 @@ fn test_finalize_rejected_proposal() {
         let proposal = Community::proposals(0).unwrap();
         assert_eq!(proposal.status, ProposalStatus::Rejected);
 
-        // Check deposit was slashed (not returned)
+        // The deposit left the proposer and nothing stays reserved.
         assert_eq!(Balances::reserved_balance(proposer), 0);
-
-        // Free balance should be original minus deposit (deposit was reserved, then slashed)
-        // 100,000 - 1,500 (reserved) = 98,500 free at submission
-        // After slash, deposit is gone completely: 100,000 - 1,500 = 98,500 total remaining
         assert_eq!(Balances::free_balance(proposer), 100_000 - deposit);
+
+        // It was forfeited *to* the community treasury — not burned. The mock
+        // treasury starts at 1,000,000, so it must now hold the deposit on top.
+        assert_eq!(
+            Balances::free_balance(CommunityTreasuryAccount::get()),
+            1_000_000 + deposit
+        );
     });
 }
 

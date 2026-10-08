@@ -178,9 +178,10 @@
 //!
 //! - **Quadratic Voting**: Research QV implementation for fairer preference aggregation
 //! - **Liquid Democracy**: Extended delegation chains with transitive trust
-//! - **Shielded Voting** (Roadmapped 2028): Commit-reveal scheme with optional ZK selective
-//!   disclosure for anonymous voting. NOT YET IMPLEMENTED — current votes are public for
-//!   accountability. Infrastructure storage (`VoteCommitments`) is pre-provisioned.
+//! - **Shielded Voting** (Roadmapped 2028): ZK selective disclosure for anonymous voting.
+//!   The underlying commit-reveal scheme IS implemented (`commit_vote` / `reveal_vote`,
+//!   backed by `VoteCommitments`); only the ZK disclosure layer remains roadmapped.
+//!   Plaintext votes in `Votes` remain the default and stay public for accountability.
 //! - **Cross-Chain Governance**: XCM integration for Polkadot governance participation
 //!
 //! ## References
@@ -1815,11 +1816,12 @@ pub mod pallet {
     #[pallet::getter(fn votes)]
     /// Vote records for proposals.
     ///
-    /// **Privacy Note**: Votes are currently stored in plaintext (voter -> vote).
+    /// **Privacy Note**: Votes are stored in plaintext (voter -> vote).
     /// This is a deliberate design choice for governance accountability — council
     /// votes and proposal votes are public in most democratic systems.
-    /// For referendum votes (citizen-level), commit-reveal privacy is roadmapped.
-    /// See `VoteCommitments` storage for the commit-reveal infrastructure.
+    /// Callers wanting a hidden ballot can instead use the implemented commit-reveal
+    /// path (`commit_vote` / `reveal_vote`), which writes here only once the
+    /// commitment verifies.
     pub type Votes<T: Config> = StorageDoubleMap<
         _,
         Blake2_128Concat,
@@ -1837,8 +1839,8 @@ pub mod pallet {
     /// 2. **Reveal phase**: After voting period, voter submits `(vote_choice, salt)`,
     ///    pallet verifies hash match, records in `Votes`/`ReferendumVotes`, deletes commitment
     ///
-    /// Currently pre-provisioned storage — not yet wired into extrinsics.
-    /// Full implementation requires new `commit_vote` and `reveal_vote` extrinsics.
+    /// Written by `commit_vote` and consumed by `reveal_vote`, which verifies the
+    /// commitment, records the vote in `Votes`, and removes the entry.
     pub type VoteCommitments<T: Config> = StorageDoubleMap<
         _,
         Blake2_128Concat,
@@ -2495,9 +2497,9 @@ pub mod pallet {
         },
         /// Vote cast on proposal.
         ///
-        /// **Privacy Note**: Vote choice and voter identity are currently public.
-        /// This enables accountability for governance votes. Commit-reveal privacy
-        /// is roadmapped for Phase 3 (see `VoteCommitments` storage).
+        /// **Privacy Note**: Vote choice and voter identity are public. This enables
+        /// accountability for governance votes. Also emitted by `reveal_vote` once a
+        /// committed vote verifies — see `VoteCommitted` and `VoteCommitments`.
         VoteCast {
             proposal_id: u32,
             voter: T::AccountId,

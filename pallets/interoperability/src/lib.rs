@@ -1261,7 +1261,7 @@ pub mod pallet {
         /// The transaction must then be signed by multiple validators via `provide_pq_signature`
         /// and survive the challenge period before `process_unlock` can execute it.
         #[pallet::call_index(7)]
-        #[pallet::weight(T::WeightInfo::initiate_bridge())]
+        #[pallet::weight(T::WeightInfo::submit_incoming_unlock())]
         pub fn submit_incoming_unlock(
             origin: OriginFor<T>,
             source_chain_index: u8,
@@ -1533,7 +1533,7 @@ pub mod pallet {
         /// Requires Level 3 KYC (full identity verification) and a minimum stake.
         /// The caller provides a post-quantum public key and the chains they support.
         #[pallet::call_index(8)]
-        #[pallet::weight(T::WeightInfo::initiate_bridge())]
+        #[pallet::weight(T::WeightInfo::register_bridge_validator())]
         pub fn register_bridge_validator(
             origin: OriginFor<T>,
             pq_public_key: Vec<u8>,
@@ -1921,6 +1921,8 @@ pub trait WeightInfo {
     fn confirm_burn_proof() -> Weight;
     fn dispute_bridge_transaction() -> Weight;
     fn withdraw_liquidity() -> Weight;
+    fn register_bridge_validator() -> Weight;
+    fn submit_incoming_unlock() -> Weight;
 }
 
 impl WeightInfo for () {
@@ -1950,6 +1952,12 @@ impl WeightInfo for () {
     }
     fn withdraw_liquidity() -> Weight {
         Weight::from_parts(20_000_000, 512).saturating_add(Weight::from_parts(0, 3000))
+    }
+    fn register_bridge_validator() -> Weight {
+        Weight::from_parts(25_000_000, 512).saturating_add(Weight::from_parts(0, 3500))
+    }
+    fn submit_incoming_unlock() -> Weight {
+        Weight::from_parts(25_000_000, 512).saturating_add(Weight::from_parts(0, 3500))
     }
 }
 

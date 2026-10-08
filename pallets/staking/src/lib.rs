@@ -151,6 +151,12 @@ pub mod pallet {
         /// only powers a warning at join time. Keeping the authority set non-empty is
         /// `BelizeSessionManager::new_session`'s job, not this pallet's.
         type SessionKeys: SessionKeyRegistry<Self::AccountId>;
+
+        /// Community participation recorder.
+        ///
+        /// Wired to the Community pallet so that joining the validator set
+        /// scores as an `ActivityType::ValidatorActive` participation event.
+        type CommunityParticipation: CommunityParticipation<Self::AccountId>;
     }
 
     /// Identity provider trait for Staking pallet
@@ -175,6 +181,19 @@ pub mod pallet {
     pub trait SessionKeyRegistry<AccountId> {
         /// Returns `true` if `account` has session keys registered.
         fn has_session_keys(account: &AccountId) -> bool;
+    }
+
+    /// Cross-pallet hook that records validator participation in the Community
+    /// pallet's Social Responsibility Score history.
+    ///
+    /// Recording is best-effort by contract: the staking pallet is the authority
+    /// on who is a validator, and the Community pallet only scores it. A scoring
+    /// failure must therefore never roll a successful join back.
+    pub trait CommunityParticipation<AccountId> {
+        /// Record that `account` became an active validator.
+        ///
+        /// Returns `true` when the activity was recorded.
+        fn record_validator_activity(account: &AccountId) -> bool;
     }
 
     /// Validator information
@@ -641,10 +660,6 @@ pub mod pallet {
                 );
             }
 
-            // TODO: Record participation in Community pallet via trait (Phase 6 integration)
-            // Activity code 2 = ValidatorStaking
-            // let _ = T::CommunityParticipation::record_validator_activity(&who);
-
             // Verify validator meets KYC requirements (Level 3 - Enhanced verification required)
             ensure!(
                 T::Identity::meets_validator_kyc(&who),
@@ -727,6 +742,16 @@ pub mod pallet {
 
             Validators::<T>::insert(&who, validator_info);
             ValidatorCount::<T>::put(validator_count.saturating_add(1));
+
+            // Score the join as community participation. Best-effort: the
+            // validator is already registered above, so a scoring failure must
+            // not roll the join back.
+            if !T::CommunityParticipation::record_validator_activity(&who) {
+                log::warn!(
+                    "join_validators: could not record community participation for {:?}",
+                    who,
+                );
+            }
 
             Self::deposit_event(Event::ValidatorJoined {
                 validator: who,

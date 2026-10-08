@@ -1288,9 +1288,10 @@ pub mod pallet {
                         });
                     }
                     Err(_) => {
-                        // Treasury transfer failed - mark as rejected and slash deposit
+                        // Treasury transfer failed - mark as rejected and forfeit
+                        // the deposit to the treasury.
                         proposal.status = ProposalStatus::Rejected;
-                        let _ = T::Currency::slash_reserved(&proposal.proposer, proposal.deposit);
+                        Self::forfeit_deposit_to_treasury(&proposal.proposer, proposal.deposit);
 
                         let reason: BoundedVec<u8, ConstU32<64>> = b"Treasury transfer failed"
                             .to_vec()
@@ -1303,11 +1304,9 @@ pub mod pallet {
                     }
                 }
             } else {
-                // Reject proposal and slash deposit
+                // Reject proposal and forfeit the deposit to the treasury
                 proposal.status = ProposalStatus::Rejected;
-
-                // Slash deposit (goes to treasury in production)
-                let _ = T::Currency::slash_reserved(&proposal.proposer, proposal.deposit);
+                Self::forfeit_deposit_to_treasury(&proposal.proposer, proposal.deposit);
 
                 let reason: BoundedVec<u8, ConstU32<64>> = b"Failed to meet majority threshold"
                     .to_vec()
@@ -1754,6 +1753,41 @@ pub mod pallet {
             }
 
             Ok(())
+        }
+    }
+
+    // ================================
+    // Internal Functions - Community Fund
+    // ================================
+
+    impl<T: Config> Pallet<T> {
+        /// Forfeit a rejected proposal's deposit to the community treasury.
+        ///
+        /// `Currency::slash_reserved` *burns* the amount — it reduces total
+        /// issuance and credits no account — so a slashed deposit never reaches
+        /// the treasury. `repatriate_reserved` performs the actual transfer of
+        /// the reserved balance. The `Ok` payload is the portion that could not
+        /// be moved because the proposer's reserved balance fell short; it is
+        /// logged rather than dropped silently.
+        fn forfeit_deposit_to_treasury(proposer: &T::AccountId, deposit: BalanceOf<T>) {
+            let treasury_account = T::CommunityTreasuryAccount::get();
+            match T::Currency::repatriate_reserved(
+                proposer,
+                &treasury_account,
+                deposit,
+                frame_support::traits::BalanceStatus::Free,
+            ) {
+                Ok(leftover) if !leftover.is_zero() => log::warn!(
+                    "community: proposal deposit only partially forfeited to treasury, \
+                     {:?} remained reserved on the proposer",
+                    leftover,
+                ),
+                Ok(_) => {}
+                Err(err) => log::error!(
+                    "community: failed to forfeit proposal deposit to treasury: {:?}",
+                    err,
+                ),
+            }
         }
     }
 

@@ -1781,6 +1781,73 @@ fn anchor_chain_grows_with_multiple_transfers() {
     });
 }
 
+#[test]
+fn get_latest_anchor_resolves_any_content_hash_to_the_chain_tip() {
+    new_test_ext().execute_with(|| {
+        // Start from ID=1 so oracle verifies (1-100 for accounts 1-3)
+        NextPropertyId::<Test>::put(1);
+        assert_ok!(LandLedger::register_property(
+            RuntimeOrigin::signed(ALICE),
+            test_title(1),
+            test_description("Content hash index"),
+            test_coordinates(0, 0),
+            100,
+            0,
+            100_000,
+        ));
+        assert_ok!(LandLedger::verify_property(RuntimeOrigin::root(), 1));
+        assert_ok!(LandLedger::register_surveyor(RuntimeOrigin::root(), ALICE));
+        assert_ok!(LandLedger::survey_property(
+            RuntimeOrigin::signed(ALICE),
+            1,
+            100,
+            None
+        ));
+
+        let genesis_anchor = PropertyAnchorChain::<Test>::get(1).unwrap();
+        let genesis_content = LandAnchors::<Test>::get(genesis_anchor).unwrap().content_hash;
+
+        // A lone anchor is its own chain tip.
+        assert_eq!(
+            <LandLedger as TemporalAnchoring<_>>::get_latest_anchor(genesis_content),
+            Some(genesis_anchor),
+        );
+
+        assert_ok!(LandLedger::transfer_property(
+            RuntimeOrigin::signed(ALICE),
+            1,
+            EVE,
+            100_000,
+            0,
+        ));
+
+        let head_anchor = PropertyAnchorChain::<Test>::get(1).unwrap();
+        let head_content = LandAnchors::<Test>::get(head_anchor).unwrap().content_hash;
+        assert_ne!(head_anchor, genesis_anchor);
+
+        // The genesis content hash now resolves forward to the new tip...
+        assert_eq!(
+            <LandLedger as TemporalAnchoring<_>>::get_latest_anchor(genesis_content),
+            Some(head_anchor),
+        );
+        // ...and so does the newest content hash.
+        assert_eq!(
+            <LandLedger as TemporalAnchoring<_>>::get_latest_anchor(head_content),
+            Some(head_anchor),
+        );
+    });
+}
+
+#[test]
+fn get_latest_anchor_returns_none_for_unanchored_content() {
+    new_test_ext().execute_with(|| {
+        assert_eq!(
+            <LandLedger as TemporalAnchoring<_>>::get_latest_anchor([0xAB; 32]),
+            None,
+        );
+    });
+}
+
 // ============================================================================
 // Zoning Tests
 // ============================================================================

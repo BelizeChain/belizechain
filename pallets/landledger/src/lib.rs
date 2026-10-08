@@ -362,6 +362,26 @@ pub mod pallet {
         [u8; 32], // Latest anchor hash
     >;
 
+    #[pallet::storage]
+    #[pallet::getter(fn content_hash_latest_anchor)]
+    /// Latest anchor hash for each content hash
+    ///
+    /// Keyed by an anchor's `content_hash` rather than by `PropertyId`, so a
+    /// caller that only holds a content hash can resolve the tip of its anchor
+    /// chain. `update_anchor` re-points every content hash already in the chain
+    /// at the new anchor, so the original (genesis) content hash resolves to the
+    /// latest version as well.
+    ///
+    /// Chains anchored before this mapping existed have no entry until their
+    /// next `update_anchor`: `LandAnchors` is keyed by anchor hash, so existing
+    /// content hashes cannot be enumerated for a backfill.
+    pub type ContentHashLatestAnchor<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        [u8; 32], // Content hash
+        [u8; 32], // Latest anchor hash
+    >;
+
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
@@ -976,6 +996,7 @@ pub mod pallet {
 
             let anchor_hash = temporal_helpers::calculate_anchor_hash(&anchor);
             LandAnchors::<T>::insert(anchor_hash, anchor);
+            ContentHashLatestAnchor::<T>::insert(content_hash, anchor_hash);
 
             Ok(anchor_hash)
         }
@@ -1012,6 +1033,15 @@ pub mod pallet {
 
             let anchor_hash = temporal_helpers::calculate_anchor_hash(&new_anchor);
             LandAnchors::<T>::insert(anchor_hash, new_anchor);
+
+            // Re-point every content hash already in this chain at the new tip,
+            // so `get_latest_anchor` resolves from the genesis content hash as
+            // well as from the newest one. `history` is already depth-limited by
+            // `get_anchor_history`, so this stays bounded.
+            for ancestor in &history {
+                ContentHashLatestAnchor::<T>::insert(ancestor.content_hash, anchor_hash);
+            }
+            ContentHashLatestAnchor::<T>::insert(new_content_hash, anchor_hash);
 
             Ok(anchor_hash)
         }
@@ -1088,11 +1118,8 @@ pub mod pallet {
             history
         }
 
-        fn get_latest_anchor(_content_hash: [u8; 32]) -> Option<[u8; 32]> {
-            // This would require additional storage mapping
-            // For now, return None - can be enhanced later
-            // In practice, PropertyAnchorChain storage serves this purpose
-            None
+        fn get_latest_anchor(content_hash: [u8; 32]) -> Option<[u8; 32]> {
+            ContentHashLatestAnchor::<T>::get(content_hash)
         }
     }
 }

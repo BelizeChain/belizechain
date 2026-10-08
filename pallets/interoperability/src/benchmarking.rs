@@ -373,5 +373,52 @@ mod benchmarks {
         _(RawOrigin::Signed(oracle), tx_id);
     }
 
+    // ───────────────────────────────────────────
+    // 10. register_bridge_validator — signed, KYC L3 + stake lock
+    //     WeightInfo fn: register_bridge_validator()
+    // ───────────────────────────────────────────
+    #[benchmark]
+    fn register_bridge_validator() {
+        let caller: T::AccountId = whitelisted_caller();
+        // Must cover the 10× MinBridgeAmount stake lock applied by the extrinsic.
+        T::Currency::make_free_balance_be(&caller, (1_000_000_000_000_000u128).saturated_into());
+        grant_bridge_operator::<T>(&caller);
+
+        #[extrinsic_call]
+        register_bridge_validator(
+            RawOrigin::Signed(caller),
+            vec![1u8; 96], // pq_public_key
+            vec![1u8],     // supported_chain_indices: Ethereum
+        );
+    }
+
+    // ───────────────────────────────────────────
+    // 11. submit_incoming_unlock — signed, registered bridge validator
+    //     WeightInfo fn: submit_incoming_unlock()
+    // ───────────────────────────────────────────
+    #[benchmark]
+    fn submit_incoming_unlock() {
+        setup_chain_config::<T>();
+        let validator = setup_bridge_validator::<T>(0);
+        grant_bridge_operator::<T>(&validator);
+
+        // The unlock path asserts the bridge holds enough locked value to cover
+        // the amount being released.
+        let amount = 1_000_000_000_000u128;
+        TotalLockedAssets::<T>::insert(BridgeChain::Ethereum, BridgeAsset::DALLA, amount * 10);
+
+        let recipient: T::AccountId = account("recipient", 0, SEED);
+
+        #[extrinsic_call]
+        submit_incoming_unlock(
+            RawOrigin::Signed(validator),
+            1u8,           // source_chain_index: Ethereum
+            vec![0u8; 32], // source_tx_hash
+            recipient,
+            amount,
+            0u8, // asset_index: DALLA
+        );
+    }
+
     impl_benchmark_test_suite!(Pallet, crate::mock::new_test_ext(), crate::mock::Test);
 }

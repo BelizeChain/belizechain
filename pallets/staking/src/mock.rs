@@ -146,6 +146,15 @@ impl pallet_belize_staking::JusticeProvider<u64, u128> for MockJustice {
     }
 }
 
+// Mock community participation recorder — reports success without a Community
+// pallet, so `join_validators` tests exercise the wiring in isolation.
+pub struct MockCommunityParticipation;
+impl pallet_belize_staking::CommunityParticipation<u64> for MockCommunityParticipation {
+    fn record_validator_activity(_account: &u64) -> bool {
+        true
+    }
+}
+
 impl pallet_belize_staking::Config for Test {
     type Currency = Balances;
     type OracleVerifier = MockIdentity; // Reuse MockIdentity for testing
@@ -161,6 +170,7 @@ impl pallet_belize_staking::Config for Test {
     type JusticeProvider = MockJustice;
     type MaxDomainContributionsPerEpoch = ConstU32<100>;
     type SessionKeys = MockSessionKeys;
+    type CommunityParticipation = MockCommunityParticipation;
 }
 
 // Test accounts

@@ -1404,6 +1404,8 @@ impl pallet_belize_staking::Config for Runtime {
     // Session-key gate: a keyless validator is silently dropped by
     // `pallet_session` and can permanently empty BABE's authority set.
     type SessionKeys = StakingSessionKeyRegistry;
+    // Phase 6 — joining the validator set scores as community participation.
+    type CommunityParticipation = StakingCommunityParticipation;
 }
 
 impl pallet_belize_oracle::Config for Runtime {
@@ -1815,6 +1817,30 @@ impl pallet_belize_staking::JusticeProvider<AccountId, Balance> for StakingJusti
     }
     fn has_pending_review(account: &AccountId) -> bool {
         BelizeJustice::has_pending_review(account)
+    }
+}
+
+/// Bridges validator registration to the Community pallet's participation
+/// history, so joining the validator set scores as
+/// `ActivityType::ValidatorActive`.
+///
+/// MUST be defined after construct_runtime! because it calls `Community::`.
+pub struct StakingCommunityParticipation;
+impl pallet_belize_staking::CommunityParticipation<AccountId> for StakingCommunityParticipation {
+    fn record_validator_activity(account: &AccountId) -> bool {
+        // `ActivityType::ValidatorActive` in `pallet_belize_community::types`.
+        const VALIDATOR_ACTIVE_ACTIVITY_CODE: u8 = 8;
+
+        // Root origin is required: `record_participation` treats a signed caller
+        // as self-reporting and demands prior oracle attestation for the
+        // high-value codes. Root is the documented cross-pallet path and bypasses
+        // that gate, so on-chain automation is never blocked.
+        Community::record_participation(
+            frame_system::RawOrigin::Root.into(),
+            account.clone(),
+            VALIDATOR_ACTIVE_ACTIVITY_CODE,
+        )
+        .is_ok()
     }
 }
 
