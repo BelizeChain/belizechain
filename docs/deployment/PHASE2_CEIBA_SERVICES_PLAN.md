@@ -96,7 +96,7 @@ hostname through the `$root_backend` map in `infra/nginx/nginx.conf`:
 1. Pull/build image with immutable tag.
 2. Start service only.
 3. Run service health endpoint check.
-4. Run dependency check against node RPC at 100.81.45.25:9944.
+4. Run dependency check against node RPC at 100.119.97.38:9944.
 5. Add to reverse proxy and re-test externally.
 6. Capture baseline metrics after 15 minutes.
 

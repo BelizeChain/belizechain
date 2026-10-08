@@ -29,6 +29,7 @@ use sp_std::{convert::TryInto, vec::Vec};
 
 pub use pallet::*;
 
+pub mod migrations;
 pub mod weights;
 
 #[cfg(feature = "runtime-benchmarks")]

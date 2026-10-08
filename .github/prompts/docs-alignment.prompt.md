@@ -41,9 +41,9 @@ complete, enabled, verified, in progress**. Grep for them across each repo's
 
 | Claim type | Verification source |
 |---|---|
-| Service live/healthy | `ssh wicked@100.81.45.25 'docker ps'`, health endpoints |
+| Service live/healthy | `ssh wicked@ceiba 'docker ps'`, health endpoints |
 | Timer/schedule claims | `systemctl cat <unit>` AND `systemctl show <unit> -p <prop>` — effective config, not declared |
-| Chain state (block, spec, epoch) | `curl -s -H 'Content-Type: application/json' -d '{"id":1,"jsonrpc":"2.0","method":"chain_getHeader","params":[]}' http://100.81.45.25:9944` |
+| Chain state (block, spec, epoch) | `curl -s -H 'Content-Type: application/json' -d '{"id":1,"jsonrpc":"2.0","method":"chain_getHeader","params":[]}' http://100.119.97.38:9944 |
 | Alerting armed | live config in container + `.env` key names (never values) |
 | CI/PR/alert state | `gh run list`, `gh pr list`, `gh api .../dependabot/alerts` |
 | Feature works | code path check: caller exists, target extrinsic exists in `belizechain/pallets` or `runtime/src/lib.rs` |

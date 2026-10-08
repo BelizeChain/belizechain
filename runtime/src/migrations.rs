@@ -27,7 +27,7 @@ use sp_std::prelude::*;
 
 /// Current runtime migration version.
 /// Bump this whenever a new migration is added.
-const CURRENT_RUNTIME_VERSION: u32 = 1;
+const CURRENT_RUNTIME_VERSION: u32 = 2;
 
 /// Migration tracker for coordinated multi-pallet upgrades
 #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug)]
@@ -108,7 +108,9 @@ pub struct CoordinatedUpgrade<T> {
     _phantom: PhantomData<T>,
 }
 
-impl<T: frame_system::Config> OnRuntimeUpgrade for CoordinatedUpgrade<T> {
+impl<T: frame_system::Config + pallet_belize_interoperability::Config> OnRuntimeUpgrade
+    for CoordinatedUpgrade<T>
+{
     fn on_runtime_upgrade() -> Weight {
         let on_chain = on_chain_version();
         let mut total_weight = Weight::zero();
@@ -122,25 +124,37 @@ impl<T: frame_system::Config> OnRuntimeUpgrade for CoordinatedUpgrade<T> {
             "🔄 Starting coordinated runtime upgrade: v{on_chain} → v{CURRENT_RUNTIME_VERSION}"
         );
 
+        // Each gate tests the *pre-upgrade* `on_chain`, so a chain several
+        // versions behind runs every pending step in a single upgrade.
+        // `set_on_chain_version` advances per step (MG-2) so a partially
+        // applied upgrade resumes from the last completed step.
+
         // ── V0 → V1: Initial migration (no-op, establishes version tracking) ──
         if on_chain < 1 {
             log::info!("  ↳ Applying migration V0 → V1 (version tracking bootstrap)");
-            // Future migrations go here. Example:
-            // total_weight = total_weight.saturating_add(
-            //     MigrateEconomyV1ToV2::<T>::on_runtime_upgrade()
-            // );
             total_weight = total_weight.saturating_add(
                 Weight::from_parts(1_000_000, 0), // bookkeeping weight
             );
-            // MG-2 FIX: Advance version per-step for rollback safety
             set_on_chain_version(1);
         }
 
+        // ── V1 → V2: seed bridge chain configurations ─────────────────────────
+        // `ChainConfigurations` cannot be created by any extrinsic, so a chain
+        // launched without the interoperability genesis patch starts with an
+        // empty bridge that no governance call can fill.
+        if on_chain < 2 {
+            log::info!("  ↳ Applying migration V1 → V2 (bridge chain configurations)");
+            total_weight = total_weight.saturating_add(
+                pallet_belize_interoperability::migrations::SeedChainConfigurations::<T>::on_runtime_upgrade(),
+            );
+            set_on_chain_version(2);
+        }
+
         // ── Add new version gates above this line ──
-        // if on_chain < 2 {
-        //     log::info!("  ↳ Applying migration V1 → V2 ...");
+        // if on_chain < 3 {
+        //     log::info!("  ↳ Applying migration V2 → V3 ...");
         //     total_weight = total_weight.saturating_add(MigrateXxx::<T>::on_runtime_upgrade());
-        //     set_on_chain_version(2); // MG-2: advance after each step
+        //     set_on_chain_version(3);
         // }
 
         // MG-2 FIX: Version is now advanced per-step above. Only log completion.

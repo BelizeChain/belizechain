@@ -397,6 +397,12 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     // TechnicalCouncil member to `TechnicalCouncilSuperMajority` (>2/3 council
     // motion, or Root) for `validate_ai_model`, `start_consensus_round`, and
     // `finalize_consensus_round`. No storage migration.
+    // BNS-1: bumped to 110 — reverse resolution (`primaryDomain` storage plus
+    // `set_primary_domain` / `clear_primary_domain` / `set_text_record` /
+    // `remove_text_record`). The runtime migration V1 → V2 also lands here: it
+    // seeds `interoperability::ChainConfigurations`, which no extrinsic can
+    // create, so the bridge is usable on a chain that launched without the
+    // interoperability genesis patch.
     spec_version: 110,
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,

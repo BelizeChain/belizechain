@@ -30,8 +30,8 @@ Dated baseline snapshots:
 - Core container: `ceiba-node`
 - Genesis: `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef`
   — **shared with Chain C**; the hash alone does not identify the chain
-- On-chain runtime: `spec_version = 109` (hot-upgraded 2026-10-07 from 107 — see
-  the 109 ops-log entry at the end of this file)
+- On-chain runtime: `spec_version = 110` (hot-upgraded 2026-10-08 from 109 — see
+  the 110 ops-log entry at the end of this file)
 - Epoch: `BabeEpochDuration = 300` slots (~30 min) via the `testnet-fast-epoch`
   build feature. The default build keeps 14,400 slots (~24 h), which is the
   mainnet value; 300 is a testnet convenience for observing rotations.
@@ -677,4 +677,92 @@ was written. The same sweep removed the stale literal from
 
 The genesis runtime inside `testnet-spec.json` is still **107**; a future
 re-genesis would boot at 107 and upgrade forward (107 → 108 → 109 so far).
+
+---
+
+## 2026-10-08 — Runtime 110: bridge seeding, then GEM redeploy
+
+### Why this upgrade exists
+
+The interoperability pallet's `ChainConfigurations` map was **empty on the live
+chain**, so the bridge had zero supported chains and every `initiate_bridge`
+failed with `UnsupportedChain`. It could not be fixed from outside the runtime:
+
+- `ChainConfigurations` has **no genesis config** in `testnet-spec.json` — the
+  genesis patch covers only `babe, balances, community, governance, grandpa,
+  identity, session, sudo`.
+- `update_bridge_config` is guarded by
+  `ensure!(ChainConfigurations::contains_key(&chain), Error::UnsupportedChain)`.
+  It can **update** a configuration but can never **create** one, and no
+  `add_bridge_chain` extrinsic exists.
+
+So the only way to populate `ChainConfigurations` on a running chain is a
+runtime migration.
+
+### The migration
+
+`runtime/src/migrations.rs` gained a `V1 → V2` gate, and the pallet gained
+`pallets/interoperability/src/migrations.rs` with `SeedChainConfigurations<T>`.
+It inserts the 13 `BridgeChain` variants and **skips any key already present**,
+so it can never overwrite a governance-tuned configuration and is safe to
+re-apply. Its try-runtime `post_upgrade` asserts the entry count only moves up.
+
+`min_confirmations` is a uniform 12 — one conservative value rather than a
+per-chain finality depth that has not been verified. `rpc_endpoint` and
+`contract_address` are deliberately left empty: no relayer endpoint or far-side
+contract exists yet.
+
+Because `CoordinatedUpgrade` is `impl<T: frame_system::Config>`, the new gate
+required adding `+ pallet_belize_interoperability::Config` to its bound. That is
+safe: `Runtime` is its only instantiation.
+
+### Built and deployed
+
+Built **on Ceiba** (the workstation has ~3 GB free RAM and has OOM-crashed on
+runtime builds) inside `paritytech/ci-linux:production`, from source synced to
+`/tmp/bc-build`, with the mandatory feature flag:
+
+```
+cargo build -p belizechain-runtime --release --features testnet-fast-epoch
+```
+
+The generated wasm-builder project was inspected to confirm the feature
+propagated, so `BabeEpochDuration = 300` in the artifact rather than 14,400.
+
+```
+sudo.sudo(System::set_code(...))
+spec_version   : 109 -> 110     (no node restart)
+epoch duration : 300 -> 300     (guard passed — feature applied)
+```
+
+### Verified
+
+- `specVersion = 110`; on-chain `:code` byte-identical to the submitted blob.
+- `interoperability.ChainConfigurations` **0 → 13 entries** — the migration ran.
+- `interoperability.BridgeValidators` = **3** — validators registered at L3 KYC,
+  each with the 500 DALLA (10× `MinBridgeAmount`) stake lock.
+- **End-to-end bridge round trip passed**: a transfer reached
+  `BridgeStatus::ReadyForExecution` with **3 of 3 required ML-DSA-87 signatures
+  verified on-chain** by `MLDsaVerifier` (NIST FIPS 204, domain-separation
+  context `b"belizechain-bridge-v1"`). `BridgeTransactions` holds the 2 records
+  from that exercise.
+- Chain kept producing and finalising across the upgrade.
+- All **7 GEM contracts redeployed** and confirmed present on-chain —
+  `gem/deployment-1791482394057.json`; re-verified with
+  `gem/scripts/verify-live-deployment.js` (`7/7 contracts verified live`).
+
+### Rollback
+
+`/data/upgrade-110/onchain-code-109.wasm` on `ceiba` (1,419,740 bytes). Spec
+goes *down* on rollback, so it needs the `--without-checks` path:
+`scripts/upgrade-runtime.py <file> --rpc <url> --without-checks --execute`.
+
+⚠️ Rolling the runtime back to 109 does **not** roll the migration back. The
+seeded `ChainConfigurations` entries and the `on-chain migration version = 2`
+marker both stay in storage. Re-applying 110 is therefore idempotent (the gate
+is `on_chain < 2` and the migration skips existing keys), but a rollback leaves
+a chain whose storage is ahead of its runtime code.
+
+The genesis runtime inside `testnet-spec.json` is still **107**; a future
+re-genesis would boot at 107 and upgrade forward (107 → 108 → 109 → 110 so far).
 

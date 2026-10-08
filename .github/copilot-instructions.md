@@ -21,9 +21,9 @@
 - **Live Chain**: **Chain D ("Jade")** — see `docs/operations/CHAIN_LINEAGE.md`
 - **Live Genesis**: `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef` — **identical to Chain C's**, because D was re-genesised from C's spec. The hash alone does **not** identify the chain; use host + head height.
 - **Live Epoch**: `BabeEpochDuration = 300` slots (~30 min). This is the **`testnet-fast-epoch` build feature**, used so a session rotation can be observed in minutes; the default build keeps 14,400 slots (~24 h) for mainnet
-- **Live Runtime**: `spec_version = 109`. Hot `sudo.sudo(System::set_code(…))` upgrade **2026-10-07 on Chain D**, from 107 — no node restart. The genesis runtime embedded in `testnet-spec.json` is still **107**, so a re-genesis would boot at 107 and upgrade forward. Rollback blob: `/data/upgrade-109/onchain-code-107.wasm` on `ceiba`
+- **Live Runtime**: `spec_version = 110`. Hot `sudo.sudo(System::set_code(…))` upgrade **2026-10-08 on Chain D**, from 109 — no node restart — carrying the bridge-seeding migration (`interoperability::ChainConfigurations`, runtime migration V1 → V2). The genesis runtime embedded in `testnet-spec.json` is still **107**, so a re-genesis would boot at 107 and upgrade forward. Rollback blob: `/data/upgrade-110/onchain-code-109.wasm` on `ceiba`
 - ⚠️ **Any forward runtime upgrade MUST be built with `--features testnet-fast-epoch`.** A blob built without it silently changes the epoch length from 300 to 14,400 and permanently halts block import — that is exactly how Chain C died on 2026-10-04. `scripts/upgrade-runtime.py` refuses to proceed if the duration would change; always run its dry run first.
-- ⚠️ `scripts/upgrade-runtime.py` still defaults `--rpc` to the decommissioned `ws://100.81.45.25:9944`. Pass `--rpc ws://100.119.97.38:9944` explicitly.
+- ✅ `scripts/upgrade-runtime.py` no longer carries a default endpoint: `--rpc` is required (or `CEIBA_RPC_URL`), so it can never silently target a dead host. Pass `--rpc ws://100.119.97.38:9944` explicitly.
 - **Primary Access**: `ssh wicked@ceiba` or `ssh wicked@100.119.97.38` (Tailscale)
 - **LAN Fallback**: `ssh wicked@10.0.0.229` (wired)
 - **Node Args**: `--chain /data/chain/testnet-spec.json --base-path /data/chain --rpc-port 9944 --prometheus-port 9615`
@@ -59,7 +59,7 @@ docker build -t belizechain-node .       # Build Docker image
 ssh wicked@ceiba                         # Access Ceiba node host (Tailscale)
 docker -H ssh://wicked@ceiba ps          # Inspect live containers
 docker -H ssh://wicked@ceiba logs ceiba-node --tail 200
-curl -H "Content-Type: application/json" -d '{"id":1,"jsonrpc":"2.0","method":"system_health","params":[]}' http://100.81.45.25:9944
+curl -H "Content-Type: application/json" -d '{"id":1,"jsonrpc":"2.0","method":"system_health","params":[]}' http://100.119.97.38:9944
 ```
 
 ## Rules

@@ -339,7 +339,7 @@ services:
       restart: unless-stopped
       ports:
          - "0.0.0.0:30333:30333"
-         - "100.81.45.25:9944:9944"
+         - "100.119.97.38:9944:9944"
          - "9615:9615"
       volumes:
          - /data/chain:/data/chain

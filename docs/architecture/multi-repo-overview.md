@@ -26,7 +26,7 @@ BelizeChain uses a multi-repository architecture for independent development, de
 ┌─────────────────────────────────────────────────────────┐
 │                    BelizeChain Core                      │
 │  Substrate Runtime + 19 Belize Pallets (Rust)           │
-│  Ceiba RPC: http://100.81.45.25:9944                     │
+│  Ceiba RPC: http://100.119.97.38:9944                     │
 └──────┬────────┬────────┬────────┬────────┬─────────────┘
        │        │        │        │        │
        ↓        ↓        ↓        ↓        ↓

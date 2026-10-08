@@ -16,8 +16,8 @@ live and verifiable; items marked 📅 are plans, not commitments.
 
 ### Runtime and pallets
 
-- Runtime **spec_version 109**, hot-upgraded on the live testnet on 2026-10-04
-  (block #70616) with no node restart
+- Runtime **spec_version 110**, hot-upgraded on the live testnet on 2026-10-08
+  with no node restart
 - **19 custom pallets** at runtime indexes 20–38, plus **14 standard Substrate
   pallets** at indexes 0–13
 - 6-second block times, BABE block production with GRANDPA finality, SS58
