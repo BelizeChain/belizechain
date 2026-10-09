@@ -20,8 +20,20 @@ RUN mkdir -p "$TMPDIR"
 # Copy entire workspace (filtered by .dockerignore)
 COPY . .
 
+# `CARGO_FEATURES` MUST be set to match the target chain. A testnet image needs
+# `testnet-fast-epoch` (BabeEpochDuration = 300); building without it silently
+# embeds the 14,400-slot mainnet epoch, which permanently halts block import on a
+# fast-epoch chain — that defect killed the previous testnet chain. Mainnet
+# builds leave this empty. Keep in sync with `scripts/build-runtime-blob.sh`.
+ARG CARGO_FEATURES=""
+
 # Build optimised release binary
-RUN cargo build --release --package belizechain-node && \
+RUN set -eux; \
+    if [ -n "$CARGO_FEATURES" ]; then \
+        cargo build --release --package belizechain-node --features "$CARGO_FEATURES"; \
+    else \
+        cargo build --release --package belizechain-node; \
+    fi; \
     # Strip debug symbols to shrink binary (~50 %)
     strip /build/target/release/belizechain-node
 
