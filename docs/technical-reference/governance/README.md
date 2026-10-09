@@ -96,6 +96,24 @@ cat src/lib.rs
 - **Department Governance**: 8 ministries with dedicated workflows
 - **Vote Delegation**: Representative democracy option
 
+> **Two different "councils" — do not conflate them.** Both are real and they serve
+> different purposes:
+>
+> - `governance::CouncilMembers` is the district **roster**: one record per member
+>   carrying community rank and PoUW contribution. It backs `council_override`,
+>   `council_size()` and the `CouncilSize` parameter (12).
+> - `pallet_collective::GovernanceCouncil` (runtime index 8) is the **origin**
+>   behind `GovernanceCouncilMajority`. This is what treasury burn, bBZD reserves,
+>   minter authorization and roughly ten other pallets actually check, and it
+>   requires more than half the *seated* members — 7 signatures at a full council.
+>
+> Genesis seats the same 12 people in both so they agree. The collective's
+> `MaxMembers` is 32, but that is only a storage bound: the intended council size is
+> 12, enforced by the `CouncilSize` parameter and by genesis seating.
+>
+> `pallet_collective::TechnicalCouncil` (index 7) is a **separate** body for
+> protocol-level decisions and is not the district council.
+
 ### 2. Compliance-First Design
 - KYC/AML checks via pallet-belize-compliance
 - ParticipationTier requirements (Standard tier minimum)

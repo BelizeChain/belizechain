@@ -51,9 +51,19 @@ Each validator requires two key types:
 - **Passport Issuer**: Immigration Department account  
 - **Biometric Issuer**: National ID authority
 
-### 4. **Council Members** (7+ recommended)
-- **District Representatives**: One per district (Belize, Cayo, Corozal, Orange Walk, Stann Creek, Toledo)
-- **At-large Members**: Additional community representatives
+### 4. **Council Members** (12 required)
+- **District Representatives**: 2 per district across the six districts (Belize, Cayo,
+  Orange Walk, Corozal, Stann Creek, Toledo)
+- **Real people**: elected or appointed officials, NOT generated keys
+
+The council is the `GovernanceCouncil` collective - the origin behind
+`GovernanceCouncilMajority`. With an empty collective the proportion branch can never
+be satisfied, and every "council-majority" path silently degrades to sudo. So
+`mainnet_genesis()` **refuses to build** until `MAINNET_COUNCIL` in
+`node/src/chain_spec.rs` holds at least 7 distinct accounts that are neither
+well-known dev keys nor the testnet bootstrap set. The expectation is the full 12.
+Seats are written to both `governance.councilMembers` (the pallet's roster) and the
+collective, so the two agree.
 
 ---
 
@@ -96,9 +106,14 @@ For production mainnet, use hardware wallets (Ledger, Polkadot Vault):
 ### Step 1: Generate All Keys
 
 ```bash
-# Example: Generate 3 validators + 1 treasury
-./scripts/generate_mainnet_keys.sh
+# Root sudo + treasury + 4 validator keypairs
+./scripts/generate-production-keys.sh
 ```
+
+> Council seats cannot be bulk-generated for mainnet: they must be real district
+> representatives' accounts. For a throwaway testnet set, use
+> `./scripts/generate-testnet-council-keys.sh` - it writes 2 seats per district and
+> is rejected by the mainnet gate by design.
 
 ### Step 2: Extract Public Keys
 
@@ -174,6 +189,7 @@ Before mainnet launch, verify:
 - [ ] Treasury spending requires council-majority approval (GovernanceCouncilMajority origin)
 - [ ] Government issuer accounts controlled by respective departments
 - [ ] No development keys (`Alice`, `Bob`, `seed` references) in production config
+- [ ] `MAINNET_COUNCIL` populated with 12 real, distinct council accounts (2 per district)
 - [ ] Council members are real elected/appointed officials
 - [ ] Initial token distribution reviewed by governance
 - [ ] Validator nodes deployed in geographically distributed locations

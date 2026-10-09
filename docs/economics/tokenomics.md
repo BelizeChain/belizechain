@@ -70,7 +70,7 @@ community = monthly_new_dalla * 0.05   # 12,330 DALLA
 ### Minting Process
 1. **Deposit BZD** to Central Bank (off-chain)
 2. **Verification** by Central Bank auditors
-3. **Council-majority approval** (4 of 7 seats; 7 of 12 at full council)
+3. **Council-majority approval** (more than half the seated council (7 of 12 at full council))
 4. **Mint bBZD** 1:1 ratio on-chain
 
 ```rust
@@ -146,12 +146,12 @@ Annual Treasury Growth: ~1.42M DALLA
 
 ### Council-Majority Governance
 **Treasury oversight:** the elected council approves spending by majority —
-4 of 7 seats, or 7 of 12 at full council.
+more than half the seated council (7 of 12 at full council).
 
 **Spending Approval:**
 1. Proposal submitted via the Governance pallet
 2. Public referendum (7-day voting)
-3. If passed, council members approve by majority (4 of 7 seats; 7 of 12 at full council)
+3. If passed, council members approve by majority (more than half the seated council (7 of 12 at full council))
 4. Funds transferred automatically
 
 ```typescript

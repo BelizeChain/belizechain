@@ -350,7 +350,7 @@ This Incident Response Plan (IRP) defines BelizeChain's procedures for detecting
 - Identify affected accounts (query transaction history)
 - Calculate losses (balance_before - balance_after)
 - Governance proposal (treasury compensation)
-- council-majority approval (4 of 7 signers)
+- council-majority approval (7 of 12 signers)
 - Execute compensation (automated script)
 
 **Bridge Loss:**

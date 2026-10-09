@@ -213,7 +213,7 @@ We use CVSS v3.1 (Common Vulnerability Scoring System) with blockchain-specific 
 
 **Examples:**
 - **$100,000:** Unlimited DALLA minting exploit
-- **$100,000:** Treasury council-majority approval bypass (council-majority approval (4 of 7 seats; 7 of 12 at full council) threshold)
+- **$100,000:** Treasury council-majority approval bypass (council-majority approval (more than half the seated council (7 of 12 at full council)) threshold)
 - **$90,000:** Bridge double-spending (Ethereum or Polkadot)
 - **$80,000:** Consensus takeover (51% attack bypass)
 - **$75,000:** KYC database extraction (all SSNs)

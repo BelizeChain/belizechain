@@ -375,7 +375,7 @@ const balance = await limiter.limit(() => api.query.system.account(address));
 
 **✅ DO: Use Hardware Wallets (Production)**
 - **Validators:** Ledger Nano X (mandatory)
-- **Treasury Council-Majority Approval:** Yubikey + Ledger (required 4 of 7)
+- **Treasury Council-Majority Approval:** Yubikey + Ledger (required 7 of 12)
 - **Admin Keys:** Trezor Model T (cold storage)
 
 **✅ DO: Encrypt Keys at Rest**
@@ -449,7 +449,7 @@ polkadot-js-api tx.multiSig.asMulti(
   maxWeight=defaultWeight
 ).signAndSend(signer4)
 
-# ✅ Transaction executed (4 of 7 signatures verified)
+# ✅ Transaction executed (7 of 12 signatures verified)
 ```
 
 **Emergency Multi-Sig Rotation (Compromised Signer):**
@@ -656,7 +656,7 @@ cargo contract upload --suri //Deployer \
 | **Core Developer** | Git repo, testnet nodes, CI/CD (write) | GitHub, GitLab CI, Kubernetes (dev namespace) |
 | **DevOps Engineer** | All infrastructure, production nodes (read/write) | Kubernetes (all namespaces), AWS console, Terraform |
 | **Security Lead** | All systems, incident response, audit logs | Grafana admin, PagerDuty, Cloudflare, vault access |
-| **Treasury Signer** | council-majority approval (4 of 7 seats; 7 of 12 at full council) | Ledger Nano X, Polkadot.js apps |
+| **Treasury Signer** | council-majority approval (more than half the seated council (7 of 12 at full council)) | Ledger Nano X, Polkadot.js apps |
 
 **Access Review (Quarterly):**
 - Remove inactive users (no activity >90 days)

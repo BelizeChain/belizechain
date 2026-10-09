@@ -822,7 +822,7 @@ fn test_kyc_tier_restricts_voting() { ... }
 
 ### Treasury Safeguards
 - **Spending Limits**: Board approval required for >100K DALLA
-- **Council-Majority Approval**: council-majority approval (4 of 7 seats; 7 of 12 at full council) board signatures for critical actions
+- **Council-Majority Approval**: council-majority approval (more than half the seated council (7 of 12 at full council)) board signatures for critical actions
 - **Emergency Limits**: 7-day time cap on emergency powers
 - **Post-Action Review**: Mandatory audit after emergency
 

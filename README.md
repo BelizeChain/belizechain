@@ -77,7 +77,7 @@ BelizeChain implements **19 Belize-specific pallets** covering the complete nati
 <details>
 <summary><b>💰 Financial & Economic (3 pallets)</b></summary>
 
-- **Economy** (`pallets/economy/`) - DALLA/bBZD dual-currency system, council-majority treasury approval (4 of 7 seats; 7 of 12 at full council)
+- **Economy** (`pallets/economy/`) - DALLA/bBZD dual-currency system, council-majority treasury approval (more than half the seated council (7 of 12 at full council))
 - **BelizeX** (`pallets/belizex/`) - On-chain DEX, liquidity pools, Oracle-guarded swaps
 - **Payroll** (`pallets/payroll/`) - Enterprise payroll automation: departments, deductions, bonuses, 6 employer types
 
@@ -154,7 +154,7 @@ graph LR
 **Key Features**:
 - ✅ **bBZD Peg**: Always 1:1 with Belize Dollar (Central Bank guaranteed)
 - ✅ **Tourism Incentives**: 5-8% cashback in DALLA for verified merchant spending
-- ✅ **Council-Majority Treasury**: 4 of 7 council seats required (7 of 12 at full council) for large transactions
+- ✅ **Council-Majority Treasury**: more than half the seated council (7 of 12 at full council) for large transactions
 
 ## 🚀 Quick Start
 

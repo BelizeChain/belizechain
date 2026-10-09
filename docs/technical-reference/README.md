@@ -145,7 +145,7 @@
 - **Quantum Resistance**: Post-quantum cryptography ready
 
 ### Security Features
-- Council-majority treasury approval (4 of 7 seats; 7 of 12 at full council)
+- Council-majority treasury approval (more than half the seated council (7 of 12 at full council))
 - Time-locked transactions
 - Slashing for misbehavior
 - KYC/AML compliance built-in

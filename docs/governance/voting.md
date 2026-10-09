@@ -136,7 +136,7 @@ await api.tx.governance.propose(
 **Threshold:** Simple majority
 
 #### 3. Emergency Referendums
-**Trigger:** Council majority (4 of 7 seats)  
+**Trigger:** Council majority (7 of 12 seats)  
 **Deposit:** None  
 **Voting period:** 24 hours  
 **Threshold:** 75% supermajority

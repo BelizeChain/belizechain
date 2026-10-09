@@ -153,7 +153,7 @@ This guide helps government agencies, ministries, departments, and municipalitie
 ║  GOVERNMENT AGENCY REGISTRATION            ║
 ╠════════════════════════════════════════════╣
 ║  Agency Name:                              ║
-║  [Ministry of Education                 ] ║
+║  [Ministry of Education                 ]  ║
 ║                                            ║
 ║  Agency Type:                              ║
 ║  [ ] Ministry                              ║
@@ -163,24 +163,24 @@ This guide helps government agencies, ministries, departments, and municipalitie
 ║  [ ] Other: ______________                 ║
 ║                                            ║
 ║  Primary Contact:                          ║
-║  [Dr. Maria Rodriguez                   ] ║
+║  [Dr. Maria Rodriguez                   ]  ║
 ║                                            ║
 ║  Position:                                 ║
-║  [Chief Financial Officer               ] ║
+║  [Chief Financial Officer               ]  ║
 ║                                            ║
 ║  Email:                                    ║
-║  [cfo@moe.gov.bz                        ] ║
+║  [cfo@moe.gov.bz                        ]  ║
 ║                                            ║
 ║  Phone:                                    ║
-║  [+501-822-XXXX                         ] ║
+║  [+501-822-XXXX                         ]  ║
 ║                                            ║
 ║  Address:                                  ║
-║  [West Block Building                   ] ║
-║  [Belmopan, Cayo District               ] ║
-║  [Belize                                ] ║
+║  [West Block Building                   ]  ║
+║  [Belmopan, Cayo District               ]  ║
+║  [Belize                                ]  ║
 ║                                            ║
 ║  Authority Letter:                         ║
-║  [Upload signed letter from Minister/CEO] ║
+║  [Upload signed letter from Minister/CEO]  ║
 ╚════════════════════════════════════════════╝
 
 [Back] [Submit Application]
@@ -195,7 +195,7 @@ This guide helps government agencies, ministries, departments, and municipalitie
 **Treasury spending is authorised by the governance council, not by a per-agency
 multisig wallet.** There is no multisig account type on BelizeChain: a spend is
 proposed through the Governance pallet and passes once more than half the council
-approves — **4 of 7 seats, or 7 of 12 at full council**.
+approves — **more than half the seated council (7 of 12 at full council)**.
 
 **Why this matters:**
 - No single officer can move agency funds
@@ -213,37 +213,37 @@ approve the agency's spend proposals.
 ╠════════════════════════════════════════════╣
 ║  Agency: Ministry of Education             ║
 ║                                            ║
-║  Signature Threshold: 4 of 7               ║
-║  (4 approvals required)                    ║
+║  Signature Threshold: 7 of 12              ║
+║  (7 approvals required)                    ║
 ║                                            ║
 ║  SIGNATORIES                               ║
 ║  1. Hon. Minister                          ║
 ║     Address: 5MinisterXXX...               ║
-║     Status: ✅ Verified                    ║
+║     Status: ✅ Verified                     ║
 ║                                            ║
 ║  2. Chief Financial Officer                ║
 ║     Address: 5CFOXXXXX...                  ║
-║     Status: ✅ Verified                    ║
+║     Status: ✅ Verified                     ║
 ║                                            ║
 ║  3. Permanent Secretary                    ║
 ║     Address: 5PermSecXXX...                ║
-║     Status: ✅ Verified                    ║
+║     Status: ✅ Verified                     ║
 ║                                            ║
 ║  4. Finance Manager                        ║
 ║     Address: 5FinMgrXXX...                 ║
-║     Status: ✅ Verified                    ║
+║     Status: ✅ Verified                     ║
 ║                                            ║
 ║  5. Internal Auditor                       ║
 ║     Address: 5AuditorXXX...                ║
-║     Status: ✅ Verified                    ║
+║     Status: ✅ Verified                     ║
 ║                                            ║
 ║  6. Board Chair                            ║
 ║     Address: 5BoardChXXX...                ║
-║     Status: ✅ Verified                    ║
+║     Status: ✅ Verified                     ║
 ║                                            ║
 ║  7. Deputy CFO                             ║
 ║     Address: 5DeputyXXX...                 ║
-║     Status: ⏳ Pending verification        ║
+║     Status: ⏳ Pending verification         ║
 ╚════════════════════════════════════════════╝
 
 [Update Signatories] [Change Threshold] [Save]
@@ -318,8 +318,8 @@ Breakdown:
 ║  [ ] Other                                 ║
 ║                                            ║
 ║  Description:                              ║
-║  [School repairs - St. John's Primary   ] ║
-║  [Work order #2025-045                  ] ║
+║  [School repairs - St. John's Primary   ]  ║
+║  [Work order #2025-045                  ]  ║
 ║                                            ║
 ║  Supporting Documents:                     ║
 ║  [✓] Invoice #1234                         ║
@@ -327,7 +327,7 @@ Breakdown:
 ║  [✓] Budget approval                       ║
 ║                                            ║
 ║  Budget Line:                              ║
-║  [Infrastructure - School Maintenance   ] ║
+║  [Infrastructure - School Maintenance   ]  ║
 ║  Available: 45,000.00 bBZD                 ║
 ╚════════════════════════════════════════════╝
 
@@ -367,7 +367,7 @@ Block: #5,234,987
 
 ### Large Transaction (Over 10,000 bBZD)
 
-**Requires council majority** (4 of 7 seats; 7 of 12 at full council)
+**Requires council majority** (more than half the seated council (7 of 12 at full council))
 
 **Same process, more approvals**:
 1. Finance Officer initiates
@@ -402,20 +402,20 @@ Block: #5,234,987
 ║  [✓] teachers_october_2025.csv             ║
 ║                                            ║
 ║  File Preview:                             ║
-║  ┌────────────────────────────────────┐   ║
-║  │ Name            │ Amount │ Address │   ║
-║  ├────────────────────────────────────┤   ║
-║  │ Maria Rodriguez │ 2,500  │ 5Maria  │   ║
-║  │ Carlos Gonzalez │ 2,850  │ 5Carlos │   ║
-║  │ Ana Martinez    │ 2,200  │ 5Ana    │   ║
-║  │ ... (1,244 more)                   │   ║
-║  └────────────────────────────────────┘   ║
+║  ┌────────────────────────────────────┐    ║
+║  │ Name            │ Amount │ Address │    ║
+║  ├────────────────────────────────────┤    ║
+║  │ Maria Rodriguez │ 2,500  │ 5Maria  │    ║
+║  │ Carlos Gonzalez │ 2,850  │ 5Carlos │    ║
+║  │ Ana Martinez    │ 2,200  │ 5Ana    │    ║
+║  │ ... (1,244 more)                   │    ║
+║  └────────────────────────────────────┘    ║
 ║                                            ║
 ║  Validation:                               ║
-║  ✅ All addresses valid                    ║
-║  ✅ Total matches budget                   ║
-║  ✅ No duplicates                          ║
-║  ✅ All amounts > 0                        ║
+║  ✅ All addresses valid                     ║
+║  ✅ Total matches budget                    ║
+║  ✅ No duplicates                           ║
+║  ✅ All amounts > 0                         ║
 ║                                            ║
 ║  Budget Line: Salaries & Wages             ║
 ║  Available: 8,500,000.00 bBZD              ║
@@ -519,20 +519,20 @@ Each fee type gets unique QR code + payment link
 ║  TODAY'S COLLECTIONS                       ║
 ║  San Pedro Town Council                    ║
 ╠════════════════════════════════════════════╣
-║  💰 15,450.00 bBZD collected               ║
+║  💰 15,450.00 bBZD collected                ║
 ║                                            ║
-║  Business Licenses:   12 × avg 500 = 6,000║
-║  Building Permits:     4 × avg 750 = 3,000║
-║  Parking Fines:       45 × avg  50 = 2,250║
-║  Waste Collection:   135 × avg  30 = 4,050║
+║  Business Licenses:   12 × avg 500 = 6,000 ║
+║  Building Permits:     4 × avg 750 = 3,000 ║
+║  Parking Fines:       45 × avg  50 = 2,250 ║
+║  Waste Collection:   135 × avg  30 = 4,050 ║
 ║  Other:                               150  ║
 ║                                            ║
-║  📊 THIS MONTH                             ║
+║  📊 THIS MONTH                              ║
 ║  Total: 385,670.00 bBZD                    ║
 ║  Target: 400,000.00 bBZD                   ║
 ║  Progress: 96% ████████████████████░       ║
 ║                                            ║
-║  📈 vs Last Month: +12%                    ║
+║  📈 vs Last Month: +12%                     ║
 ╚════════════════════════════════════════════╝
 
 [Export Report] [View Transactions] [Send to Accounting]
@@ -732,7 +732,7 @@ Each fee type gets unique QR code + payment link
 ║  NEW GRANT PROGRAM                         ║
 ╠════════════════════════════════════════════╣
 ║  Program Name:                             ║
-║  [Small Business Recovery Grant 2025    ] ║
+║  [Small Business Recovery Grant 2025    ]  ║
 ║                                            ║
 ║  Eligibility:                              ║
 ║  [ ] Belizean-owned business               ║
@@ -789,12 +789,12 @@ Each fee type gets unique QR code + payment link
 ║  [✓] Board approval memo                   ║
 ║  [✓] Budget authorization                  ║
 ║                                            ║
-║  Approvals Required: 4 of 7                ║
+║  Approvals Required: majority of seats     ║
 ║  Status:                                   ║
-║  ✅ Finance Manager                        ║
-║  ✅ CFO                                    ║
-║  ✅ Permanent Secretary                    ║
-║  ⏳ Minister (pending)                     ║
+║  ✅ Finance Manager                         ║
+║  ✅ CFO                                     ║
+║  ✅ Permanent Secretary                     ║
+║  ⏳ Minister (pending)                      ║
 ╚════════════════════════════════════════════╝
 
 [View Details] [Add Comment] [Approve]
@@ -890,7 +890,7 @@ Each fee type gets unique QR code + payment link
 - [ ] Nominate signatories (7 people)
 - [ ] Create individual wallets
 - [ ] Complete KYC Level 3
-- [ ] Configure council-majority approval (4 of 7 seats; 7 of 12 at full council)
+- [ ] Configure council-majority approval (more than half the seated council (7 of 12 at full council))
 - [ ] Request initial funding
 
 ### Operations

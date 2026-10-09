@@ -7,7 +7,7 @@ Technical terminology and BelizeChain-specific concepts.
 **Account**: A cryptographic address that holds DALLA/bBZD. Types include:
 - **User accounts**: ss58-encoded, controlled by private keys
 - **Contract accounts**: Deployed smart contracts with code storage
-- **Council-majority approval**: Treasury spending needs more than half the council (4 of 7 seats; 7 of 12 at full council)
+- **Council-majority approval**: Treasury spending needs more than half the council (more than half the seated council (7 of 12 at full council))
 
 → See [Identity Pallet](developer-guides/pallet-apis-core.md#identity-pallet)
 
@@ -51,7 +51,7 @@ published; testnet values are simulated protocol parameters.
 
 → See [BelizeX DEX](operations/bridges-dex-landledger.md#belizex-dex)
 
-**Blue Hole Portal**: Government dashboard for treasury management (council-majority approval: 4 of 7 seats; 7 of 12 at full council), KYC approvals, district analytics.
+**Blue Hole Portal**: Government dashboard for treasury management (council-majority approval: more than half the seated council (7 of 12 at full council)), KYC approvals, district analytics.
 
 → See [Business & Government Guide](user-guides/business-government-guides.md#blue-hole-portal)
 
@@ -202,7 +202,7 @@ published; testnet values are simulated protocol parameters.
 **Governance**: On-chain decision-making:
 - **Democracy**: Public referendums (7-day voting)
 - **Councils**: 6 district councils (3-5 members each)
-- **Treasury**: Council-majority approval (4 of 7 seats; 7 of 12 at full council) over the DALLA reserve
+- **Treasury**: Council-majority approval (more than half the seated council (7 of 12 at full council)) over the DALLA reserve
 
 → See [Democracy](governance/democracy.md)
 
@@ -285,7 +285,7 @@ published; testnet values are simulated protocol parameters.
 
 → See [DAG Storage](architecture/dag-storage-design.md)
 
-**Council-majority approval**: Treasury spending requires more than half the council — 4 of 7 seats, or 7 of 12 at full council. Enforced by a collective-majority origin; the chain has no council-majority approval account pallet.
+**Council-majority approval**: Treasury spending requires more than half the council — more than half the seated council (7 of 12 at full council). Enforced by a collective-majority origin; the chain has no council-majority approval account pallet.
 
 → See [Democracy](governance/democracy.md#treasury-council-majority approval)
 
@@ -446,7 +446,7 @@ published; testnet values are simulated protocol parameters.
 
 **Treasury**: DALLA reserve for public goods:
 - **Funding**: 20% of inflation + 0.05% DEX fees
-- **Governance**: Council-majority approval (4 of 7 seats; 7 of 12 at full council)
+- **Governance**: Council-majority approval (more than half the seated council (7 of 12 at full council))
 - **Current balance**: ~8 million DALLA
 
 → See [Tokenomics](economics/tokenomics.md)

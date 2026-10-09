@@ -113,7 +113,7 @@ The compliance pallet provides:
 | Supply cap invariant | `on_initialize` checks issuance before minting |
 | Unbonding period | Validators locked for `UnbondingPeriod` blocks after exit |
 | Challenge period | Bridge transactions have dispute window before finalization |
-| Council-majority treasury | Spending thresholds: <10K=1-of-1, <100K=3-of-7, ≥100K=council-majority approval (4 of 7 seats; 7 of 12 at full council) |
+| Council-majority treasury | Spending thresholds: <10K=1-of-1, <100K=3-of-7, ≥100K=council-majority approval (more than half the seated council (7 of 12 at full council)) |
 | Conviction voting | 0=1x, 1=2x, 2=3x, 3=6x multiplier (Polkadot-style) |
 | Delegation | Liquid democracy with 100-delegate cap and 1-year expiry |
 | Migration framework | Version-gated `CoordinatedUpgrade` with try-runtime support |

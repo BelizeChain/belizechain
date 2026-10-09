@@ -168,7 +168,7 @@ format!("{} bBZD (pegged to BZD)", amount)
   - Level 3 (Full): Unlimited
 
 ### 4. Treasury Approval Requirements
-- Government treasury: council-majority approval (4 of 7 seats; 7 of 12 at full council)
+- Government treasury: council-majority approval (more than half the seated council (7 of 12 at full council))
 
 ---
 
