@@ -43,6 +43,8 @@ use sp_runtime::{
     ApplyExtrinsicResult, MultiSignature, Perbill, Perquintill,
 };
 use sp_std::prelude::*;
+use codec::{Decode, DecodeWithMemTracking, Encode, MaxEncodedLen};
+use scale_info::TypeInfo;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
@@ -445,7 +447,12 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     // No storage migration needed: the new `Economy::InflationEpochs` is
     // `ValueQuery` storage, so it reads 0 on upgrade and the first epoch mints
     // at the schedule's start rate (5%).
-    spec_version: 113,
+    //
+    // - 114: added `pallet-utility` (14), `pallet-multisig` (15) and
+    //   `pallet-proxy` (16). These fill the previously-unused 14-19 index gap,
+    //   so no existing pallet index moves. No storage migration: all three
+    //   start from empty storage.
+    spec_version: 114,
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 1,
@@ -946,6 +953,127 @@ impl pallet_contracts::Config for Runtime {
     type Environment = ();
     type ApiVersion = ();
     type Xcm = ();
+}
+
+// ==================== OPERATIONAL PRIMITIVES ====================
+// Atomic batching, delegated accounts, and account-level multisig.
+//
+// `pallet-utility` was previously absent, so multi-step operations (funding a
+// council roster and seating it, for instance) had to go out as separate
+// extrinsics with no atomicity. `pallet-proxy` lets a hot key act with a scoped,
+// filterable subset of a cold key's authority, and `pallet-multisig` provides
+// account-level n-of-m approval.
+//
+// NOTE: `pallet-multisig` is *account-level* multi-signature. It is NOT the
+// governance mechanism - `GovernanceCouncilMajority` still gates treasury
+// operations and is unaffected by this pallet.
+
+/// Call filter for a proxy. `Any` is unrestricted; `NonTransfer` mirrors the
+/// Polkadot semantic of "everything except balance transfers".
+#[derive(
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Encode,
+    Decode,
+    DecodeWithMemTracking,
+    Debug,
+    TypeInfo,
+    MaxEncodedLen,
+    Default,
+)]
+pub enum ProxyType {
+    /// Everything except balance transfers and contract calls.
+    #[default]
+    NonTransfer,
+    /// Unrestricted. Only grant to a fully-trusted proxy.
+    Any,
+    /// Governance participation only.
+    Governance,
+    /// Staking / validator operations only.
+    Staking,
+}
+
+impl frame_support::traits::InstanceFilter<RuntimeCall> for ProxyType {
+    fn filter(&self, c: &RuntimeCall) -> bool {
+        match self {
+            ProxyType::Any => true,
+            ProxyType::NonTransfer => {
+                !matches!(c, RuntimeCall::Balances(..) | RuntimeCall::Contracts(..))
+            }
+            ProxyType::Governance => matches!(
+                c,
+                RuntimeCall::Governance(..)
+                    | RuntimeCall::GovernanceCouncil(..)
+                    | RuntimeCall::TechnicalCouncil(..)
+            ),
+            ProxyType::Staking => matches!(c, RuntimeCall::Staking(..)),
+        }
+    }
+
+    fn is_superset(&self, other: &Self) -> bool {
+        match (self, other) {
+            (ProxyType::Any, _) => true,
+            (_, ProxyType::Any) => false,
+            (a, b) => a == b,
+        }
+    }
+}
+
+parameter_types! {
+    /// Base deposit for registering a proxy.
+    pub const ProxyDepositBase: Balance = DOLLARS;
+    /// Additional deposit per proxied call.
+    pub const ProxyDepositFactor: Balance = DOLLARS / 10;
+    /// Maximum proxies an account may register.
+    pub const MaxProxies: u32 = 32;
+    /// Maximum outstanding proxy announcements.
+    pub const MaxPending: u32 = 32;
+    pub const AnnouncementDepositBase: Balance = DOLLARS;
+    pub const AnnouncementDepositFactor: Balance = DOLLARS / 10;
+    /// Base deposit for a multisig.
+    pub const MultisigDepositBase: Balance = DOLLARS / 2;
+    /// Additional deposit per multisig signatory.
+    pub const MultisigDepositFactor: Balance = DOLLARS / 100;
+    /// Maximum signatories in a single multisig.
+    pub const MaxSignatories: u32 = 16;
+}
+
+impl pallet_utility::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type RuntimeCall = RuntimeCall;
+    type PalletsOrigin = OriginCaller;
+    type WeightInfo = pallet_utility::weights::SubstrateWeight<Runtime>;
+}
+
+impl pallet_multisig::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type RuntimeCall = RuntimeCall;
+    type Currency = Balances;
+    type DepositBase = MultisigDepositBase;
+    type DepositFactor = MultisigDepositFactor;
+    type MaxSignatories = MaxSignatories;
+    type WeightInfo = pallet_multisig::weights::SubstrateWeight<Runtime>;
+    type BlockNumberProvider = System;
+}
+
+impl pallet_proxy::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type RuntimeCall = RuntimeCall;
+    type Currency = Balances;
+    type ProxyType = ProxyType;
+    type ProxyDepositBase = ProxyDepositBase;
+    type ProxyDepositFactor = ProxyDepositFactor;
+    type MaxProxies = MaxProxies;
+    type WeightInfo = pallet_proxy::weights::SubstrateWeight<Runtime>;
+    type MaxPending = MaxPending;
+    type CallHasher = BlakeTwo256;
+    type AnnouncementDepositBase = AnnouncementDepositBase;
+    type AnnouncementDepositFactor = AnnouncementDepositFactor;
+    type BlockNumberProvider = System;
 }
 
 // BelizeChain Configuration Parameters
@@ -1775,6 +1903,13 @@ construct_runtime!(
 
         // Spike Smart Contract Platform
         Contracts: pallet_contracts = 13,
+
+        // Operational primitives. These occupy the previously-unused 14-19 index
+        // gap, so no existing pallet index changes and no storage migration is
+        // needed.
+        Utility: pallet_utility = 14,
+        Multisig: pallet_multisig = 15,
+        Proxy: pallet_proxy = 16,
 
         // BelizeChain Pallets
         Economy: pallet_belize_economy = 20,

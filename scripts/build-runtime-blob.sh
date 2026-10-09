@@ -164,5 +164,6 @@ cat "$TMP_DIR/verify.log"
 echo
 echo "PASS  $TARGET blob verified: $WASM_SIZE bytes, blake2b-256 $WASM_HASH"
 echo
-echo "Deploy with:"
-echo "  python3 scripts/upgrade-runtime.py --rpc <ws-url> --wasm $WASM_PATH"
+echo "Deploy with (the wasm is positional, not --wasm):"
+echo "  python3 scripts/upgrade-runtime.py $WASM_PATH --rpc <ws-url>"
+echo "  add --execute to submit; without it the script only runs a dry run"

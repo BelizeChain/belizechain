@@ -43,6 +43,9 @@ pallet-grandpa = { workspace = true, default-features = false }
 pallet-session = { workspace = true, default-features = false, features = ["historical"] }
 pallet-sudo = { workspace = true, default-features = false }
 pallet-collective = { workspace = true, default-features = false }
+pallet-utility = { workspace = true, default-features = false }
+pallet-multisig = { workspace = true, default-features = false }
+pallet-proxy = { workspace = true, default-features = false }
 pallet-timestamp = { workspace = true, default-features = false }
 pallet-transaction-payment = { workspace = true, default-features = false }
 pallet-transaction-payment-rpc-runtime-api = { workspace = true, default-features = false }
@@ -106,6 +109,9 @@ std = [
     "pallet-session/std",
     "pallet-sudo/std",
     "pallet-collective/std",
+    "pallet-utility/std",
+    "pallet-multisig/std",
+    "pallet-proxy/std",
     "pallet-timestamp/std",
     "pallet-transaction-payment/std",
     "pallet-transaction-payment-rpc-runtime-api/std",
@@ -158,6 +164,9 @@ runtime-benchmarks = [
     "pallet-balances/runtime-benchmarks",
     "pallet-sudo/runtime-benchmarks",
     "pallet-collective/runtime-benchmarks",
+    "pallet-utility/runtime-benchmarks",
+    "pallet-multisig/runtime-benchmarks",
+    "pallet-proxy/runtime-benchmarks",
     "pallet-timestamp/runtime-benchmarks",
     "pallet-transaction-payment/runtime-benchmarks",
     "pallet-contracts/runtime-benchmarks",
@@ -209,6 +218,9 @@ try-runtime = [
     "pallet-session/try-runtime",
     "pallet-sudo/try-runtime",
     "pallet-collective/try-runtime",
+    "pallet-utility/try-runtime",
+    "pallet-multisig/try-runtime",
+    "pallet-proxy/try-runtime",
     "pallet-timestamp/try-runtime",
     "pallet-transaction-payment/try-runtime",
     "pallet-belize-economy/try-runtime",

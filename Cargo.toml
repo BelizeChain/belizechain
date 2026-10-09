@@ -104,6 +104,11 @@ pallet-transaction-payment = { git = "https://github.com/paritytech/polkadot-sdk
 pallet-transaction-payment-rpc = { git = "https://github.com/paritytech/polkadot-sdk", rev = "660acefe66599a3e54363797007befcb01bd610b" }
 pallet-transaction-payment-rpc-runtime-api = { git = "https://github.com/paritytech/polkadot-sdk", rev = "660acefe66599a3e54363797007befcb01bd610b", default-features = false }
 
+# Operational primitives (atomic batching, delegated accounts, account multisig)
+pallet-utility = { git = "https://github.com/paritytech/polkadot-sdk", rev = "660acefe66599a3e54363797007befcb01bd610b", default-features = false }
+pallet-multisig = { git = "https://github.com/paritytech/polkadot-sdk", rev = "660acefe66599a3e54363797007befcb01bd610b", default-features = false }
+pallet-proxy = { git = "https://github.com/paritytech/polkadot-sdk", rev = "660acefe66599a3e54363797007befcb01bd610b", default-features = false }
+
 # Smart Contracts (GEM Platform)
 pallet-contracts = { git = "https://github.com/paritytech/polkadot-sdk", rev = "660acefe66599a3e54363797007befcb01bd610b", default-features = false }
 
