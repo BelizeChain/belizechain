@@ -366,28 +366,40 @@ NEXT_PUBLIC_ADMIN_ACCOUNTS=5GrwvaEF...,5FHneW...
 ```
 
 ### Polkadot.js Types
+
+No manual `api.registry.register` is needed: the runtime derives `TypeInfo` throughout and the
+metadata is self-describing, so polkadot.js reads these shapes automatically. They are listed
+here as the contract the UI codes against.
+
 ```typescript
 // ui/maya-wallet/lib/types.ts
-export const customTypes = {
-  AccountType: {
-    _enum: ['Citizen', 'Business', 'Tourism', 'Government']
-  },
-  KycLevel: {
-    _enum: ['None', 'Basic', 'Verified', 'Enhanced']
-  },
-  MerchantCategory: {
-    _enum: ['Hotels', 'Restaurants', 'Tours', 'Crafts', 'Retail']
-  },
-  PropertyInfo: {
-    owner: 'AccountId',
-    document_hash: 'H256',
-    land_area_sqm: 'u64',
-    registered_at: 'BlockNumber'
-  }
-};
 
-// Register types
-api.registry.register(customTypes);
+// identity::KycLevel - an account's identity tier
+// (there is no `AccountType`: it was a transaction-limit tier that was never wired
+//  to an extrinsic and was removed as dead code, E-7. Governance rights are not a
+//  stored enum either - the runtime derives them, see the bottom of this block.)
+type KycLevel = 'L0' | 'L1' | 'L2' | 'L3';
+
+// oracle::MerchantCategory - tourism cashback tier
+type MerchantCategory =
+  | 'Accommodation'   // 8% cashback
+  | 'FoodBeverage'    // 5%
+  | 'TourOperator'    // 7%
+  | 'Transportation'  // 5%
+  | 'Retail'          // 3%
+  | 'Other';          // 3%
+
+// Whether an account may vote is not a type and not a stored flag. The runtime
+// derives it in `GovernanceComplianceProvider`:
+//
+//     Identity::get_verified_kyc_level(account) >= 1     // KYC L1 or above
+//         && !sanctioned
+//
+// There is no runtime API for that combined predicate, so the UI evaluates the
+// same two inputs: the account's KYC attestations and the Compliance sanctions
+// list. Note this is deliberately NOT
+// `Compliance::can_participate_in_governance` - that inherent uses a different
+// threshold and is not what the runtime wires into Governance.
 ```
 
 ---

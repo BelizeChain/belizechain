@@ -120,26 +120,25 @@ governance_burn(origin, amount) -> DispatchResult
 
 ### 4. **Council-Majority Treasury**
 
-**Account Type System**:
-```rust
-pub enum AccountType {
-    Citizen,     // 25,000 DALLA daily limit
-    Business,    // 100,000 DALLA daily limit
-    Tourism,     // 100,000 DALLA + special incentives
-    Government,  // Unlimited (multi-sig required)
-}
-```
+**Treasury Operations**:
+- `governance_burn(origin, amount)` — burns DALLA out of the treasury
+- `update_reserves(origin, new_reserves)` — updates the reported bBZD reserve backing
+- `set_minter_authorization(origin, ...)` — grants or revokes bBZD minting authority
+- `mint_bbzd(origin, ...)` — issues bBZD; signed by an **authorized minter**, subject to
+  the mint rate limit, a sanctions check, and KYC/travel-rule requirements
 
-**Treasury Operations** (from MultiSigOperation struct):
-- Spend: Transfer funds from treasury
-- Burn: Reduce total DALLA supply
-- Mint: Issue new bBZD (Central Bank only)
-- Reserve: Allocate funds for future use
+**Authorization**:
+- The three `governance_*` calls are gated on this pallet's `GovernanceOrigin`, which the
+  runtime binds to `GovernanceCouncilMajority` — `Root`, or more than half of the
+  Governance Council.
+- `mint_bbzd` is authorized by an explicit minter role (`AuthorizedMinters`), not by the
+  governance origin.
 
-**Multi-Signature Requirements**:
-- **Threshold**: council-majority approval signatures
-- **Roles**: Minister of Finance, Governor, FSC Commissioner, BTB Director, Auditor General, Deputy Minister, Treasury Secretary
-- **Workflow**: Create operation → Collect signatures → Execute when threshold met
+There is no per-role signer set and no `MultiSigOperation` queue. Earlier revisions of this
+document described an `AccountType` transaction-limit tier and a named seven-role
+signature workflow. The `AccountType` / `MultiSigOperation` declarations existed but were
+never wired to any extrinsic and were removed as dead code (E-7); the named-role workflow
+never existed at all.
 
 ### 5. **Remittance Optimization**
 

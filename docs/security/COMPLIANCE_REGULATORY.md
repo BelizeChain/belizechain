@@ -512,54 +512,40 @@ class SanctionsScreener:
 **On-Chain Audit Trail (Compliance Pallet):**
 
 ```rust
-// All compliance events stored on-chain (permanent, tamper-proof)
+// Compliance events are stored on-chain (permanent, tamper-proof).
+//
+// There is no `AccountType` in this enum or anywhere else in the runtime: it was a
+// transaction-limit tier never wired to an extrinsic, removed as dead code (E-7).
+// Identity/KYC tier lives in the Identity pallet as `KycLevel` (L0-L3); this pallet
+// holds the derived compliance status used to gate operations.
+//
+// There are also no `KYCSubmitted`/`KYCApproved`/`KYCRejected`/`AccountFrozen` events -
+// an earlier revision of this document showed them, but they do not exist.
 #[pallet::event]
 #[pallet::generate_deposit(pub(super) fn deposit_event)]
 pub enum Event<T: Config> {
-    /// KYC application submitted
-    KYCSubmitted {
-        account: T::AccountId,
-        tier: AccountType,
-        timestamp: BlockNumberFor<T>,
-    },
-    
-    /// KYC approved
-    KYCApproved {
-        account: T::AccountId,
-        approved_by: T::AccountId,  // Compliance Officer
-        timestamp: BlockNumberFor<T>,
-    },
-    
-    /// KYC rejected
-    KYCRejected {
-        account: T::AccountId,
-        rejected_by: T::AccountId,
-        reason: BoundedVec<u8, ConstU32<256>>,
-        timestamp: BlockNumberFor<T>,
-    },
-    
-    /// Account frozen
-    AccountFrozen {
-        account: T::AccountId,
-        frozen_by: T::AccountId,
-        reason: BoundedVec<u8, ConstU32<256>>,
-        timestamp: BlockNumberFor<T>,
-    },
-    
-    /// Suspicious activity reported (SAR)
-    SuspiciousActivityReported {
-        account: T::AccountId,
-        reporter: T::AccountId,
-        reason: BoundedVec<u8, ConstU32<256>>,
-    },
-    
-    /// Transaction blocked (sanctions)
-    TransactionBlocked {
-        from: T::AccountId,
-        to: T::AccountId,
-        amount: BalanceOf<T>,
-        reason: BoundedVec<u8, ConstU32<256>>,
-    },
+    /// Account verification level updated (level as u8 for encoding)
+    VerificationLevelUpdated { account: T::AccountId, level: u8 },
+    /// Risk level updated for account (risk as u8 for encoding)
+    RiskLevelUpdated { account: T::AccountId, risk_level: u8 },
+    /// Account whitelisted
+    AccountWhitelisted { account: T::AccountId },
+    /// Account restricted
+    AccountRestricted { account: T::AccountId, reason: BoundedVec<u8, ConstU32<256>> },
+    /// Account restriction lifted
+    RestrictionLifted { account: T::AccountId },
+    /// Suspicious activity reported (activity_type as u8 for encoding)
+    SuspiciousActivityReported { account: T::AccountId, activity_type: u8 },
+    /// Sanctions entry added
+    SanctionsEntryAdded { entity_hash: [u8; 32] },
+    /// Sanctions entry removed
+    SanctionsEntryRemoved { entity_hash: [u8; 32] },
+    /// Compliance check performed
+    ComplianceCheckPerformed { account: T::AccountId, passed: bool },
+    /// Audit record created (action_type as u8 for encoding)
+    AuditRecordCreated { account: T::AccountId, action_type: u8 },
+    /// Cumulative sub-threshold transactions exceeded the travel-rule threshold
+    StructuringDetected { account: T::AccountId, window_total: u128, tx_count: u32 },
 }
 ```
 
@@ -569,17 +555,17 @@ pub enum Event<T: Config> {
 # Query all compliance actions
 {job="substrate", pallet="compliance"}
 | json
-| line_format "{{.timestamp}} | {{.event}} | {{.account}} | {{.reason}}"
+| line_format "{{.timestamp}} | {{.event}} | {{.account}}"
 
-# Query KYC rejections (last 30 days)
-{job="substrate", pallet="compliance"} |= "KYCRejected"
+# Restrictions imposed (last 30 days) - AccountRestricted carries a reason
+{job="substrate", pallet="compliance"} |= "AccountRestricted"
 | json
 | timestamp > ago(30d)
+| line_format "🚨 {{.account}} restricted: {{.reason}}"
 
-# Query account freezes (high-risk events)
-{job="substrate", pallet="compliance"} |= "AccountFrozen"
+# Structuring alerts - cumulative sub-threshold activity past the travel rule
+{job="substrate", pallet="compliance"} |= "StructuringDetected"
 | json
-| line_format "🚨 {{.account}} frozen by {{.frozen_by}}: {{.reason}}"
 ```
 
 ---
