@@ -573,9 +573,6 @@ pub mod pallet {
     pub type BridgeCallsThisBlock<T: Config> =
         StorageMap<_, Blake2_128Concat, T::AccountId, (BlockNumberFor<T>, u32), ValueQuery>;
 
-    #[pallet::storage]
-    pub type LastBridgeRateLimitBlock<T: Config> = StorageValue<_, BlockNumberFor<T>, ValueQuery>;
-
     // ── P0-1: Oracle burn-proof confirmation tracking ─────────────────────
     #[pallet::storage]
     /// Per-transaction burn confirmations: (tx_id, oracle_account) → confirmed.
@@ -634,11 +631,11 @@ pub mod pallet {
             amount: u128,
             asset: u8,
         },
-        /// Bridge transaction executed
+        /// Bridge transaction executed (terminal success state)
         BridgeTransactionExecuted {
             tx_id: u32,
-            target_chain: u8,
-            external_tx_hash: Vec<u8>,
+            chain: u8,
+            external_tx_hash: BoundedVec<u8, ConstU32<128>>,
         },
         /// Liquidity pool created
         LiquidityPoolCreated {
@@ -1243,6 +1240,13 @@ pub mod pallet {
             // Mark BridgeTransaction as Executed to prevent replay
             bridge_tx.status = BridgeStatus::Executed;
             bridge_tx.completed_at = Some(frame_system::Pallet::<T>::block_number());
+
+            Self::deposit_event(Event::BridgeTransactionExecuted {
+                tx_id,
+                chain: Self::encode_chain(&source_chain),
+                external_tx_hash: bridge_tx.external_confirmation.clone().unwrap_or_default(),
+            });
+
             BridgeTransactions::<T>::insert(tx_id, bridge_tx);
 
             Self::deposit_event(Event::AssetsUnlocked {

@@ -50,7 +50,7 @@ Community Rewards: 5% (PoUW bonuses)
 # Calculate monthly DALLA inflation
 total_supply = 100_000_000  # Initial 100M DALLA
 
-annual_inflation_rate = 0.03  # 3% base
+annual_inflation_rate = 0.05  # 5% initial (decreases 0.1%/yr to a 1% floor)
 monthly_rate = (1 + annual_inflation_rate) ** (1/12) - 1
 
 monthly_new_dalla = total_supply * monthly_rate
@@ -70,7 +70,7 @@ community = monthly_new_dalla * 0.05   # 12,330 DALLA
 ### Minting Process
 1. **Deposit BZD** to Central Bank (off-chain)
 2. **Verification** by Central Bank auditors
-3. **Multi-sig approval** (4-of-7 signatures)
+3. **Council-majority approval** (4 of 7 seats; 7 of 12 at full council)
 4. **Mint bBZD** 1:1 ratio on-chain
 
 ```rust
@@ -144,40 +144,32 @@ Total: ~118,650 DALLA/month
 Annual Treasury Growth: ~1.42M DALLA
 ```
 
-### Multi-Sig Governance
-**Treasury Council:** 7 members (4-of-7 required)
-
-**Members:**
-- Prime Minister (or designate)
-- Minister of Finance
-- Financial Services Commission Chair
-- Central Bank Governor
-- 3 District Representatives (elected)
+### Council-Majority Governance
+**Treasury oversight:** the elected council approves spending by majority —
+4 of 7 seats, or 7 of 12 at full council.
 
 **Spending Approval:**
-1. Proposal submitted via Governance pallet
+1. Proposal submitted via the Governance pallet
 2. Public referendum (7-day voting)
-3. If passed, Treasury Council signs (4-of-7)
+3. If passed, council members approve by majority (4 of 7 seats; 7 of 12 at full council)
 4. Funds transferred automatically
 
 ```typescript
-// Propose treasury spending
-const proposal = api.tx.treasury.approveProposal(proposalId);
+// Propose treasury spending (Governance pallet)
+await api.tx.governance
+  .proposeTreasurySpend(
+    recipient,
+    50_000_000_000_000_000n, // 50K DALLA
+    'Road repair — Cayo district',
+    null                     // optional district index
+  )
+  .signAndSend(proposer);
 
-await api.tx.governance.propose(
-  proposal,
-  50_000_000_000_000_000n  // 50K DALLA
-).signAndSend(proposer);
+// Council members approve individually until a majority is reached
+await api.tx.governance.approveTreasurySpend(proposalId).signAndSend(councilMember);
 
-// After referendum passes, Treasury Council signs
-const multiSigCall = api.tx.multisig.asMulti(
-  4,  // Threshold
-  treasuryCouncilMembers,
-  null,
-  proposal,
-  false,
-  10_000_000_000  // Max weight
-);
+// Any account can trigger execution once approval passes
+await api.tx.governance.executeTreasuryProposal(proposalId).signAndSend(anyAccount);
 ```
 
 ---

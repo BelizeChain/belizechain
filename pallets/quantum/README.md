@@ -333,8 +333,8 @@ pub struct QuantumStats {
 
 **Cost Calculation**:
 ```rust
-let cost_per_qubit = 100_000; // 0.1 DALLA (6 decimals)
-let cost_per_shot = 1_000;    // 0.001 DALLA
+let cost_per_qubit = 100_000_000_000; // 0.1 DALLA (12 decimals)
+let cost_per_shot = 1_000_000_000;    // 0.001 DALLA (12 decimals)
 let total_cost = (num_qubits as u128 * cost_per_qubit) + (num_shots as u128 * cost_per_shot);
 ```
 
@@ -724,9 +724,9 @@ pub trait Config: frame_system::Config {
 
 **Recommended Values**:
 - `MaxActiveJobs`: `10` (prevents spam)
-- `DallaPerQubit`: `100_000` (0.1 DALLA, 6 decimals)
-- `DallaPerShot`: `1_000` (0.001 DALLA)
-- `NFTMintingFee`: `10_000_000` (10 DALLA)
+- `DallaPerQubit`: `100_000_000_000` (0.1 DALLA, 12 decimals)
+- `DallaPerShot`: `1_000_000_000` (0.001 DALLA, 12 decimals)
+- `NFTMintingFee`: `10_000_000_000_000` (10 DALLA, 12 decimals)
 
 ---
 

@@ -8,533 +8,449 @@ Comprehensive API reference for BelizeChain's infrastructure pallets.
 
 ## Oracle Pallet
 
-**Merchant verification ONLY (bBZD peg is 1:1 fixed, no price Oracle needed)**
+**Merchant verification, price feeds, sanctions, KYC consensus, land mirror, and IoT feeds**
 
 ### Extrinsics
 
-#### `register_merchant_verification`
-Register merchant for cashback program (NOT a price feed)
-
 ```rust
-pub fn register_merchant_verification(
+// call_index(0) — governance
+pub fn add_operator(origin: OriginFor<T>, operator: T::AccountId) -> DispatchResult;
+
+// call_index(1) — governance
+pub fn remove_operator(origin: OriginFor<T>, operator: T::AccountId) -> DispatchResult;
+
+// call_index(2) — authorised operator submits a price observation
+pub fn submit_price(origin: OriginFor<T>, base_currency: u8, quote_currency: u8, price: u128) -> DispatchResult;
+
+// call_index(3) — verify a merchant for a tourism category
+pub fn verify_merchant(
     origin: OriginFor<T>,
     merchant: T::AccountId,
-    category: MerchantCategory,
-    verification_proof: BoundedVec<u8, ConstU32<256>>
-) -> DispatchResult
-```
+    category: u8,
+    certification: BoundedVec<u8, ConstU32<MAX_CERT_LEN>>,
+    license: BoundedVec<u8, ConstU32<MAX_CERT_LEN>>,
+    location: Option<(i32, i32)>,
+) -> DispatchResult;
 
-**Purpose:** Verify merchants for tourism cashback eligibility, **NOT** exchange rates
-
-**Events:**
-- `MerchantVerified(AccountId, MerchantCategory)`
-
-**Weights:** 40M + 2 reads + 1 write
-
-```javascript
-// JavaScript example
-await api.tx.oracle.registerMerchantVerification(
-  merchantAddress,
-  'Hotels',  // Category for 8% cashback
-  verificationProof
-).signAndSend(verifierAccount);
-```
-
-#### `update_merchant_status`
-Update merchant verification status
-
-```rust
-pub fn update_merchant_status(
+// call_index(4) — add a sanctions entry
+pub fn add_sanctioned_entity(
     origin: OriginFor<T>,
-    merchant: T::AccountId,
-    status: VerificationStatus
-) -> DispatchResult
+    account: T::AccountId,
+    source: u8,
+    reason: BoundedVec<u8, ConstU32<MAX_REASON_LEN>>,
+    expires_at: Option<BlockNumberFor<T>>,
+) -> DispatchResult;
+
+// call_index(5) — remove a sanctions entry
+pub fn remove_sanction(origin: OriginFor<T>, account: T::AccountId) -> DispatchResult;
+
+// call_index(6) — record a KYC verification
+pub fn verify_identity(
+    origin: OriginFor<T>,
+    account: T::AccountId,
+    kyc_level: u8,
+    id_hash: [u8; 32],
+    provider: BoundedVec<u8, ConstU32<64>>,
+    biometric_verified: bool,
+    address_verified: bool,
+) -> DispatchResult;
+
+// call_index(7) — mirror a land record
+pub fn register_land(
+    origin: OriginFor<T>,
+    property_id: PropertyId,
+    owner: T::AccountId,
+    valuation: u128,
+    has_encumbrances: bool,
+    co_owner_count: u8,
+) -> DispatchResult;
+
+// call_index(8)
+pub fn register_iot_device(origin: OriginFor<T>, device_id: [u8; 32], device_type_index: u8, location: Option<(i32, i32)>) -> DispatchResult;
+
+// call_index(9)
+pub fn submit_iot_data(
+    origin: OriginFor<T>,
+    device_id: [u8; 32],
+    feed_type_index: u8,
+    domain_index: Option<u8>,
+    data: BoundedVec<u8, ConstU32<MAX_DATA_LEN>>,
+    data_hash: [u8; 32],
+    location: Option<(i32, i32)>,
+    accuracy: u8,
+) -> DispatchResult;
+
+// call_index(10)
+pub fn verify_iot_device(origin: OriginFor<T>, device_id: [u8; 32]) -> DispatchResult;
+
+// call_index(11) — operator claims accumulated rewards
+pub fn claim_oracle_rewards(origin: OriginFor<T>) -> DispatchResult;
+
+// call_index(12) — governance sets a manual exchange rate
+pub fn update_exchange_rate(origin: OriginFor<T>, base_currency: u8, quote_currency: u8, price: u128) -> DispatchResult;
 ```
 
-**Status values:**
-- `Pending`: Awaiting verification
-- `Verified`: Active for cashback
-- `Suspended`: Temporarily inactive
-- `Revoked`: Permanently removed
-
-**Events:**
-- `MerchantStatusUpdated(AccountId, VerificationStatus)`
-
-**Weights:** 35M + 2 reads + 1 write
+> **Correction:** this pallet *does* carry price feeds (`PriceFeeds`, `PriceSubmissions`,
+> `ManualExchangeRates`). It is not merchant-verification-only. bBZD is still pegged 1:1 to
+> BZD by Central Bank governance — the price feeds are general-purpose oracle data, not the peg.
 
 ### Storage
 
-#### `MerchantVerifications`
-```rust
-pub type MerchantVerifications<T> = StorageMap<
-    _,
-    Blake2_128Concat,
-    T::AccountId,
-    MerchantVerification<T::BlockNumber>,
-    OptionQuery
->;
+| Storage | Key → Value | Purpose |
+|---|---|---|
+| `OracleOperators` | `AccountId → bool` | Authorised operators |
+| `OperatorCount` | `u32` | Number of authorised operators |
+| `PriceSubmissions` | double map | Per-operator price observations |
+| `PriceFeeds` | `(u8, u8) → _` | Aggregated price feed per currency pair |
+| `ManualExchangeRates` | `(u8, u8) → u128` | Governance-set rates |
+| `MerchantCategories` | `AccountId → MerchantInfo` | Verified merchants, keyed by merchant account |
+| `SanctionedEntities` | `AccountId → _` | Sanctions list |
+| `IdentityVerifications` | `AccountId → _` | KYC records |
+| `LandRegistryData` | `PropertyId → _` | Land mirror |
+| `IoTDevices` | `[u8; 32] → _` | Registered IoT devices |
+| `OracleOperatorStatsMap` | `AccountId → _` | Operator reputation and rewards |
+| `PendingKycSubmissions` | `(AccountId, AccountId) → u8` | Pending KYC consensus votes |
+| `KycLeadingVote` | `AccountId → (u8, u32)` | Leading KYC vote |
+| `OracleDisputeFlag` | `AccountId → _` | KYC dispute flags |
+| `BehaviorFlags` | `AccountId → _` | Behavioural flags |
+| `BehaviorFlagCooldown` | `AccountId → BlockNumber` | Flag cooldowns |
+| `PendingBehaviorFlags` | `(AccountId, AccountId) → u8` | Pending behaviour-flag votes |
 
-pub struct MerchantVerification<BlockNumber> {
-    pub category: MerchantCategory,
-    pub status: VerificationStatus,
-    pub verified_at: BlockNumber,
-    pub verifier: AccountId,
-    pub expiry: BlockNumber
-}
-```
+Exact value structs: see `pallets/oracle/src/lib.rs`.
 
-**NOTE:** This pallet does NOT provide exchange rates. bBZD is pegged 1:1 to BZD by Central Bank governance, not Oracle data.
+### Events
+
+`OperatorAdded`, `OperatorRemoved`, `PriceSubmitted`, `PriceFeedUpdated`, `MerchantVerified`,
+`MerchantExpired`, `SanctionAdded`, `SanctionRemoved`, `IdentityVerified`, `IdentityExpired`,
+`LandRegistryUpdated`, `IoTDeviceRegistered`, `IoTDataSubmitted`, `IoTDeviceVerified`,
+`OracleRewardsClaimed`, `ExchangeRateUpdated`, `ExchangeRateStale`, `KycVoteStaged`,
+`KycConsensusReached`, `KycDisputeFlagged`, `KycDisputeResolved`, `BehaviorFlagVoteStaged`,
+`BehaviorFlagged`, `BehaviorFlagCleared`
+
+> Weights live in `pallets/oracle/src/weights.rs`. Regenerate with
+> `./scripts/bench_weights.sh pallet_belize_oracle` — hand-written weight figures in docs are
+> not authoritative.
 
 ---
 
 ## Interoperability Pallet
 
-**Cross-chain bridges to Ethereum and Polkadot ecosystem**
+**Cross-chain bridges with post-quantum (PQ) signature verification and liquidity pools**
 
 ### Extrinsics
 
-#### `initiate_bridge_transfer`
-Transfer assets to Ethereum or Polkadot
-
 ```rust
-pub fn initiate_bridge_transfer(
+// call_index(0) — lock assets and start an outbound bridge transaction
+pub fn initiate_bridge(
     origin: OriginFor<T>,
-    target_chain: ChainId,
-    asset: AssetId,
-    amount: BalanceOf<T>,
-    recipient: BoundedVec<u8, ConstU32<64>>  // External address
-) -> DispatchResult
-```
+    target_chain_index: u8,
+    target_address: Vec<u8>,
+    amount: <T::Currency as Currency<T::AccountId>>::Balance,
+    asset_index: u8,
+) -> DispatchResult;
 
-**Supported chains:**
-- `Ethereum`: ERC20 wrapped DALLA/bBZD
-- `Polkadot`: XCM to relay chain
-- `Kusama`: XCM to Kusama relay
-- `Moonbeam`: EVM parachain bridge
+// call_index(1) — bridge validator supplies a PQ signature for a tx
+pub fn provide_pq_signature(origin: OriginFor<T>, tx_id: u32, pq_signature: Vec<u8>) -> DispatchResult;
 
-**Events:**
-- `BridgeTransferInitiated(AccountId, ChainId, AssetId, Balance, Vec<u8>)`
-
-**Weights:** 90M + 4 reads + 3 writes
-
-```typescript
-// Bridge 1000 DALLA to Ethereum
-await api.tx.interoperability.initiateBridgeTransfer(
-  'Ethereum',
-  'DALLA',
-  1000_000_000_000_000n,
-  '0x742d35Cc6634C0532925a3b844Bc454e4438f44e'  // ETH address
-).signAndSend(sender);
-```
-
-#### `confirm_bridge_transfer`
-Confirm incoming bridge transfer (relayer only)
-
-```rust
-pub fn confirm_bridge_transfer(
+// call_index(2)
+pub fn create_liquidity_pool(
     origin: OriginFor<T>,
-    transfer_id: H256,
-    source_chain: ChainId,
-    proof: BridgeProof
-) -> DispatchResult
-```
+    chain_index: u8,
+    asset_index: u8,
+    initial_liquidity: <T::Currency as Currency<T::AccountId>>::Balance,
+) -> DispatchResult;
 
-**Requirements:**
-- Valid Merkle proof from source chain
-- Relayer authorization
-- Sufficient liquidity in bridge pool
+// call_index(3) — release locked assets after multi-sig + challenge period
+pub fn process_unlock(origin: OriginFor<T>, tx_id: u32) -> DispatchResult;
 
-**Events:**
-- `BridgeTransferConfirmed(H256, AccountId, Balance)`
+// call_index(4)
+pub fn send_cross_chain_message(origin: OriginFor<T>, target_chain_index: u8, payload: Vec<u8>) -> DispatchResult;
 
-**Weights:** 100M + 5 reads + 4 writes
+// call_index(5) — governance
+pub fn update_bridge_config(origin: OriginFor<T>, chain_index: u8, enabled: bool, fee_rate: u32, max_amount: u128) -> DispatchResult;
 
-#### `submit_xcm_message`
-Send XCM message to Polkadot parachain
+// call_index(6)
+pub fn dispute_bridge_transaction(origin: OriginFor<T>, tx_id: u32, reason: Vec<u8>) -> DispatchResult;
 
-```rust
-pub fn submit_xcm_message(
+// call_index(7) — record an unlock originating on the source chain
+pub fn submit_incoming_unlock(
     origin: OriginFor<T>,
-    destination: MultiLocation,
-    message: Xcm<()>
-) -> DispatchResult
+    source_chain_index: u8,
+    source_tx_hash: Vec<u8>,
+    recipient: T::AccountId,
+    amount: u128,
+    asset_index: u8,
+) -> DispatchResult;
+
+// call_index(8)
+pub fn register_bridge_validator(origin: OriginFor<T>, pq_public_key: Vec<u8>, supported_chain_indices: Vec<u8>) -> DispatchResult;
+
+// call_index(9)
+pub fn remove_bridge_validator(origin: OriginFor<T>, validator_account: T::AccountId) -> DispatchResult;
+
+// call_index(10)
+pub fn withdraw_liquidity(
+    origin: OriginFor<T>,
+    pool_id: u32,
+    amount: <T::Currency as Currency<T::AccountId>>::Balance,
+) -> DispatchResult;
+
+// call_index(11) — confirm an oracle-attested burn proof
+pub fn confirm_burn_proof(origin: OriginFor<T>, tx_id: u32) -> DispatchResult;
 ```
 
-**XCM capabilities:**
-- Asset transfers (ReserveAssetDeposited)
-- Remote execution (Transact)
-- Staking delegation (Bond)
-
-**Events:**
-- `XcmMessageSent(MultiLocation, XcmHash)`
-
-**Weights:** 120M + 3 reads + 2 writes
-
-```rust
-// XCM example: Transfer to Polkadot relay chain
-use xcm::latest::prelude::*;
-
-let destination = MultiLocation {
-    parents: 1,
-    interior: X1(AccountId32 {
-        network: NetworkId::Polkadot,
-        id: recipient.into()
-    })
-};
-
-let message = Xcm(vec![
-    WithdrawAsset((Here, 1000 * DALLA).into()),
-    InitiateReserveWithdraw {
-        assets: All.into(),
-        reserve: destination.clone(),
-        xcm: Xcm(vec![DepositAsset {
-            assets: All.into(),
-            max_assets: 1,
-            beneficiary: destination
-        }])
-    }
-]);
-```
+**Chain selection:** `target_chain_index` / `chain_index` index into the `BridgeChain` enum
+(52 variants) used by `ChainConfigurations`, not a small `ChainId` list.
 
 ### Storage
 
-#### `BridgeTransfers`
-```rust
-pub type BridgeTransfers<T> = StorageMap<
-    _,
-    Blake2_128Concat,
-    H256,  // Transfer ID
-    BridgeTransfer<T::AccountId, BalanceOf<T>, T::BlockNumber>,
-    OptionQuery
->;
+| Storage | Purpose |
+|---|---|
+| `BridgeValidators` | Registered bridge validators + PQ keys |
+| `LiquidityPools` | Per-pool liquidity (`pool_id → _`) |
+| `BridgeTransactions` | Outbound/inbound bridge transactions (`tx_id → _`) |
+| `CrossChainMessages` | Arbitrary cross-chain messages |
+| `ChainConfigurations` | Per-`BridgeChain` config (enabled, fee rate, max amount, PQ requirements, endpoints) |
+| `NextTxId` / `NextPoolId` / `NextMessageId` | Id counters |
+| `TotalLockedAssets` | Locked assets per chain/asset |
+| `PendingFinalizations` | Transactions awaiting finalization |
+| `UserBridgeLocks` | Per-user locked amount |
+| `BridgeCallsThisBlock` | Per-account rate-limit counter |
+| `BurnConfirmations` | Per-(tx, oracle) burn confirmations |
+| `BurnConfirmationCount` | Confirmation tally per tx |
 
-pub struct BridgeTransfer<AccountId, Balance, BlockNumber> {
-    pub sender: AccountId,
-    pub target_chain: ChainId,
-    pub asset: AssetId,
-    pub amount: Balance,
-    pub recipient: BoundedVec<u8, ConstU32<64>>,
-    pub status: TransferStatus,
-    pub initiated_at: BlockNumber
-}
-```
+Exact value structs: see `pallets/interoperability/src/lib.rs`.
 
-#### `BridgeLiquidity`
-```rust
-pub type BridgeLiquidity<T> = StorageDoubleMap<
-    _,
-    Blake2_128Concat, ChainId,
-    Blake2_128Concat, AssetId,
-    BalanceOf<T>,
-    ValueQuery
->;
-```
+### Events
 
-Liquidity pools for each chain/asset pair
+`BridgeTransactionInitiated`, `BridgeTransactionExecuted`, `LiquidityPoolCreated`,
+`AssetsLocked`, `AssetsUnlocked`, `BridgeValidatorRegistered`, `PQSignatureProvided`,
+`CrossChainMessageSent`, `BridgeConfigUpdated`, `BridgeFeeCollected`,
+`BridgeTransactionDisputed`, `BridgeTransactionFinalized`, `UnverifiedBurnProofWarning`,
+`BurnProofConfirmed`
+
+> Weights: `pallets/interoperability/src/weights.rs`
+> (`./scripts/bench_weights.sh pallet_belize_interoperability`).
 
 ---
 
 ## Consensus Pallet
 
-**Proof of Useful Work with quantum work integration**
+**Proof of Useful Work over AI models (register → validate → round → submit work → finalize)**
+
+> This pallet does **not** expose `submit_quantum_work`. Quantum work is submitted through the
+> Quantum pallet (`quantum.submit_quantum_job`); see the Quantum section below.
 
 ### Extrinsics
 
-#### `submit_quantum_work`
-Submit Proof of Quantum Work (Kinich integration)
-
 ```rust
-pub fn submit_quantum_work(
+// call_index(0) — register an AI model with a PQ signature
+pub fn register_ai_model(
     origin: OriginFor<T>,
-    problem_id: u64,
-    quantum_solution: BoundedVec<u8, ConstU32<1024>>,
-    proof: QuantumProof
-) -> DispatchResult
-```
+    model_type_index: u8,
+    parameters_hash: [u8; 32],
+    training_data_size: u32,
+    pq_signature: Vec<u8>,
+) -> DispatchResult;
 
-**Verification:**
-- Quantum signature validation
-- Solution correctness check
-- Problem difficulty verification
-
-**Rewards:** 50 DALLA base + up to 200 DALLA for complex problems
-
-**Events:**
-- `QuantumWorkSubmitted(AccountId, u64, QuantumProof)`
-- `QuantumRewardIssued(AccountId, Balance)`
-
-**Weights:** 150M + 6 reads + 4 writes
-
-```python
-# Python example (Kinich → Blockchain)
-from kinich import QuantumNode
-
-node = QuantumNode()
-solution = node.solve_optimization_problem(problem_id)
-
-receipt = substrate.compose_call(
-    call_module='Consensus',
-    call_function='submit_quantum_work',
-    call_params={
-        'problem_id': problem_id,
-        'quantum_solution': solution.encode(),
-        'proof': generate_quantum_proof(solution)
-    }
-)
-```
-
-#### `register_validator_node`
-Register node as validator
-
-```rust
-pub fn register_validator_node(
+// call_index(1) — join the validator set (PoUW staking)
+pub fn join_consensus_validator(
     origin: OriginFor<T>,
-    node_type: ValidatorNodeType,
-    endpoint: BoundedVec<u8, ConstU32<128>>
-) -> DispatchResult
+    stake_amount: <T::Currency as Currency<T::AccountId>>::Balance,
+    pq_public_key: Vec<u8>,
+) -> DispatchResult;
+
+// call_index(2) — governance validates a model and scores its accuracy
+pub fn validate_ai_model(origin: OriginFor<T>, model_id: u32, accuracy_score: u32) -> DispatchResult;
+
+// call_index(3) — governance opens a consensus round
+pub fn start_consensus_round(origin: OriginFor<T>, duration_blocks: BlockNumberFor<T>) -> DispatchResult;
+
+// call_index(4) — validator submits useful work for a model
+pub fn submit_ai_work(
+    origin: OriginFor<T>,
+    model_id: u32,
+    work_type_index: u8,
+    result_hash: [u8; 32],
+    computation_time: u32,
+    pq_signature: Vec<u8>,
+) -> DispatchResult;
+
+// call_index(5) — close the round and distribute rewards
+pub fn finalize_consensus_round(origin: OriginFor<T>) -> DispatchResult;
+
+// call_index(6) / call_index(7) — leave the set, then withdraw after unbonding
+pub fn leave_validator(origin: OriginFor<T>) -> DispatchResult;
+pub fn withdraw_validator_unbonded(origin: OriginFor<T>) -> DispatchResult;
 ```
-
-**Node types:**
-- `Standard`: Basic block production
-- `Nawal`: Federated learning capability
-- `Kinich`: Quantum work capability
-- `Full`: All capabilities (highest rewards)
-
-**Requirements:**
-- Minimum stake: 10,000 DALLA
-- KYC level: Verified
-- Uptime SLA: 99.5%
-
-**Events:**
-- `ValidatorNodeRegistered(AccountId, ValidatorNodeType)`
-
-**Weights:** 50M + 3 reads + 2 writes
 
 ### Storage
 
-#### `QuantumWorkSubmissions`
-```rust
-pub type QuantumWorkSubmissions<T> = StorageDoubleMap<
-    _,
-    Blake2_128Concat, u64,  // Problem ID
-    Blake2_128Concat, T::AccountId,
-    QuantumSubmission<T::BlockNumber>,
-    OptionQuery
->;
+| Storage | Purpose |
+|---|---|
+| `AIModels` | Registered models (`model_id → _`) |
+| `ConsensusValidators` | Validator records (`validator_id → _`) |
+| `ValidatorByAccount` | `AccountId → validator_id` |
+| `ConsensusRounds` | Round records (`round_id → _`) |
+| `ModelsByAccount` | Models owned per account |
+| `CurrentConsensusRound` | Active round id |
+| `NextModelId` / `NextValidatorId` / `NextRoundId` | Id counters |
+| `GlobalAIMetrics` | Aggregate system metrics |
+| `SubmitCallsThisBlock` | Per-account submit rate limit |
+| `LastSubmitRateLimitBlock` | Block the counters were last reset |
+| `PendingValidatorUnbonds` | Unbonding queue |
 
-pub struct QuantumSubmission<BlockNumber> {
-    pub solution: BoundedVec<u8, ConstU32<1024>>,
-    pub submitted_at: BlockNumber,
-    pub verified: bool,
-    pub reward: Balance
-}
-```
+Exact value structs: see `pallets/consensus/src/lib.rs`.
 
-#### `ValidatorNodes`
-```rust
-pub type ValidatorNodes<T> = StorageMap<
-    _,
-    Blake2_128Concat,
-    T::AccountId,
-    ValidatorNodeInfo<T::BlockNumber>,
-    OptionQuery
->;
+### Events
 
-pub struct ValidatorNodeInfo<BlockNumber> {
-    pub node_type: ValidatorNodeType,
-    pub endpoint: BoundedVec<u8, ConstU32<128>>,
-    pub registered_at: BlockNumber,
-    pub blocks_produced: u64,
-    pub uptime_percentage: u8
-}
-```
+`AIModelRegistered`, `ValidatorJoined`, `ConsensusRoundStarted`, `AIWorkSubmitted`,
+`ConsensusRoundCompleted`, `ConsensusRewardsDistributed`, `ModelQualityUpdated`, `ValidatorLeft`
+
+> Weights: `pallets/consensus/src/weights.rs`
+> (`./scripts/bench_weights.sh pallet_belize_consensus`).
 
 ---
 
 ## Quantum Pallet
 
-**Quantum workload orchestration and compression**
+**On-chain registry for Kinich quantum jobs, results, verification consensus, and achievement NFTs**
+
+> This pallet does **not** expose `request_quantum_compression` or `register_quantum_backend`.
+> Backends are an enum compiled into the runtime (`QuantumBackend`), not registered via
+> extrinsic, and quantum *compression* is an off-chain Kinich/Pakit concern with no on-chain
+> extrinsic.
 
 ### Extrinsics
 
-#### `request_quantum_compression`
-Request quantum compression for large data (Kinich/Pakit integration)
-
 ```rust
-pub fn request_quantum_compression(
+// call_index(0) — submit a quantum job (job_id comes from Kinich)
+pub fn submit_quantum_job(
     origin: OriginFor<T>,
-    content_hash: H256,
-    target_ratio: u8  // Desired compression ratio (2-10x)
-) -> DispatchResult
-```
+    job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>>,
+    backend_index: u8,          // index into QuantumBackend
+    circuit_hash: [u8; 32],
+    num_qubits: u16,
+    circuit_depth: u32,
+    num_shots: u32,
+) -> DispatchResult;
 
-**Process:**
-1. Fetch content from Pakit DAG storage
-2. Submit to Kinich quantum node
-3. Store compressed result back to Pakit
-4. Update on-chain proof with new hash
-
-**Cost:** ~$10 per GB (configured quantum backend compute)
-
-**Events:**
-- `QuantumCompressionRequested(AccountId, H256, u8)`
-- `QuantumCompressionCompleted(H256, H256, u8)` - (original, compressed, actual_ratio)
-
-**Weights:** 70M + 4 reads + 2 writes
-
-```javascript
-// Request 6x compression for archival data
-await api.tx.quantum.requestQuantumCompression(
-  contentHash,
-  6  // Target 6x ratio
-).signAndSend(requester);
-```
-
-#### `register_quantum_backend`
-Register quantum computing backend (admin only)
-
-```rust
-pub fn register_quantum_backend(
+// call_index(1) / call_index(2) — execution lifecycle
+pub fn update_job_status(
     origin: OriginFor<T>,
-    backend_id: BoundedVec<u8, ConstU32<32>>,
-    provider: QuantumProvider,
-    qubits: u16,
-    gate_fidelity: Permill
-) -> DispatchResult
+    job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>>,
+    new_status_index: u8,
+) -> DispatchResult;
+pub fn record_quantum_result(
+    origin: OriginFor<T>,
+    job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>>,
+    result_data_hash: [u8; 32],
+    verification_proof: BoundedVec<u8, ConstU32<MAX_PROOF_SIZE>>,
+    accuracy_score: u8,
+) -> DispatchResult;
+
+// call_index(3) — verifier attests a result
+pub fn verify_quantum_result(origin: OriginFor<T>, job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>>, verification_passed: bool) -> DispatchResult;
+
+// call_index(4) — mint an achievement NFT for completed work
+pub fn mint_achievement_nft(
+    origin: OriginFor<T>,
+    job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>>,
+    achievement_type_index: u8,
+    transferable: bool,
+    _circuit_qubits: u16,
+    _accuracy: u8,
+) -> DispatchResult;
+
+// call_index(5)–(8) — NFT transfer / marketplace
+pub fn transfer_nft(origin: OriginFor<T>, nft_id: u64, to: T::AccountId) -> DispatchResult;
+pub fn list_nft(origin: OriginFor<T>, nft_id: u64, price: <T::Currency as Currency<T::AccountId>>::Balance, duration: BlockNumberFor<T>) -> DispatchResult;
+pub fn buy_nft(origin: OriginFor<T>, nft_id: u64) -> DispatchResult;
+pub fn delist_nft(origin: OriginFor<T>, nft_id: u64) -> DispatchResult;
+
+// call_index(9) / call_index(10) — multi-verifier consensus
+pub fn request_verification(origin: OriginFor<T>, job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>>, required_verifications: u8) -> DispatchResult;
+pub fn submit_verification(
+    origin: OriginFor<T>,
+    job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>>,
+    vote_index: u8,      // index into VerificationVote
+    confidence: u8,
+) -> DispatchResult;
+
+// call_index(11)–(13) — NFT bridging
+pub fn bridge_to_ethereum(origin: OriginFor<T>, nft_id: u64, recipient: BoundedVec<u8, ConstU32<64>>) -> DispatchResult;
+pub fn bridge_to_parachain(origin: OriginFor<T>, nft_id: u64, parachain_id: u32, recipient: BoundedVec<u8, ConstU32<64>>) -> DispatchResult;
+pub fn cancel_bridge(origin: OriginFor<T>, nft_id: u64) -> DispatchResult;
 ```
 
-**Providers:**
-- `AzureIonQ`: 25 qubits, 99.5% fidelity (primary)
-- `AzureQuantinuum`: 20 qubits, 99.9% fidelity
-- `IBMQuantum`: 127 qubits, 99.2% fidelity (fallback)
-- `Rigetti`: 32 qubits, 98.5% fidelity
+### Backends
 
-**Events:**
-- `QuantumBackendRegistered(Vec<u8>, QuantumProvider, u16)`
-
-**Weights:** 45M + 2 reads + 1 write
+`QuantumBackend` is a runtime enum indexed by `backend_index`:
+`AzureIonQ`, `AzureQuantinuum`, `AzureRigetti`, `IBMQuantum`, `Qiskit`, `SpinQGemini`,
+`SpinQTriangulum`, `Other`.
 
 ### Storage
 
-#### `QuantumCompressionJobs`
-```rust
-pub type QuantumCompressionJobs<T> = StorageMap<
-    _,
-    Blake2_128Concat,
-    H256,  // Content hash
-    CompressionJob<T::AccountId, T::BlockNumber>,
-    OptionQuery
->;
+| Storage | Purpose |
+|---|---|
+| `QuantumJobs` | `JobId → QuantumJob` |
+| `JobsByAccount` | Per-account job id index |
+| `QuantumResults` | `JobId → QuantumResult` |
+| `QuantumAchievements` | Achievement NFTs per account |
+| `VerificationRequests` | Multi-verifier requests per job |
+| `ValidatorReputation` | Verifier reputation scores |
+| `AccountStats` | Per-account job/reward stats |
+| `NFTCounter` / `ListingCounter` / `BridgeCounter` | Id counters |
+| `TotalQuantumJobs` / `TotalDallaSpent` | Aggregate counters |
+| `NFTListings` | Marketplace listings |
+| `NFTAuctions` | Auctions |
+| `BridgeRequests` | NFT bridge requests |
 
-pub struct CompressionJob<AccountId, BlockNumber> {
-    pub requester: AccountId,
-    pub original_hash: H256,
-    pub target_ratio: u8,
-    pub status: JobStatus,
-    pub submitted_at: BlockNumber,
-    pub compressed_hash: Option<H256>,
-    pub actual_ratio: Option<u8>
-}
-```
+Exact value structs: see `pallets/quantum/src/lib.rs`.
 
-#### `QuantumBackends`
-```rust
-pub type QuantumBackends<T> = StorageMap<
-    _,
-    Blake2_128Concat,
-    BoundedVec<u8, ConstU32<32>>,  // Backend ID
-    QuantumBackend,
-    OptionQuery
->;
+### Events
 
-pub struct QuantumBackend {
-    pub provider: QuantumProvider,
-    pub qubits: u16,
-    pub gate_fidelity: Permill,
-    pub enabled: bool
-}
-```
+`QuantumJobSubmitted`, `JobStatusUpdated`, `QuantumResultRecorded`, `ResultVerified`,
+`AchievementNFTMinted`, `NFTTransferred`, `VerificationRequested`, `VerificationSubmitted`,
+`VerificationConsensusReached`, `ReputationUpdated`, `NFTListed`, `NFTPurchased`, `NFTDelisted`,
+`BridgeInitiated`, `BridgeCancelled`
+
+> Weights: `pallets/quantum/src/weights.rs`
+> (`./scripts/bench_weights.sh pallet_belize_quantum`).
 
 ---
 
 ## Type Definitions
 
-```rust
-// Interoperability
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-pub enum ChainId {
-    Ethereum,
-    Polkadot,
-    Kusama,
-    Moonbeam,
-    Acala
-}
+Enums referenced above (all defined in the pallets, not here — this list is a pointer, not a copy):
 
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-pub enum TransferStatus {
-    Initiated,
-    Confirmed,
-    Failed,
-    Cancelled
-}
+- **`BridgeChain`** — `pallets/interoperability`: the bridge target-chain enum (~52 variants).
+  `initiate_bridge` / `update_bridge_config` take an index into it.
+- **`QuantumBackend`** — `pallets/quantum`: `AzureIonQ`, `AzureQuantinuum`, `AzureRigetti`,
+  `IBMQuantum`, `Qiskit`, `SpinQGemini`, `SpinQTriangulum`, `Other`.
+- **`RoundStatus`** — `pallets/consensus`: `InProgress`, `Completed`.
+- **`JobStatus`**, **`VerificationVote`**, **`AchievementType`** — `pallets/quantum`.
 
-// Consensus
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-pub enum ValidatorNodeType {
-    Standard,
-    Nawal,
-    Kinich,
-    Full
-}
-
-// Quantum
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-pub enum QuantumProvider {
-    AzureIonQ,
-    AzureQuantinuum,
-    IBMQuantum,
-    Rigetti
-}
-
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-pub enum JobStatus {
-    Pending,
-    Processing,
-    Completed,
-    Failed
-}
-```
+Do not hand-copy struct/enum definitions into documentation; query the runtime metadata
+(`@polkadot/api`) or read the pallet source for the authoritative shape.
 
 ---
 
 ## Performance Benchmarks
 
-### Bridge Operations
-```
-Ethereum bridge: 150 seconds average (15 block confirmations)
-Polkadot XCM: 12 seconds (2 relay chain blocks)
-Moonbeam EVM: 18 seconds (3 parachain blocks)
+On-chain weights are generated by the FRAME benchmarking tooling, not estimated by hand:
 
-Cost per transfer:
-- Ethereum: ~$5 (gas fees)
-- Polkadot XCM: ~$0.10
-- Internal: ~$0.001 (DALLA fees)
+```bash
+cargo build --release -p belizechain-node --features runtime-benchmarks
+./scripts/bench_weights.sh pallet_belize_oracle
+./scripts/bench_weights.sh pallet_belize_interoperability
+./scripts/bench_weights.sh pallet_belize_consensus
+./scripts/bench_weights.sh pallet_belize_quantum
 ```
 
-### Quantum Operations
-```
-Compression request: 70M gas
-Backend registration: 45M gas
-
-Quantum job latency:
-- IonQ: 28 seconds average
-- Quantinuum: 45 seconds
-- IBM: 120 seconds (queue time)
-
-Cost per compression:
-- 1 GB data: ~$10 (1000 shots × 50 circuits)
-- Savings: 6.8x ratio → 85% storage reduction
-```
+Output lands in each `pallets/<name>/src/weights.rs`. For chain-level throughput and
+cross-chain latency, measure against the live testnet rather than quoting fixed figures —
+values differ per hardware and per bridge endpoint.
 
 ---
 

@@ -68,7 +68,7 @@
 
 5. **Governance Model**
    - District democracy
-   - Multi-signature treasury
+   - Council-majority treasury approval
    - Proposal system
 
 6. **Economic Analysis**
@@ -145,7 +145,7 @@
 - **Quantum Resistance**: Post-quantum cryptography ready
 
 ### Security Features
-- Multi-signature wallets (2-of-3, 4-of-7, custom)
+- Council-majority treasury approval (4 of 7 seats; 7 of 12 at full council)
 - Time-locked transactions
 - Slashing for misbehavior
 - KYC/AML compliance built-in
@@ -160,7 +160,7 @@
 
 **DALLA (Native Token)**:
 - **Initial Supply**: 100,000,000 DALLA
-- **Inflation**: 5% annual (decreasing to 2%)
+- **Inflation**: 5% annual initially, decreasing by 0.1%/yr to a 1% floor
 - **Purpose**: Governance, staking, fees
 - **Distribution**:
   - 40% - Public distribution
@@ -228,7 +228,7 @@
    - DALLA/bBZD management
    - Multi-currency support
    - Treasury operations
-   - Multi-signature accounts
+   - Council-majority approval
 
 2. **Governance Pallet**
    - Proposal system

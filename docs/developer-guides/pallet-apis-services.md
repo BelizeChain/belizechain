@@ -8,458 +8,331 @@ Comprehensive API reference for BelizeChain's service-oriented pallets.
 
 ## BNS Pallet (Belize Name Service)
 
-**.bz domain registry with DAG hosting and marketplace**
+**.bz domain registry with Pakit DAG hosting, marketplace, subdomains, and SSL records**
 
 ### Extrinsics
 
-#### `register_domain`
-Register new .bz domain (KYC required)
-
 ```rust
-pub fn register_domain(
+// call_index(0) — register a .bz domain. `tier` is a u8 index:
+//   0=Standard, 1=Premium, 2=Government, 3=Verified
+pub fn register_domain(origin: OriginFor<T>, domain_name: Vec<u8>, tier: u8) -> DispatchResult;
+
+// call_index(1) — set wallet/content resolution
+pub fn set_resolution(
     origin: OriginFor<T>,
-    domain: BoundedVec<u8, ConstU32<64>>,
-    tier: DomainTier
-) -> DispatchResult
+    domain_name: Vec<u8>,
+    wallet_address: Option<T::AccountId>,
+    content_hash: Option<[u8; 32]>,
+    metadata: Vec<u8>,
+) -> DispatchResult;
+
+// call_index(2) — ownership
+pub fn transfer_domain(origin: OriginFor<T>, domain_name: Vec<u8>, new_owner: T::AccountId) -> DispatchResult;
+
+// call_index(3)–(5) — marketplace
+pub fn list_domain(origin: OriginFor<T>, domain_name: Vec<u8>, price: u128, min_offer: Option<u128>, duration_blocks: BlockNumberFor<T>) -> DispatchResult;
+pub fn buy_domain(origin: OriginFor<T>, domain_name: Vec<u8>, offer_price: u128) -> DispatchResult;
+pub fn unlist_domain(origin: OriginFor<T>, domain_name: Vec<u8>) -> DispatchResult;
+
+// call_index(6)–(9) — hosting. Hosting `tier` is a u8 index:
+//   0=Free, 1=Basic, 2=Pro, 3=Enterprise
+pub fn activate_hosting(origin: OriginFor<T>, domain_name: Vec<u8>, tier: u8, content_hash: [u8; 32], auto_renew: bool) -> DispatchResult;
+pub fn renew_hosting(origin: OriginFor<T>, domain_name: Vec<u8>, months: u32) -> DispatchResult;
+pub fn deactivate_hosting(origin: OriginFor<T>, domain_name: Vec<u8>) -> DispatchResult;
+pub fn update_hosting_content(origin: OriginFor<T>, domain_name: Vec<u8>, new_content_hash: [u8; 32], description: Vec<u8>, size_bytes: u64) -> DispatchResult;
+
+// call_index(10)–(12) — external domains and subdomains
+pub fn register_external_domain(origin: OriginFor<T>, external_domain: Vec<u8>, linked_bns_domain: Vec<u8>, tier: u8) -> DispatchResult;
+pub fn verify_external_domain(origin: OriginFor<T>, external_domain: Vec<u8>) -> DispatchResult;
+pub fn create_subdomain(origin: OriginFor<T>, parent_domain: Vec<u8>, subdomain: Vec<u8>, delegate_to: Option<T::AccountId>) -> DispatchResult;
+
+// call_index(13)–(14) — versioning and TLS
+pub fn rollback_content(origin: OriginFor<T>, domain_name: Vec<u8>, target_version: u32) -> DispatchResult;
+pub fn update_ssl_certificate(origin: OriginFor<T>, domain_name: Vec<u8>, cert_hash: [u8; 32], serial_number: Vec<u8>, issuer: Vec<u8>, expires_at: BlockNumberFor<T>) -> DispatchResult;
+
+// call_index(15)–(19) — profile records
+pub fn set_text_record(origin: OriginFor<T>, domain_name: Vec<u8>, key: Vec<u8>, value: Vec<u8>) -> DispatchResult;
+pub fn remove_text_record(origin: OriginFor<T>, domain_name: Vec<u8>, key: Vec<u8>) -> DispatchResult;
+pub fn set_avatar(origin: OriginFor<T>, domain_name: Vec<u8>, avatar: [u8; 32]) -> DispatchResult;
+pub fn set_primary_domain(origin: OriginFor<T>, domain_name: Vec<u8>) -> DispatchResult;
+pub fn clear_primary_domain(origin: OriginFor<T>) -> DispatchResult;
 ```
 
-**Parameters:**
-- `domain`: Domain name (3-63 chars, lowercase, alphanumeric + hyphens)
-- `tier`: `Standard`, `Premium`, `Government`, or `Verified`
-
-**Pricing:**
-- Standard: 100 DALLA/year
-- Premium: 1,000 DALLA/year (single word, 3-5 chars)
-- Government: Free (.gov.bz)
-- Verified: 500 DALLA/year (business verification)
-
-**Events:**
-- `DomainRegistered(AccountId, Vec<u8>, DomainTier)`
-
-**Weights:** 55M + 3 reads + 2 writes
-
-```javascript
-// JavaScript example
-await api.tx.bns.registerDomain(
-  'mycompany',
-  'Standard'
-).signAndSend(owner, { value: 100_000_000_000_000n });  // 100 DALLA
-```
-
-#### `update_domain_content`
-Update domain content hosted on Pakit DAG
-
-```rust
-pub fn update_domain_content(
-    origin: OriginFor<T>,
-    domain: BoundedVec<u8, ConstU32<64>>,
-    content_hash: H256  // Pakit DAG hash
-) -> DispatchResult
-```
-
-**Process:**
-1. Upload website to Pakit DAG storage
-2. Get content hash from Pakit
-3. Update on-chain domain record
-
-**Events:**
-- `DomainContentUpdated(Vec<u8>, H256)`
-
-**Weights:** 40M + 2 reads + 1 write
-
-```python
-# Python example
-import requests
-
-# Upload website to Pakit
-files = {'file': open('website.tar.gz', 'rb')}
-response = requests.post('http://localhost:8890/upload', files=files)
-content_hash = response.json()['hash']
-
-# Update domain on-chain
-tx = api.compose_call(
-    call_module='BNS',
-    call_function='update_domain_content',
-    call_params={
-        'domain': 'mycompany',
-        'content_hash': content_hash
-    }
-)
-```
-
-#### `list_domain_for_sale`
-List domain on marketplace
-
-```rust
-pub fn list_domain_for_sale(
-    origin: OriginFor<T>,
-    domain: BoundedVec<u8, ConstU32<64>>,
-    price: BalanceOf<T>
-) -> DispatchResult
-```
-
-**Marketplace fee:** 5% to treasury
-
-**Events:**
-- `DomainListedForSale(Vec<u8>, Balance)`
-
-**Weights:** 35M + 2 reads + 1 write
-
-#### `buy_domain`
-Purchase domain from marketplace
-
-```rust
-pub fn buy_domain(
-    origin: OriginFor<T>,
-    domain: BoundedVec<u8, ConstU32<64>>
-) -> DispatchResult
-```
-
-**Payment distribution:**
-- 95% to seller
-- 5% to treasury
-
-**Events:**
-- `DomainSold(Vec<u8>, AccountId, AccountId, Balance)` - (domain, seller, buyer, price)
-
-**Weights:** 60M + 4 reads + 3 writes
+**Pakit integration:** uploading a website means `activate_hosting` (first time) or
+`update_hosting_content` — there is no `update_domain_content` extrinsic.
 
 ### Storage
 
-#### `Domains`
-```rust
-pub type Domains<T> = StorageMap<
-    _,
-    Blake2_128Concat,
-    BoundedVec<u8, ConstU32<64>>,  // Domain name
-    DomainInfo<T::AccountId, T::BlockNumber>,
-    OptionQuery
->;
+| Storage | Purpose |
+|---|---|
+| `DomainRegistry` | Domain records (`BoundedVec<u8, MaxDomainLength> → _`) |
+| `AccountDomains` | Domains per account |
+| `DomainResolution` | Wallet/content/metadata resolution |
+| `PrimaryDomain` | Account → primary domain |
+| `DomainListings` | Marketplace listings |
+| `HostedWebsites` | Hosting records (tier, expiry, content) |
+| `ExternalDomains` / `DomainVerification` | External domain linking + verification |
+| `SSLCertificates` | TLS certificate records |
+| `ContentHistory` / `CurrentContentVersion` | Versioned content (rollback support) |
+| `TotalDomains` / `TotalHostingRevenue` / `TotalMarketplaceRevenue` | Aggregate counters |
 
-pub struct DomainInfo<AccountId, BlockNumber> {
-    pub owner: AccountId,
-    pub tier: DomainTier,
-    pub content_hash: Option<H256>,
-    pub registered_at: BlockNumber,
-    pub expires_at: BlockNumber,
-    pub for_sale: bool,
-    pub sale_price: Option<Balance>
-}
-```
+Exact struct shapes: see `pallets/bns/src/lib.rs`.
+
+### Events
+
+`DomainRegistered`, `ResolutionUpdated`, `DomainTransferred`, `DomainListed`, `DomainSold`,
+`HostingActivated`, `HostingRenewed`, `HostingFeeCollected`, `ExternalDomainRegistered`,
+`ExternalDomainVerified`, `ExternalDomainVerificationRequested`, `SubdomainCreated`,
+`ContentUpdated`, `ContentRolledBack`, `SSLCertificateUpdated`, `TextRecordSet`,
+`TextRecordRemoved`, `AvatarUpdated`, `PrimaryDomainSet`, `PrimaryDomainCleared`
+
+> Weights: `pallets/bns/src/weights.rs` (`./scripts/bench_weights.sh pallet_belize_bns`).
 
 ---
 
 ## LandLedger Pallet
 
-**Property registry with Pakit document storage integration**
+**On-chain property registry with surveyor attestation, encumbrances, and Pakit anchor proofs**
 
 ### Extrinsics
 
-#### `register_property`
-Register property with land title
-
 ```rust
+// call_index(0) — register a property (title held off-chain / in Pakit)
 pub fn register_property(
     origin: OriginFor<T>,
-    property_id: u32,
-    document_hash: H256,  // Land title stored in Pakit
-    land_area_sqm: u64,
-    location: BoundedVec<u8, ConstU32<128>>
-) -> DispatchResult
-```
+    title_number: Vec<u8>,
+    description: Vec<u8>,
+    coordinates: (i64, i64),
+    area_sqm: u32,
+    property_type_index: u8,
+    assessed_value: u128,
+) -> DispatchResult;
 
-**Requirements:**
-- KYC level: Enhanced (property ownership)
-- Document verification: Land title uploaded to Pakit
-- Government approval: Ministry of Natural Resources signature
-
-**Events:**
-- `PropertyRegistered(u32, AccountId, H256, u64)`
-
-**Weights:** 70M + 4 reads + 2 writes
-
-```typescript
-// TypeScript example
-const documentHash = await uploadDocumentToPakit(landTitle);
-
-await api.tx.landLedger.registerProperty(
-  propertyId,
-  documentHash,
-  5000,  // 5000 sqm
-  'Mile 5, Western Highway, Cayo District'
-).signAndSend(owner);
-```
-
-#### `transfer_property`
-Transfer property ownership
-
-```rust
+// call_index(1) — transfer ownership
 pub fn transfer_property(
     origin: OriginFor<T>,
-    property_id: u32,
+    property_id: PropertyId,
     new_owner: T::AccountId,
-    transfer_document_hash: H256
-) -> DispatchResult
+    transfer_price: u128,
+    transfer_type_index: u8,
+) -> DispatchResult;
+
+// call_index(2) — governance verifies a property
+pub fn verify_property(origin: OriginFor<T>, property_id: PropertyId) -> DispatchResult;
+
+// call_index(3) — surveyor records a verified survey
+pub fn survey_property(origin: OriginFor<T>, property_id: PropertyId, verified_area_sqm: u32, updated_coordinates: Option<(i64, i64)>) -> DispatchResult;
+
+// call_index(4)–(5) — surveyor management
+pub fn register_surveyor(origin: OriginFor<T>, surveyor: T::AccountId) -> DispatchResult;
+pub fn remove_surveyor(origin: OriginFor<T>, surveyor: T::AccountId) -> DispatchResult;
+
+// call_index(6)–(7) — encumbrances
+pub fn add_encumbrance(origin: OriginFor<T>, property_id: u32, encumbrance_type: EncumbranceType, holder: T::AccountId, amount: Option<u128>, description: Vec<u8>) -> DispatchResult;
+pub fn remove_encumbrance(origin: OriginFor<T>, property_id: u32, encumbrance_index: u32) -> DispatchResult;
 ```
 
-**Requirements:**
-- Both parties KYC verified
-- Transfer deed uploaded to Pakit
-- Stamp duty paid (5% of property value)
-
-**Events:**
-- `PropertyTransferred(u32, AccountId, AccountId, H256)` - (property, old_owner, new_owner, deed)
-
-**Weights:** 80M + 5 reads + 3 writes
-
-#### `register_document_proof`
-Register Pakit storage proof for property document
-
-```rust
-pub fn register_document_proof(
-    origin: OriginFor<T>,
-    property_id: u32,
-    document_hash: H256,
-    merkle_proof: BoundedVec<H256, ConstU32<32>>
-) -> DispatchResult
-```
-
-**Verification:**
-- Compute Merkle root from proof
-- Verify against Pakit DAG storage
-- Store on-chain for legal compliance
-
-**Events:**
-- `DocumentProofRegistered(u32, H256, H256)` - (property, document_hash, merkle_root)
-
-**Weights:** 50M + 3 reads + 1 write
+**Pakit integration:** there is **no `register_document_proof` extrinsic**. Pakit storage proofs
+are registered on the `StorageProof` pallet (`submit_storage_proof`); LandLedger keeps anchor
+hashes (`LandAnchors`, `PropertyAnchorChain`, `ContentHashLatestAnchor`) for temporal anchoring.
 
 ### Storage
 
-#### `Properties`
-```rust
-pub type Properties<T> = StorageMap<
-    _,
-    Blake2_128Concat,
-    u32,  // Property ID
-    PropertyInfo<T::AccountId, T::BlockNumber>,
-    OptionQuery
->;
+| Storage | Purpose |
+|---|---|
+| `Properties` | Property records (`PropertyId → _`) |
+| `PropertyOwners` | Owner index |
+| `TransferRecords` | Transfer history |
+| `PropertyByTitle` | Title hash → property id |
+| `NextPropertyId` / `NextTransferId` | Id counters |
+| `GovernmentSurveyors` | Authorised surveyors |
+| `ZoningMap` | Zoning records |
+| `LandAnchors` / `PropertyAnchorChain` / `ContentHashLatestAnchor` | Temporal anchor proofs |
 
-pub struct PropertyInfo<AccountId, BlockNumber> {
-    pub owner: AccountId,
-    pub document_hash: H256,
-    pub land_area_sqm: u64,
-    pub location: BoundedVec<u8, ConstU32<128>>,
-    pub registered_at: BlockNumber,
-    pub last_transfer: Option<BlockNumber>
-}
-```
+Encumbrances are a **field on `Properties`**, not separate storage.
 
-#### `DocumentProofs`
-```rust
-pub type DocumentProofs<T> = StorageDoubleMap<
-    _,
-    Blake2_128Concat, u32,  // Property ID
-    Blake2_128Concat, H256,  // Document hash
-    MerkleProof,
-    OptionQuery
->;
+### Events
 
-pub struct MerkleProof {
-    pub proof: BoundedVec<H256, ConstU32<32>>,
-    pub merkle_root: H256,
-    pub verified_at: BlockNumber
-}
-```
+`PropertyRegistered`, `PropertyTransferred`, `PropertyVerified`, `PropertySurveyed`,
+`EnvironmentalClearanceGranted`, `EncumbranceAdded`, `EncumbranceRemoved`,
+`SurveyorRegistered`, `SurveyorRemoved`
+
+> Weights: `pallets/landledger/src/weights.rs`
+> (`./scripts/bench_weights.sh pallet_belize_landledger`).
 
 ---
 
 ## Payroll Pallet
 
-**Enterprise payroll management for all business types — government, enterprise, SME, cooperative, gig platforms, and nonprofits**
+**Enterprise payroll: employees, departments, schedules, deductions, and bonuses**
 
 ### Extrinsics
 
-#### `register_employer`
-Register as employer (government or business)
-
 ```rust
-pub fn register_employer(
-    origin: OriginFor<T>,
-    employer_type: EmployerType,
-    tax_id: BoundedVec<u8, ConstU32<32>>
-) -> DispatchResult
-```
-
-**Types:**
-- `Government`: Ministry, department, statutory body
-- `Private`: Business with tax ID
-
-**Events:**
-- `EmployerRegistered(AccountId, EmployerType)`
-
-**Weights:** 45M + 2 reads + 1 write
-
-#### `add_employee`
-Add employee to payroll
-
-```rust
+// call_index(0) — add an employee
 pub fn add_employee(
     origin: OriginFor<T>,
     employee: T::AccountId,
     salary: BalanceOf<T>,
-    payment_schedule: PaymentSchedule
-) -> DispatchResult
+    worker_type: WorkerType,
+    department_id: u32,
+    metadata_hash: [u8; 32],
+) -> DispatchResult;
+
+// call_index(1) — remove an employee
+pub fn remove_employee(origin: OriginFor<T>, employee: T::AccountId) -> DispatchResult;
+
+// call_index(2) — change salary
+pub fn update_salary(origin: OriginFor<T>, employee: T::AccountId, new_salary: BalanceOf<T>) -> DispatchResult;
+
+// call_index(3)–(4) — pay now
+pub fn execute_payment(origin: OriginFor<T>, employee: T::AccountId) -> DispatchResult;
+pub fn batch_payment(origin: OriginFor<T>) -> DispatchResult;
+
+// call_index(5)–(6) — recurring schedules
+pub fn create_schedule(origin: OriginFor<T>, interval_blocks: u32, department_id: u32) -> DispatchResult;
+pub fn update_schedule(origin: OriginFor<T>, schedule_id: u32, interval_blocks: u32, active: bool) -> DispatchResult;
+
+// call_index(7) — governance verifies an employer
+pub fn verify_employer(origin: OriginFor<T>, employer: T::AccountId, employer_type: EmployerType) -> DispatchResult;
+
+// call_index(8) — enable/disable an employee
+pub fn toggle_employee_status(origin: OriginFor<T>, employee: T::AccountId, active: bool) -> DispatchResult;
+
+// call_index(9) — create a department
+pub fn create_department(origin: OriginFor<T>, name_hash: [u8; 32]) -> DispatchResult;
+
+// call_index(10) — set a deduction
+pub fn set_deduction(origin: OriginFor<T>, employee: T::AccountId, deduction_type: DeductionType, amount: BalanceOf<T>) -> DispatchResult;
+
+// call_index(11) — issue a bonus
+pub fn issue_bonus(origin: OriginFor<T>, employee: T::AccountId, amount: BalanceOf<T>, category: PaymentCategory) -> DispatchResult;
 ```
-
-**Schedules:**
-- `Weekly`: Every 7 days
-- `Biweekly`: Every 14 days
-- `Monthly`: Every 30 days
-
-**Events:**
-- `EmployeeAdded(AccountId, AccountId, Balance, PaymentSchedule)`
-
-**Weights:** 50M + 3 reads + 2 writes
-
-```javascript
-// Add employee with monthly salary
-await api.tx.payroll.addEmployee(
-  employeeAddress,
-  4000_000_000_000_000n,  // 4000 DALLA/month
-  'Monthly'
-).signAndSend(employer);
-```
-
-#### `process_payroll`
-Process scheduled payroll payments
-
-```rust
-pub fn process_payroll(
-    origin: OriginFor<T>,
-    employer: T::AccountId
-) -> DispatchResult
-```
-
-**Automation:** Can be triggered by off-chain worker on schedule
-
-**Deductions:**
-- Social Security: 8% (employee) + 8% (employer)
-- Income Tax: Progressive (0-25%)
-- GST: 12.5% (if applicable)
-
-**Events:**
-- `PayrollProcessed(AccountId, u32, Balance)` - (employer, employee_count, total_paid)
-
-**Weights:** 100M + variable (depends on employee count)
 
 ### Storage
 
-#### `Employers`
-```rust
-pub type Employers<T> = StorageMap<
-    _,
-    Blake2_128Concat,
-    T::AccountId,
-    EmployerInfo<T::BlockNumber>,
-    OptionQuery
->;
+| Storage | Purpose |
+|---|---|
+| `Employees` | `(employer, employee) → Employee` |
+| `EmployeeDeductions` | Deductions per employee |
+| `EmployerProfiles` | `AccountId → EmployerProfile` |
+| `VerifiedEmployers` | Verified employer set |
+| `Departments` | Department records |
+| `PayrollSchedules` | Recurring schedules |
+| `PayrollRecords` | Executed payment records (`id → _`) |
+| `NextScheduleId` / `NextRecordId` | Id counters |
+| `GlobalStats` · `EmployerCount` · `EmployeeCountPerEmployer` · `DeptEmployeeCount` | Aggregate counters |
 
-pub struct EmployerInfo<BlockNumber> {
-    pub employer_type: EmployerType,
-    pub tax_id: BoundedVec<u8, ConstU32<32>>,
-    pub registered_at: BlockNumber,
-    pub employee_count: u32
-}
-```
+Exact struct shapes: see `pallets/payroll/src/lib.rs`.
 
-#### `Employees`
-```rust
-pub type Employees<T> = StorageDoubleMap<
-    _,
-    Blake2_128Concat, T::AccountId,  // Employer
-    Blake2_128Concat, T::AccountId,  // Employee
-    EmployeeInfo<BalanceOf<T>, T::BlockNumber>,
-    OptionQuery
->;
+### Events
 
-pub struct EmployeeInfo<Balance, BlockNumber> {
-    pub salary: Balance,
-    pub payment_schedule: PaymentSchedule,
-    pub last_payment: Option<BlockNumber>,
-    pub total_paid: Balance
-}
-```
+`EmployeeAdded`, `EmployeeRemoved`, `EmployeeStatusChanged`, `SalaryUpdated`, `PaymentExecuted`,
+`BatchPaymentCompleted`, `ScheduleCreated`, `ScheduleUpdated`, `EmployerVerified`,
+`ScheduledPaymentProcessed`, `DeductionUpdated`, `DepartmentCreated`, `BonusIssued`
+
+> Weights: `pallets/payroll/src/weights.rs` (`./scripts/bench_weights.sh pallet_belize_payroll`).
 
 ---
 
 ## Community Pallet
 
-**Community governance and proposals**
+**Social responsibility scoring, community proposals, ethics review, education modules, green projects, referrals, and peer attestations**
 
 ### Extrinsics
 
-#### `create_community`
-Create local community group
-
 ```rust
-pub fn create_community(
-    origin: OriginFor<T>,
-    name: BoundedVec<u8, ConstU32<64>>,
-    district: DistrictId
-) -> DispatchResult
-```
+// call_index(0) — record a participation event for an account
+pub fn record_participation(origin: OriginFor<T>, account: T::AccountId, activity_code: u8) -> DispatchResult;
 
-**Districts:** Belize, Cayo, Corozal, Orange Walk, Stann Creek, Toledo
+// call_index(1) — recompute an account's Social Responsibility Score
+pub fn update_srs(origin: OriginFor<T>, account: T::AccountId) -> DispatchResult;
 
-**Events:**
-- `CommunityCreated(CommunityId, AccountId, Vec<u8>, DistrictId)`
+// call_index(2)–(3) — endorsements and privacy
+pub fn endorse_peer(origin: OriginFor<T>, endorsee: T::AccountId, endorsement_code: u8) -> DispatchResult;
+pub fn set_srs_privacy(origin: OriginFor<T>, public: bool) -> DispatchResult;
 
-**Weights:** 40M + 2 reads + 1 write
-
-#### `submit_community_proposal`
-Submit proposal for community vote
-
-```rust
+// call_index(4) — submit a community proposal
 pub fn submit_community_proposal(
     origin: OriginFor<T>,
-    community_id: CommunityId,
-    proposal_text: BoundedVec<u8, ConstU32<256>>,
-    execution_call: Option<Box<<T as Config>::RuntimeCall>>
-) -> DispatchResult
+    proposal_type_code: u8,
+    beneficiary: T::AccountId,
+    amount: BalanceOf<T>,
+    title: BoundedVec<u8, ConstU32<128>>,
+    description: BoundedVec<u8, ConstU32<1024>>,
+) -> DispatchResult;
+
+// call_index(5)–(7) — proposal voting lifecycle
+pub fn vote_community_proposal(origin: OriginFor<T>, proposal_id: u32, approve: bool) -> DispatchResult;
+pub fn withdraw_vote(origin: OriginFor<T>, proposal_id: u32) -> DispatchResult;
+pub fn finalize_community_proposal(origin: OriginFor<T>, proposal_id: u32) -> DispatchResult;
+
+// call_index(8)–(9) — sanctions
+pub fn sanction_account(origin: OriginFor<T>, account: T::AccountId, reason: BoundedVec<u8, ConstU32<128>>) -> DispatchResult;
+pub fn lift_sanction(origin: OriginFor<T>, account: T::AccountId) -> DispatchResult;
+
+// call_index(10) — ethics council review
+pub fn ethics_council_vote(origin: OriginFor<T>, proposal_id: u32, approve: bool) -> DispatchResult;
+
+// call_index(11) — complete an education module
+pub fn complete_education_module(origin: OriginFor<T>, module_id: u32, completion_proof: BoundedVec<u8, ConstU32<256>>) -> DispatchResult;
+
+// call_index(12) — contribute to a green project
+pub fn contribute_to_green_project(origin: OriginFor<T>, project_id: u32, amount: u64) -> DispatchResult;
+
+// call_index(13) — claim a referral reward
+pub fn claim_referral_reward(origin: OriginFor<T>, referee: T::AccountId) -> DispatchResult;
+
+// call_index(14) — attest another account's participation
+pub fn attest_participation(origin: OriginFor<T>, subject: T::AccountId, activity_code: u8) -> DispatchResult;
 ```
 
-**Voting:** Simple majority, 7-day voting period
-
-**Events:**
-- `CommunityProposalSubmitted(CommunityId, ProposalId, AccountId)`
-
-**Weights:** 55M + 3 reads + 2 writes
+**Proposal types** (`proposal_type_code` 0–5): LocalProject, EducationModule,
+GreenInitiative, CulturalPreservation, DisasterRelief, CommunityBounty. Voting is
+approve/no-abstain via `vote_community_proposal`.
 
 ### Storage
 
-#### `Communities`
-```rust
-pub type Communities<T> = StorageMap<
-    _,
-    Blake2_128Concat,
-    CommunityId,
-    CommunityInfo<T::AccountId, T::BlockNumber>,
-    OptionQuery
->;
-```
+| Storage | Purpose |
+|---|---|
+| `SocialResponsibilityScores` | `AccountId → score breakdown` |
+| `ParticipationHistory` | Per-account participation records |
+| `PeerEndorsements` · `LastEndorsement` | Endorsement records + cooldown |
+| `LastSrsUpdate` | SRS recompute cooldown |
+| `UserProposals` · `ProposalCount` | Proposal bookkeeping |
+| `CommunityProposals` · `ProposalVotes` | Proposals and votes |
+| `EthicsFilterConfig` · `EthicsCouncilVotes` | Ethics review |
+| `SanctionedAccounts` | Sanctioned accounts |
+| `EducationModules` · `CompletedEducation` · `CompletedEducationCount` | Education |
+| `GreenProjects` · `GreenContributions` · `GreenContributionStats` | Green projects |
+| `ReferralData` · `RefereeHasReferrer` · `ReferralClaimed` | Referrals |
+| `PendingAttestations` · `AttestedActivities` · `AttestationCount` | Attestations |
+| `FeeExemptionUsage` | Fee-exemption tracking |
+
+Exact struct shapes: see `pallets/community/src/lib.rs`. There is no `CommunityId` or
+`Communities` storage — community proposals are keyed by `u32` proposal id.
+
+### Events
+
+`SRSUpdated`, `ParticipationRecorded`, `PeerEndorsed`, `SRSPrivacyUpdated`, `FeeExemptionReset`,
+`ProposalSubmitted`, `ProposalVoted`, `VoteWithdrawn`, `ProposalFinalized`, `ProposalExecuted`,
+`ProposalRejected`, `DepositReturned`, `ProposalFlaggedForReview`, `EthicsCouncilVoted`,
+`EthicsDecisionFinalized`, `AccountSanctioned`, `SanctionLifted`, `EducationModuleCompleted`,
+`EducationRewardClaimed`, `GreenContributionMade`, `GreenMilestoneReached`, `ReferralClaimed`,
+`ReferralRewardPaid`, `AttestationSubmitted`, `ActivityAttested`
+
+> Weights: `pallets/community/src/weights.rs`
+> (`./scripts/bench_weights.sh pallet_belize_community`).
 
 ---
 
 ## Contracts Pallet
 
-**Wasm smart contract execution (pallet-contracts wrapper)**
+**Standard Substrate `pallet-contracts` (runtime index 13) — ink! Wasm execution. Not a BelizeChain custom pallet.**
 
 ### Extrinsics
 
-#### `instantiate_with_code`
-Deploy new smart contract
+The full standard surface is available, including:
 
 ```rust
 pub fn instantiate_with_code(
@@ -469,83 +342,49 @@ pub fn instantiate_with_code(
     storage_deposit_limit: Option<BalanceOf<T>>,
     code: Vec<u8>,
     data: Vec<u8>,
-    salt: Vec<u8>
-) -> DispatchResult
-```
+    salt: Vec<u8>,
+) -> DispatchResult;
 
-**Storage deposit:** 100 DALLA per KB
-
-**Events:**
-- `Instantiated(AccountId, ContractAddress)`
-
-**Weights:** Variable (depends on contract size)
-
-```bash
-# Deploy via cargo-contract CLI
-cargo contract instantiate \
-  --suri //Alice \
-  --constructor new \
-  --args 1000000000000 \
-  --execute
-```
-
-#### `call`
-Call smart contract method
-
-```rust
 pub fn call(
     origin: OriginFor<T>,
-    dest: T::AccountId,
+    dest: AccountIdLookupOf<T>,
     value: BalanceOf<T>,
     gas_limit: Weight,
     storage_deposit_limit: Option<BalanceOf<T>>,
-    data: Vec<u8>
-) -> DispatchResult
+    data: Vec<u8>,
+) -> DispatchResult;
 ```
 
-**Gas pricing:** Dynamic based on network load
+**Events** (standard `pallet-contracts`): `Instantiated`, `ContractEmitted`, `Called`,
+`CodeStored`, `ContractCodeUpdated`. There is no `ContractExecution` event.
 
-**Events:**
-- `ContractExecution(AccountId, AccountId, Vec<u8>)` - (caller, contract, return_data)
+**Storage deposit** is priced by `pallet-contracts` from the configured deposit-per-byte
+constant, not a fixed "100 DALLA per KB".
 
-**Weights:** Variable (depends on contract logic)
+```bash
+# Deploy via cargo-contract
+cargo contract instantiate --suri //Alice --constructor new --args 1000000000000 --execute
+```
 
 ### Storage
 
-Managed by `pallet-contracts` (see GEM documentation for contract-specific storage)
+Managed entirely by `pallet-contracts`. See the GEM documentation for the ink! contracts
+themselves.
 
 ---
 
 ## Type Definitions
 
-```rust
-// BNS
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-pub enum DomainTier {
-    Standard,
-    Premium,
-    Government,
-    Verified
-}
+Types referenced above are defined in the pallets; do not copy them into docs. Key ones:
 
-// Payroll
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-pub enum EmployerType {
-    Government,
-    Private
-}
+- **BNS** — domain tier is a `u8` index (`0=Standard, 1=Premium, 2=Government, 3=Verified`);
+  hosting tier is `HostingTier` (`Free`, `Basic`, `Pro`, `Enterprise`).
+- **LandLedger** — `PropertyId` (`u32`), `EncumbranceType`.
+- **Payroll** — `EmployerType`, `WorkerType`, `DeductionType`, `PaymentCategory`.
+- **Community** — proposal types are a `u8` code (0–5); there is no `CommunityId` or
+  `DistrictId` type — proposals are keyed by `u32` proposal id.
 
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-pub enum PaymentSchedule {
-    Weekly,
-    Biweekly,
-    Monthly
-}
-
-// Community
-pub type CommunityId = u32;
-pub type DistrictId = u8;  // 0-5 for 6 districts
-```
+For authoritative shapes, read `pallets/<name>/src/lib.rs` or query runtime metadata.
 
 ---
 

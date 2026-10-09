@@ -8,550 +8,191 @@ Comprehensive API reference for BelizeChain's financial infrastructure pallets.
 
 ## Staking Pallet
 
-**Proof of Useful Work (PoUW) consensus with federated learning integration**
+**Proof of Useful Work (PoUW): validator set, federated-learning tasks, model deltas, quantum/domain contributions**
+
+> This is **not** Substrate's `pallet_staking`. There is no nominator concept, no `bond`/`nominate`/
+> `validate`, and no `Ledger`/`Bonded` storage. Validators join with `join_validators`.
 
 ### Extrinsics
 
-#### `bond`
-Bond DALLA for staking
-
 ```rust
-pub fn bond(
-    origin: OriginFor<T>,
-    controller: T::AccountId,
-    value: BalanceOf<T>,
-    payee: RewardDestination<T::AccountId>
-) -> DispatchResult
+// call_index(0) — join the validator set with stake + compute capacity
+pub fn join_validators(origin: OriginFor<T>, stake: <T::Currency as Currency<T::AccountId>>::Balance, compute_capacity: u32, location: BoundedVec<u8, ConstU32<64>>) -> DispatchResult;
+
+// call_index(1) — leave the set (starts unbonding)
+pub fn leave_validators(origin: OriginFor<T>) -> DispatchResult;
+
+// call_index(9) — withdraw after the unbonding period
+pub fn withdraw_unbonded(origin: OriginFor<T>) -> DispatchResult;
+
+// call_index(10) — slash a validator
+pub fn report_validator_offense(origin: OriginFor<T>, validator: T::AccountId, slash_percent: u32, reason_code: u8) -> DispatchResult;
+
+// call_index(2) — submit a federated-learning model delta (commitment-checked)
+pub fn submit_model_delta(origin: OriginFor<T>, task_id: u32, encrypted_delta: BoundedVec<u8, ConstU32<1024>>, computation_commitment: [u8; 32], computation_log: [u8; 32]) -> DispatchResult;
+
+// call_index(3) — governance assigns an FL task
+pub fn assign_fl_task(origin: OriginFor<T>, task_id: u32, model_hash: [u8; 32], computation_time: u32, reward_multiplier: Perbill, deadline_blocks: BlockNumberFor<T>) -> DispatchResult;
+
+// call_index(4) — distribute accumulated epoch rewards
+pub fn distribute_rewards(origin: OriginFor<T>) -> DispatchResult;
+
+// call_index(5) — record a quantum-work contribution
+pub fn record_quantum_contribution(origin: OriginFor<T>, job_id: BoundedVec<u8, ConstU32<64>>, validator: T::AccountId, num_qubits: u16, circuit_depth: u32, num_shots: u32, accuracy_score: u8) -> DispatchResult;
+
+// call_index(6) — governance force-joins a validator
+pub fn force_join_validator(origin: OriginFor<T>, who: T::AccountId, stake: <T::Currency as Currency<T::AccountId>>::Balance, compute_capacity: u32, location: BoundedVec<u8, ConstU32<64>>) -> DispatchResult;
+
+// call_index(7) — record a domain contribution
+pub fn record_domain_contribution(origin: OriginFor<T>, operator: T::AccountId, domain: u8, quality_score: u8, volume_kb: u32) -> DispatchResult;
+
+// call_index(8) — claim PoUW rewards with domain bonus
+pub fn claim_pouw_with_domain_bonus(origin: OriginFor<T>) -> DispatchResult;
 ```
-
-**Parameters:**
-- `controller`: Account to control staking actions (can be same as stash)
-- `value`: Amount of DALLA to bond (minimum: 1000 DALLA)
-- `payee`: Reward destination (`Staked`, `Stash`, `Controller`, or custom account)
-
-**Events:**
-- `Bonded(AccountId, Balance)`
-
-**Weights:** 55M + 3 reads + 2 writes
-
-```javascript
-// JavaScript example
-await api.tx.staking.bond(
-  controllerAccount,
-  1000_000_000_000_000n,  // 1000 DALLA
-  { Staked: null }  // Auto-compound rewards
-).signAndSend(stashAccount);
-```
-
-#### `report_training`
-Report federated learning contribution (Nawal integration)
-
-```rust
-pub fn report_training(
-    origin: OriginFor<T>,
-    session_id: BoundedVec<u8, ConstU32<64>>,
-    accuracy: u32,  // Basis points (10000 = 100%)
-    time_seconds: u32,
-    privacy_verified: bool
-) -> DispatchResult
-```
-
-**Scoring:**
-- **Quality** (40%): Model accuracy improvement
-- **Timeliness** (30%): Submission before deadline
-- **Honesty** (30%): Privacy compliance (differential privacy verified)
-
-**Rewards:**
-- Base: 50 DALLA per session
-- Quality bonus: up to 200 DALLA for >95% accuracy
-- Timeliness bonus: 100 DALLA if within first 10% of deadline
-- Total max: 350 DALLA per session
-
-**Events:**
-- `TrainingReportSubmitted(AccountId, Vec<u8>, u32, u32)`
-- `TrainingRewardIssued(AccountId, Balance, TrainingScore)`
-
-**Weights:** 80M + 5 reads + 3 writes
-
-```python
-# Python example (Nawal → Blockchain)
-from belizechain import substrate
-
-receipt = substrate.compose_call(
-    call_module='Staking',
-    call_function='report_training',
-    call_params={
-        'session_id': 'nawal_session_12345',
-        'accuracy': 9450,  # 94.5%
-        'time_seconds': 3600,  # 1 hour
-        'privacy_verified': True
-    }
-)
-```
-
-#### `validate`
-Declare intention to validate blocks
-
-```rust
-pub fn validate(
-    origin: OriginFor<T>,
-    commission: Perbill  // Validator commission (0-100%)
-) -> DispatchResult
-```
-
-**Requirements:**
-- Minimum stake: 10,000 DALLA
-- KYC level: Verified or Enhanced
-- Active Nawal node (federated learning participation)
-
-**Events:**
-- `ValidatorRegistered(AccountId, Perbill)`
-
-**Weights:** 45M + 2 reads + 1 write
-
-#### `nominate`
-Nominate validators to support
-
-```rust
-pub fn nominate(
-    origin: OriginFor<T>,
-    targets: Vec<T::AccountId>
-) -> DispatchResult
-```
-
-**Parameters:**
-- `targets`: Up to 16 validator accounts to nominate
-
-**Reward sharing:** Nominator earns (1 - validator_commission) × rewards
-
-**Events:**
-- `Nominated(AccountId, Vec<AccountId>)`
-
-**Weights:** 60M + 3 reads + 2 writes
 
 ### Storage
 
-#### `Bonded`
-```rust
-pub type Bonded<T> = StorageMap<
-    _,
-    Twox64Concat,
-    T::AccountId,  // Stash account
-    T::AccountId,  // Controller account
-    OptionQuery
->;
-```
+| Storage | Purpose |
+|---|---|
+| `Validators` | `AccountId → { account, stake, computeCapacity, location, complianceScore, lastFlContribution, qualityScore, timelinessScore, honestyScore, totalContributions }` |
+| `ValidatorCount` | Active validator count |
+| `CurrentEpoch` · `EpochRewards` · `LastClaimedEpoch` | Epoch accounting |
+| `ActiveFLTask` | Currently assigned FL task |
+| `ModelSubmissions` | Submitted model deltas |
+| `PendingUnbonds` | `AccountId → (amount, epoch)` |
+| `SlashingSpans` | `AccountId → u32` |
+| `QuantumContributions` · `ValidatorQuantumStatsMap` | Quantum work per validator |
+| `EpochDomainContributions` · `OperatorDomainStatsMap` · `OperatorEpochContributions` | Domain contributions |
 
-#### `Ledger`
-```rust
-pub type Ledger<T> = StorageMap<
-    _,
-    Blake2_128Concat,
-    T::AccountId,  // Controller account
-    StakingLedger<T::AccountId, BalanceOf<T>>,
-    OptionQuery
->;
+Exact value structs: see `pallets/staking/src/lib.rs`.
 
-pub struct StakingLedger<AccountId, Balance> {
-    pub stash: AccountId,
-    pub total: Balance,
-    pub active: Balance,
-    pub unlocking: BoundedVec<UnlockChunk<Balance>, ConstU32<32>>
-}
-```
+### Events
 
-#### `TrainingScores`
-```rust
-pub type TrainingScores<T> = StorageDoubleMap<
-    _,
-    Blake2_128Concat, T::AccountId,  // Validator
-    Blake2_128Concat, BoundedVec<u8, ConstU32<64>>,  // Session ID
-    TrainingScore,
-    OptionQuery
->;
+`ValidatorJoined`, `ValidatorLeft`, `FLTaskAssigned`, `ModelDeltaSubmitted`, `RewardsDistributed`,
+`ValidatorSlashed`, `EpochCompleted`, `QuantumContributionRecorded`, `DomainContributionRecorded`,
+`PouWRewardsClaimedWithBonus`, `UnbondingStarted`, `StakeWithdrawn`
 
-pub struct TrainingScore {
-    pub quality: u8,      // 0-100
-    pub timeliness: u8,   // 0-100
-    pub honesty: u8,      // 0-100
-    pub total_reward: Balance
-}
-```
+> Weights: `pallets/staking/src/weights.rs` (`./scripts/bench_weights.sh pallet_belize_staking`).
 
 ---
 
 ## BelizeX Pallet
 
-**Decentralized exchange with order book and AMM**
+**On-chain AMM (constant-product with oracle guards) + limit-order book + tourism trader discounts**
+
+> Asset identifiers are `u8` codes, not a `BoundedVec`/`AssetId` type. There is no generic
+> `swap` extrinsic and no `AssetRegistry` storage — the trades are `execute_trade` (single pair)
+> and `execute_multihop_trade` (path).
 
 ### Extrinsics
 
-#### `create_trading_pair`
-Create new trading pair
-
 ```rust
-pub fn create_trading_pair(
-    origin: OriginFor<T>,
-    asset_a: AssetId,
-    asset_b: AssetId,
-    fee_rate: Permill  // 0.1% = 1000, 0.3% = 3000
-) -> DispatchResult
-```
+// call_index(0) — create a pair. Assets are u8 codes; fee_rate in parts-per-million (or similar)
+pub fn create_trading_pair(origin: OriginFor<T>, base_asset: u8, quote_asset: u8, fee_rate: u32) -> DispatchResult;
 
-**Requirements:**
-- Both assets must be registered
-- Pair doesn't already exist
-- Deposit: 100 DALLA (refundable on sufficient liquidity)
+// call_index(1) — add liquidity
+pub fn add_liquidity(origin: OriginFor<T>, base_asset: u8, quote_asset: u8, base_amount: <T::Currency as Currency<T::AccountId>>::Balance, quote_amount: <T::Currency as Currency<T::AccountId>>::Balance, min_lp_tokens: u128) -> DispatchResult;
 
-**Events:**
-- `TradingPairCreated(AssetId, AssetId, Permill)`
+// call_index(2) — AMM swap on a single pair (oracle-guarded)
+pub fn execute_trade(origin: OriginFor<T>, base_asset: u8, quote_asset: u8, amount_in: <T::Currency as Currency<T::AccountId>>::Balance, min_amount_out: u128, is_tourism_trade: bool) -> DispatchResult;
 
-**Weights:** 50M + 3 reads + 2 writes
+// call_index(3) — register a tourism trader (discount eligibility)
+pub fn register_tourism_trader(origin: OriginFor<T>, trader: T::AccountId) -> DispatchResult;
 
-```typescript
-// TypeScript example
-await api.tx.belizex.createTradingPair(
-  'DALLA',
-  'bBZD',
-  3000  // 0.3% fee
-).signAndSend(creator);
-```
+// call_index(4) — place a limit order
+pub fn place_limit_order(origin: OriginFor<T>, base_asset: u8, quote_asset: u8, order_type: u8, amount: u128, price: u128, expires_in_blocks: BlockNumberFor<T>) -> DispatchResult;
 
-#### `place_limit_order`
-Place limit order on order book
+// call_index(5) — multihop swap along a path
+pub fn execute_multihop_trade(origin: OriginFor<T>, path: Vec<u8>, amount_in: <T::Currency as Currency<T::AccountId>>::Balance, min_amount_out: u128, is_tourism_trade: bool) -> DispatchResult;
 
-```rust
-pub fn place_limit_order(
-    origin: OriginFor<T>,
-    pair_id: TradingPairId,
-    side: OrderSide,  // Buy or Sell
-    price: BalanceOf<T>,
-    amount: BalanceOf<T>
-) -> DispatchResult
-```
+// call_index(6)–(8) — governance controls
+pub fn pause_global(origin: OriginFor<T>) -> DispatchResult;
+pub fn resume_global(origin: OriginFor<T>) -> DispatchResult;
+pub fn set_pair_status(origin: OriginFor<T>, base_asset: u8, quote_asset: u8, active: bool) -> DispatchResult;
 
-**Matching:**
-- Price-time priority (best price, then earliest timestamp)
-- Partial fills allowed
-- Unfilled orders stay in book
+// call_index(9) — remove liquidity
+pub fn remove_liquidity(origin: OriginFor<T>, base_asset: u8, quote_asset: u8, lp_tokens: u128, min_base_amount: u128, min_quote_amount: u128) -> DispatchResult;
 
-**Events:**
-- `LimitOrderPlaced(AccountId, TradingPairId, OrderSide, Balance, Balance)`
-- `OrderMatched(OrderId, OrderId, Balance)` - (maker, taker, filled_amount)
-
-**Weights:** 70M + 5 reads + 4 writes
-
-```javascript
-// Place sell order: 1000 DALLA at 1.05 bBZD
-await api.tx.belizex.placeLimitOrder(
-  pairId,
-  'Sell',
-  1050_000_000_000n,   // Price: 1.05 bBZD (3 decimals precision)
-  1000_000_000_000_000n  // Amount: 1000 DALLA
-).signAndSend(trader);
-```
-
-#### `add_liquidity`
-Add liquidity to AMM pool
-
-```rust
-pub fn add_liquidity(
-    origin: OriginFor<T>,
-    pair_id: TradingPairId,
-    amount_a: BalanceOf<T>,
-    amount_b: BalanceOf<T>,
-    min_liquidity: BalanceOf<T>
-) -> DispatchResult
-```
-
-**Returns:** LP tokens proportional to share of pool
-
-**Formula:**
-```
-liquidity_minted = (amount_a / reserve_a) × total_supply
-```
-
-**Events:**
-- `LiquidityAdded(AccountId, TradingPairId, Balance, Balance, Balance)` - (provider, pair, amount_a, amount_b, lp_tokens)
-
-**Weights:** 65M + 4 reads + 3 writes
-
-#### `swap`
-Execute swap via AMM (constant product formula)
-
-```rust
-pub fn swap(
-    origin: OriginFor<T>,
-    pair_id: TradingPairId,
-    asset_in: AssetId,
-    amount_in: BalanceOf<T>,
-    min_amount_out: BalanceOf<T>
-) -> DispatchResult
-```
-
-**Formula (x × y = k):**
-```
-amount_out = (amount_in × 997 × reserve_out) / (reserve_in × 1000 + amount_in × 997)
-// 0.3% fee (997/1000)
-```
-
-**Slippage protection:** Reverts if `amount_out < min_amount_out`
-
-**Events:**
-- `Swapped(AccountId, TradingPairId, AssetId, AssetId, Balance, Balance)` - (trader, pair, asset_in, asset_out, amount_in, amount_out)
-
-**Weights:** 75M + 4 reads + 3 writes
-
-```python
-# Python example
-tx = api.compose_call(
-    call_module='BelizeX',
-    call_function='swap',
-    call_params={
-        'pair_id': 0,
-        'asset_in': 'DALLA',
-        'amount_in': 100_000_000_000_000,  # 100 DALLA
-        'min_amount_out': 95_000_000_000_000  # Accept up to 5% slippage
-    }
-)
+// call_index(10) — cancel a resting order
+pub fn cancel_order(origin: OriginFor<T>, order_id: u32) -> DispatchResult;
 ```
 
 ### Storage
 
-#### `TradingPairs`
-```rust
-pub type TradingPairs<T> = StorageMap<
-    _,
-    Blake2_128Concat,
-    TradingPairId,
-    TradingPairInfo<BalanceOf<T>>,
-    OptionQuery
->;
+| Storage | Purpose |
+|---|---|
+| `TradingPairs` | Pair reserves, fee rate, status |
+| `OrderBook` | Resting limit orders |
+| `NextOrderId` · `AccountOrderCount` | Order bookkeeping |
+| `LPBalances` · `LiquidityProviders` | LP positions |
+| `TourismTraders` | Registered tourism traders |
+| `GlobalPaused` | DEX-wide pause flag |
+| `DevSeedEnabled` · `DevSeedDone` | Dev/testnet seed gating |
 
-pub struct TradingPairInfo<Balance> {
-    pub asset_a: AssetId,
-    pub asset_b: AssetId,
-    pub reserve_a: Balance,
-    pub reserve_b: Balance,
-    pub total_supply: Balance,  // LP tokens
-    pub fee_rate: Permill
-}
-```
+Exact value structs: see `pallets/belizex/src/lib.rs`.
 
-#### `OrderBook`
-```rust
-pub type OrderBook<T> = StorageDoubleMap<
-    _,
-    Blake2_128Concat, TradingPairId,
-    Blake2_128Concat, OrderId,
-    LimitOrder<T::AccountId, BalanceOf<T>, T::BlockNumber>,
-    OptionQuery
->;
+### Events
 
-pub struct LimitOrder<AccountId, Balance, BlockNumber> {
-    pub trader: AccountId,
-    pub side: OrderSide,
-    pub price: Balance,
-    pub amount: Balance,
-    pub filled: Balance,
-    pub created_at: BlockNumber
-}
-```
+`TradingPairCreated`, `LiquidityAdded`, `OracleGuardRejected`, `OracleRateUnavailable`,
+`LiquidityRemoved`, `TradeExecuted`, `OrderPlaced`, `OrderExecuted`, `OrderCancelled`,
+`TourismTraderVerified`, `DexPaused`, `DexResumed`, `PairStatusUpdated`
 
-#### `AssetRegistry`
-```rust
-pub type AssetRegistry<T> = StorageMap<
-    _,
-    Blake2_128Concat,
-    AssetId,
-    AssetMetadata,
-    OptionQuery
->;
-
-pub struct AssetMetadata {
-    pub name: BoundedVec<u8, ConstU32<32>>,
-    pub symbol: BoundedVec<u8, ConstU32<8>>,
-    pub decimals: u8,
-    pub total_supply: Balance
-}
-```
+> Weights: `pallets/belizex/src/weights.rs` (`./scripts/bench_weights.sh pallet_belize_belizex`).
 
 ---
 
-## Treasury Pallet
+## Treasury
 
-**Multi-sig national treasury with governance oversight**
+**There is no separate Treasury pallet.** National treasury functions live in the
+**Governance** pallet (`pallets/governance`):
 
-### Extrinsics
+| Need | Real surface |
+|---|---|
+| National reserve | `governance.NationalTreasuryReserve` |
+| Propose a spend | `governance.propose_treasury_spend(recipient, amount, description, district_index)` — call_index 29 |
+| Approve | `governance.approve_treasury_spend(proposal_id)` — call_index 30 |
+| Execute | `governance.execute_treasury_proposal(proposal_id)` — call_index 31 |
+| District budgets | `allocate_district_budget`, `transfer_district_budget`; storage `DistrictBudgets` |
+| Department balances | `governance.DepartmentTreasuryBalances` |
+| Spend proposals | `governance.TreasurySpendProposals` (+ `TreasurySpendTracker`, `NextTreasuryProposalId`) |
 
-#### `propose_spend`
-Propose treasury spending
-
-```rust
-pub fn propose_spend(
-    origin: OriginFor<T>,
-    value: BalanceOf<T>,
-    beneficiary: T::AccountId,
-    description: BoundedVec<u8, ConstU32<256>>
-) -> DispatchResult
-```
-
-**Requirements:**
-- Proposer bond: 5% of value (minimum 100 DALLA)
-- Maximum proposal: 10% of treasury balance
-- Governance approval needed (via Governance pallet)
-
-**Events:**
-- `ProposalSubmitted(ProposalIndex, AccountId, Balance, AccountId)`
-
-**Weights:** 60M + 3 reads + 2 writes
-
-```rust
-// Rust example
-let proposal_id = Treasury::propose_spend(
-    Origin::signed(proposer),
-    50_000 * DALLA,
-    infrastructure_account,
-    b"Road construction in Cayo District".to_vec().try_into().unwrap()
-)?;
-```
-
-#### `approve_proposal`
-Approve spending proposal (requires governance vote + multi-sig)
-
-```rust
-pub fn approve_proposal(
-    origin: OriginFor<T>,
-    proposal_id: ProposalIndex
-) -> DispatchResult
-```
-
-**Requirements:**
-- Governance referendum passed
-- 4-of-7 multi-sig signatures from treasury council
-- Sufficient treasury balance
-
-**Events:**
-- `ProposalApproved(ProposalIndex)`
-- `FundsTransferred(ProposalIndex, AccountId, Balance)`
-
-**Weights:** 80M + 5 reads + 4 writes
-
-#### `reject_proposal`
-Reject spending proposal (slashes proposer bond)
-
-```rust
-pub fn reject_proposal(
-    origin: OriginFor<T>,
-    proposal_id: ProposalIndex,
-    reason: BoundedVec<u8, ConstU32<128>>
-) -> DispatchResult
-```
-
-**Effects:**
-- Proposer bond slashed and sent to treasury
-- Proposal removed from queue
-
-**Events:**
-- `ProposalRejected(ProposalIndex, Vec<u8>)`
-
-**Weights:** 50M + 3 reads + 3 writes
-
-### Storage
-
-#### `Proposals`
-```rust
-pub type Proposals<T> = StorageMap<
-    _,
-    Blake2_128Concat,
-    ProposalIndex,
-    TreasuryProposal<T::AccountId, BalanceOf<T>, T::BlockNumber>,
-    OptionQuery
->;
-
-pub struct TreasuryProposal<AccountId, Balance, BlockNumber> {
-    pub proposer: AccountId,
-    pub value: Balance,
-    pub beneficiary: AccountId,
-    pub bond: Balance,
-    pub description: BoundedVec<u8, ConstU32<256>>,
-    pub submitted_at: BlockNumber,
-    pub governance_vote_id: Option<u32>
-}
-```
-
-#### `TreasuryBalance`
-```rust
-pub type TreasuryBalance<T> = StorageValue<_, BalanceOf<T>, ValueQuery>;
-```
-
-Current treasury balance (funded by transaction fees + inflation)
-
-#### `TreasuryCouncil`
-```rust
-pub type TreasuryCouncil<T> = StorageValue<_, BoundedVec<T::AccountId, ConstU32<7>>, ValueQuery>;
-```
-
-7 council members requiring 4-of-7 signatures for approvals
+> **Corrections:** the previously documented `propose_spend`, `approve_proposal`,
+> `reject_proposal` extrinsics and the `Proposals` / `TreasuryBalance` / `TreasuryCouncil`
+> storage items **do not exist**. See the Governance section in
+> [Core Pallet APIs](./pallet-apis-core.md) for the full treasury surface.
 
 ---
 
 ## Type Definitions
 
-```rust
-// Staking
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-pub enum RewardDestination<AccountId> {
-    Staked,      // Auto-compound
-    Stash,       // Send to stash account
-    Controller,  // Send to controller account
-    Account(AccountId)  // Custom account
-}
+Enums and type aliases are defined in the pallets — read the source or query runtime metadata
+rather than copying by hand:
 
-// BelizeX
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-pub enum OrderSide {
-    Buy,
-    Sell
-}
+- **`OrderType`** — `pallets/belizex`: limit-order side/type, passed as a `u8` index.
+- **Asset identifiers** in BelizeX are `u8` codes (not a `BoundedVec`/`AssetId`).
+- **Domain index** in `record_domain_contribution` is a `u8`.
+- **`WorkerType`**, **`EmployerType`**, **`DeductionType`**, **`PaymentCategory`** — `pallets/payroll`.
+- **`EncumbranceType`** — `pallets/landledger`.
 
-pub type AssetId = BoundedVec<u8, ConstU32<8>>;  // e.g., "DALLA", "bBZD"
-pub type TradingPairId = u32;
-pub type OrderId = u64;
-```
+> **Corrections:** `RewardDestination`, `OrderSide`, `AssetId = BoundedVec<u8, 8>`,
+> `TradingPairId`, and `OrderId` as previously documented do not exist in the runtime. Staking
+> has no reward-destination concept (no nominators); BelizeX order ids are `u32`.
 
 ---
 
 ## Performance Benchmarks
 
-### Staking
-```
-bond(): 55M gas
-report_training(): 80M gas
-validate(): 45M gas
+On-chain weights are generated, not hand-estimated:
 
-Throughput: ~180 staking ops/second
-```
-
-### BelizeX
-```
-swap(): 75M gas (AMM)
-place_limit_order(): 70M gas
-add_liquidity(): 65M gas
-
-Throughput:
-- AMM swaps: ~130/second
-- Limit orders: ~140/second
-- Liquidity ops: ~150/second
+```bash
+cargo build --release -p belizechain-node --features runtime-benchmarks
+./scripts/bench_weights.sh pallet_belize_staking
+./scripts/bench_weights.sh pallet_belize_belizex
+./scripts/bench_weights.sh pallet_belize_governance   # treasury lives here
 ```
 
-### Treasury
-```
-propose_spend(): 60M gas
-approve_proposal(): 80M gas
-
-Multi-sig latency: ~30 seconds (collect 4 signatures)
-```
+Output lands in each `pallets/<name>/src/weights.rs`. For throughput, measure against the live
+testnet — fixed "ops/second" and "gas" figures in documentation are not authoritative.
 
 ---
 
@@ -559,6 +200,5 @@ Multi-sig latency: ~30 seconds (collect 4 signatures)
 
 - [Core Pallet APIs](./pallet-apis-core.md)
 - [Infrastructure Pallet APIs](./pallet-apis-infrastructure.md)
+- [Services Pallet APIs](./pallet-apis-services.md)
 - [Economics Overview](../economics/tokenomics.md)
-- [Staking Guide](../validators/INCENTIVES.md)
-- [BelizeX Trading Guide](../defi/DEVELOPER_GUIDE.md)

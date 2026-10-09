@@ -789,10 +789,12 @@ pub trait ComplianceCheck<AccountId> {
     }
 }
 
-// GOVERNANCE_ID removed (E-7): dead constant, never used.\n\n/// Minimum and maximum council members
+// GOVERNANCE_ID removed (E-7): dead constant, never used.
+
+/// Minimum and maximum council members (design: 7 seats minimum, 12 maximum).
+/// Enforced by the `GovernanceParameter::CouncilSize` update guard.
 pub const MIN_COUNCIL_MEMBERS: u32 = 7;
 pub const MAX_COUNCIL_MEMBERS: u32 = 12;
-pub const ABSOLUTE_MAX_COUNCIL: u32 = 32; // Constitutional cap
 
 /// Voting periods in blocks (7 days = 7 * 24 * 60 * 10 = 100,800 blocks at 6s per block)
 pub const VOTING_PERIOD: u32 = 100_800; // 7 days
@@ -2353,7 +2355,7 @@ pub mod pallet {
             GovernanceParameters::<T>::insert(GovernanceParameter::LaunchPeriod, 28800u32); // 2 days
             GovernanceParameters::<T>::insert(GovernanceParameter::MinimumDeposit, 1000u32); // 1000 DALLA
             GovernanceParameters::<T>::insert(GovernanceParameter::SupermajorityThreshold, 66u32); // 66%
-            GovernanceParameters::<T>::insert(GovernanceParameter::CouncilSize, 15u32); // Max 15 members
+            GovernanceParameters::<T>::insert(GovernanceParameter::CouncilSize, MAX_COUNCIL_MEMBERS); // 12 seats
             GovernanceParameters::<T>::insert(GovernanceParameter::EmergencyTimeout, 86400u32);
             // 1 day
         }
@@ -7083,7 +7085,7 @@ pub mod pallet {
                 }
                 GovernanceParameter::CouncilSize => {
                     ensure!(
-                        (5..=50).contains(&new_value),
+                        (MIN_COUNCIL_MEMBERS..=MAX_COUNCIL_MEMBERS).contains(&new_value),
                         Error::<T>::InvalidParameterValue
                     );
                 }

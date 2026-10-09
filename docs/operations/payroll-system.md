@@ -17,7 +17,7 @@ BelizeChain's on-chain payroll system automates salary processing for both gover
 
 | Type | Requirements | Monthly Limit | Approval |
 |------|-------------|---------------|----------|
-| Government | Enhanced KYC + Treasury approval | Unlimited | 4-of-7 multi-sig |
+| Government | Enhanced KYC + Treasury approval | Unlimited | Council majority (4 of 7 seats) |
 | Private (Large) | Enhanced KYC + Tax ID | 500,000 DALLA | Automatic |
 | Private (SME) | Verified KYC + Business license | 100,000 DALLA | 2-day review |
 | NGO/Non-Profit | Verified KYC + Registration certificate | 50,000 DALLA | 5-day review |
@@ -400,7 +400,7 @@ const tourismEmployee = {
 
 ### 3. Government Payroll Coordination
 
-Government departments use 4-of-7 multi-sig for batch payments:
+Government departments use council-majority approval for batch payments:
 
 ```javascript
 // Ministry of Health batch payroll
@@ -414,7 +414,7 @@ const batchPayment = await api.tx.payroll.processBatchPayroll({
     'permanent-secretary',
     'chief-accountant',
     'payroll-manager'
-  ] // 4 of 7 required
+  ] // council majority required (4 of 7 seats)
 }).signAndSend(treasuryAccount);
 ```
 
@@ -522,7 +522,7 @@ export function GovernmentPayrollDashboard() {
 
 1. **Access Control**: Only authorized signatories can approve payments
 2. **Rate Limiting**: Maximum 1,000 employees processed per transaction
-3. **Multi-Sig**: Government payrolls require 4-of-7 approval
+3. **Council-majority approval**: Government payrolls require a council majority (4 of 7 seats)
 4. **Audit Logging**: All changes logged with timestamps and approver identity
 5. **Data Privacy**: Employee SSNs encrypted at rest, only visible to authorized parties
 6. **Compliance**: Automatic FSC reporting for large employers (>100 employees)

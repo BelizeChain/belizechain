@@ -452,19 +452,28 @@ pub mod pallet {
             if let Some(v) = &self.rate_limit_biometrics {
                 RateMaxPerWindowBiometrics::<T>::put(*v);
             }
+            // Fail loudly on overflow rather than silently dropping issuers: a chain
+            // spec whose issuer list exceeds MaxIssuerCount is misconfigured, and a
+            // silently truncated registry would leave issuers without authority.
             let mut ssn = BoundedVec::default();
             for i in &self.initial_ssn_issuers {
-                let _ = ssn.try_push(i.clone());
+                ssn.try_push(i.clone()).unwrap_or_else(|_| {
+                    panic!("identity genesis: initial_ssn_issuers exceeds MaxIssuerCount")
+                });
             }
             SsnIssuers::<T>::put(ssn);
             let mut pass = BoundedVec::default();
             for i in &self.initial_passport_issuers {
-                let _ = pass.try_push(i.clone());
+                pass.try_push(i.clone()).unwrap_or_else(|_| {
+                    panic!("identity genesis: initial_passport_issuers exceeds MaxIssuerCount")
+                });
             }
             PassportIssuers::<T>::put(pass);
             let mut bio = BoundedVec::default();
             for i in &self.initial_biometric_issuers {
-                let _ = bio.try_push(i.clone());
+                bio.try_push(i.clone()).unwrap_or_else(|_| {
+                    panic!("identity genesis: initial_biometric_issuers exceeds MaxIssuerCount")
+                });
             }
             BiometricIssuers::<T>::put(bio);
             GlobalPaused::<T>::put(self.paused);

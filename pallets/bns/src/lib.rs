@@ -230,11 +230,6 @@ pub mod pallet {
     #[pallet::getter(fn total_marketplace_revenue)]
     pub type TotalMarketplaceRevenue<T> = StorageValue<_, u128, ValueQuery>;
 
-    /// Next operation ID for tracking
-    #[pallet::storage]
-    #[pallet::getter(fn next_operation_id)]
-    pub type NextOperationId<T> = StorageValue<_, u64, ValueQuery>;
-
     /// Content version history (domain -> version -> content hash)
     /// Allows rollback to previous versions
     #[pallet::storage]
@@ -1341,6 +1336,44 @@ pub mod pallet {
             Self::deposit_event(Event::ExternalDomainVerificationRequested {
                 domain: external_bounded,
                 owner: who,
+            });
+
+            Ok(())
+        }
+
+        /// Approve a pending external-domain verification (governance only).
+        ///
+        /// `verify_external_domain` only records an attempt and emits
+        /// `ExternalDomainVerificationRequested`; this is the approval half that
+        /// actually flips the verified flag and emits `ExternalDomainVerified`.
+        #[pallet::call_index(20)]
+        #[pallet::weight(T::WeightInfo::verify_external_domain())]
+        pub fn approve_external_domain(
+            origin: OriginFor<T>,
+            external_domain: Vec<u8>,
+        ) -> DispatchResult {
+            T::GovernanceOrigin::ensure_origin(origin)?;
+
+            let external_bounded: BoundedVec<u8, ConstU32<128>> = external_domain
+                .try_into()
+                .map_err(|_| Error::<T>::DomainTooLong)?;
+
+            let mut external_info = ExternalDomains::<T>::get(&external_bounded)
+                .ok_or(Error::<T>::DomainNotFound)?;
+            ensure!(!external_info.verified, Error::<T>::VerificationFailed);
+
+            external_info.verified = true;
+            ExternalDomains::<T>::insert(&external_bounded, &external_info);
+
+            DomainVerification::<T>::mutate(&external_bounded, |maybe_status| {
+                if let Some(status) = maybe_status {
+                    status.verified = true;
+                }
+            });
+
+            Self::deposit_event(Event::ExternalDomainVerified {
+                domain: external_bounded,
+                owner: external_info.owner,
             });
 
             Ok(())

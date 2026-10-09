@@ -3,17 +3,19 @@
 //! BelizeChain Economy Pallet - National Economic System with Commercial Security
 //!
 //! This pallet manages:
-//! 1. DALLA token (native token with 6 decimals, max supply 501B) - Used for gas, fees, governance, DEX, AI/quantum payments
+//! 1. DALLA token (native token with 12 decimals, max supply 501B) - Used for gas, fees, governance, DEX, AI/quantum payments
 //! 2. bBZD stablecoin (1:1 Belize Dollar peg, USDC-style fiat-backed) - Central Bank mints on BZD deposit, burns on redemption
-//! 3. Multi-signature treasury management with controlled inflation (2% annual)
+//! 3. Governance-controlled treasury with a decreasing inflation schedule
+//!    (whitepaper §3.3: 5% initial, −0.1% per year, 1% floor)
+//!    (multi-signature treasury types were removed as dead code; see the E-7 note below)
 //! 4. Token burning mechanisms (user-initiated and governance-controlled)
 //! 5. Automatic annual inflation minted to treasury
-//! 6. Transaction limits and velocity monitoring
+//! 6. Per-block rate limiting and FATF travel-rule / structuring reporting
 //! 7. Comprehensive audit trails for compliance
 //! 8. Rate limiting to prevent DoS attacks
 //! 9. Emergency shutdown mechanisms
 //! 10. Cross-border remittance optimization
-//! 11. Tourism payment incentives (2-8% cashback)
+//! 11. Tourism payment incentives (2-8% cashback), recorded on-chain per payment
 //!
 //! ## bBZD Fiat-Backed Model (USDC-style):
 //! - Central Bank holds BZD reserves in traditional bank account
@@ -59,8 +61,12 @@ const TREASURY_ID: PalletId = PalletId(*b"py/trsry");
 /// 60 seconds/min * 60 min/hour * 24 hours/day * 365.25 days/year / 6 seconds/block
 const BLOCKS_PER_YEAR: u32 = 5_256_000;
 
-/// Annual inflation rate (2%)
-const ANNUAL_INFLATION_RATE: Permill = Permill::from_percent(2);
+/// Inflation schedule (whitepaper §3.3): starts at 5% annually and decreases by
+/// 0.1% per year until it floors at 1%. Expressed in parts-per-million of a
+/// `Permill` (5% = 50_000 ppm, 0.1% = 1_000 ppm, 1% = 10_000 ppm).
+const INITIAL_INFLATION_PPM: u32 = 50_000;
+const ANNUAL_INFLATION_DECREMENT_PPM: u32 = 1_000;
+const MINIMUM_INFLATION_PPM: u32 = 10_000;
 
 // ===== WEIGHT INFO TRAIT =====
 
@@ -132,6 +138,26 @@ pub struct RedemptionRequest<AccountId> {
     pub status: RedemptionStatus,
 }
 
+/// A recorded tourism payment, kept on-chain so cashback can be audited and a
+/// tourist's payment history can be queried.
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+pub struct TourismPayment<AccountId> {
+    /// Sequential payment identifier
+    pub payment_id: u32,
+    /// Tourist who paid and received the cashback
+    pub tourist: AccountId,
+    /// Verified merchant who received the payment
+    pub vendor: AccountId,
+    /// Payment amount in DALLA base units
+    pub amount: u128,
+    /// Cashback incentive paid to the tourist, in DALLA base units
+    pub incentive: u128,
+    /// Tourism category ordinal (0=Accommodation … 5=Cultural)
+    pub category: u8,
+    /// Block number at which the payment was recorded
+    pub block_number: u32,
+}
+
 pub use pallet::*;
 
 #[frame_support::pallet]
@@ -165,7 +191,7 @@ pub mod pallet {
         /// WeightInfo trait for operation weights
         type WeightInfo: WeightInfo;
 
-        /// Maximum DALLA supply (501B DALLA with 6 decimals = 501_000_000_000 * 10^6)
+        /// Maximum DALLA supply (501B DALLA with 12 decimals = 501_000_000_000 * 10^12)
         #[pallet::constant]
         type MaxSupply: Get<<Self::Currency as Currency<Self::AccountId>>::Balance>;
 
@@ -211,7 +237,7 @@ pub mod pallet {
 
         // ── COMP-CRIT-1: Travel rule enforcement ─────────────────────────────
 
-        /// FATF travel rule threshold (in base units, e.g. 100 DALLA = 100_000_000_000).
+        /// FATF travel rule threshold (in base units, e.g. 100 DALLA = 100_000_000_000_000).
         /// Transactions at or above this amount require Enhanced KYC (L2).
         #[pallet::constant]
         type TravelRuleThreshold: Get<u128>;
@@ -294,9 +320,22 @@ pub mod pallet {
     pub type NextPaymentId<T: Config> = StorageValue<_, u32, ValueQuery>;
 
     #[pallet::storage]
+    #[pallet::getter(fn tourism_payments)]
+    /// Recorded tourism payments (payment_id → record). Permanent audit trail;
+    /// keyed by payment id so growth is bounded by the id space, not an account's.
+    pub type TourismPayments<T: Config> =
+        StorageMap<_, Blake2_128Concat, u32, TourismPayment<T::AccountId>>;
+
+    #[pallet::storage]
     #[pallet::getter(fn last_inflation_block)]
     /// Last block number when inflation was applied
     pub type LastInflationBlock<T: Config> = StorageValue<_, BlockNumberFor<T>, ValueQuery>;
+
+    #[pallet::storage]
+    #[pallet::getter(fn inflation_epochs)]
+    /// Number of annual inflation epochs applied since launch. Drives the
+    /// whitepaper §3.3 schedule (5% initial, −0.1%/year, 1% floor).
+    pub type InflationEpochs<T: Config> = StorageValue<_, u32, ValueQuery>;
 
     // AR-15: Per-account per-block call counter for mint_bbzd rate limiting.
     // Key: (AccountId, last_block_number). Cleared lazily each new block.
@@ -347,8 +386,8 @@ pub mod pallet {
                 let current_supply = T::Currency::total_issuance();
                 let max_supply = T::MaxSupply::get();
 
-                // Calculate inflation amount (2% of current supply)
-                let inflation_amount = ANNUAL_INFLATION_RATE * current_supply;
+                // Calculate inflation amount using the whitepaper §3.3 schedule
+                let inflation_amount = Self::current_inflation_rate() * current_supply;
 
                 // Check if adding inflation would exceed max supply
                 let new_supply = current_supply.saturating_add(inflation_amount);
@@ -408,6 +447,8 @@ pub mod pallet {
         RemittanceCorridorNotFound,
         /// Invalid tourism category ID provided
         InvalidTourismCategory,
+        /// Tourism payment ID counter would overflow u32
+        PaymentIdOverflow,
         /// Maximum supply cap reached
         MaxSupplyReached,
         /// Cannot burn more than available supply
@@ -472,6 +513,7 @@ pub mod pallet {
         },
         /// Tourism incentive paid
         TourismIncentivePaid {
+            payment_id: u32,
             tourist: T::AccountId,
             vendor: T::AccountId,
             amount: <T::Currency as Currency<T::AccountId>>::Balance,
@@ -909,7 +951,30 @@ pub mod pallet {
             // COMP-CRIT-2: Report transaction to structuring detector
             T::ComplianceReporter::report_transaction(&tourist, amount_u128);
 
+            // Allocate a payment id and record the payment on-chain. The counter is
+            // advanced with checked_add so it can never silently wrap.
+            let payment_id = Self::next_payment_id();
+            let next_payment_id = payment_id
+                .checked_add(1)
+                .ok_or(Error::<T>::PaymentIdOverflow)?;
+            NextPaymentId::<T>::put(next_payment_id);
+
+            TourismPayments::<T>::insert(
+                payment_id,
+                TourismPayment {
+                    payment_id,
+                    tourist: tourist.clone(),
+                    vendor: vendor.clone(),
+                    amount: amount_u128,
+                    incentive: incentive_amount.saturated_into::<u128>(),
+                    category: category_id,
+                    block_number: frame_system::Pallet::<T>::block_number()
+                        .saturated_into::<u32>(),
+                },
+            );
+
             Self::deposit_event(Event::TourismIncentivePaid {
+                payment_id,
                 tourist,
                 vendor,
                 amount,
@@ -998,8 +1063,8 @@ pub mod pallet {
         ///
         /// # Example
         /// ```ignore
-        /// // Burn 1000 DALLA (1000 * 10^6 with 6 decimals)
-        /// Economy::burn_dalla(Origin::signed(user), 1_000_000_000)?;
+        /// // Burn 1000 DALLA (1000 * 10^12 with 12 decimals)
+        /// Economy::burn_dalla(Origin::signed(user), 1_000_000_000_000_000)?;
         /// ```
         #[pallet::call_index(6)]
         #[pallet::weight(T::WeightInfo::burn_dalla())]
@@ -1062,8 +1127,8 @@ pub mod pallet {
         ///
         /// # Example
         /// ```ignore
-        /// // Governance burns 1M DALLA from treasury (1M * 10^6 with 6 decimals)
-        /// Economy::governance_burn(Origin::from(GovernanceOrigin), 1_000_000_000_000)?;
+        /// // Governance burns 1M DALLA from treasury (1M * 10^12 with 12 decimals)
+        /// Economy::governance_burn(Origin::from(GovernanceOrigin), 1_000_000_000_000_000_000)?;
         /// ```
         #[pallet::call_index(7)]
         #[pallet::weight(T::WeightInfo::governance_burn())]
@@ -1119,6 +1184,16 @@ pub mod pallet {
         /// Factored out of `on_initialize` so `WeightInfo::update_inflation` is
         /// benchmarked against this exact code path instead of a copy of it.
         /// `pub` because the benchmark suite calls it directly.
+        /// Annual inflation rate for the current epoch per the whitepaper §3.3
+        /// schedule: 5% initially, decreasing by 0.1% per year, flooring at 1%.
+        pub fn current_inflation_rate() -> Permill {
+            let years_elapsed = InflationEpochs::<T>::get();
+            let ppm = INITIAL_INFLATION_PPM
+                .saturating_sub(ANNUAL_INFLATION_DECREMENT_PPM.saturating_mul(years_elapsed))
+                .max(MINIMUM_INFLATION_PPM);
+            Permill::from_parts(ppm)
+        }
+
         pub fn apply_annual_inflation(
             n: BlockNumberFor<T>,
             inflation_amount: <T::Currency as Currency<T::AccountId>>::Balance,
@@ -1169,6 +1244,9 @@ pub mod pallet {
 
             // Update last inflation block
             LastInflationBlock::<T>::put(n);
+
+            // Advance the inflation schedule (whitepaper §3.3)
+            InflationEpochs::<T>::mutate(|years| *years = years.saturating_add(1));
 
             // Emit event
             Self::deposit_event(Event::AnnualInflationApplied {

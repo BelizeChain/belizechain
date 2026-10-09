@@ -139,7 +139,7 @@ await api.tx.governance.propose(
 
 **Fast-track for security issues:**
 - 24-hour voting period
-- Treasury Council veto power
+- Council veto power
 - Requires 75% approval
 
 **Use cases:**
@@ -148,13 +148,13 @@ await api.tx.governance.propose(
 - Critical bugs
 
 ```rust
-// Emergency proposal (Treasury Council only)
+// Emergency proposal (council members only)
 pub fn emergency_proposal(
     origin: OriginFor<T>,
     proposal: Box<<T as Config>::Proposal>
 ) -> DispatchResult {
     ensure!(
-        TreasuryCouncil::<T>::get().contains(&who),
+        Self::is_council_member(&who),
         Error::<T>::NotCouncilMember
     );
     
@@ -279,58 +279,38 @@ impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
 
 ---
 
-## Multi-Sig Treasury
+## Council-Majority Treasury
 
-### 4-of-7 Signature Scheme
+### Approval Threshold
 
-**Council members:**
-1. Prime Minister (or designate)
-2. Minister of Finance
-3. Financial Services Commission Chair
-4. Central Bank Governor
-5. Belize District Representative
-6. Cayo District Representative
-7. Stann Creek District Representative
+Treasury spending requires more than half the council to approve — **4 of 7
+seats**, or **7 of 12 at full council**. This is enforced by the
+`GovernanceCouncilMajority` origin (`EnsureProportionMoreThan` over the
+governance council collective); the chain has no multisig account pallet.
+
+Council composition is determined by governance election (see the Governance
+pallet), not by a fixed roster of ministerial offices.
 
 ### Approval Process
 
 ```typescript
-// Step 1: First signatory initiates multi-sig
-const threshold = 4;
-const otherSignatories = [member2, member3, member4, member5, member6, member7];
+// Step 1: Propose the treasury spend (Governance pallet)
+await api.tx.governance
+  .proposeTreasurySpend(
+    recipient,
+    50_000_000_000_000_000n,       // 50K DALLA
+    'Road repair — Cayo district',
+    null                            // optional district index
+  )
+  .signAndSend(member1);
 
-const { data: multiSig } = await api.tx.treasury.approveProposal(proposalId);
+// Steps 2-4: Council members approve individually until a majority is reached
+await api.tx.governance.approveTreasurySpend(proposalId).signAndSend(member2);
+await api.tx.governance.approveTreasurySpend(proposalId).signAndSend(member3);
+await api.tx.governance.approveTreasurySpend(proposalId).signAndSend(member4);
 
-await api.tx.multisig.asMulti(
-  threshold,
-  otherSignatories.sort(),
-  null,
-  multiSig,
-  false,  // Not final
-  1_000_000_000  // Max weight
-).signAndSend(member1);
-
-// Step 2-4: Additional signatories approve
-await api.tx.multisig.asMulti(
-  threshold,
-  otherSignatories.sort(),
-  multiSigTimepoint,
-  multiSig,
-  false,
-  1_000_000_000
-).signAndSend(member2);
-
-// ... member3, member4 ...
-
-// Step 5: Final (4th) signature executes
-await api.tx.multisig.asMulti(
-  threshold,
-  otherSignatories.sort(),
-  multiSigTimepoint,
-  multiSig,
-  true,  // Final signature
-  1_000_000_000
-).signAndSend(member4);
+// Once a majority has approved, any account can execute
+await api.tx.governance.executeTreasuryProposal(proposalId).signAndSend(member4);
 
 // Treasury transfer executes automatically
 ```

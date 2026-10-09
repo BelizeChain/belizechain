@@ -323,7 +323,7 @@ pub struct EpochStats {
 **Example**:
 ```rust
 // Join as validator with 15K DALLA stake
-let stake = 15_000 * 1_000_000; // 15K DALLA (6 decimals)
+let stake = 15_000 * 1_000_000_000_000; // 15K DALLA (12 decimals)
 let location = b"Cayo District".to_vec().try_into().unwrap();
 let compute_capacity = 650; // 8 CPU cores + 8GB GPU + 16GB RAM
 
@@ -688,9 +688,9 @@ pub trait Config: frame_system::Config {
 
 **Recommended Values**:
 - `MaxValidators`: `100` (sufficient decentralization)
-- `MinValidatorStake`: `10_000_000_000` (10K DALLA, 6 decimals)
-- `BaseReward`: `100_000_000` (100 DALLA, 6 decimals)
-- `EpochDuration`: `50_400` (blocks, ~7 days at 6s/block)
+- `MinValidatorStake`: `1_000 * DOLLARS` (1,000 DALLA, 12 decimals — runtime value)
+- `BaseReward`: `DOLLARS` (1 DALLA per block, 12 decimals — runtime value)
+- `EpochDuration`: `14_400` (blocks, ~24h at 6s/block)
 
 ---
 

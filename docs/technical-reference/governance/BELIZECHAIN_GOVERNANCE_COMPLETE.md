@@ -44,7 +44,7 @@ The BelizeChain Governance Pallet is **COMPLETE** and **PRODUCTION-READY** after
 
 ### 🔐 Security & Compliance
 - **KYC Integration**: 3-tier system (Observer, Contributor, Validator)
-- **Access Control**: Role-based permissions with multi-signature support
+- **Access Control**: Role-based permissions enforced by governance origins
 - **Economic Security**: Deposits, slashing, conviction locking prevent attacks
 - **Audit Trail**: All actions emit events for transparency
 

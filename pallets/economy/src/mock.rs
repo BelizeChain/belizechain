@@ -82,7 +82,7 @@ impl pallet_timestamp::Config for Test {
 parameter_types! {
     pub const TreasuryAccount: u64 = 100;
     pub const EconomyPalletId: PalletId = PalletId(*b"bz/trsry");
-    // Max supply: 501B DALLA with 6 decimals = 501_000_000_000_000_000
+    // Mock max supply: 501_000_000_000_000_000 base units (= 501,000 DALLA at 12 decimals)
     pub const MaxSupply: u64 = 501_000_000_000_000_000u64;
     pub const PublicGoodsTreasuryAccount: u64 = 101;
     pub const PublicGoodsPercent: u8 = 10;

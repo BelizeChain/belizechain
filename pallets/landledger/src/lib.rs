@@ -411,10 +411,11 @@ pub mod pallet {
             surveyor: T::AccountId,
             area_sqm: u32,
         },
-        /// Environmental clearance granted
+        /// Environmental clearance granted or revoked
         EnvironmentalClearanceGranted {
             property_id: PropertyId,
             authority: T::AccountId,
+            cleared: bool,
         },
         /// Encumbrance added
         EncumbranceAdded {
@@ -793,6 +794,38 @@ pub mod pallet {
             Self::deposit_event(Event::PropertyVerified {
                 property_id,
                 verifier: Self::account_id(), // Use pallet account instead
+            });
+
+            Ok(())
+        }
+
+        /// Grant or revoke environmental clearance for a property.
+        ///
+        /// Environmental compliance is a documented LandLedger workflow
+        /// (`EnvironmentalOrigin` + `PropertyRecord::environmental_clearance`);
+        /// this extrinsic is what mutates that flag after genesis.
+        #[pallet::call_index(8)]
+        #[pallet::weight(T::WeightInfo::verify_property())]
+        pub fn grant_environmental_clearance(
+            origin: OriginFor<T>,
+            property_id: PropertyId,
+            cleared: bool,
+        ) -> DispatchResult {
+            T::EnvironmentalOrigin::ensure_origin(origin)?;
+
+            Properties::<T>::mutate(property_id, |maybe_property| {
+                if let Some(property) = maybe_property {
+                    property.environmental_clearance = cleared;
+                    Ok(())
+                } else {
+                    Err(Error::<T>::PropertyNotFound)
+                }
+            })?;
+
+            Self::deposit_event(Event::EnvironmentalClearanceGranted {
+                property_id,
+                authority: Self::account_id(),
+                cleared,
             });
 
             Ok(())

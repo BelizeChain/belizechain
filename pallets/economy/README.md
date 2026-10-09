@@ -36,8 +36,8 @@ This pallet serves as the monetary foundation for Belize's blockchain economy, p
 ```rust
 // Constants (from lib.rs)
 TREASURY_ID: u64 = 1000
-BLOCKS_PER_YEAR: u32 = 2_628_000  // ~12s block time
-ANNUAL_INFLATION_RATE: u32 = 2    // 2% per year
+BLOCKS_PER_YEAR: u32 = 5_256_000     // 6s block time
+INITIAL_INFLATION_PPM: u32 = 50_000  // 5% initial, −0.1%/yr down to a 1% floor
 
 // Tourism Incentive Rates (cashback in DALLA)
 Hotels: 8%
@@ -482,7 +482,7 @@ Economy::process_tourism_payment(
 // User deposited 1,000 BZD, issue 1,000 bBZD
 Economy::mint_bbzd(
     Origin::signed(central_bank),
-    1_000_000_000,  // 1,000 bBZD (6 decimals)
+    1_000_000_000_000_000,  // 1,000 bBZD (12 decimals)
     charlie
 )?;
 ```

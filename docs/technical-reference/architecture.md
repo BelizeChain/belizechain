@@ -55,7 +55,7 @@ graph TB
     
     subgraph "Quantum Layer"
         QC --> Q1[Qiskit Adapter<br/>IBM Quantum]
-        QC --> Q2[Configured Quantum Provider<br/>Cloud Quantum]
+        QC --> Q2[Cloud Provider Network<br/>Multi-Backend]
         QC --> Q3[Algorithm Library<br/>Consensus/Crypto]
         QC --> Q4[Hybrid Circuits<br/>Classical-Quantum]
     end
@@ -112,7 +112,7 @@ graph TB
 1. **Economy Pallet**
    - bBZD (Belize Digital Dollar) - 1:1 peg with BZD
    - Dalla (DALLA) - Main utility token for fees/staking
-   - Mahogany - Smallest unit (1 DALLA = 1,000,000 Mahogany)
+   - Mahogany - Smallest unit (1 DALLA = 1,000,000,000,000 Mahogany)
    - Treasury management and inflation control
 
 2. **Identity Pallet**
@@ -176,7 +176,7 @@ graph TB
 
 2. **Provider Adapters**
    - **Qiskit**: IBM Quantum Network integration
-   - **Configured Quantum Provider**: Microsoft quantum cloud services
+   - **Cloud Provider Network**: Pluggable multi-backend cloud execution (Azure Quantum, IBM Quantum, Cirq, SpinQ, PennyLane)
    - **Rigetti**: Forest/pyQuil integration
    - **IonQ**: Trapped ion quantum computers
 
@@ -411,7 +411,7 @@ timeline
              
     2025 9/29 : Production Deployment
              : Advanced AI Features
-             : Configured Quantum Provider Integration
+             : Quantum Provider Network Integration
              : Full UI Suite
              
     2025 09/30 : Cross-Chain Bridges

@@ -180,7 +180,7 @@ parameter_types! {
     pub const EnactmentPeriodEconomic: u64 = 100;
     pub const EnactmentPeriodStandard: u64 = 50;
     pub const MaxVotingUnits: u32 = 1_000;
-    pub const StakeUnitSize: u128 = 1_000_000_000; // 1000 DALLA per unit
+    pub const StakeUnitSize: u128 = 1_000_000_000; // 1e9 base units (0.001 DALLA at 12 decimals)
     pub const LargeHolderStakeThreshold: u128 = 100_000_000_000; // 100K DALLA
     pub const ExitProofValidity: u64 = 432_000; // ~30 days
 }

@@ -39,7 +39,7 @@ This framework defines the comprehensive security audit requirements for BelizeC
 
 **Audit Focus:**
 - **Token Minting/Burning:**
-  - DALLA inflation controls (2% annual cap)
+  - DALLA inflation controls (5% initial, decreasing to a 1% floor)
   - bBZD peg mechanism (GBP exchange rate validation)
   - Treasury multi-sig approval (4-of-7 threshold)
   - Overflow/underflow checks in balance calculations

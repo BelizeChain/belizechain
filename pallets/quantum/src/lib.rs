@@ -600,11 +600,6 @@ pub mod pallet {
         ValueQuery,
     >;
 
-    /// Storage: Job counter for unique IDs
-    #[pallet::storage]
-    #[pallet::getter(fn job_counter)]
-    pub type JobCounter<T: Config> = StorageValue<_, u64, ValueQuery>;
-
     /// Storage: NFT marketplace listings (Phase 2.3.3)
     #[pallet::storage]
     #[pallet::getter(fn nft_listings)]

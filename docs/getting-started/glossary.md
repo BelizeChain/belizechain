@@ -169,8 +169,8 @@ Open-source LoRa mesh networking protocol used by BelizeChain for off-grid commu
 - **Phone connection**: Bluetooth Low Energy (BLE)
 - **Use cases**: Rural payments, hurricane alerts, validator consensus fallback
 
-### Multisig (Multi-Signature)
-Wallet requiring multiple people to approve transactions. Government treasuries use this for security.
+### Council-Majority Approval
+Treasury spending requires more than half the council to approve — 4 of 7 seats, or 7 of 12 at full council. Enforced by a collective-majority origin rather than a multisig account.
 
 ---
 

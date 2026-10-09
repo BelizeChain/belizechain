@@ -51,7 +51,7 @@ BelizeChain is a **Substrate blockchain in active development** for Belize's nat
 - 🌐 **Consensus**: Proof of Useful Work (PoUW)
 - 🔗 **Interoperability**: Ethereum & Polkadot bridges
 - 📊 **Performance**: ~2,000 TPS, 6-second block time
-- 🛡️ **Security**: Multi-sig treasury, time-locked governance
+- 🛡️ **Security**: Council-majority treasury approval, time-locked governance
 - 📈 **Scalability**: Horizontal validator scaling
 
 </td>
@@ -77,8 +77,8 @@ BelizeChain implements **19 Belize-specific pallets** covering the complete nati
 <details>
 <summary><b>💰 Financial & Economic (3 pallets)</b></summary>
 
-- **Economy** (`pallets/economy/`) - DALLA/bBZD dual-currency system, multi-sig treasury (4-of-7), account type limits
-- **BelizeX** (`pallets/belizex/`) - On-chain DEX, liquidity pools, Oracle-guarded swaps, asset registry
+- **Economy** (`pallets/economy/`) - DALLA/bBZD dual-currency system, council-majority treasury approval (4 of 7 seats; 7 of 12 at full council)
+- **BelizeX** (`pallets/belizex/`) - On-chain DEX, liquidity pools, Oracle-guarded swaps
 - **Payroll** (`pallets/payroll/`) - Enterprise payroll automation: departments, deductions, bonuses, 6 employer types
 
 </details>
@@ -154,8 +154,7 @@ graph LR
 **Key Features**:
 - ✅ **bBZD Peg**: Always 1:1 with Belize Dollar (Central Bank guaranteed)
 - ✅ **Tourism Incentives**: 5-8% cashback in DALLA for verified merchant spending
-- ✅ **Multi-Sig Treasury**: 4-of-7 governance approval for large transactions
-- ✅ **Account Limits**: Citizen (25K DALLA), Business (100K), Tourism (100K), Government (unlimited)
+- ✅ **Council-Majority Treasury**: 4 of 7 council seats required (7 of 12 at full council) for large transactions
 
 ## 🚀 Quick Start
 

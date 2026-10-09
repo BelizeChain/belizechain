@@ -151,8 +151,8 @@ fn annual_inflation_applied_correctly() {
         // Run on_initialize
         Economy::on_initialize(blocks_per_year + 1);
 
-        // Expected: 2% of actual total issuance
-        let expected_inflation = actual_supply / 50; // 2% = 1/50
+        // Expected: 5% for the first epoch (whitepaper §3.3 initial rate)
+        let expected_inflation = actual_supply / 20; // 5% = 1/20
 
         // Check total supply increased
         let new_supply = Economy::total_supply();
@@ -1080,12 +1080,62 @@ fn process_tourism_payment_works() {
         // Event emitted
         System::assert_last_event(
             Event::TourismIncentivePaid {
+                payment_id: 0,
                 tourist,
                 vendor,
                 amount,
                 incentive,
             }
             .into(),
+        );
+    });
+}
+
+#[test]
+fn process_tourism_payment_records_payment_on_chain() {
+    new_test_ext().execute_with(|| {
+        let tourist = 2u64;
+        let vendor = 3u64;
+        let amount = 10_000_000_000u64; // 10K DALLA
+
+        assert_eq!(Economy::next_payment_id(), 0);
+        assert!(Economy::tourism_payments(0).is_none());
+
+        assert_ok!(Economy::process_tourism_payment(
+            RuntimeOrigin::signed(tourist),
+            vendor,
+            amount,
+            0, // Accommodation → 5% incentive
+        ));
+
+        // Payment is recorded under id 0 and the counter advances
+        let record = Economy::tourism_payments(0).expect("payment should be recorded");
+        assert_eq!(record.payment_id, 0);
+        assert_eq!(record.tourist, tourist);
+        assert_eq!(record.vendor, vendor);
+        assert_eq!(record.amount, amount as u128);
+        assert_eq!(record.category, 0);
+        let expected_incentive = sp_runtime::Permill::from_parts(50_000) * amount;
+        assert_eq!(record.incentive, expected_incentive as u128);
+        assert_eq!(Economy::next_payment_id(), 1);
+
+        // A second payment is recorded under the next id, independently
+        Balances::make_free_balance_be(&tourist, 1_000_000_000_000);
+        assert_ok!(Economy::process_tourism_payment(
+            RuntimeOrigin::signed(tourist),
+            vendor,
+            1_000_000_000u64,
+            1, // Dining
+        ));
+        let second = Economy::tourism_payments(1).expect("second payment should be recorded");
+        assert_eq!(second.payment_id, 1);
+        assert_eq!(second.category, 1);
+        assert_eq!(Economy::next_payment_id(), 2);
+
+        // The first record is untouched by the second payment
+        assert_eq!(
+            Economy::tourism_payments(0).map(|r| r.category),
+            Some(0)
         );
     });
 }
@@ -1305,7 +1355,7 @@ fn redemption_processed_event_fields() {
 fn annual_inflation_event_emitted() {
     new_test_ext().execute_with(|| {
         let supply_before = Economy::total_supply();
-        let inflation_amount = sp_runtime::Permill::from_percent(2) * supply_before;
+        let inflation_amount = sp_runtime::Permill::from_percent(5) * supply_before;
 
         // Advance to block BLOCKS_PER_YEAR + 1
         let target = 5_256_000u64 + 1;
@@ -1399,6 +1449,33 @@ fn multiple_inflation_years() {
         let first_inflation = supply_1 - supply_0;
         let second_inflation = supply_2 - supply_1;
         assert!(second_inflation > first_inflation, "Compounding effect");
+    });
+}
+
+#[test]
+fn inflation_schedule_decreases_per_whitepaper() {
+    new_test_ext().execute_with(|| {
+        // Whitepaper §3.3: 5% initial, −0.1% per year, floor 1%.
+        assert_eq!(
+            Economy::current_inflation_rate(),
+            sp_runtime::Permill::from_percent(5)
+        );
+
+        // After one epoch the second year is 4.9%.
+        let target = 5_256_000u64 + 1;
+        System::set_block_number(target);
+        Economy::on_initialize(target);
+        assert_eq!(
+            Economy::current_inflation_rate(),
+            sp_runtime::Permill::from_parts(49_000)
+        );
+
+        // Beyond the floor the rate clamps at 1%.
+        crate::InflationEpochs::<Test>::put(200u32);
+        assert_eq!(
+            Economy::current_inflation_rate(),
+            sp_runtime::Permill::from_percent(1)
+        );
     });
 }
 

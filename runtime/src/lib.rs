@@ -426,7 +426,26 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     // No storage migration needed: `LandAnchors`, `PropertyAnchorChain` and
     // `Properties` are all empty on chain, so `ContentHashLatestAnchor` has
     // nothing to backfill and no existing anchor loses its lookup.
-    spec_version: 112,
+    //
+    // Bumped to 113 — audit remediation:
+    // - Council size is now actually enforced: `MIN_COUNCIL_MEMBERS` (7) and
+    //   `MAX_COUNCIL_MEMBERS` (12) gate `GovernanceParameter::CouncilSize`
+    //   updates, and genesis no longer seeds an out-of-range value (was 15).
+    // - Economy inflation follows the whitepaper §3.3 schedule (5% initial,
+    //   decreasing 0.1%/year, 1% floor) instead of a flat 2%.
+    // - `pallet-belize-bns` gained `approve_external_domain` (call index 20),
+    //   the governance approval half of external-domain verification.
+    // - `pallet-belize-landledger` gained `grant_environmental_clearance`
+    //   (call index 8).
+    // - Dead event declarations removed (`belizex::OrderExecuted`,
+    //   `mesh::MeshTransactionProcessed`); `interop::BridgeTransactionExecuted`
+    //   is now emitted, and `landledger::EnvironmentalClearanceGranted` carries
+    //   a `cleared` flag.
+    //
+    // No storage migration needed: the new `Economy::InflationEpochs` is
+    // `ValueQuery` storage, so it reads 0 on upgrade and the first epoch mints
+    // at the schedule's start rate (5%).
+    spec_version: 113,
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 1,
@@ -445,6 +464,9 @@ const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 
 // Currency and time unit constants for readable configuration
 pub const DOLLARS: Balance = 1_000_000_000_000; // 1 DALLA = 10^12 base units (12 decimals)
+/// Smallest indivisible unit of DALLA — the base unit, analogous to wei/planck.
+/// DALLA uses 12 decimals, so 1 DALLA = 1,000,000,000,000 Mahogany.
+pub const MAHOGANY: Balance = 1;
 pub const MINUTES: BlockNumber = 10; // Blocks per minute (6-second block time: 60s ÷ 6s = 10 blocks)
 pub const DAYS: BlockNumber = 14_400; // Blocks per day (assuming 6-second block time: 86400s/day ÷ 6s/block = 14400 blocks)
 

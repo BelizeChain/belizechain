@@ -473,7 +473,7 @@ LandLedger::verify_property(
 
 **Outcome**:
 - Sets `environmental_clearance` flag
-- Emits `EnvironmentalClearanceGranted(property_id, cleared)`
+- Emits `EnvironmentalClearanceGranted(property_id, authority, cleared)`
 
 **Use Case**: Required for new construction, land clearing, coastal developments
 
@@ -618,7 +618,7 @@ let has_mortgage = LandLedger::has_encumbrance(42, EncumbranceType::Mortgage);
 | `PropertyTransferred(PropertyId, AccountId, AccountId, u128, u128)` | Ownership transfer (from, to, price, tax) |
 | `EncumbranceAdded(PropertyId, EncumbranceType, AccountId)` | Lien/mortgage/restriction added |
 | `EncumbranceRemoved(PropertyId, EncumbranceType)` | Encumbrance cleared |
-| `EnvironmentalClearanceGranted(PropertyId, bool)` | Environmental approval granted/revoked |
+| `EnvironmentalClearanceGranted(PropertyId, AccountId, bool)` | Environmental approval granted/revoked |
 | `ZoningUpdated(PropertyId, ZoningType, ZoningType)` | Rezoning (old → new) |
 | `PropertyValueUpdated(PropertyId, u128, u128)` | Assessed value changed |
 | `TourismPropertyMarked(PropertyId, bool)` | Tourism property flag toggled |

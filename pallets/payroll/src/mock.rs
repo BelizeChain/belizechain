@@ -27,7 +27,7 @@ parameter_types! {
     pub const MaxEmployees: u32 = 1000;
     pub const MaxDeductions: u32 = 10;
     pub const MaxDepartments: u32 = 50;
-    pub const MinimumPayment: u64 = 1_000_000; // 1 DALLA (10^6 with 6 decimals)
+    pub const MinimumPayment: u64 = 1_000_000; // 1e6 base units (0.000001 DALLA at 12 decimals)
     pub const MaxSchedulesPerBlock: u32 = 50;
     pub const MaxPaymentAmount: u64 = 1_000_000_000_000; // 1M DALLA cap
 }
@@ -124,7 +124,7 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
 
     pallet_balances::GenesisConfig::<Test> {
         balances: vec![
-            (1, 1_000_000_000_000_000), // Employer 1 (1 million DALLA with 6 decimals)
+            (1, 1_000_000_000_000_000), // Employer 1 (1,000 DALLA at 12 decimals)
             (2, 1_000_000_000_000_000), // Employer 2
             (3, 10_000_000_000),        // Employee 1 (10K DALLA)
             (4, 10_000_000_000),        // Employee 2

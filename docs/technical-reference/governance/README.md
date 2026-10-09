@@ -9,7 +9,7 @@ The BelizeChain Governance Pallet implements a sophisticated multi-tiered democr
 - **Representative Democracy**: Vote delegation with transparency
 - **Departmental Governance**: 8 government ministries with specialized workflows
 - **Foundation Board**: 7 expert roles with term limits
-- **Treasury Management**: Multi-signature spending controls
+- **Treasury Management**: Council-majority spending controls
 - **Emergency Powers**: National security provisions
 
 ## Documentation Structure
@@ -103,7 +103,7 @@ cat src/lib.rs
 - Financial Services Commission (FSC) oversight
 
 ### 3. Treasury Management
-- Multi-signature spending controls
+- Council-majority spending controls
 - Department-specific budget allocations
 - Emergency fund mechanisms
 - Transparent execution tracking
@@ -184,7 +184,7 @@ delegate_vote, revoke_delegation, amend_proposal, claim_participation_reward, se
 - **Financial Services Commission (FSC)**: Regulatory compliance
 - **Belize Tourism Board (BTB)**: Tourism governance
 - **District Governments**: Local representation
-- **Multi-sig Wallets**: Treasury security
+- **Council-Majority Approval**: Treasury security
 
 ## Usage Examples
 
@@ -293,7 +293,7 @@ BelizeGovernance::finalize_district_election(
 ### Economic Security
 - Proposal deposits prevent spam (250 DALLA)
 - Conviction multipliers lock tokens during voting
-- Multi-sig treasury for large expenditures
+- Council-majority treasury approval for large expenditures
 - Reward caps prevent treasury depletion
 
 ### Governance Security

@@ -537,12 +537,6 @@ pub mod pallet {
             amount: u128,
             price: u128,
         },
-        /// Order executed
-        OrderExecuted {
-            order_id: u32,
-            executor: T::AccountId,
-            amount: u128,
-        },
         /// Order cancelled by creator
         OrderCancelled {
             order_id: u32,

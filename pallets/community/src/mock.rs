@@ -123,12 +123,12 @@ parameter_types! {
     pub const FeeExemptionMonthlyLimit: u32 = 100_000; // 100K dBZD for testing
     pub const EducationRewardAmount: u64 = 100;
     pub const ReferralRewardAmount: u64 = 100;
-    pub const CommunityVotingPeriod: u64 = 7 * 24 * 60 * 10; // 7 days in blocks (~10s blocks)
+    pub const CommunityVotingPeriod: u64 = 7 * 24 * 60 * 10; // 7 days in blocks (~6s blocks)
     pub const CommunityTreasuryAccount: u64 = 999; // Mock treasury account
     pub const MaxTitleLength: u32 = 128;
     pub const MaxDescriptionLength: u32 = 1024;
     pub const MaxParticipationHistory: u32 = 1000;
-    pub const MaxSupply: u64 = 501_000_000_000_000; // 501B in mock units
+    pub const MaxSupply: u64 = 501_000_000_000_000; // 501 DALLA at 12 decimals
 }
 
 impl pallet_belize_community::Config for Test {

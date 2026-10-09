@@ -171,7 +171,7 @@ Before mainnet launch, verify:
 
 - [ ] All validator keys generated on air-gapped/hardware devices
 - [ ] Mnemonics stored in secure offline backup (NOT in code/git)
-- [ ] Treasury account uses multi-signature (3-of-5 or 4-of-7)
+- [ ] Treasury spending requires council-majority approval (GovernanceCouncilMajority origin)
 - [ ] Government issuer accounts controlled by respective departments
 - [ ] No development keys (`Alice`, `Bob`, `seed` references) in production config
 - [ ] Council members are real elected/appointed officials

@@ -585,11 +585,6 @@ pub mod pallet {
             gateway_node: MeshtasticNodeId,
             hop_count: u8,
         },
-        /// Mesh transaction processed (bridged to blockchain)
-        MeshTransactionProcessed {
-            tx_hash: H256,
-            block: BlockNumberFor<T>,
-        },
         /// Relay proof submitted
         RelayProofSubmitted {
             relayer: MeshtasticNodeId,

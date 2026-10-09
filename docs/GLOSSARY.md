@@ -7,7 +7,7 @@ Technical terminology and BelizeChain-specific concepts.
 **Account**: A cryptographic address that holds DALLA/bBZD. Types include:
 - **User accounts**: ss58-encoded, controlled by private keys
 - **Contract accounts**: Deployed smart contracts with code storage
-- **Multi-sig accounts**: Require multiple signatures (e.g., 4-of-7 treasury)
+- **Council-majority approval**: Treasury spending needs more than half the council (4 of 7 seats; 7 of 12 at full council)
 
 → See [Identity Pallet](developer-guides/pallet-apis-core.md#identity-pallet)
 
@@ -51,7 +51,7 @@ published; testnet values are simulated protocol parameters.
 
 → See [BelizeX DEX](operations/bridges-dex-landledger.md#belizex-dex)
 
-**Blue Hole Portal**: Government dashboard for treasury management (4-of-7 multi-sig), KYC approvals, district analytics.
+**Blue Hole Portal**: Government dashboard for treasury management (council-majority approval: 4 of 7 seats; 7 of 12 at full council), KYC approvals, district analytics.
 
 → See [Business & Government Guide](user-guides/business-government-guides.md#blue-hole-portal)
 
@@ -114,7 +114,7 @@ published; testnet values are simulated protocol parameters.
 
 **DALLA**: Native blockchain token:
 - **Decimals**: 12 (1 DALLA = 1,000,000,000,000 units)
-- **Inflation**: 3-6% APY
+- **Inflation**: 5% annual initially, decreasing 0.1%/yr to a 1% floor
 - **Uses**: Transaction fees, staking, governance
 - **Total supply**: ~50 million (circulating increases with inflation)
 
@@ -202,7 +202,7 @@ published; testnet values are simulated protocol parameters.
 **Governance**: On-chain decision-making:
 - **Democracy**: Public referendums (7-day voting)
 - **Councils**: 6 district councils (3-5 members each)
-- **Treasury**: 4-of-7 multi-sig (DALLA reserve)
+- **Treasury**: Council-majority approval (4 of 7 seats; 7 of 12 at full council) over the DALLA reserve
 
 → See [Democracy](governance/democracy.md)
 
@@ -285,7 +285,7 @@ published; testnet values are simulated protocol parameters.
 
 → See [DAG Storage](architecture/dag-storage-design.md)
 
-**Multi-Sig (Multi-Signature)**: Account requiring M-of-N signatures. Treasury uses 4-of-7 (4 district representatives out of 7 total).
+**Council-majority approval**: Treasury spending requires more than half the council — 4 of 7 seats, or 7 of 12 at full council. Enforced by a collective-majority origin; the chain has no multisig account pallet.
 
 → See [Democracy](governance/democracy.md#treasury-multi-sig)
 
@@ -446,7 +446,7 @@ published; testnet values are simulated protocol parameters.
 
 **Treasury**: DALLA reserve for public goods:
 - **Funding**: 20% of inflation + 0.05% DEX fees
-- **Governance**: 4-of-7 multi-sig approval
+- **Governance**: Council-majority approval (4 of 7 seats; 7 of 12 at full council)
 - **Current balance**: ~8 million DALLA
 
 → See [Tokenomics](economics/tokenomics.md)

@@ -96,8 +96,8 @@ format!("{} bBZD (pegged to BZD)", amount)
 
 ### Tokenomics
 - **DALLA**: Native token, 12 decimals, inflation-based
-- **bBZD**: BZD-pegged stablecoin, 6 decimals, governance-maintained peg
-- **Mahogany**: Smallest unit (1 DALLA = 1,000,000 Mahogany)
+- **bBZD**: BZD-pegged stablecoin, 12 decimals, governance-maintained peg
+- **Mahogany**: Smallest unit (1 DALLA = 1,000,000,000,000 Mahogany)
 
 ---
 
@@ -167,10 +167,8 @@ format!("{} bBZD (pegged to BZD)", amount)
   - Level 2 (Enhanced): 100,000 DALLA/transaction
   - Level 3 (Full): Unlimited
 
-### 4. Multi-Signature Requirements
-- Government treasury: 4-of-7 multi-sig
-- Large land transfers (>$500k GBP): 2-of-3 multi-sig
-- Emergency governance: 5-of-9 multi-sig
+### 4. Treasury Approval Requirements
+- Government treasury: council-majority approval (4 of 7 seats; 7 of 12 at full council)
 
 ---
 

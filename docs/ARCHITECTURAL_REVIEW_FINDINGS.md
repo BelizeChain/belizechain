@@ -81,7 +81,7 @@ The dual-token architecture is well-reasoned:
 - **DALLA**: Gas, governance, staking, DEX, AI/quantum payments — deflationary through NFT minting burns
 - **bBZD**: USDC-style fiat-backed stablecoin — Central Bank mint/burn, NOT collateralized by DALLA
 - **Hard cap**: 501B DALLA with supply invariant guard in `on_initialize`
-- **Annual inflation**: 2% to treasury, gated by max supply
+- **Annual inflation**: 5% initially, decreasing 0.1%/yr to a 1% floor, to treasury; gated by max supply
 - **Tourism cashback**: 3–8% DALLA rewards for verified merchants
 
 **Key strength**: bBZD is explicitly NOT algorithmically pegged. It's fiat-backed (USDC model), which avoids the catastrophic failure mode of algorithmic stablecoins (Terra/LUNA). The documentation is clear about this distinction.

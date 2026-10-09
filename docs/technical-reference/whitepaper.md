@@ -88,7 +88,7 @@ BelizeChain's federated learning system enables collaborative AI development whi
 - **Client-Server Model**: Distributed training with centralized aggregation
 - **Privacy Preservation**: Differential privacy and secure aggregation
 - **Compliance Integration**: Built-in data sovereignty controls
-- **external ML Integration**: Optional cloud acceleration for participants
+- **External ML Integration**: Optional cloud acceleration for participants
 
 **Example Implementation:**
 ```python
@@ -112,7 +112,7 @@ BelizeChain integrates quantum computing capabilities for enhanced security and 
 
 **Provider Integration:**
 - IBM Qiskit for quantum circuit execution
-- Configured Quantum Provider for cloud quantum services
+- Quantum Provider Network for cloud quantum services (Azure Quantum, IBM Quantum, Cirq, SpinQ, PennyLane)
 - Local simulators for development and testing
 
 ## 3. Economic Model
@@ -134,7 +134,7 @@ BelizeChain operates with a dual-token system designed for stability and utility
 - Federated AI participation rewards
 
 **Mahogany (smallest unit):**
-- 1 DLA = 1,000,000 Mahogany
+- 1 DALLA = 1,000,000,000,000 Mahogany
 - Named after Belize's national tree
 - Enables micro-transactions and precise calculations
 
@@ -173,7 +173,7 @@ BelizeChain's governance reflects Belize's democratic principles:
 - **Citizens**: Token holders participate in referenda
 - **District Councils**: Representing geographic constituencies
 - **Technical Committee**: Managing technical upgrades
-- **Treasury Council**: Overseeing treasury allocations
+- **Governance Council**: Overseeing treasury allocations
 
 ### 4.2 Proposal Lifecycle
 
@@ -422,7 +422,7 @@ Phase 4: 1,000,000 TPS (Quantum Enhancement)
 - Cross-chain bridge development
 - Enhanced privacy features
 - Advanced AI model registry
-- Configured Quantum Provider integration
+- Quantum Provider Network integration
 
 **Deliverables:**
 - Mainnet beta launch
@@ -524,7 +524,7 @@ Phase 4: 1,000,000 TPS (Quantum Enhancement)
 
 **Quantum Provider Partnerships:**
 - IBM Quantum Network membership
-- Microsoft Configured Quantum Provider integration
+- Multi-provider cloud quantum integration
 - Research institution collaborations
 - Quantum algorithm development partnerships
 
