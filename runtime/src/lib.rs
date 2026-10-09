@@ -1387,12 +1387,7 @@ impl pallet_belize_governance::Config for Runtime {
     type RuntimeUpgradeOrigin = GovernanceCouncilSuperMajority;
 }
 
-use pallet_belize_compliance::VerificationLevel;
-
 parameter_types! {
-    pub const MinValidatorVerificationLevel: VerificationLevel = VerificationLevel::Enhanced;
-    pub const MinGovernanceVerificationLevel: VerificationLevel = VerificationLevel::Government;
-    pub const MinTreasuryVerificationLevel: VerificationLevel = VerificationLevel::Government;
     pub const VerificationValidityBlocks: BlockNumber = 100_800; // ~1 week
 }
 
@@ -1401,9 +1396,6 @@ impl pallet_belize_compliance::Config for Runtime {
     type UnixTime = Timestamp;
     type ComplianceOrigin = TechnicalCouncilSuperMajority;
     type SanctionsOrigin = GovernanceCouncilSuperMajority;
-    type MinValidatorVerification = MinValidatorVerificationLevel;
-    type MinGovernanceVerification = MinGovernanceVerificationLevel;
-    type MinTreasuryVerification = MinTreasuryVerificationLevel;
     type TravelRuleThreshold = ConstU128<{ 100 * DOLLARS }>; // 100 DALLA
     type VerificationValidityPeriod = VerificationValidityBlocks;
     type MaxAuditRecords = ConstU32<1000>;

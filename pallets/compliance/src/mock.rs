@@ -90,9 +90,6 @@ impl pallet_timestamp::Config for Test {
 use crate::VerificationLevel;
 
 parameter_types! {
-    pub const MinValidatorVerification: VerificationLevel = VerificationLevel::Enhanced;
-    pub const MinGovernanceVerification: VerificationLevel = VerificationLevel::Standard;
-    pub const MinTreasuryVerification: VerificationLevel = VerificationLevel::Enhanced;
     pub const TravelRuleThreshold: u128 = 10_000_000_000; // 10K DALLA
     pub const VerificationValidityPeriod: u64 = 31_536_000; // 1 year in seconds
     pub const MaxAuditRecords: u32 = 100;
@@ -106,9 +103,6 @@ impl pallet_belize_compliance::Config for Test {
     type UnixTime = Timestamp;
     type ComplianceOrigin = frame_system::EnsureRoot<u64>;
     type SanctionsOrigin = frame_system::EnsureRoot<u64>;
-    type MinValidatorVerification = MinValidatorVerification;
-    type MinGovernanceVerification = MinGovernanceVerification;
-    type MinTreasuryVerification = MinTreasuryVerification;
     type TravelRuleThreshold = TravelRuleThreshold;
     type VerificationValidityPeriod = VerificationValidityPeriod;
     type MaxAuditRecords = MaxAuditRecords;

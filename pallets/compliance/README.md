@@ -144,29 +144,44 @@ Remove sanctions entry.
 
 ## Helper Functions
 
-### `can_vote(account, block_number) -> bool`
-Check if account meets minimum requirements for governance voting (L2 verification).
+These are the helpers that actually exist. An earlier revision of this document listed
+`can_vote`, `can_propose`, `can_join_council`, `can_validate`, and `can_access_treasury`;
+none of those are defined anywhere in the pallet or the runtime.
 
-### `can_propose(account, block_number) -> bool`
-Check if account can submit governance proposals (L2 verification, low-medium risk).
+### `meets_verification_level(account, required_level) -> bool`
+Check whether an account's stored verification level meets a threshold. This is a plain
+level comparison - it does not check expiry, restriction, or risk.
 
-### `can_join_council(account) -> bool`
-Check if account can join governance council (L3 Enhanced verification required).
+### `requires_travel_rule(amount) -> bool`
+Check whether a transfer amount crosses the travel-rule reporting threshold.
 
-### `can_validate(account) -> bool`
-Check if account can become a validator (L3 Enhanced verification + low risk).
+### `is_sanctioned(entity_hash) -> bool`
+Check the hash-based sanctions list. Note the argument is the **hashed entity identifier**
+(`[u8; 32]`), not an account. Account-level sanctions are queried separately through the
+`AccountSanctionsChecker` trait, which the runtime binds to the identity pallet.
 
-### `can_access_treasury(account, amount) -> bool`
-Check treasury access permissions (L2 verification, amount-based risk thresholds).
+### Storage getters
+- `compliance_status(account) -> ComplianceStatus` - full status (level, risk, whitelist,
+  restricted, last verification timestamp)
+- `is_whitelisted(account) -> bool`
+- `is_restricted(account) -> bool`
+- `audit_records(account) -> Vec<ComplianceAuditRecord>`
+- `compliance_stats() -> (total_verified, total_restricted, total_reports, total_sanctions_checks)`
 
-### `is_sanctioned(account) -> bool`
-Check if account is on sanctions list.
+### `create_audit_record(account, action_type, success, details)`
+Internal function that appends to the account's audit trail and emits
+`AuditRecordCreated`.
 
-### `get_compliance_status(account) -> ComplianceStatus`
-Retrieve complete compliance status for account.
+### Verification expiry
+There is no `is_verification_valid` predicate. Expiry is driven by the
+`sync_verification_from_identity()` extrinsic: if the account's last verification is older
+than `VerificationValidityPeriod`, it downgrades the level to `None` and restricts the
+account until a compliance authority re-verifies it.
 
-### `record_audit_event(account, action_type, details)`
-Internal function to log compliance events to audit trail (ring buffer of 10,000 entries).
+### Governance participation
+Voting eligibility is **not** exposed by this pallet. The runtime's
+`GovernanceComplianceProvider` computes it as `KYC L1 or above && not sanctioned`; the
+pallet's status fields are not consulted by Governance.
 
 ## Compliance Monitoring
 
@@ -177,9 +192,9 @@ Internal function to log compliance events to audit trail (ring buffer of 10,000
 - Pattern detection (structuring attempts)
 
 ### Audit Trail
-- Fixed-size ring buffer (10,000 most recent events)
-- Stores: AccountId, ActionType, Timestamp, BlockNumber, Details
-- Indexed for efficient queries
+- Per-account bounded vector, capped by the runtime's `MaxAuditRecords` (1000 in the
+  runtime, 100 in this pallet's mock)
+- Stores: AccountId, ActionType, Timestamp, BlockNumber, Success, Details
 - Immutable after creation (compliance requirement)
 
 ### Integration Points

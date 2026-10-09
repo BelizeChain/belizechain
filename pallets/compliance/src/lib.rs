@@ -41,9 +41,9 @@
 //! ## Usage Example
 //!
 //! ```ignore
-//! // Check if account can participate in governance
-//! if !Compliance::can_vote(&account, current_block) {
-//!     return Err(Error::<T>::InsufficientKycLevel.into());
+//! // Check an account meets a verification level
+//! if !Compliance::meets_verification_level(&account, VerificationLevel::Standard) {
+//!     return Err(Error::<T>::InsufficientVerificationLevel.into());
 //! }
 //!
 //! // Verify account for validator role
@@ -304,18 +304,6 @@ pub mod pallet {
 
         /// Origin that can add/remove sanctions
         type SanctionsOrigin: EnsureOrigin<Self::RuntimeOrigin>;
-
-        /// Minimum verification level required for validator operations
-        #[pallet::constant]
-        type MinValidatorVerification: Get<VerificationLevel>;
-
-        /// Minimum verification level required for governance participation
-        #[pallet::constant]
-        type MinGovernanceVerification: Get<VerificationLevel>;
-
-        /// Minimum verification level required for treasury access
-        #[pallet::constant]
-        type MinTreasuryVerification: Get<VerificationLevel>;
 
         /// Travel rule threshold (in native token units)
         #[pallet::constant]
@@ -1053,47 +1041,6 @@ pub mod pallet {
         ) -> bool {
             let status = ComplianceStatusOf::<T>::get(account);
             status.verification_level.as_u8() >= required_level.as_u8()
-        }
-
-        /// Check if account verification is still valid
-        pub fn is_verification_valid(account: &T::AccountId) -> bool {
-            let status = ComplianceStatusOf::<T>::get(account);
-            let now = T::UnixTime::now().as_secs();
-            let validity_period = T::VerificationValidityPeriod::get();
-
-            // ARITH-COMP-01 FIX: use saturating_sub to avoid theoretical u64 overflow
-            now.saturating_sub(status.last_verification) <= validity_period
-        }
-
-        /// Check if account can participate in validator operations
-        pub fn can_be_validator(account: &T::AccountId) -> bool {
-            let status = ComplianceStatusOf::<T>::get(account);
-
-            !status.restricted
-                && status.verification_level.as_u8() >= T::MinValidatorVerification::get().as_u8()
-                && Self::is_verification_valid(account)
-                && status.risk_level != RiskLevel::Prohibited
-        }
-
-        /// Check if account can participate in governance
-        pub fn can_participate_in_governance(account: &T::AccountId) -> bool {
-            let status = ComplianceStatusOf::<T>::get(account);
-
-            !status.restricted
-                && status.verification_level.as_u8() >= T::MinGovernanceVerification::get().as_u8()
-                && Self::is_verification_valid(account)
-                && status.risk_level != RiskLevel::Prohibited
-        }
-
-        /// Check if account can access treasury
-        pub fn can_access_treasury(account: &T::AccountId) -> bool {
-            let status = ComplianceStatusOf::<T>::get(account);
-
-            (status.whitelisted
-                || status.verification_level.as_u8() >= T::MinTreasuryVerification::get().as_u8())
-                && !status.restricted
-                && Self::is_verification_valid(account)
-                && status.risk_level != RiskLevel::Prohibited
         }
 
         /// Check if transaction requires travel rule reporting
