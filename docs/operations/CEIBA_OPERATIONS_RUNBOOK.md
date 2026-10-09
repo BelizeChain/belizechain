@@ -30,8 +30,12 @@ Dated baseline snapshots:
 - Core container: `ceiba-node`
 - Genesis: `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef`
   — **shared with Chain C**; the hash alone does not identify the chain
-- On-chain runtime: `spec_version = 110` (hot-upgraded 2026-10-08 from 109 — see
-  the 110 ops-log entry at the end of this file)
+- On-chain runtime: `spec_version = 112` (hot-upgraded 2026-10-08 from 111 — see
+  the 112 ops-log entry at the end of this file)
+- ⚠️ **111 has no ops-log entry.** It was deployed as a `pallet-belize-bns`
+  weights regeneration (spec 111's source comment records it) but was never
+  written up here, so the ops log runs 110 → 112. The deployed range is
+  107 → 108 → 109 → 110 → 111 → 112.
 - Epoch: `BabeEpochDuration = 300` slots (~30 min) via the `testnet-fast-epoch`
   build feature. The default build keeps 14,400 slots (~24 h), which is the
   mainnet value; 300 is a testnet convenience for observing rotations.
@@ -766,3 +770,93 @@ a chain whose storage is ahead of its runtime code.
 The genesis runtime inside `testnet-spec.json` is still **107**; a future
 re-genesis would boot at 107 and upgrade forward (107 → 108 → 109 → 110 so far).
 
+
+---
+
+## Ops Log — 2026-10-08: Runtime 112 hot upgrade (Chain D, live)
+
+Upgrade of the live chain (`Jade`, host `ceiba` / `100.119.97.38`) from spec 111
+to 112. Built from the commit that also fixed four pallet defects, so this
+release carries code as well as weights.
+
+```
+sudo.sudo(System::set_code(1,428,815 bytes))
+spec_version   : 111 -> 112     (no node restart; container uptime unchanged)
+epoch duration : 300 -> 300     (guard passed)
+:code blake2b  : 3119b9d6e359edb7a1917d0760c75925ec6b8d601c57a5636c2ef2236f26ceec
+```
+
+### What 112 contains
+
+- `Staking::join_validators` records community participation via the new
+  `StakingCommunityParticipation` provider, so joining the validator set scores
+  as `ActivityType::ValidatorActive` in the Community pallet.
+- `pallet-belize-bns` weights regenerated for real. The five extrinsics that
+  spec 111's own comment claimed had been regenerated (`set_text_record`,
+  `remove_text_record`, `set_avatar`, `set_primary_domain`,
+  `clear_primary_domain`) in fact still carried hand-set placeholders; they are
+  now measured.
+- `pallet-belize-interoperability`: `register_bridge_validator` and
+  `submit_incoming_unlock` gained real benchmarks and measured weights. Both had
+  been charging `initiate_bridge`'s weight.
+- `pallet-belize-landledger`: new `ContentHashLatestAnchor` map, so
+  `get_latest_anchor` resolves any content hash in a chain's history to the
+  current tip rather than a stale anchor.
+- `pallet-belize-community`: rejected proposals now repatriate the deposit to
+  `CommunityTreasuryAccount` instead of burning it via `slash_reserved`.
+
+### Why no storage migration
+
+`LandAnchors`, `PropertyAnchorChain` and `Properties` were all **verified empty
+on chain** (`LandLedger.query_map` → 0 entries) before the upgrade, so
+`ContentHashLatestAnchor` had nothing to backfill and no pre-existing anchor
+lost its lookup. Confirmed against the live chain, not assumed.
+
+### Preflight that mattered
+
+The blob was **booted in a throwaway chain before deploy**, per the method that
+detected the Chain C killer:
+
+1. `scripts/set-spec-code.py` embedded the artifact into a copy of the chain
+   spec; `--tmp` boot; `scripts/verify_epoch_config.py` read
+   `BabeApi_current_epoch` → **duration 300**, authorities 1.
+2. `state_getRuntimeVersion` on the booted chain → **specVersion 112**.
+3. Dry run of `scripts/upgrade-runtime.py` against the live RPC.
+
+A spec-version bump to 112 was **required**, not cosmetic: the chain was already
+at 111, and `set_code` rejects a blob that does not strictly increase
+`spec_version`.
+
+### Verified after
+
+- `specVersion = 112` on the live chain; on-chain `:code` byte-identical to the
+  submitted blob (blake2b above).
+- Epoch duration **300 → 300**; authority set populated (1 entry); epoch 101.
+- Chain kept producing: sampled 30488 → 30491 → 30495 (~6 s/block) with
+  `Prepared`/`Pre-sealed`/`Imported` lines throughout.
+- `ceiba-node` **did not restart** (`Up 20 hours`).
+
+### Follow-up
+
+The next epoch boundary (101 → 102) is the transition that ended Chain C. It was
+not force-observed at upgrade time; the duration was proved unchanged instead,
+which is the condition that transition depends on.
+
+### Rollback
+
+`/data/upgrade-112/onchain-code-111.wasm` on `ceiba` (1,429,872 bytes,
+sha256 `74dbafbd604be682ababcded530802431248763d644948ec8276f058e071cfa1`),
+captured from the live chain's `:code` before the upgrade — the previous
+`upgrade-*` directories each held the *incoming* blob, so this one had to be
+fetched, not reused.
+
+Spec goes **down** on rollback, so it needs the `--without-checks` path:
+
+```
+scripts/upgrade-runtime.py /data/upgrade-112/onchain-code-111.wasm \
+  --rpc ws://100.119.97.38:9944 --without-checks --execute
+```
+
+⚠️ `upgrade-runtime.py` has **no default RPC** — always pass `--rpc` explicitly.
+The genesis runtime inside `testnet-spec.json` is still **107**; a future
+re-genesis boots at 107 and upgrades forward.

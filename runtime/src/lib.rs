@@ -409,7 +409,24 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     // `remove_text_record`, `set_avatar`, `set_primary_domain`, and
     // `clear_primary_domain`; benchmarks for those five were missing entirely
     // and have now been added. No storage migration.
-    spec_version: 111,
+    //
+    // Bumped to 112:
+    // - `Staking::join_validators` now records community participation through
+    //   `StakingCommunityParticipation`, so joining the validator set scores as
+    //   `ActivityType::ValidatorActive` in the Community pallet.
+    // - `pallet-belize-bns` weights regenerated for real, replacing the five
+    //   hand-set placeholders the 111 note above claimed were already gone.
+    // - `pallet-belize-interoperability` gained benchmarks and measured weights
+    //   for `register_bridge_validator` and `submit_incoming_unlock`; both
+    //   previously charged `initiate_bridge`'s weight.
+    // - `pallet-belize-landledger` gained `ContentHashLatestAnchor` so
+    //   `get_latest_anchor` resolves any content hash in a chain's history to
+    //   the current tip instead of a stale anchor.
+    //
+    // No storage migration needed: `LandAnchors`, `PropertyAnchorChain` and
+    // `Properties` are all empty on chain, so `ContentHashLatestAnchor` has
+    // nothing to backfill and no existing anchor loses its lookup.
+    spec_version: 112,
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 1,
