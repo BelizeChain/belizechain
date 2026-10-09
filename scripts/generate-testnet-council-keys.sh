@@ -21,11 +21,14 @@
 # `GovernanceCouncilSize` (12) and the district list already modelled as
 # `BelizeDistrict` in pallets/mesh/src/types.rs.
 #
-# Output: generated_keys/testnet-council-keys.json (mode 600), plus a Rust
-# snippet to paste into node/src/chain_spec.rs.
+# Output:
+#   default      -> generated_keys/testnet-council-keys.json   (12 district seats)
+#   --technical  -> generated_keys/testnet-technical-keys.json (7 technical seats)
+#
+# Plus a Rust snippet to paste into node/src/chain_spec.rs.
 #
 # Usage:
-#   generate-testnet-council-keys.sh [--force]
+#   generate-testnet-council-keys.sh [--technical] [--force]
 # ==============================================================================
 
 set -euo pipefail
@@ -49,10 +52,32 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 FORCE=0
-[[ "${1:-}" == "--force" ]] && FORCE=1
+ROLE="districts"
+for arg in "$@"; do
+    case "$arg" in
+        --force)     FORCE=1 ;;
+        --technical) ROLE="technical" ;;
+        *) echo "unknown argument: $arg" >&2; exit 2 ;;
+    esac
+done
 
 OUTPUT_DIR="${ROOT_DIR}/generated_keys"
-OUT_JSON="${OUTPUT_DIR}/testnet-council-keys.json"
+
+# Seats are grouped by what each member represents: districts group the
+# democratic GovernanceCouncil, functions group the technical body.
+if [[ "${ROLE}" == "technical" ]]; then
+    CONST_NAME="TESTNET_TECHNICAL_COUNCIL"
+    OUT_JSON="${OUTPUT_DIR}/testnet-technical-keys.json"
+    MODEL="7 seats across protocol / security / operations"
+    # 7 is the smallest size at which all three thresholds stay distinct:
+    # majority needs 4, supermajority 5, three-quarters 6.
+    SEAT_GROUPS=(Protocol:3 Security:2 Operations:2)
+else
+    CONST_NAME="TESTNET_COUNCIL_BOOTSTRAP"
+    OUT_JSON="${OUTPUT_DIR}/testnet-council-keys.json"
+    MODEL="12 seats = 2 per district x 6 districts (BelizeDistrict)"
+    SEAT_GROUPS=(Belize:2 Cayo:2 OrangeWalk:2 Corozal:2 StannCreek:2 Toledo:2)
+fi
 
 if [[ -f "${OUT_JSON}" && "${FORCE}" != "1" ]]; then
     echo "ERROR: ${OUT_JSON} already exists." >&2
@@ -64,25 +89,27 @@ fi
 mkdir -p "${OUTPUT_DIR}"
 chmod 700 "${OUTPUT_DIR}"
 
-# 2 seats per district x 6 districts = 12. Order matches `BelizeDistrict`.
-DISTRICTS=(Belize Cayo OrangeWalk Corozal StannCreek Toledo)
-SEATS_PER_DISTRICT=2
+TOTAL_SEATS=0
+for entry in "${SEAT_GROUPS[@]}"; do
+    TOTAL_SEATS=$(( TOTAL_SEATS + ${entry##*:} ))
+done
 
-echo "=== BelizeChain testnet council bootstrap ==="
-echo "districts        : ${#DISTRICTS[@]}"
-echo "seats per district: ${SEATS_PER_DISTRICT}"
-echo "total seats      : $(( ${#DISTRICTS[@]} * SEATS_PER_DISTRICT ))"
+echo "=== BelizeChain testnet council bootstrap (${ROLE}) ==="
+echo "groups           : ${SEAT_GROUPS[*]}"
+echo "total seats      : ${TOTAL_SEATS}"
 echo
 
 SEEN_FILE="$(mktemp)"
 trap 'rm -f "${SEEN_FILE}"' EXIT
 
-DISTRICTS_JSON="{}"
+GROUPS_JSON="{}"
 SEAT_INDEX=0
 
-for district in "${DISTRICTS[@]}"; do
-    district_json="[]"
-    for ((seat = 1; seat <= SEATS_PER_DISTRICT; seat++)); do
+for entry in "${SEAT_GROUPS[@]}"; do
+    group="${entry%%:*}"
+    count="${entry##*:}"
+    group_json="[]"
+    for ((seat = 1; seat <= count; seat++)); do
         SEAT_INDEX=$(( SEAT_INDEX + 1 ))
 
         raw="$("${NODE_BIN}" key generate --scheme sr25519 --output-type json)"
@@ -99,8 +126,8 @@ for district in "${DISTRICTS[@]}"; do
         fi
         echo "${ss58}" >> "${SEEN_FILE}"
 
-        label="$(printf '%s-%d' "${district}" "${seat}")"
-        district_json="$(jq -n --argjson acc "${district_json}" \
+        label="$(printf '%s-%d' "${group}" "${seat}")"
+        group_json="$(jq -n --argjson acc "${group_json}" \
             --arg label "${label}" --arg ss58 "${ss58}" --arg pk "${pubkey}" \
             --arg phrase "${phrase}" --arg seed "${seed}" \
             '$acc + [{ seatLabel: $label, ss58Address: $ss58, publicKey: $pk,
@@ -108,34 +135,36 @@ for district in "${DISTRICTS[@]}"; do
 
         printf '  %-16s %s\n' "${label}" "${ss58}"
     done
-    DISTRICTS_JSON="$(jq -n --argjson all "${DISTRICTS_JSON}" \
-        --arg d "${district}" --argjson seats "${district_json}" \
+    GROUPS_JSON="$(jq -n --argjson all "${GROUPS_JSON}" \
+        --arg d "${group}" --argjson seats "${group_json}" \
         '$all + { ($d): $seats }')"
 done
 
 jq -n \
     --arg generatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    --arg purpose "testnet-council-bootstrap" \
+    --arg role "${ROLE}" \
     --arg warning "TESTNET ONLY - generated on a build machine, secret phrases stored in plaintext. mainnet_genesis() refuses to build while these are in place." \
-    --argjson districts "${DISTRICTS_JSON}" \
+    --arg model "${MODEL}" \
+    --argjson seats "${GROUPS_JSON}" \
     '{
         generatedAt: $generatedAt,
         network: "belizechain-testnet",
-        purpose: $purpose,
+        purpose: "testnet-council-bootstrap",
+        role: $role,
         warning: $warning,
-        model: "12 seats = 2 per district x 6 districts (BelizeDistrict)",
-        districts: $districts
+        model: $model,
+        seats: $seats
     }' > "${OUT_JSON}"
 chmod 600 "${OUT_JSON}"
 
 echo
-echo "written          : generated_keys/testnet-council-keys.json (mode 600)"
+echo "written          : ${OUT_JSON#"${ROOT_DIR}/"} (mode 600)"
 
 # Emit the const array for node/src/chain_spec.rs.
 echo
-echo "--- paste into node/src/chain_spec.rs (TESTNET_COUNCIL_BOOTSTRAP) ---"
-echo "const TESTNET_COUNCIL_BOOTSTRAP: [&str; ${SEAT_INDEX}] = ["
-jq -r '.districts | to_entries[] | .value[] | "    \"\(.ss58Address)\",  // \(.seatLabel)"' "${OUT_JSON}"
+echo "--- paste into node/src/chain_spec.rs (${CONST_NAME}) ---"
+echo "pub(crate) const ${CONST_NAME}: [&str; ${SEAT_INDEX}] = ["
+jq -r '.seats | to_entries[] | .value[] | "    \"\(.ss58Address)\",  // \(.seatLabel)"' "${OUT_JSON}"
 echo "];"
 echo
-echo "Done. ${SEAT_INDEX} seats generated across ${#DISTRICTS[@]} districts."
+echo "Done. ${SEAT_INDEX} seats generated."

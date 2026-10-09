@@ -51,19 +51,38 @@ Each validator requires two key types:
 - **Passport Issuer**: Immigration Department account  
 - **Biometric Issuer**: National ID authority
 
-### 4. **Council Members** (12 required)
+### 4. **Governance Council Members** (12 required)
 - **District Representatives**: 2 per district across the six districts (Belize, Cayo,
   Orange Walk, Corozal, Stann Creek, Toledo)
 - **Real people**: elected or appointed officials, NOT generated keys
 
-The council is the `GovernanceCouncil` collective - the origin behind
-`GovernanceCouncilMajority`. With an empty collective the proportion branch can never
-be satisfied, and every "council-majority" path silently degrades to sudo. So
-`mainnet_genesis()` **refuses to build** until `MAINNET_COUNCIL` in
-`node/src/chain_spec.rs` holds at least 7 distinct accounts that are neither
-well-known dev keys nor the testnet bootstrap set. The expectation is the full 12.
-Seats are written to both `governance.councilMembers` (the pallet's roster) and the
-collective, so the two agree.
+### 5. **Technical Council Members** (7 required)
+- **Protocol / security / operations**: the people who maintain the chain and answer
+  for its safety — not district representatives
+- **Real people**: 7 distinct accounts, at least 7 required
+- **Must not overlap the Governance Council**
+
+Both councils are `pallet_collective` collectives. With an empty collective the
+proportion branch of `EnsureProportionMoreThan` can never be satisfied, so every
+origin that depends on it silently degrades to sudo — the state both were found in.
+`mainnet_genesis` **refuses to build** until:
+
+| House | Constant in `node/src/chain_spec.rs` | Minimum | Target |
+|---|---|---|---|
+| GovernanceCouncil (index 8) | `MAINNET_COUNCIL` | 7 | 12 |
+| TechnicalCouncil (index 7) | `MAINNET_TECHNICAL_COUNCIL` | 7 | 7 |
+
+Accounts must be distinct, must not be well-known dev keys, and must not be the
+testnet bootstrap keys. The two houses must also be **disjoint**: a runtime upgrade
+needs a ratification from each house, so a shared member could supply both alone.
+Governance seats are written to both `governance.councilMembers` (the pallet's
+roster) and the collective so the two agree.
+
+TechnicalCouncil is the origin behind 14 bindings across 12 pallets, including
+`ComplianceOrigin`, `AIAuthorityOrigin`, the mesh `EmergencyOrigin` and the
+oracle / payroll / landledger / community / whistleblower / moderation reviewer
+origins. It is sized at 7 because that is the smallest count at which the majority
+(4), supermajority (5) and three-quarters (6) thresholds stay distinct.
 
 ---
 
@@ -191,6 +210,8 @@ Before mainnet launch, verify:
 - [ ] No development keys (`Alice`, `Bob`, `seed` references) in production config
 - [ ] `MAINNET_COUNCIL` populated with 12 real, distinct council accounts (2 per district)
 - [ ] Council members are real elected/appointed officials
+- [ ] `MAINNET_TECHNICAL_COUNCIL` populated with 7 real, distinct technical accounts
+- [ ] The two councils are disjoint (no account holds a seat in both houses)
 - [ ] Initial token distribution reviewed by governance
 - [ ] Validator nodes deployed in geographically distributed locations
 - [ ] Backup validator nodes ready (7+ total recommended)

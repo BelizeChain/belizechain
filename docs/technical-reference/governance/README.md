@@ -112,7 +112,24 @@ cat src/lib.rs
 > 12, enforced by the `CouncilSize` parameter and by genesis seating.
 >
 > `pallet_collective::TechnicalCouncil` (index 7) is a **separate** body for
-> protocol-level decisions and is not the district council.
+> protocol-level decisions and is not the district council. It seats **7** members
+> and is the origin behind 14 bindings across 12 pallets — `ComplianceOrigin`,
+> `AIAuthorityOrigin`, the mesh `EmergencyOrigin`, identity admin, belizex pair
+> listing, and the oracle / payroll / landledger / community / whistleblower /
+> moderation reviewer origins. Its size is 7 because that is the smallest count at
+> which all three thresholds stay distinct: majority 4, supermajority 5,
+> three-quarters 6.
+>
+> The two houses must be **disjoint**. A runtime upgrade requires a ratification
+> from each house (`ratify_runtime_upgrade` checks `technical && governance`), and
+> a single call marks whichever houses the caller belongs to — so one account
+> seated in both could satisfy both halves alone. The mainnet build gate rejects
+> any overlap.
+>
+> If a collective is left **empty**, every origin that depends on it degrades to
+> sudo-only: the proportion branch of `EnsureProportionMoreThan` can never be
+> satisfied with no members. `mainnet_genesis` therefore refuses to build until
+> both houses hold at least 7 real accounts.
 
 ### 2. Compliance-First Design
 - KYC/AML checks via pallet-belize-compliance
