@@ -22,6 +22,26 @@
 #   scripts/generate-testnet-spec.sh --check              # read-only drift report
 #   scripts/generate-testnet-spec.sh --base foo.json --out bar.json
 #   WASM=path/to/runtime.wasm scripts/generate-testnet-spec.sh
+#
+# TWO MODES — pick deliberately, they have opposite correctness conditions:
+#
+#   1. NEW CHAIN. The spec will be used to launch a chain that does not exist
+#      yet, so it should embed the CURRENT build and be born at the current spec
+#      version. `--check` passing means "IN SYNC" and `--verify` asserts the
+#      booted spec version equals the version the sources declare.
+#
+#   2. REPRODUCE A RUNNING CHAIN. The spec must derive the SAME genesis as a
+#      chain that is already live, so its embedded runtime must be the one that
+#      produced that genesis — which is NOT the current build once the chain has
+#      been hot-upgraded via `System::set_code`. Here version lag is EXPECTED and
+#      CORRECT, and re-embedding is the destructive action: it changes the
+#      genesis hash and the node will no longer join the running chain.
+#      Use `--expect-genesis <0x…>` to assert the real invariant (genesis
+#      identity) instead of comparing versions.
+#
+# The genesis hash is the invariant that actually matters. A spec is only
+# interchangeable with another if their `chain_getBlockHash(0)` agree; matching
+# spec versions says nothing about that.
 # ==============================================================================
 
 set -euo pipefail
@@ -35,6 +55,10 @@ BASE_SPEC="${ROOT_DIR}/testnet-spec.json"
 OUT_SPEC=""
 VERIFY=0
 CHECK=0
+# When set, the spec must derive this genesis hash. This is the correct
+# invariant for a spec that reproduces an already-running chain, where the
+# embedded runtime legitimately lags the current build.
+EXPECTED_GENESIS=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -42,7 +66,8 @@ while [[ $# -gt 0 ]]; do
         --check)  CHECK=1; shift ;;
         --base)   BASE_SPEC="$2"; shift 2 ;;
         --out)    OUT_SPEC="$2"; shift 2 ;;
-        -h|--help) sed -n '2,28p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        --expect-genesis) EXPECTED_GENESIS="$2"; shift 2 ;;
+        -h|--help) sed -n '2,42p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
@@ -54,8 +79,9 @@ fail() { echo "ERROR: $*" >&2; exit 1; }
 
 [[ -f "${BASE_SPEC}" ]] || fail "base spec not found: ${BASE_SPEC}"
 # --check is a report, not a build step: it must work on a machine with no
-# build artefacts, so a missing wasm is reported rather than fatal.
-if [[ "${CHECK}" != "1" ]]; then
+# build artefacts, so a missing wasm is reported rather than fatal. The same is
+# true of --expect-genesis, which verifies an existing spec without rebuilding.
+if [[ "${CHECK}" != "1" && -z "${EXPECTED_GENESIS:-}" ]]; then
     [[ -f "${WASM}" ]] || fail "runtime wasm not found: ${WASM}
 Build one first, for the testnet target - this applies the required
 'testnet-fast-epoch' feature and proves the epoch configuration:
@@ -63,11 +89,15 @@ Build one first, for the testnet target - this applies the required
 fi
 
 # ── Staleness: a wasm older than the sources it claims to represent is the
-# exact failure this script exists to prevent.
-NEWEST_SRC=$(find "${ROOT_DIR}/runtime/src" "${ROOT_DIR}/pallets" -name '*.rs' -newer "${WASM}" -print -quit 2>/dev/null || true)
-if [[ -n "${NEWEST_SRC}" ]]; then
-    echo "WARNING: ${NEWEST_SRC#"${ROOT_DIR}/"} is newer than the runtime wasm." >&2
-    echo "         The spec would embed a stale runtime. Rebuild before trusting this." >&2
+# exact failure this script exists to prevent. Only meaningful when we are about
+# to EMBED it - --check only reports, and genesis-reproduction mode never embeds,
+# so a lagging build is irrelevant there and the warning would be misleading.
+if [[ "${CHECK}" != "1" && -z "${EXPECTED_GENESIS:-}" ]]; then
+    NEWEST_SRC=$(find "${ROOT_DIR}/runtime/src" "${ROOT_DIR}/pallets" -name '*.rs' -newer "${WASM}" -print -quit 2>/dev/null || true)
+    if [[ -n "${NEWEST_SRC}" ]]; then
+        echo "WARNING: ${NEWEST_SRC#"${ROOT_DIR}/"} is newer than the runtime wasm." >&2
+        echo "         The spec would embed a stale runtime. Rebuild before trusting this." >&2
+    fi
 fi
 
 # Spec version the sources declare. The boot check below proves the wasm agrees.
@@ -89,10 +119,11 @@ echo "declared spec: ${DECLARED:-unknown} (runtime/src/lib.rs)"
 # reports the same numbers and the same remedy; the point is that it can no
 # longer go unnoticed.
 if [[ "${CHECK}" = "1" ]]; then
-    python3 - "${OUT_SPEC}" "${WASM}" "${DECLARED:-unknown}" <<'PY'
+    python3 - "${OUT_SPEC}" "${WASM}" "${DECLARED:-unknown}" "${EXPECTED_GENESIS:-}" <<'PY'
 import hashlib, json, struct, subprocess, sys, tempfile
 
-spec_path, wasm_path, declared = sys.argv[1], sys.argv[2], sys.argv[3]
+spec_path, wasm_path, declared, expected_genesis = (
+    sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4])
 
 
 def blake(data: bytes) -> str:
@@ -195,26 +226,45 @@ if current:
     sys.exit(0)
 
 print()
-print("DRIFT: the spec does NOT embed the current build.")
+print("DIFFERS: the spec does not embed the current build.")
 print(f"  spec embeds       : spec {embedded_spec}")
 print(f"  sources declare   : spec {declared}")
-print("  A fresh chain would be BORN at the embedded version and would need")
-print("  an upgrade to catch up - which is how the 2026-09-21 spec-105/107")
-print("  drift shipped unnoticed.")
+print()
+print("  This is NOT automatically a defect. Which way it resolves depends on what")
+print("  the spec is FOR:")
+print()
+print("    (1) launching a NEW chain -> it should embed the current build, so")
+print("        re-embed and prove it boots:")
+print("          scripts/generate-testnet-spec.sh --verify")
+print()
+print("    (2) reproducing an ALREADY-RUNNING chain -> the embedded runtime must be")
+print("        the one that produced that chain's genesis, which is NOT the current")
+print("        build once the chain has been hot-upgraded. Version lag here is")
+print("        EXPECTED, and re-embedding is the DESTRUCTIVE action: it changes the")
+print("        genesis hash and nodes can no longer join. Assert the real invariant:")
+print("          scripts/generate-testnet-spec.sh --verify --expect-genesis <0x…>")
 if str(embedded_spec) == str(declared):
     print()
     print("  The versions agree even though the bytes differ, so this is likely a")
     print("  rebuild of the same version rather than a behaviour change.")
+if expected_genesis:
+    print()
+    print(f"  --expect-genesis {expected_genesis} given: version lag is expected.")
+    print("  Re-run with --verify to confirm the genesis hash matches.")
 print()
-print("  Remedy: re-embed and prove it boots")
-print("      scripts/generate-testnet-spec.sh --verify")
-print("  (Regenerate the spec only if a fresh chain at this version is what you")
-print("   want; a re-genesis would then boot at whatever the spec embeds.)")
+print("  Remedy is mode-dependent - do NOT re-embed without deciding which mode")
+print("  this spec is in.")
 sys.exit(1)
 PY
     exit $?
 fi
 
+if [[ -n "${EXPECTED_GENESIS:-}" ]]; then
+    # Mode 2. Re-embedding here would change the genesis hash - the exact failure
+    # this mode exists to prevent - so the spec is never rewritten. Verify only.
+    VERIFY=1
+    echo "mode         : reproduce existing chain (verify only; spec NOT rewritten)"
+else
 echo "embedding runtime..."
 python3 "${SCRIPT_DIR}/set-spec-code.py" "${BASE_SPEC}" "${WASM}" -o "${OUT_SPEC}"
 
@@ -226,6 +276,7 @@ print(f"{len(code)} {hashlib.blake2b(code, digest_size=32).hexdigest()}")
 PY
 )
 echo "embedded     : ${EMBEDDED}"
+fi
 
 if [[ "${VERIFY}" != "1" ]]; then
     echo
@@ -275,8 +326,31 @@ fi
 
 echo "chain reports: spec ${ACTUAL}"
 
+# ── Mode 2: the spec must reproduce an already-running chain. Version equality
+# is the WRONG assertion here - a hot-upgraded chain runs ahead of its own
+# genesis runtime by design. Assert genesis identity instead.
+if [[ -n "${EXPECTED_GENESIS:-}" ]]; then
+    BOOTED_GENESIS=$(curl -s -m 5 -H 'Content-Type: application/json' \
+        -d '{"id":1,"jsonrpc":"2.0","method":"chain_getBlockHash","params":[0]}' \
+        "http://127.0.0.1:${RPC_PORT}" \
+        | python3 -c 'import sys,json; print(json.load(sys.stdin)["result"])' 2>/dev/null || true)
+    echo "genesis      : ${BOOTED_GENESIS:-<none>}"
+    if [[ "${BOOTED_GENESIS}" != "${EXPECTED_GENESIS}" ]]; then
+        echo "FAILED: this spec derives genesis ${BOOTED_GENESIS:-<none>}" >&2
+        echo "        but ${EXPECTED_GENESIS} was expected." >&2
+        echo "        A node using this spec CANNOT join that chain. Do not deploy it." >&2
+        exit 1
+    fi
+    echo "OK: ${OUT_SPEC#"${ROOT_DIR}/"} reproduces genesis ${EXPECTED_GENESIS}"
+    echo "    (boots at spec ${ACTUAL}; version lag vs the sources is expected and correct)"
+    exit 0
+fi
+
 if [[ -n "${DECLARED}" && "${ACTUAL}" != "${DECLARED}" ]]; then
     echo "FAILED: the spec boots at spec ${ACTUAL} but the sources declare ${DECLARED}." >&2
+    echo "        If this spec is meant to reproduce an ALREADY-RUNNING chain, that" >&2
+    echo "        lag is expected - re-run with --expect-genesis <0x…> to assert the" >&2
+    echo "        genesis hash instead of the version." >&2
     exit 1
 fi
 
