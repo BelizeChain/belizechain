@@ -64,8 +64,16 @@ Each validator requires two key types:
 
 Both councils are `pallet_collective` collectives. With an empty collective the
 proportion branch of `EnsureProportionMoreThan` can never be satisfied, so every
-origin that depends on it silently degrades to sudo — the state both were found in.
-`mainnet_genesis` **refuses to build** until:
+origin that depends on it silently degrades to sudo. That was the state both were
+found in, on every chain, because nothing ever populated them.
+
+**Testnet is now seated** (Chain D, 2026-10-09): `GovernanceCouncil` holds 12 and
+`TechnicalCouncil` holds 7, set live via `sudo(…set_members(…))` and funded from the
+sudo account so each seat can actually pay the fee to propose and vote. On testnet
+the council-majority origins are therefore genuinely enforced rather than
+sudo-only.
+
+**Mainnet is still gated.** `mainnet_genesis` **refuses to build** until:
 
 | House | Constant in `node/src/chain_spec.rs` | Minimum | Target |
 |---|---|---|---|

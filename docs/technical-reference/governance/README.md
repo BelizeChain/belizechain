@@ -126,10 +126,17 @@ cat src/lib.rs
 > seated in both could satisfy both halves alone. The mainnet build gate rejects
 > any overlap.
 >
-> If a collective is left **empty**, every origin that depends on it degrades to
-> sudo-only: the proportion branch of `EnsureProportionMoreThan` can never be
-> satisfied with no members. `mainnet_genesis` therefore refuses to build until
-> both houses hold at least 7 real accounts.
+> **Seating state.** If a collective is left **empty**, every origin that depends
+> on it degrades to sudo-only: the proportion branch of
+> `EnsureProportionMoreThan` can never be satisfied with no members.
+>
+> - **Testnet (Chain D)** — both houses are **seated** as of 2026-10-09:
+>   `GovernanceCouncil` 12, `TechnicalCouncil` 7, funded (a seat that cannot pay a
+>   fee cannot vote) and disjoint. The council-majority origins listed above are
+>   therefore genuinely enforced on testnet, not sudo-only.
+> - **Mainnet** — still unseated. `mainnet_genesis` refuses to build until both
+>   houses hold at least 7 real accounts, so an unpopulated council cannot silently
+>   degrade to sudo again.
 
 ### 2. Compliance-First Design
 - KYC/AML checks via pallet-belize-compliance
