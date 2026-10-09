@@ -57,7 +57,9 @@ fail() { echo "ERROR: $*" >&2; exit 1; }
 # build artefacts, so a missing wasm is reported rather than fatal.
 if [[ "${CHECK}" != "1" ]]; then
     [[ -f "${WASM}" ]] || fail "runtime wasm not found: ${WASM}
-Build one first: cargo build --release -p belizechain-runtime"
+Build one first, for the testnet target - this applies the required
+'testnet-fast-epoch' feature and proves the epoch configuration:
+    ./scripts/build-runtime-blob.sh testnet"
 fi
 
 # ── Staleness: a wasm older than the sources it claims to represent is the
@@ -70,6 +72,11 @@ fi
 
 # Spec version the sources declare. The boot check below proves the wasm agrees.
 DECLARED=$(grep -oE 'spec_version:[[:space:]]*[0-9]+' "${ROOT_DIR}/runtime/src/lib.rs" | head -1 | grep -oE '[0-9]+' || echo "")
+
+# Epoch length a testnet spec must be born with. `BabeEpochDuration` is a
+# compile-time constant (300 with `testnet-fast-epoch`, 14_400 without), so a
+# spec built from the wrong blob halts block import one epoch after deployment.
+EXPECTED_EPOCH="${EXPECTED_EPOCH:-300}"
 echo "runtime wasm : ${WASM#"${ROOT_DIR}/"}"
 echo "declared spec: ${DECLARED:-unknown} (runtime/src/lib.rs)"
 
@@ -229,7 +236,9 @@ fi
 
 # ── Boot check: prove the spec's genesis runtime is the version we expect.
 [[ -x "${NODE_BIN}" ]] || fail "node binary not found: ${NODE_BIN}
-Build one first: cargo build --release -p belizechain-node"
+Build one first, with the same feature set as the spec's target so the node's
+embedded runtime agrees with it:
+    cargo build --release -p belizechain-node --features testnet-fast-epoch"
 
 RPC_PORT="${VERIFY_RPC_PORT:-19944}"
 TMP_BASE="$(mktemp -d)"
@@ -268,6 +277,17 @@ echo "chain reports: spec ${ACTUAL}"
 
 if [[ -n "${DECLARED}" && "${ACTUAL}" != "${DECLARED}" ]]; then
     echo "FAILED: the spec boots at spec ${ACTUAL} but the sources declare ${DECLARED}." >&2
+    exit 1
+fi
+
+# A spec whose runtime carries the wrong epoch length halts at the first epoch
+# boundary. Catch it here, on a throwaway chain, rather than on a live node.
+if ! python3 "${SCRIPT_DIR}/verify_epoch_config.py" \
+        "http://127.0.0.1:${RPC_PORT}" "${EXPECTED_EPOCH}"; then
+    echo "FAILED: this spec's runtime does not use the expected BABE epoch length." >&2
+    echo "        The blob was built without the correct feature set. Rebuild and" >&2
+    echo "        re-embed:" >&2
+    echo "          ./scripts/build-runtime-blob.sh testnet" >&2
     exit 1
 fi
 

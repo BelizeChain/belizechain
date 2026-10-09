@@ -96,8 +96,9 @@ fi
 if [[ ! -x "$NODE_BIN" ]]; then
     echo
     echo "ERROR: $NODE_BIN not found, so the blob cannot be verified." >&2
-    echo "       Build the node first:" >&2
-    echo "         cargo build --release -p belizechain-node" >&2
+    echo "       Build the node first, with the target's feature set so its" >&2
+    echo "       embedded runtime agrees with the blob:" >&2
+    echo "         cargo build --release -p belizechain-node ${FEATURES[*]}" >&2
     echo "       Then re-run this script. Verification is not optional: an" >&2
     echo "       unverified blob is exactly how a chain gets halted." >&2
     exit 1
