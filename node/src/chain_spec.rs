@@ -51,6 +51,113 @@ pub(crate) const MAINNET_PROTOCOL_ID: &str = "bzc";
 /// Protocol id for public-testnet peer-to-peer traffic.
 pub(crate) const TESTNET_PROTOCOL_ID: &str = "bzc-testnet";
 
+/// Testnet bootstrap council seats: 12 = 2 per Belize district x 6 districts.
+///
+/// Produced by `scripts/generate-testnet-council-keys.sh`, which also writes the
+/// secret phrases to `generated_keys/testnet-council-keys.json` in plaintext.
+/// These are therefore **TESTNET ONLY** — `mainnet_genesis()` refuses to build
+/// while any of them is seated (see `assert_council_is_production_grade`).
+///
+/// Seated in `governance.councilMembers` (the pallet's district roster) *and* in
+/// the `GovernanceCouncil` collective, which is the origin behind
+/// `GovernanceCouncilMajority`. Before this existed, the collective was never
+/// populated on any chain, so every "council-majority" path silently degraded to
+/// sudo while the documentation claimed a 4-of-7 signature requirement.
+pub(crate) const TESTNET_COUNCIL_BOOTSTRAP: [&str; 12] = [
+    "5G6qGnGaVQ73fRPPEoVG1nk94g2EfDfnRY8kcT7u4Cib2uoZ", // Belize-1
+    "5CLwjDBNujwr34FimwntYbrV8mjfjGf1r19QD7T6pV4HpmuR", // Belize-2
+    "5C7zcmp4RcjMtPUAqc6S4ruqUCiLgiHKsqmLJQviqtXXB3RX", // Cayo-1
+    "5HBqT8FWkugUGkhSPZRWk21M2mqsspYHxWhAaYTpfpchcTFm", // Cayo-2
+    "5GQZhVsr6X8HPRUE4RaTZoKhHEERseAirTqtwadHJaruNy4W", // OrangeWalk-1
+    "5Ec4QmKS2p9PHiqadiuT2RPeVCm18B35QxTd48jVZ2fCm3Gk", // OrangeWalk-2
+    "5FguYWnKxcrqzerFDrhueRTzeyopJFNM8daStfACroS4dYCh", // Corozal-1
+    "5GpjAQ1neUTpPA7abZKSxF7B1QGNLHFhqvn8ppvTFSwGF9ux", // Corozal-2
+    "5FbZzMXGoYks4mdYc37hFgNwvKBGqeHTWLbcqmW6sBrPh8wU", // StannCreek-1
+    "5EXE5PZdpLmYgyHTWkeNcFgQNKuyNrwSXijnAnyAznHiKxyJ", // StannCreek-2
+    "5GpKH81kQhmurWZycfbCBnHbLaPqnXRVPaKTJAjXZ8Djnby5", // Toledo-1
+    "5FCpj1Z7qXgrURBVrXjZz8kNY72ZUEr6Y9DB5gWFPPwM1tjJ", // Toledo-2
+];
+
+/// Minimum seats for a council whose majority is meaningful.
+/// Mirrors `MIN_COUNCIL_MEMBERS` in `pallet-belize-governance`.
+pub(crate) const MIN_COUNCIL_SEATS: usize = 7;
+
+/// Mainnet council seats.
+///
+/// **Empty by design.** No real district representatives have been designated
+/// yet, so `mainnet_genesis()` intentionally FAILS to build until this is
+/// populated (see `assert_council_is_production_grade`). Fill it with 12 SS58
+/// addresses — 2 per district across the 6 Belize districts — generated on
+/// air-gapped hardware. See `docs/deployment/MAINNET_KEY_GENERATION.md`.
+pub(crate) const MAINNET_COUNCIL: [&str; 0] = [];
+
+/// Parse SS58 addresses into account IDs, naming the offending address on failure.
+fn parse_council_accounts(addresses: &[&str]) -> Result<Vec<AccountId>, String> {
+    use sp_core::crypto::Ss58Codec;
+
+    addresses
+        .iter()
+        .map(|address| {
+            AccountId::from_ss58check(address)
+                .map_err(|e| format!("council address {address} is not valid SS58: {e:?}"))
+        })
+        .collect()
+}
+
+/// Genesis rows `(account, community_rank, pouw_contribution)` for the governance
+/// pallet's council roster.
+fn council_roster_genesis(council: &[AccountId]) -> Vec<(AccountId, u32, u32)> {
+    council
+        .iter()
+        .cloned()
+        .map(|account| (account, 1u32, 0u32))
+        .collect()
+}
+
+/// Reject a council that would make the council-majority origins a lie.
+///
+/// An empty or undersized council cannot carry a majority, and an empty
+/// collective silently turns every `GovernanceCouncilMajority` call into a
+/// sudo-only call. Dev-derived and testnet-bootstrap keys are rejected because
+/// both have their secrets sitting in a repository or a plaintext file.
+fn assert_council_is_production_grade(council: &[AccountId]) -> Result<(), String> {
+    if council.len() < MIN_COUNCIL_SEATS {
+        return Err(format!(
+            "mainnet council has {} seat(s); at least {MIN_COUNCIL_SEATS} are required \
+             (the model is 12: 2 per district across 6 districts).\n\
+             Designate real elected/appointed representatives, generate their keys \
+             on air-gapped hardware, and add the SS58 addresses to MAINNET_COUNCIL in \
+             node/src/chain_spec.rs. See docs/deployment/MAINNET_KEY_GENERATION.md.",
+            council.len()
+        ));
+    }
+
+    let mut seen = std::collections::BTreeSet::new();
+    for seat in council {
+        if !seen.insert(seat) {
+            return Err(format!("mainnet council contains duplicate seat {seat}"));
+        }
+    }
+
+    let dev_accounts = dev_derived_account_ids();
+    if let Some(seat) = council.iter().find(|s| dev_accounts.contains(s)) {
+        return Err(format!(
+            "mainnet council seat {seat} is a well-known Substrate dev account; \
+             production councils must use operator-generated keys"
+        ));
+    }
+
+    let bootstrap = parse_council_accounts(&TESTNET_COUNCIL_BOOTSTRAP)?;
+    if let Some(seat) = council.iter().find(|s| bootstrap.contains(s)) {
+        return Err(format!(
+            "mainnet council seat {seat} is a testnet bootstrap key whose secret phrase \
+             is stored in plaintext. Generate real mainnet keys."
+        ));
+    }
+
+    Ok(())
+}
+
 /// Client-facing chain properties (`system_properties` RPC).
 ///
 /// `ss58Format` must match `SS58Prefix` in the runtime (1981, the Belize
@@ -157,6 +264,15 @@ pub fn local_testnet_config() -> Result<ChainSpec, String> {
 }
 
 pub fn belizechain_mainnet_config() -> Result<ChainSpec, String> {
+    belizechain_mainnet_config_with_council(&parse_council_accounts(&MAINNET_COUNCIL)?)
+}
+
+/// Build a mainnet chain spec with an explicit council.
+///
+/// Split out from `belizechain_mainnet_config` so the council gate can reject an
+/// unpopulated mainnet while the rest of the spec (metadata, validators,
+/// balances) stays testable with a supplied council.
+fn belizechain_mainnet_config_with_council(council: &[AccountId]) -> Result<ChainSpec, String> {
     Ok(ChainSpec::builder(
         WASM_BINARY.ok_or_else(|| "Production wasm not available".to_string())?,
         Default::default(),
@@ -166,7 +282,7 @@ pub fn belizechain_mainnet_config() -> Result<ChainSpec, String> {
     .with_chain_type(ChainType::Live)
     .with_protocol_id(MAINNET_PROTOCOL_ID)
     .with_properties(chain_properties())
-    .with_genesis_config_patch(mainnet_genesis()?)
+    .with_genesis_config_patch(mainnet_genesis_with_council(council)?)
     .with_boot_nodes(
         crate::validator_config::BootstrapNodes::mainnet()
             .into_iter()
@@ -186,13 +302,24 @@ fn testnet_genesis(
     let endowment: u128 = 1_000_000 * 1_000_000_000_000; // 1M DALLA with 12 decimals
     let _stash: u128 = 100_000 * 1_000_000_000_000; // 100K DALLA for staking (reserved for future use)
 
+    let testnet_council = parse_council_accounts(&TESTNET_COUNCIL_BOOTSTRAP)?;
+
+    // Council members must be able to pay transaction fees to propose and vote in
+    // the collective, so endow them alongside the seeded dev accounts.
+    let mut balances: Vec<(AccountId, u128)> = endowed_accounts
+        .iter()
+        .cloned()
+        .map(|account| (account, endowment))
+        .collect();
+    for member in &testnet_council {
+        if !balances.iter().any(|(account, _)| account == member) {
+            balances.push((member.clone(), endowment));
+        }
+    }
+
     Ok(serde_json::json!({
         "balances": {
-            "balances": endowed_accounts
-                .iter()
-                .cloned()
-                .map(|k| (k, endowment))
-                .collect::<Vec<_>>(),
+            "balances": balances,
         },
         "session": {
             "keys": initial_authorities.iter().map(|(account, babe, grandpa)| {
@@ -235,14 +362,19 @@ fn testnet_genesis(
         },
 
         "governance": {
-            "councilMembers": vec![
-                (root_key.clone(), 1u32, 0u32),  // (account, rank, pouw_contribution)
-                (get_account_id_from_seed::<sr25519::Public>("Bob"), 1u32, 0u32),
-                (get_account_id_from_seed::<sr25519::Public>("Charlie"), 1u32, 0u32),
-            ],
+            // District council roster: 2 seats per Belize district, 6 districts.
+            "councilMembers": council_roster_genesis(&testnet_council),
             "democracyLaunchPeriod": 28800u32, // 2 days in blocks (6 sec per block)
             "democracyVotingPeriod": 43200u32, // 3 days in blocks
             "democracyMinimumDeposit": 1000u128 * 1_000_000_000_000u128, // 1000 DALLA with 12 decimals
+        },
+
+        // The collective that actually backs `GovernanceCouncilMajority`. Seating
+        // the same people here is what makes "council-majority" mean something:
+        // `EnsureProportionMoreThan<_, 1, 2>` needs more than half of the real
+        // members, so 12 seats require 7 signatures.
+        "governanceCouncil": {
+            "members": testnet_council.clone(),
         },
 
         // Community pallet - Phase 5: Education Modules & Green Projects seed data
@@ -345,8 +477,16 @@ fn testnet_genesis(
 /// the production chain spec. Every key below is checked against the standard
 /// Substrate dev accounts, so a publicly-derivable key fails the build instead of
 /// silently shipping a production genesis anyone can control.
-fn mainnet_genesis() -> Result<serde_json::Value, String> {
+/// Build the mainnet genesis with an explicit council.
+///
+/// The gate runs first: a mainnet whose council-majority origins have no council
+/// is not shippable, and failing at build time is the only reliable way to stop
+/// it (an empty collective silently degrades every council-majority path to
+/// sudo — the state this whole mechanism was found in).
+fn mainnet_genesis_with_council(council: &[AccountId]) -> Result<serde_json::Value, String> {
     use sp_core::crypto::Ss58Codec;
+
+    assert_council_is_production_grade(council)?;
 
     // Production validator session keys
     let initial_authorities: Vec<(AccountId, BabeId, GrandpaId)> = vec![
@@ -488,14 +628,16 @@ fn mainnet_genesis() -> Result<serde_json::Value, String> {
         },
 
         "governance": {
-            // District council representatives (elected per Constitution)
-            "councilMembers": vec![
-                (root_key.clone(), 1u32, 0u32),  // (account, rank, pouw_contribution)
-                // Additional council members configured during governance setup
-            ],
+            // District council roster: 2 seats per district across 6 districts.
+            "councilMembers": council_roster_genesis(council),
             "democracyLaunchPeriod": 100_800u32, // 7 days in blocks
             "democracyVotingPeriod": 201_600u32, // 14 days in blocks
             "democracyMinimumDeposit": 10_000u128 * 1_000_000_000_000u128, // 10,000 DALLA for mainnet
+        },
+
+        // The collective that actually backs `GovernanceCouncilMajority`.
+        "governanceCouncil": {
+            "members": council.to_vec(),
         },
     }))
 }
@@ -705,17 +847,69 @@ mod tests {
         );
     }
 
-    // ── mainnet_genesis safety guard ───────────────────────────────────────
+    // ── council gate ───────────────────────────────────────────────────────
 
-    // ── mainnet_genesis configuration test ────────────────────────────────
+    /// A synthetic council that satisfies the production-grade gate: 12 distinct
+    /// seats derived from seeds that are neither the well-known dev set nor the
+    /// testnet bootstrap set.
+    fn production_grade_council() -> Vec<AccountId> {
+        (1..=12)
+            .map(|i| get_account_id_from_seed::<sr25519::Public>(&format!("MainnetCouncil{i}")))
+            .collect()
+    }
+
     #[test]
-    fn test_mainnet_genesis_succeeds_when_keys_configured() {
-        let result = mainnet_genesis();
+    fn test_mainnet_genesis_refuses_unpopulated_council() {
+        // MAINNET_COUNCIL ships empty because no real district representatives
+        // have been designated. Shipping an empty council would silently reduce
+        // every `GovernanceCouncilMajority` path to sudo, so it must fail loudly.
         assert!(
-            result.is_ok(),
-            "mainnet_genesis must succeed with configured production keys"
+            MAINNET_COUNCIL.is_empty(),
+            "MAINNET_COUNCIL is now populated - replace this test with a success assertion"
         );
-        let genesis = result.unwrap();
+        let err = mainnet_genesis_with_council(&[]).expect_err("an empty council must be rejected");
+        assert!(
+            err.contains("at least 7"),
+            "error should name the minimum seat count, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_council_gate_rejects_undersized_duplicated_dev_and_bootstrap() {
+        let full = production_grade_council();
+
+        assert!(
+            mainnet_genesis_with_council(&full[..6]).is_err(),
+            "6 seats is below the minimum of 7"
+        );
+
+        let mut duplicated = full.clone();
+        duplicated[1] = duplicated[0].clone();
+        assert!(
+            mainnet_genesis_with_council(&duplicated).is_err(),
+            "duplicate seats must be rejected"
+        );
+
+        let mut with_dev = full.clone();
+        with_dev[0] = get_account_id_from_seed::<sr25519::Public>("Alice");
+        assert!(
+            mainnet_genesis_with_council(&with_dev).is_err(),
+            "well-known dev accounts must be rejected"
+        );
+
+        let bootstrap = parse_council_accounts(&TESTNET_COUNCIL_BOOTSTRAP).unwrap();
+        let mut with_bootstrap = full.clone();
+        with_bootstrap[0] = bootstrap[0].clone();
+        assert!(
+            mainnet_genesis_with_council(&with_bootstrap).is_err(),
+            "testnet bootstrap keys must be rejected"
+        );
+    }
+
+    #[test]
+    fn test_mainnet_genesis_seats_council_in_roster_and_collective() {
+        let genesis = mainnet_genesis_with_council(&production_grade_council())
+            .expect("mainnet genesis must succeed with a production-grade council");
         assert!(
             genesis.get("sudo").is_some(),
             "mainnet genesis must contain sudo configuration"
@@ -725,6 +919,54 @@ mod tests {
             Some(4),
             "mainnet genesis must configure 4 validator session keys"
         );
+        assert_eq!(
+            genesis["governance"]["councilMembers"].as_array().map(|a| a.len()),
+            Some(12),
+            "mainnet genesis must seat 12 district council members"
+        );
+        assert_eq!(
+            genesis["governanceCouncil"]["members"].as_array().map(|a| a.len()),
+            Some(12),
+            "mainnet genesis must seat the GovernanceCouncil collective"
+        );
+    }
+
+    #[test]
+    fn test_testnet_genesis_seats_council_in_roster_and_collective() {
+        let alice_acct = get_account_id_from_seed::<sr25519::Public>("Alice");
+        let genesis = testnet_genesis(
+            vec![authority_keys_from_seed("Alice")],
+            alice_acct.clone(),
+            vec![alice_acct],
+            false,
+        )
+        .expect("testnet_genesis must succeed");
+
+        assert_eq!(
+            genesis["governance"]["councilMembers"].as_array().map(|a| a.len()),
+            Some(12),
+            "testnet must seat 12 district council members"
+        );
+        assert_eq!(
+            genesis["governanceCouncil"]["members"].as_array().map(|a| a.len()),
+            Some(12),
+            "testnet must seat the GovernanceCouncil collective, otherwise \
+             GovernanceCouncilMajority can never be satisfied and every \
+             council-majority call silently degrades to sudo"
+        );
+    }
+
+    #[test]
+    fn test_testnet_spec_applies_council_genesis_to_storage() {
+        // `pallet_collective`'s genesis asserts that members are unique and that
+        // the count does not exceed MaxMembers. A successful build_storage()
+        // therefore proves the runtime ACCEPTED the council patch - not merely
+        // that the key is present in the JSON.
+        use belizechain_runtime::BuildStorage;
+
+        let spec = build_public_testnet_config(true).expect("public testnet config must build");
+        spec.build_storage()
+            .expect("testnet genesis, including the council, must apply to storage");
     }
 
     // ── testnet_genesis structure ──────────────────────────────────────────
@@ -757,10 +999,13 @@ mod tests {
         )
         .unwrap();
         let balances = genesis["balances"]["balances"].as_array().unwrap();
+        // The two endowed accounts, plus one entry per council seat. Council
+        // members must hold funds to pay transaction fees when they propose and
+        // vote in the collective; a fee-less member cannot exercise its seat.
         assert_eq!(
             balances.len(),
-            2,
-            "genesis must fund exactly as many accounts as given in endowed_accounts"
+            2 + TESTNET_COUNCIL_BOOTSTRAP.len(),
+            "genesis must fund endowed_accounts plus every council seat"
         );
     }
 
@@ -919,7 +1164,7 @@ mod tests {
     }
 
     #[test]
-    fn test_testnet_genesis_empty_endowed_accounts_produces_empty_balances() {
+    fn test_testnet_genesis_endows_council_without_endowed_accounts() {
         let alice_acct = get_account_id_from_seed::<sr25519::Public>("Alice");
         let genesis = testnet_genesis(
             vec![authority_keys_from_seed("Alice")],
@@ -929,9 +1174,12 @@ mod tests {
         )
         .unwrap();
         let balances = genesis["balances"]["balances"].as_array().unwrap();
-        assert!(
-            balances.is_empty(),
-            "empty endowed_accounts must produce empty genesis balances"
+        // Endowed accounts are passed through verbatim, but council seats are
+        // always funded: a seat that cannot pay a transaction fee cannot vote.
+        assert_eq!(
+            balances.len(),
+            TESTNET_COUNCIL_BOOTSTRAP.len(),
+            "with no endowed accounts, genesis must fund exactly the council seats"
         );
     }
 
@@ -954,17 +1202,23 @@ mod tests {
     }
 
     #[test]
-    fn test_belizechain_mainnet_config_succeeds() {
-        let result = belizechain_mainnet_config();
+    fn test_belizechain_mainnet_config_is_blocked_until_council_designated() {
+        // The public mainnet entry point must refuse to build while
+        // MAINNET_COUNCIL is empty. This is the launch gate: a mainnet with no
+        // council has council-majority origins that only sudo can satisfy.
+        let err = belizechain_mainnet_config()
+            .err()
+            .expect("mainnet config must not build with an empty council");
         assert!(
-            result.is_ok(),
-            "mainnet config must succeed when production keys are configured"
+            err.contains("council"),
+            "the failure should name the council, got: {err}"
         );
     }
 
     #[test]
     fn test_mainnet_spec_declares_client_metadata() {
-        let spec = belizechain_mainnet_config().expect("mainnet config must build");
+        let spec = belizechain_mainnet_config_with_council(&production_grade_council())
+            .expect("mainnet config must build once a council is supplied");
         let properties = spec.properties();
         assert_eq!(
             properties.get("tokenSymbol").and_then(|v| v.as_str()),
