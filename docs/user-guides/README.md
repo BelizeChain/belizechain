@@ -68,7 +68,7 @@
 #### 🏢 [Government User Guide](./government.md)
 **For government agencies and officials**
 - KYC/AML compliance
-- Multi-signature treasury
+- Council-majority treasury
 - Department coordination
 - Reporting and auditing
 - Public transparency

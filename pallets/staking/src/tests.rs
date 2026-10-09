@@ -1226,7 +1226,7 @@ fn validator_count_accurate_after_multiple_joins_leaves() {
 #[test]
 fn stake_exactly_at_minimum_works() {
     new_test_ext().execute_with(|| {
-        let min_stake = 10_000_000_000u128; // Exactly MIN_VALIDATOR_STAKE
+        let min_stake = 10_000_000_000u128; // exactly the mock's MinValidatorStake
 
         assert_ok!(BelizeStaking::join_validators(
             RuntimeOrigin::signed(ALICE),

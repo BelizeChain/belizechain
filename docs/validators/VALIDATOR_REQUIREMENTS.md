@@ -121,8 +121,11 @@ DNS (Recommended):
 
 ### Tokenomics
 
-- **Total Supply**: 1,000,000,000 DALLA (1 billion)
-- **Validator Rewards**: 10% annual inflation → validator pool
+- **Max Supply**: 501,000,000,000 DALLA (501 billion)
+- **Genesis Supply**: 100,000,000 DALLA (mainnet distribution)
+- **Inflation**: whitepaper §3.3 schedule — 5.0% in Year 1, −0.1%/year, 1.0% floor
+- **Validator Rewards**: paid from the treasury/reward pool; inflation is minted to
+  the treasury rather than paid directly to validators
 - **Commission**: Validators set 0-100% commission on rewards
 - **Slashing**: Up to 100% of stake for severe misbehavior
 

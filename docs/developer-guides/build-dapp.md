@@ -1430,7 +1430,7 @@ sudo certbot --nginx -d voting.belizechain.org
 6. **PDF Export**: Generate proposal PDFs
 
 ### **Advanced Features**
-1. **Multi-sig Proposals**: Require multiple approvers
+1. **Council-majority approval Proposals**: Require multiple approvers
 2. **Time-locked Execution**: Delay execution of approved proposals
 3. **Recurring Proposals**: Monthly/quarterly proposals
 4. **Proposal Templates**: Pre-filled forms for common proposals

@@ -18,7 +18,7 @@ This document defines mandatory security practices for all BelizeChain developme
 
 **Enforcement:**
 - ✅ All PRs MUST pass security checks (automated CI/CD gates)
-- ✅ Security Lead approval required for sensitive changes (runtime, multi-sig, cryptography)
+- ✅ Security Lead approval required for sensitive changes (runtime, council-majority approval, cryptography)
 - ✅ Quarterly security training (mandatory for all team members)
 - ❌ Security violations = immediate PR rejection + incident review
 
@@ -375,7 +375,7 @@ const balance = await limiter.limit(() => api.query.system.account(address));
 
 **✅ DO: Use Hardware Wallets (Production)**
 - **Validators:** Ledger Nano X (mandatory)
-- **Treasury Multi-Sig:** Yubikey + Ledger (required 4 of 7)
+- **Treasury Council-Majority Approval:** Yubikey + Ledger (required 4 of 7)
 - **Admin Keys:** Trezor Model T (cold storage)
 
 **✅ DO: Encrypt Keys at Rest**
@@ -410,7 +410,7 @@ const key = await aws.secretsManager.getSecretValue({ SecretId: 'validator-key' 
 
 ### 3.2 Multi-Signature Procedures
 
-**Treasury Operations (4-of-7 Multi-Sig):**
+**Treasury Operations (Council-Majority Approval):**
 
 **Step 1: Proposal Creation**
 ```bash
@@ -429,7 +429,7 @@ CALL_HASH=$(polkadot-js-api \
 echo "Call hash: $CALL_HASH"
 ```
 
-**Step 2: Multi-Sig Approval (4 Signatures Required)**
+**Step 2: Council-Majority Approval (4 Signatures Required)**
 ```bash
 # Signer 1: Approve
 polkadot-js-api tx.multiSig.approveAsMulti(
@@ -455,7 +455,7 @@ polkadot-js-api tx.multiSig.asMulti(
 **Emergency Multi-Sig Rotation (Compromised Signer):**
 1. Emergency meeting (within 1 hour)
 2. New multi-sig address created (excluding compromised signer)
-3. Treasury funds migrated (requires 4-of-7 approval)
+3. Treasury funds migrated (requires council-majority approval)
 4. Update all pallet configurations (new multi-sig address)
 5. Notify FSC (regulatory requirement)
 
@@ -656,7 +656,7 @@ cargo contract upload --suri //Deployer \
 | **Core Developer** | Git repo, testnet nodes, CI/CD (write) | GitHub, GitLab CI, Kubernetes (dev namespace) |
 | **DevOps Engineer** | All infrastructure, production nodes (read/write) | Kubernetes (all namespaces), AWS console, Terraform |
 | **Security Lead** | All systems, incident response, audit logs | Grafana admin, PagerDuty, Cloudflare, vault access |
-| **Treasury Signer** | Multi-sig wallet (4-of-7) | Ledger Nano X, Polkadot.js apps |
+| **Treasury Signer** | council-majority approval (4 of 7 seats; 7 of 12 at full council) | Ledger Nano X, Polkadot.js apps |
 
 **Access Review (Quarterly):**
 - Remove inactive users (no activity >90 days)

@@ -204,7 +204,7 @@ pub trait ComplianceProvider<AccountId> {
 
 ### Authority Model
 - **FSC Compliance Authority**: Designated account with special permissions
-- **Multi-sig support**: Can be configured as multi-sig wallet
+- **Council-majority approval support**: Can be configured as council-majority approval wallet
 - **Emergency powers**: Account restriction for suspected violations
 - **Audit oversight**: All authority actions logged
 

@@ -494,7 +494,7 @@ await sdk.api.tx.utility.batch(calls).signAndSend(alice, ({ status }) => {
 2. **Enable Transfer Lock**: Don't unlock unless actively selling
 3. **Monitor Changes**: Subscribe to domain events
 4. **Backup Seed Phrase**: Losing seed = losing domain forever
-5. **Use Multi-Sig**: For high-value domains, use multi-signature account
+5. **Use Council-Majority Approval**: For high-value domains, use council-majority approval account
 
 **Avoid Scams:**
 - Never share your seed phrase

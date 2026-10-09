@@ -170,7 +170,7 @@ export function TreasuryDashboard() {
   const { data: treasury } = useQuery(['treasury'], async () => {
     const api = await connectWallet();
     
-    // Multi-sig treasury balance
+    // Council-majority treasury balance
     const balance = await api.query.system.account(TREASURY_ADDRESS);
     const proposalCount = await api.query.treasury.proposalCount();
     const proposals = [];

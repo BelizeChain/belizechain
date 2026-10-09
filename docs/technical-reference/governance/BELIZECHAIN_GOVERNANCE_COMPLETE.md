@@ -50,7 +50,7 @@ The BelizeChain Governance Pallet is **COMPLETE** and **PRODUCTION-READY** after
 
 ### 💰 Economic Incentives
 - **Participation Rewards**: 10 DALLA per vote, 100 DALLA per proposal, 500 DALLA/month for council
-- **Treasury Management**: Multi-signature treasury with governance oversight
+- **Treasury Management**: Council-majority treasury with governance oversight
 - **Department Budgets**: Dedicated treasuries for each ministry
 
 ### ⚡ Advanced Features (Phase 7)
@@ -189,7 +189,7 @@ The governance pallet integrates seamlessly with:
 #### 2. pallet-belize-economy ✅
 - **Purpose**: Treasury and DALLA rewards
 - **Integration**: TreasuryManager trait
-- **Features**: Multi-sig treasury, reward distribution
+- **Features**: Council-majority treasury, reward distribution
 - **Status**: Ready for integration (trait defined)
 
 #### 3. pallet-belize-identity ✅

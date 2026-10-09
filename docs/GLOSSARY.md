@@ -285,9 +285,9 @@ published; testnet values are simulated protocol parameters.
 
 → See [DAG Storage](architecture/dag-storage-design.md)
 
-**Council-majority approval**: Treasury spending requires more than half the council — 4 of 7 seats, or 7 of 12 at full council. Enforced by a collective-majority origin; the chain has no multisig account pallet.
+**Council-majority approval**: Treasury spending requires more than half the council — 4 of 7 seats, or 7 of 12 at full council. Enforced by a collective-majority origin; the chain has no council-majority approval account pallet.
 
-→ See [Democracy](governance/democracy.md#treasury-multi-sig)
+→ See [Democracy](governance/democracy.md#treasury-council-majority approval)
 
 ## N
 

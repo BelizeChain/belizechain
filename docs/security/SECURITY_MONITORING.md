@@ -1027,7 +1027,7 @@ class AutoAccountFreezer:
         # - Large transfer from newly created account (<24 hours old)
         
         if self.should_freeze(account, tx):
-            # Freeze account (requires multi-sig approval to unfreeze)
+            # Freeze account (requires council-majority approval to unfreeze)
             await self.blockchain.freeze_account(account)
             
             # Alert security team (manual review required)

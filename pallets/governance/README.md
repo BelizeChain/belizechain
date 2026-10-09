@@ -822,7 +822,7 @@ fn test_kyc_tier_restricts_voting() { ... }
 
 ### Treasury Safeguards
 - **Spending Limits**: Board approval required for >100K DALLA
-- **Multi-Sig**: 4-of-7 board signatures for critical actions
+- **Council-Majority Approval**: council-majority approval (4 of 7 seats; 7 of 12 at full council) board signatures for critical actions
 - **Emergency Limits**: 7-day time cap on emergency powers
 - **Post-Action Review**: Mandatory audit after emergency
 
@@ -969,7 +969,7 @@ fn test_kyc_tier_restricts_voting() { ... }
 
 **Security**:
 - **KYC Gating**: Prevents Sybil attacks (one person = one vote weight)
-- **Multi-Sig Treasury**: No single point of failure
+- **Council-Majority Treasury**: No single point of failure
 - **Emergency Limits**: Time-boxed emergency powers (7 days)
 
 **Cultural Preservation**:

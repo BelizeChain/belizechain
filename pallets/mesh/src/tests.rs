@@ -353,6 +353,101 @@ fn submit_mesh_transaction_works() {
 }
 
 #[test]
+fn pending_mesh_transaction_is_processed_on_initialize() {
+    use frame_support::traits::Hooks;
+
+    new_test_ext().execute_with(|| {
+        let gateway_id = setup_gateway();
+        let tx_hash = H256::from([0x42; 32]);
+
+        assert_ok!(Mesh::submit_mesh_transaction(
+            RuntimeOrigin::signed(2),
+            tx_hash,
+            MeshTxType::TransferBbzd,
+            [0x01, 0x02, 0x03, 0x04],
+            [0x05, 0x06, 0x07, 0x08],
+            45_000_000_000,
+            1,
+            H256::from([0xAA; 32]),
+            gateway_id,
+            vec![[0x11, 0x22, 0x33, 0x44], [0x55, 0x66, 0x77, 0x88]],
+            3,
+            -80,
+            100,
+        ));
+
+        assert!(Mesh::pending_mesh_transactions(tx_hash).is_some());
+        assert_eq!(Mesh::pending_mesh_tx_count(), 1);
+
+        let block = 10u64;
+        System::set_block_number(block);
+        Mesh::on_initialize(block);
+
+        // Promoted out of the queue into the permanent on-chain record.
+        assert!(Mesh::pending_mesh_transactions(tx_hash).is_none());
+        assert_eq!(Mesh::processed_mesh_transactions(tx_hash), Some(block));
+        assert_eq!(Mesh::pending_mesh_tx_count(), 0);
+        System::assert_has_event(
+            Event::MeshTransactionProcessed {
+                tx_hash,
+                block,
+            }
+            .into(),
+        );
+    });
+}
+
+#[test]
+fn processed_mesh_transaction_cannot_be_resubmitted() {
+    use frame_support::traits::Hooks;
+
+    new_test_ext().execute_with(|| {
+        let gateway_id = setup_gateway();
+        let tx_hash = H256::from([0x43; 32]);
+
+        assert_ok!(Mesh::submit_mesh_transaction(
+            RuntimeOrigin::signed(2),
+            tx_hash,
+            MeshTxType::TransferBbzd,
+            [0x01, 0x02, 0x03, 0x04],
+            [0x05, 0x06, 0x07, 0x08],
+            45_000_000_000,
+            1,
+            H256::from([0xAA; 32]),
+            gateway_id,
+            vec![[0x11, 0x22, 0x33, 0x44]],
+            1,
+            -80,
+            100,
+        ));
+
+        let block = 10u64;
+        System::set_block_number(block);
+        Mesh::on_initialize(block);
+
+        // The permanent record still blocks a replay of the same hash.
+        assert_noop!(
+            Mesh::submit_mesh_transaction(
+                RuntimeOrigin::signed(2),
+                tx_hash,
+                MeshTxType::TransferBbzd,
+                [0x01, 0x02, 0x03, 0x04],
+                [0x05, 0x06, 0x07, 0x08],
+                45_000_000_000,
+                2,
+                H256::from([0xBB; 32]),
+                gateway_id,
+                vec![[0x11, 0x22, 0x33, 0x44]],
+                1,
+                -80,
+                100,
+            ),
+            Error::<Test>::DuplicateMeshTransaction
+        );
+    });
+}
+
+#[test]
 fn duplicate_mesh_transaction_rejected() {
     new_test_ext().execute_with(|| {
         let gateway_id = setup_gateway();

@@ -131,7 +131,7 @@ graph TB
    - District Council representation
    - Democratic voting mechanisms
    - Proposal and referendum system
-   - Multi-signature treasury management
+   - Council-majority treasury management
 
 ### Federated AI Layer
 

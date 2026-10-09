@@ -145,7 +145,7 @@ This document covers security audits, vulnerability assessments, and best practi
 - ❌ **Flash Loan Attacks**: Snapshot voting prevents last-minute token acquisition
 - ❌ **Vote Buying**: Transparent on-chain voting, timelock delays manipulation
 - ❌ **Proposal Spam**: 10,000 DALLA threshold limits frivolous proposals
-- ❌ **Treasury Drain**: Daily withdrawal limits, multi-sig for large amounts
+- ❌ **Treasury Drain**: Daily withdrawal limits, council-majority approval for large amounts
 
 #### Gas Analysis
 

@@ -99,9 +99,9 @@ docs/
 
 1. [Government User Guide](./user-guides/government.md)
 2. [Compliance Features](./user-guides/government.md#compliance-kyc-aml)
-3. [Multi-Signature Treasury](./user-guides/government.md#multi-signature-operations)
+3. [Council-Majority Treasury](./user-guides/government.md#council-majority approval-operations)
 
-**You'll learn**: KYC verification, AML compliance, multi-sig approvals, reporting
+**You'll learn**: KYC verification, AML compliance, council-majority approvals, reporting
 
 ---
 
@@ -177,7 +177,7 @@ BelizeChain is **Belize's sovereign blockchain infrastructure** that combines:
 
 - **💰 Digital Currency**: DALLA (native token) and bBZD (BZD-pegged stablecoin, central bank governed)
 - **🏛️ Democracy**: Vote on national proposals and government decisions
-- **🔒 Security**: Multi-signature wallets, KYC/AML compliance
+- **🔒 Security**: Council-majority treasury approval, KYC/AML compliance
 - **🤖 AI Integration**: Federated learning for privacy-preserving analytics
 - **⚛️ Quantum Ready**: Future-proof cryptography and computation
 - **🌐 Interoperability**: Connect with Ethereum, Polkadot, and other chains

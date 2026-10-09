@@ -12,7 +12,7 @@ This pallet serves as the monetary foundation for Belize's blockchain economy, p
 2. **Stablecoin (bBZD)**: 1:1 peg to Belize Dollar for everyday transactions
 3. **Tourism Economy**: Incentive system to boost Belize's tourism sector
 4. **Cross-Border Efficiency**: Optimized remittance processing
-5. **National Treasury**: Multi-signature controlled government funds
+5. **National Treasury**: Council-majority approval controlled government funds
 
 ## Architecture
 
@@ -118,7 +118,7 @@ governance_burn(origin, amount) -> DispatchResult
 - Burns DALLA from treasury
 - Used for supply management
 
-### 4. **Multi-Signature Treasury**
+### 4. **Council-Majority Treasury**
 
 **Account Type System**:
 ```rust
@@ -137,7 +137,7 @@ pub enum AccountType {
 - Reserve: Allocate funds for future use
 
 **Multi-Signature Requirements**:
-- **Threshold**: 4-of-7 signatures
+- **Threshold**: council-majority approval signatures
 - **Roles**: Minister of Finance, Governor, FSC Commissioner, BTB Director, Auditor General, Deputy Minister, Treasury Secretary
 - **Workflow**: Create operation → Collect signatures → Execute when threshold met
 
@@ -285,7 +285,7 @@ pub enum Error<T> {
 - Provides merchant category data
 
 **Governance Pallet** (Treasury Management):
-- Multi-sig approval for treasury operations
+- council-majority approval for treasury operations
 - Governance burn authorization
 - Economic parameter updates
 
@@ -402,7 +402,7 @@ mint_to_treasury(inflation_amount)
 ### Central Bank Safeguards
 - **Minter Authorization**: Only approved accounts can mint bBZD
 - **Reserve Checks**: Minting fails if reserves insufficient
-- **Multi-Sig Treasury**: 4-of-7 signatures prevent single point of failure
+- **Council-Majority Treasury**: council-majority approval signatures prevent single point of failure
 
 ### Economic Attacks
 - **Inflation Attacks**: Fixed 2% annual rate prevents manipulation
@@ -423,7 +423,7 @@ mint_to_treasury(inflation_amount)
 - bBZD minting/redemption workflows
 - Tourism payment processing
 - DALLA burning mechanics
-- Multi-sig treasury operations
+- Council-majority treasury operations
 - Reserve management
 - Error conditions
 

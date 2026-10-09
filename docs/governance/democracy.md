@@ -286,7 +286,7 @@ impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
 Treasury spending requires more than half the council to approve — **4 of 7
 seats**, or **7 of 12 at full council**. This is enforced by the
 `GovernanceCouncilMajority` origin (`EnsureProportionMoreThan` over the
-governance council collective); the chain has no multisig account pallet.
+governance council collective); the chain has no council-majority approval account pallet.
 
 Council composition is determined by governance election (see the Governance
 pallet), not by a fixed roster of ministerial offices.

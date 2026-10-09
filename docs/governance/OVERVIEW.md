@@ -23,7 +23,7 @@ BelizeChain implements a multi-tiered democratic governance system for national-
 - **Transparency**: All votes public and on-chain
 
 ### 💰 Treasury Management
-- **Multi-Sig Control**: 4-of-7 signatures required
+- **Council-Majority Approval Control**: council-majority approval signatures required
 - **Budget Proposals**: Community-submitted spending proposals
 - **8M DALLA Reserve**: ~$1.2M USD treasury
 - **Inflation Funded**: 20% of block rewards → treasury

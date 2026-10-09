@@ -199,7 +199,7 @@ This Incident Response Plan (IRP) defines BelizeChain's procedures for detecting
 
 **Treasury Draining:**
 1. Activate emergency pause (sudo call: `Economy::emergency_pause()`)
-2. Freeze affected accounts (multi-sig approval required)
+2. Freeze affected accounts (council-majority approval required)
 3. Snapshot blockchain state (for forensics)
 4. Coordinate with exchanges (freeze deposits/withdrawals)
 5. Public communication (Twitter: "Investigating security incident, trading paused")
@@ -244,7 +244,7 @@ This Incident Response Plan (IRP) defines BelizeChain's procedures for detecting
 5. Monitor attack patterns (identify attack vectors)
 
 **Validator Compromise (1 of 5):**
-1. Suspend compromised validator (multi-sig call)
+1. Suspend compromised validator (council-majority approval call)
 2. Transfer stake to new validator (if possible)
 3. Rotate validator keys
 4. Investigate compromise vector (how did it happen?)
@@ -350,7 +350,7 @@ This Incident Response Plan (IRP) defines BelizeChain's procedures for detecting
 - Identify affected accounts (query transaction history)
 - Calculate losses (balance_before - balance_after)
 - Governance proposal (treasury compensation)
-- Multi-sig approval (4 of 7 signers)
+- council-majority approval (4 of 7 signers)
 - Execute compensation (automated script)
 
 **Bridge Loss:**
@@ -662,7 +662,7 @@ BelizeChain
 **Detection Signs:**
 - Large unusual withdrawals from treasury (>100K DALLA)
 - Multiple proposals executed rapidly (<5 minute intervals)
-- Multi-sig threshold bypassed (unapproved transactions)
+- Council-majority approval threshold bypassed (unapproved transactions)
 
 **Response Steps:**
 
@@ -1119,7 +1119,7 @@ BelizeChain
 
 3. **Admin Keys:**
    - Sudo key (runtime upgrades, emergency pause)
-   - Multi-sig signer (treasury, governance)
+   - Council-majority approval signer (treasury, governance)
    - Cloudflare admin (DDoS mitigation)
 
 4. **Monitoring Access:**

@@ -38,8 +38,11 @@ mod tests;
 
 const STAKING_ID: LockIdentifier = *b"bzstking";
 
-/// Minimum staking amount for PoUW validators
-pub const MIN_VALIDATOR_STAKE: u128 = 10_000 * 1_000_000_000_000; // 10K DALLA (12 decimals)
+/// Minimum staking amount for PoUW validators.
+///
+/// Single source of truth: the runtime wires `type MinValidatorStake` to this
+/// constant, so the enforced minimum cannot drift from the documented one.
+pub const MIN_VALIDATOR_STAKE: u128 = 1_000 * 1_000_000_000_000; // 1,000 DALLA (12 decimals)
 
 #[frame_support::pallet]
 pub mod pallet {

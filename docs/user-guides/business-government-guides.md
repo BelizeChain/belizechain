@@ -275,7 +275,7 @@ Actions:
 Blue Hole Portal → Treasury
 
 bBZD Supply: 45.2M (backed by 45.2M BZD in reserves)
-DALLA Supply: 102.5M (inflation: 3.2% annual)
+DALLA Supply: 102.5M (inflation: 5.0% in Year 1, decreasing 0.1%/yr to a 1% floor)
 Monthly Treasury Income: 118.6K DALLA
   - TX fees: 80% = 94.9K
   - BNS fees: 5% = 5.9K
@@ -283,7 +283,7 @@ Monthly Treasury Income: 118.6K DALLA
   - Slashing: ~2K
 
 Actions:
-- Approve bBZD mint/burn requests (4-of-7 multi-sig)
+- Approve bBZD mint/burn requests (council-majority approval)
 - Review treasury proposals
 - Monitor reserve ratios
 - Generate financial reports

@@ -199,7 +199,7 @@ await vote.signAndSend(account);
 **Proposal types**:
 - Referendum (public vote)
 - Council motion (6 district councils vote)
-- Treasury spend (4-of-7 multi-sig approval)
+- Treasury spend (council-majority approval)
 - Emergency (sudo power, government only)
 
 ### What are the 6 district councils?

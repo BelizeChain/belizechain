@@ -116,7 +116,7 @@ BelizeChain has **4 KYC levels** with increasing limits and requirements:
 │  ✅ Staking (unlimited)                 │
 │  ✅ Validator nodes                     │
 │  ✅ Cross-border transfers              │
-│  ✅ Multi-signature wallets             │
+│  ✅ Council-majority treasury approval             │
 │  ✅ Priority support                    │
 │  ❌ Institutional trading               │
 │                                         │
@@ -744,7 +744,7 @@ You'll receive:
 │  ✅ Unlimited staking                   │
 │  ✅ Validator nodes                     │
 │  ✅ Cross-border transfers              │
-│  ✅ Multi-signature wallets             │
+│  ✅ Council-majority treasury approval             │
 │  ✅ Priority support                    │
 │                                         │
 │  [Start Using Features]                 │
@@ -828,7 +828,7 @@ For large businesses, financial institutions, and government agencies.
 | **Staking** | ❌ | ✅ (50K max) | ✅ (unlimited) | ✅ |
 | **Business Account** | ❌ | ❌ | ✅ | ✅ |
 | **Validator Node** | ❌ | ❌ | ✅ | ✅ |
-| **Multi-sig Wallet** | ❌ | ❌ | ✅ | ✅ |
+| **Council-majority approval Wallet** | ❌ | ❌ | ✅ | ✅ |
 | **Cross-border** | ❌ | ❌ | ✅ | ✅ |
 | **Custody Services** | ❌ | ❌ | ❌ | ✅ |
 | **White-label** | ❌ | ❌ | ❌ | ✅ |

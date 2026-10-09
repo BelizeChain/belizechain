@@ -188,7 +188,7 @@ Before mainnet launch, verify:
 1. **Never commit private keys to Git**
 2. **Use encrypted storage** (KeePassXC, Bitwarden, hardware wallets)
 3. **Implement key rotation** every 12-18 months
-4. **Multi-signature for critical accounts** (treasury, sudo)
+4. **Council-majority approval for critical accounts** (treasury, sudo)
 5. **Geographic distribution** of validator keys
 6. **Legal custody** for government issuer keys (ministerial control)
 7. **Disaster recovery plan** with secure key backup locations

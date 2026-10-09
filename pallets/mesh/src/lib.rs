@@ -324,10 +324,19 @@ pub mod pallet {
 
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
-        fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
+        fn on_initialize(n: BlockNumberFor<T>) -> Weight {
             MeshTxThisBlock::<T>::kill();
             // Phase-5 FIX: kill() is a DB write; account for ref_time + proof_size
-            Weight::from_parts(5_000_000, 64).saturating_add(T::DbWeight::get().writes(1))
+            let mut weight =
+                Weight::from_parts(5_000_000, 64).saturating_add(T::DbWeight::get().writes(1));
+
+            // Bridge pending mesh transactions into the permanent on-chain
+            // record. Without this the queue is write-only: transactions are
+            // accepted but never leave `PendingMeshTransactions`, so nothing is
+            // ever surfaced on-chain and the map grows without bound.
+            weight = weight.saturating_add(Self::process_pending_mesh_transactions(n));
+
+            weight
         }
     }
 
@@ -371,6 +380,13 @@ pub mod pallet {
         MeshTransaction<BlockNumberFor<T>>,
         OptionQuery,
     >;
+
+    /// Number of entries currently in `PendingMeshTransactions`. Maintained as a
+    /// counter so the `MaxPendingMeshTx` bound can be enforced without iterating
+    /// the whole queue on every submission.
+    #[pallet::storage]
+    #[pallet::getter(fn pending_mesh_tx_count)]
+    pub type PendingMeshTxCount<T: Config> = StorageValue<_, u32, ValueQuery>;
 
     /// Processed mesh transaction hashes (deduplication, pruned periodically)
     #[pallet::storage]
@@ -584,6 +600,11 @@ pub mod pallet {
             amount: u64,
             gateway_node: MeshtasticNodeId,
             hop_count: u8,
+        },
+        /// Mesh transaction processed (bridged into the permanent on-chain record)
+        MeshTransactionProcessed {
+            tx_hash: H256,
+            block: BlockNumberFor<T>,
         },
         /// Relay proof submitted
         RelayProofSubmitted {
@@ -1036,6 +1057,12 @@ pub mod pallet {
                 Error::<T>::DuplicateMeshTransaction
             );
 
+            // Bound the pending queue (declared `MaxPendingMeshTx`)
+            ensure!(
+                PendingMeshTxCount::<T>::get() < T::MaxPendingMeshTx::get(),
+                Error::<T>::MaxPendingTransactionsExceeded
+            );
+
             let current_block = <frame_system::Pallet<T>>::block_number();
 
             // Bound the relay path
@@ -1061,6 +1088,7 @@ pub mod pallet {
             };
 
             PendingMeshTransactions::<T>::insert(tx_hash, mesh_tx);
+            PendingMeshTxCount::<T>::mutate(|c| *c = c.saturating_add(1));
 
             // Update gateway stats
             MeshNodes::<T>::mutate(gateway_node_id, |maybe_node| {
@@ -1677,6 +1705,38 @@ pub mod pallet {
         /// Get total mesh transactions processed
         pub fn total_transactions() -> u64 {
             NetworkStats::<T>::get().total_mesh_transactions
+        }
+
+        /// Bridge up to `MaxMeshTxPerBlock` pending mesh transactions into the
+        /// permanent on-chain record, emitting `MeshTransactionProcessed` for
+        /// each moved entry.
+        ///
+        /// Bounded by `MaxMeshTxPerBlock` so the per-block work — and therefore
+        /// the weight returned to `on_initialize` — is deterministic regardless
+        /// of how large the queue grows.
+        fn process_pending_mesh_transactions(n: BlockNumberFor<T>) -> Weight {
+            let limit = T::MaxMeshTxPerBlock::get();
+            let mut processed = 0u32;
+
+            for (tx_hash, _tx) in PendingMeshTransactions::<T>::iter().take(limit as usize) {
+                PendingMeshTransactions::<T>::remove(tx_hash);
+                ProcessedMeshTransactions::<T>::insert(tx_hash, n);
+                Self::deposit_event(Event::MeshTransactionProcessed { tx_hash, block: n });
+                processed = processed.saturating_add(1);
+            }
+
+            if processed == 0 {
+                return Weight::zero();
+            }
+
+            PendingMeshTxCount::<T>::mutate(|c| *c = c.saturating_sub(processed));
+
+            // One read + two writes per entry (remove from pending, insert into
+            // processed), plus event-deposit overhead and the counter write.
+            T::DbWeight::get()
+                .reads(processed as u64)
+                .saturating_add(T::DbWeight::get().writes((processed as u64).saturating_mul(2) + 1))
+                .saturating_add(Weight::from_parts(processed as u64 * 2_000_000, 64 * processed as u64))
         }
     }
 }

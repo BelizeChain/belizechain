@@ -69,7 +69,7 @@ impl pallet_belize_governance::Config for Runtime {
     type ComplianceProvider = BelizeCompliance;
     
     // Origins for privileged operations
-    type FSCOrigin = EnsureRoot<AccountId>; // TODO: Replace with FSC multi-sig
+    type FSCOrigin = EnsureRoot<AccountId>; // TODO: Replace with FSC council-majority approval
     type CouncilOrigin = EnsureRoot<AccountId>; // TODO: Replace with council collective
     
     // Randomness for elections
@@ -154,16 +154,16 @@ pub trait Config: frame_system::Config {
 For production, replace `EnsureRoot` with proper multi-sig origins:
 
 ```rust
-/// FSC multi-signature origin (4-of-7 signature requirement)
+/// FSC council-majority approval origin (council-majority approval requirement)
 pub struct EnsureFSC;
 impl EnsureOrigin<RuntimeOrigin> for EnsureFSC {
     type Success = AccountId;
     
     fn try_origin(o: RuntimeOrigin) -> Result<Self::Success, RuntimeOrigin> {
-        // Check if origin has FSC multi-sig approval
+        // Check if origin has FSC council-majority approval
         match o.into() {
             Ok(RawOrigin::Signed(who)) => {
-                if FSCMultisig::has_approval(&who) {
+                if FSCCouncil-majority approval::has_approval(&who) {
                     Ok(who)
                 } else {
                     Err(RuntimeOrigin::from(RawOrigin::Signed(who)))
@@ -201,7 +201,7 @@ impl EnsureOrigin<RuntimeOrigin> for EnsureCouncil {
 The governance pallet interacts with the economy pallet for:
 - **Treasury management**: Proposal-based spending
 - **DALLA rewards**: Participation incentives
-- **Multi-signature operations**: Secure treasury access
+- **Council-majority approval operations**: Secure treasury access
 
 ### Treasury Integration
 

@@ -113,7 +113,7 @@ The compliance pallet provides:
 | Supply cap invariant | `on_initialize` checks issuance before minting |
 | Unbonding period | Validators locked for `UnbondingPeriod` blocks after exit |
 | Challenge period | Bridge transactions have dispute window before finalization |
-| Multi-sig treasury | Spending thresholds: <10K=1-of-1, <100K=3-of-7, ≥100K=4-of-7 |
+| Council-majority treasury | Spending thresholds: <10K=1-of-1, <100K=3-of-7, ≥100K=council-majority approval (4 of 7 seats; 7 of 12 at full council) |
 | Conviction voting | 0=1x, 1=2x, 2=3x, 3=6x multiplier (Polkadot-style) |
 | Delegation | Liquid democracy with 100-delegate cap and 1-year expiry |
 | Migration framework | Version-gated `CoordinatedUpgrade` with try-runtime support |
@@ -494,7 +494,7 @@ The codebase has unit tests and integration tests, but no formal invariant testi
 | **Privacy** | Hashed PII, attestation-based | Confidential transactions | Privacy groups | Tessera (private tx) | None by default |
 | **Smart Contracts** | ink!/Wasm (pallet_contracts) | Solidity/EVM | Solidity/EVM | Solidity/EVM | CosmWasm (optional) |
 | **Governance** | 6,067-line custom (disabled) | Consortium voting | Off-chain | Off-chain | x/gov + x/group |
-| **Admin Model** | sudo (single key) | Multi-party consortium | Smart contract roles | Smart contract roles | Multi-sig governance |
+| **Admin Model** | sudo (single key) | Multi-party consortium | Smart contract roles | Smart contract roles | Council-majority approval governance |
 | **Regulatory Compliance** | On-chain AML/KYC pallet | Central Bank regulated | Enterprise plugins | Enterprise plugins | Custom modules |
 | **Bridge** | Custom 51-chain | SWIFT integration | Atomic cross-chain | None built-in | IBC protocol |
 | **Maturity** | Pre-mainnet | Production | Production | Production | Production |

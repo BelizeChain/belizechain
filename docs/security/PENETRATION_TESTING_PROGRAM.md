@@ -60,7 +60,7 @@ This document defines the comprehensive penetration testing requirements for Bel
 2. **Blue Hole Portal**
    - Government dashboard
    - Treasury management, payroll, KYC oversight
-   - Multi-sig transaction approval
+   - Council-majority approval transaction approval
 
 > Public portal host names (e.g. `wallet.belizechain.org`) are planned, not
 > configured. The testnet portals are reached via operator-provided access until

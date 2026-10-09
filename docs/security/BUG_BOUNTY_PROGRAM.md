@@ -34,7 +34,7 @@ Welcome to the BelizeChain Bug Bounty Program! We're committed to building the m
 
 #### **Blockchain Runtime (Polkadot Substrate)**
 - **19 Custom Pallets:**
-  - `pallet-belize-economy` - DALLA/bBZD tokens, multi-sig treasury
+  - `pallet-belize-economy` - DALLA/bBZD tokens, council-majority treasury
   - `pallet-belize-identity` - BelizeID, SSN validation, KYC
   - `pallet-belize-governance` - District councils, referendums
   - `pallet-belize-compliance` - KYC/AML, FSC oversight
@@ -213,7 +213,7 @@ We use CVSS v3.1 (Common Vulnerability Scoring System) with blockchain-specific 
 
 **Examples:**
 - **$100,000:** Unlimited DALLA minting exploit
-- **$100,000:** Treasury multi-sig bypass (4-of-7 threshold)
+- **$100,000:** Treasury council-majority approval bypass (council-majority approval (4 of 7 seats; 7 of 12 at full council) threshold)
 - **$90,000:** Bridge double-spending (Ethereum or Polkadot)
 - **$80,000:** Consensus takeover (51% attack bypass)
 - **$75,000:** KYC database extraction (all SSNs)

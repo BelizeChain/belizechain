@@ -365,18 +365,38 @@ Conclusion: Economically irrational to attack
 
 ### Long-Term Sustainability
 
+Inflation follows the whitepaper §3.3 schedule: **5.0% in Year 1, decreasing by
+0.1% per year, flooring at 1.0%** (reached around Year 41). Inflation is minted
+to the treasury, not directly to validators.
+
 ```yaml
+Schedule: rate(year) = max(5.0% - 0.1% * (year - 1), 1.0%)
+  Year 1  -> 5.0%
+  Year 5  -> 4.6%
+  Year 10 -> 4.1%
+  Year 20 -> 3.1%
+  Year 41 -> 1.0%  (floor)
+
+Assumptions for the figures below:
+  genesis supply      : 100,000,000 DALLA (mainnet distribution)
+  fee burn, Year 1    : 8,000 DALLA/day  = 2.92M/year
+  fee burn, Year 5    : 20,000 DALLA/day = 7.30M/year
+
 Year 1:
-  Inflation: 10%
-  Burned fees: 8,000 DALLA/day (2.9M/year)
-  Net inflation: 97.1M DALLA (~9.7%)
+  Inflation rate      : 5.0%
+  Minted              : 5.00M DALLA (5.0% of 100M)
+  Burned fees         : 2.92M DALLA
+  Net issuance        : ~+2.08M DALLA (~2.1% of supply)
 
 Year 5:
-  Inflation: 5%
-  Burned fees: 20,000 DALLA/day (7.3M/year)
-  Net inflation: Variable (target ~3-5%)
+  Inflation rate      : 4.6%
+  Minted              : ~5.0M DALLA (4.6% of the accumulated supply)
+  Burned fees         : 7.30M DALLA
+  Net issuance        : net-negative under these burn assumptions — fee burn
+                        overtakes minting as the supply base grows
 
-Goal: Balance inflation with fee burn for stable supply
+Goal: rate ratchets down to the 1% floor while fee burn grows, stabilising
+supply rather than inflating it indefinitely.
 ```
 
 ---

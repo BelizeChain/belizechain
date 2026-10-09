@@ -81,7 +81,7 @@ This document defines BelizeChain's comprehensive compliance framework for meeti
 - **Required Documents:**
   - Government authorization letter (Ministry signature)
   - Official government email (*.gov.bz)
-  - Multi-sig approval (4-of-7 for treasury operations)
+  - council-majority approval (council-majority approval (4 of 7 seats; 7 of 12 at full council) for treasury operations)
 - **Verification:** FSC approval required (sensitive accounts)
 - **Limits:** Unlimited (multi-sig enforced)
 - **Processing Time:** 10-15 business days

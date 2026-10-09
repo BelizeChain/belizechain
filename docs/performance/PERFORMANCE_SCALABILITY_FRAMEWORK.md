@@ -313,7 +313,7 @@ class GovernmentUser(HttpUser):
     @task(5)
     def disburse_payroll(self):
         """Disburse government payroll (monthly)"""
-        # Multi-sig transaction: 4-of-7 approval
+        # Council-majority approval transaction: council-majority approval
         pass
     
     @task(3)

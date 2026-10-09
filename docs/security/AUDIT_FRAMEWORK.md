@@ -41,10 +41,10 @@ This framework defines the comprehensive security audit requirements for BelizeC
 - **Token Minting/Burning:**
   - DALLA inflation controls (5% initial, decreasing to a 1% floor)
   - bBZD peg mechanism (GBP exchange rate validation)
-  - Treasury multi-sig approval (4-of-7 threshold)
+  - Treasury council-majority approval (council-majority approval (4 of 7 seats; 7 of 12 at full council) threshold)
   - Overflow/underflow checks in balance calculations
   
-- **Multi-Signature Treasury:**
+- **Council-Majority Treasury:**
   - Proposal creation and execution logic
   - Signature validation (threshold enforcement)
   - Time-locked operations (72-hour minimum)
@@ -907,7 +907,7 @@ This framework defines the comprehensive security audit requirements for BelizeC
 
 3. **Findings (50-100 pages):**
    - **Per Finding:**
-     - Title (e.g., "Treasury Multi-Sig Bypass via Replay Attack")
+     - Title (e.g., "Treasury Council-Majority Approval Bypass via Replay Attack")
      - Severity (P0-P3)
      - Affected Component (pallet/contract name)
      - Description (technical details)
@@ -1426,7 +1426,7 @@ This framework defines the comprehensive security audit requirements for BelizeC
 
 **Emergency Contacts (24/7):**
 - **On-Call Engineer:** [Number TBD]
-- **Treasury Multi-Sig:** [4 of 7 signers on-call]
+- **Treasury Council-Majority Approval:** [4 of 7 signers on-call]
 - **Government Liaison:** Ministry of Finance (FSC)
 
 ---

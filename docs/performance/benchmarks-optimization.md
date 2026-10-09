@@ -90,7 +90,7 @@ print(f"  P95: {statistics.quantiles(finality_times, n=20)[18]:.2f}s")
 |--------|-----------|-------------------|------------------|------------------|
 | **Economy** | Transfer (DALLA) | 450 | 18 | 45 |
 | | Transfer (bBZD) | 480 | 16 | 42 |
-| | Multi-sig approval | 85 | 120 | 380 |
+| | council-majority approval | 85 | 120 | 380 |
 | **Identity** | Register BelizeID | 120 | 85 | 220 |
 | | Update KYC level | 95 | 105 | 280 |
 | **Staking** | Bond/Unbond | 180 | 55 | 140 |

@@ -925,7 +925,7 @@ impl<T: Config> Pallet<T> {
 - Issuer bond management (deposit/withdraw/slash)
 - Rate limiting (issuer operations)
 - Validity periods (active/grace/expired states)
-- Multi-signature governance (add/remove issuers)
+- Council-majority approval governance (add/remove issuers)
 
 **Run Tests**:
 ```bash

@@ -6,7 +6,7 @@
 
 ## 📋 Overview
 
-This guide helps government agencies, ministries, departments, and municipalities use BelizeChain for official operations - from collecting fees to distributing grants, managing multi-signature wallets, and maintaining public transparency.
+This guide helps government agencies, ministries, departments, and municipalities use BelizeChain for official operations - from collecting fees to distributing grants, managing council-majority approval wallets, and maintaining public transparency.
 
 ---
 
@@ -54,7 +54,7 @@ This guide helps government agencies, ministries, departments, and municipalitie
 - Budget disbursement
 - Department funding
 - Emergency funds
-- Multi-signature security
+- Council-approved spending
 
 **Grant Distribution**:
 - Small business grants
@@ -190,43 +190,26 @@ This guide helps government agencies, ministries, departments, and municipalitie
 
 ---
 
-### Step 2: Multi-Signature Setup
+### Step 2: Council Approval Setup
 
-**All government accounts use multi-signature for security**
+**Treasury spending is authorised by the governance council, not by a per-agency
+multisig wallet.** There is no multisig account type on BelizeChain: a spend is
+proposed through the Governance pallet and passes once more than half the council
+approves — **4 of 7 seats, or 7 of 12 at full council**.
 
-**Standard Configuration: 4-of-7**
-- Requires 4 signatures to approve transactions
-- 7 authorized signatories
-- Prevents single-person fraud
+**Why this matters:**
+- No single officer can move agency funds
+- Approval is per-proposal and recorded on-chain, so the audit trail shows exactly who approved what
+- The threshold scales with the council: as seats are added, so is the number of approvals required
 
-**Who should be signatories?**:
-1. Minister/CEO
-2. Chief Financial Officer
-3. Permanent Secretary
-4. Finance Manager
-5. Auditor
-6. Board Chair (if applicable)
-7. Deputy (backup)
+**Who are the council members?**
 
-**Setup Process**:
-
-1. **Nominate Signatories**:
-   - Full name
-   - Position
-   - Email
-   - Phone
-   - ID document
-
-2. **Create Individual Wallets**:
-   - Each signatory downloads Maya Wallet
-   - Creates personal account
-   - Completes KYC Level 3
-   - Provides public address
-
-3. **Configure Multi-Sig**:
+Council membership is set by election, not per agency. Agency officers do not
+become signatories of a shared wallet; instead the relevant council members
+approve the agency's spend proposals.
 ```
 ╔════════════════════════════════════════════╗
-║  MULTI-SIGNATURE CONFIGURATION             ║
+║  COUNCIL APPROVAL CONFIGURATION            ║
 ╠════════════════════════════════════════════╣
 ║  Agency: Ministry of Education             ║
 ║                                            ║
@@ -267,9 +250,9 @@ This guide helps government agencies, ministries, departments, and municipalitie
 ```
 
 4. **Activation**:
-   - All signatories confirm
-   - Government Services approves
-   - Multi-sig wallet activated! ✅
+   - Council members confirm their seats in governance
+   - Government Services confirms the agency's spending authority
+   - Agency ready for council-approved spending ✅
 
 ---
 
@@ -290,7 +273,7 @@ Government accounts are funded from BelizeChain Treasury:
    - Processed via governance proposal (if required)
 
 3. **Funds Disbursed**:
-   - Transferred to agency multi-sig
+   - Transferred to the agency's on-chain account
    - Recorded on-chain
    - Public audit trail
 
@@ -384,7 +367,7 @@ Block: #5,234,987
 
 ### Large Transaction (Over 10,000 bBZD)
 
-**Requires 4 signatures** (standard multi-sig)
+**Requires council majority** (4 of 7 seats; 7 of 12 at full council)
 
 **Same process, more approvals**:
 1. Finance Officer initiates
@@ -680,9 +663,9 @@ Each fee type gets unique QR code + payment link
 
 ## 🔒 Security & Compliance
 
-### Multi-Signature Security
+### Council-Approved Spending Security
 
-**Why multi-sig is critical**:
+**Why per-proposal council approval is critical**:
 - ✅ Prevents single-person fraud
 - ✅ Requires consensus
 - ✅ Creates audit trail
@@ -847,7 +830,7 @@ Each fee type gets unique QR code + payment link
 **Free training for government agencies**:
 
 **Included**:
-- Multi-signature setup assistance
+- Council-approval setup assistance
 - Staff training (unlimited)
 - Custom workflow design
 - Integration support
@@ -885,7 +868,7 @@ Each fee type gets unique QR code + payment link
 ## 📚 Resources
 
 **Documentation**:
-- Multi-Signature Wallet Guide
+- Council-Majority Approval Wallet Guide
 - [KYC/AML Compliance](../security/kyc-aml-procedures.md)
 - [Government API Reference](../developer-guides/api-reference.md)
 
@@ -907,7 +890,7 @@ Each fee type gets unique QR code + payment link
 - [ ] Nominate signatories (7 people)
 - [ ] Create individual wallets
 - [ ] Complete KYC Level 3
-- [ ] Configure multi-signature (4-of-7)
+- [ ] Configure council-majority approval (4 of 7 seats; 7 of 12 at full council)
 - [ ] Request initial funding
 
 ### Operations
@@ -963,7 +946,7 @@ Each fee type gets unique QR code + payment link
 
 **We'll help you**:
 - ✅ Register your agency
-- ✅ Setup multi-signature
+- ✅ Set up council-approved spending
 - ✅ Train your team
 - ✅ Launch operations
 
