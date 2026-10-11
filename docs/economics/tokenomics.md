@@ -111,7 +111,7 @@ pub fn mint_bbzd(
 
 ```javascript
 // Check bBZD supply vs reserves
-const supply = await api.query.economy.bBZDSupply();
+const supply = await api.query.economy.totalBbzdSupply();
 const reserves = await api.query.economy.centralBankReserves();
 
 console.log(`bBZD Supply: ${supply.toString()}`);

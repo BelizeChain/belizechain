@@ -354,28 +354,34 @@ await new Promise(resolve => setTimeout(resolve, 12000)); // Wait 12s for finali
 
 **Diagnosis**:
 ```javascript
-// Check KYC level
-const identity = await api.query.identity.identityOf(address);
-console.log('KYC Level:', identity.unwrap().kyc_level.toString());
-// Output: Basic | Verified | Enhanced
+// BelizeID: account → IdentityId, then the identity record
+const identityId = await api.query.identity.identityOf(address);
+if (identityId.isSome) {
+  const record = await api.query.identity.identities(identityId.unwrap());
+  console.log('BelizeID:', record.unwrap().name.toUtf8());
+}
 
-// Check required level for operation
-const required = await api.query.economy.kycRequirement('transfer_large');
-console.log('Required KYC:', required.toString());
+// The compliance pallet holds the KYC/risk gate that transfers actually check.
+// There is no per-operation requirement table on-chain.
+const status = await api.query.compliance.complianceStatusOf(address);
+console.log('Verification:', status.verification_level.toString());
+console.log('Risk:', status.risk_level.toString());
 ```
 
 **Solution**:
+
+KYC is not self-service. A level is set by an authorised FSC issuer through
+`ComplianceOrigin`; identity attestations are issued by registered issuers. A
+wallet cannot raise its own level — it can only poll for it.
+
 ```javascript
-// Upgrade KYC level
-const updateKyc = api.tx.identity.updateKyc({
-  level: 'Verified',
-  documents: [documentHash1, documentHash2],
-  biometrics: null  // Only for Enhanced
-});
-
-await updateKyc.signAndSend(keypair);
-
-// Wait for FSC approval (2-5 days)
+// Issuer-side, not wallet-side:
+//   compliance.verifyAccount(account, level, riskLevel)   // sets the KYC gate
+//   identity.issueSsn(target, hash, anchor, formatOk)     // attestation
+//
+// Wallet-side: poll the gate until the issuer has raised it.
+const status = await api.query.compliance.complianceStatusOf(address);
+console.log('Verification:', status.verification_level.toString());
 ```
 
 ## Staking Issues
@@ -384,30 +390,32 @@ await updateKyc.signAndSend(keypair);
 
 **Error**:
 ```
-Error: AlreadyBonded
+Error: ValidatorAlreadyActive
 ```
 
 **Diagnosis**:
 ```javascript
-const staking = await api.query.staking.bonded(address);
-console.log('Already bonded:', staking.isSome);
-
-const ledger = await api.query.staking.ledger(address);
-console.log('Bonded amount:', ledger.unwrap().active.toString());
+// Membership and stake both live in the `Validators` map. There is no
+// separate Bonded / Ledger / Payee storage.
+const validator = await api.query.staking.validators(address);
+console.log('Is validator:', validator.isSome);
+if (validator.isSome) {
+  console.log('Stake:', validator.unwrap().stake.toString());
+}
 ```
 
 **Solution**:
 ```javascript
-// Solution 1: Unbond first
-await api.tx.staking.unbond(ledger.unwrap().active).signAndSend(keypair);
+// Solution 1: leave the validator set, then withdraw once the unbonding
+// period has elapsed.
+await api.tx.staking.leaveValidators().signAndSend(keypair);
 
-// Wait 14 days unbonding period
-
-await api.tx.staking.withdrawUnbonded(0).signAndSend(keypair);
-
-// Solution 2: Bond additional amount
-await api.tx.staking.bondExtra(additionalAmount).signAndSend(keypair);
+// This writes PendingUnbonds(address) -> (stake, unlock_at). Poll it, then:
+await api.tx.staking.withdrawUnbonded().signAndSend(keypair);
 ```
+
+There is no `bondExtra`: to change your stake you leave and re-join with
+`joinValidators(stake, computeCapacity, location)`.
 
 ### 2. Reward Claim Fails
 
@@ -418,30 +426,27 @@ Error: No rewards pending
 
 **Diagnosis**:
 ```javascript
-// Check pending rewards
-const rewards = await api.query.staking.payee(address);
-console.log('Reward destination:', rewards.toString());
+// Rewards are pushed by the pallet (staking.distributeRewards) into a per-epoch
+// pool. There is no per-account payee/ledger and nothing to claim per era —
+// the unit is an epoch, not an era.
+const epoch = await api.query.staking.currentEpoch();
+console.log('Current epoch:', epoch.toString());
 
-const ledger = await api.query.staking.ledger(address);
-const lastRewardEra = ledger.unwrap().claimed_rewards;
-console.log('Last claimed era:', lastRewardEra.toString());
-
-const currentEra = await api.query.staking.currentEra();
-console.log('Current era:', currentEra.toString());
+const pool = await api.query.staking.epochRewards(epoch.toNumber());
+console.log('Epoch reward pool:', pool.toString());
 ```
 
 **Solution**:
-```javascript
-// Calculate claimable eras
-const claimableEras = [];
-for (let era = lastRewardEra + 1; era < currentEra; era++) {
-  claimableEras.push(era);
-}
 
-// Claim all pending rewards
-for (const era of claimableEras) {
-  await api.tx.staking.payoutStakers(validatorAddress, era).signAndSend(keypair);
-}
+There is nothing to claim manually. Reward distribution is a pallet operation
+(`staking.distributeRewards`, `GovernanceOrigin`-gated) that pays validators from
+`EpochRewards`. If a payout looks missing, check that the validator is in
+`Validators` and that the epoch's pool is non-zero — see the diagnosis above.
+
+```javascript
+// Confirm the validator is still in the set and holding stake:
+const validator = await api.query.staking.validators(address);
+console.log('Stake:', validator.isSome ? validator.unwrap().stake.toString() : 'not a validator');
 ```
 
 ### 3. PoUW Submission Errors

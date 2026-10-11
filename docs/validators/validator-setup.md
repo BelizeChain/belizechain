@@ -221,13 +221,10 @@ subkey generate --scheme sr25519
 ### 1. Complete KYC
 
 ```javascript
-// Apply for Verified KYC (required for validators)
-await api.tx.compliance.submitKycApplication(
-  'Verified',
-  [idDocumentHash, addressProofHash, selfieHash]
-).signAndSend(controllerAccount);
-
-// Wait 1-3 business days for FSC approval
+// KYC is not self-service. An authorised FSC issuer raises the level via
+// compliance.verifyAccount (ComplianceOrigin-gated); a wallet cannot apply.
+// Poll until the gate reads Verified:
+const status = await api.query.compliance.complianceStatusOf(controllerAccount);
 ```
 
 ### 2. Bond Tokens
@@ -240,17 +237,19 @@ async function bondTokens() {
   const provider = new WsProvider('<operator-provided-rpc-url>');
   const api = await ApiPromise.create({ provider });
   
-  // Bond 10,000 DALLA (minimum)
-  const bondAmount = 10_000 * 1e12;  // 12 decimals
+  // Minimum stake is 1,000 DALLA (MIN_VALIDATOR_STAKE). There is no
+  // reward-destination (`payee`) argument.
+  const stake = 10_000 * 1e12;  // 12 decimals
   
-  const tx = api.tx.staking.bond(
-    bondAmount,
-    { Staked: null }  // Rewards compounded automatically
+  const tx = api.tx.staking.joinValidators(
+    stake,
+    100,              // computeCapacity
+    'Belize City'     // location (UTF-8)
   );
   
   await tx.signAndSend(stashAccount, ({ status }) => {
     if (status.isInBlock) {
-      console.log('✅ Bonded 10,000 DALLA');
+      console.log('✅ Joined the validator set with 10,000 DALLA');
     }
   });
 }
@@ -269,11 +268,13 @@ await api.tx.session.setKeys(sessionKey, '0x')
 ### 4. Register Validator
 
 ```javascript
-// Declare validator intent
-await api.tx.staking.validate({
-  commission: 10_000_000,  // 10% commission (in perbill: 10_000_000 / 1_000_000_000)
-  blocked: false
-}).signAndSend(controllerAccount);
+// Join the validator set. There is no commission/blocked call — validators are
+// PoUW participants, not nominator-pool operators.
+await api.tx.staking.joinValidators(
+  10_000n * 10n ** 12n,   // stake: 10,000 DALLA
+  100,                    // computeCapacity (0-100)
+  'Belize City'           // location, UTF-8
+).signAndSend(controllerAccount);
 
 console.log('✅ Validator registered!');
 console.log('Wait for next era (~6 hours) to start validating');
@@ -392,10 +393,10 @@ curl -H "Content-Type: application/json" -d '{
 }' http://localhost:9933
 
 # If not in set, check:
-# 1. Bonded amount >= 10,000 DALLA
+# 1. Staked amount >= 1,000 DALLA (MIN_VALIDATOR_STAKE)
 # 2. Session keys set correctly
 # 3. KYC level >= Verified
-# 4. Wait for next era (query: staking.currentEra)
+# 4. Wait for next epoch (query: staking.currentEpoch)
 ```
 
 ### High Finality Lag

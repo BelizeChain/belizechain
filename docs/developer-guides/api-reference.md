@@ -281,11 +281,9 @@ console.log('Reserved:', account.data.reserved.toString());
 #### **Double Map Query**
 
 ```javascript
-// Get allowance (if implemented)
-const allowance = await api.query.economy.allowances(
-  owner,
-  spender
-);
+// There are no ERC20-style allowances on BelizeChain: no `economy.allowances`
+// double map exists. Balances are the Substrate `system.account` map, and
+// governance-spend approval uses `governance.treasurySpendProposals`.
 ```
 
 #### **Multi-Query (Batch)**
@@ -363,11 +361,13 @@ await tx.signAndSend(sender, { signer });
 
 ```javascript
 // Create governance proposal
-const tx = api.tx.governance.propose(
-  'Fix Main Street',           // Title
-  'Repair potholes...',        // Description
-  5000000000000000,            // Amount (5000 DALLA)
-  beneficiary                  // Beneficiary address
+const tx = api.tx.governance.submitProposal(
+  'Fix Main Street',           // Title (bytes)
+  'Repair potholes...',        // Description (bytes)
+  0,                           // proposalTypeIndex
+  0,                           // thresholdIndex
+  false,                       // isEmergency
+  null                         // districtIndex (optional)
 );
 
 await tx.signAndSend(sender, { signer });

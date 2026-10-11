@@ -66,10 +66,10 @@ await api.tx.governance.registerCandidate(
   5_000_000_000_000_000n  // 5K DALLA bond
 ).signAndSend(candidate);
 
-// Vote for candidates
-await api.tx.governance.voteForCandidate(
-  candidateAddress,
-  1_000_000_000_000_000n  // 1K DALLA voting power
+// Vote in the district election
+await api.tx.governance.voteInDistrictElection(
+  0,                 // districtIndex
+  candidateAddress
 ).signAndSend(voter);
 ```
 
@@ -126,12 +126,15 @@ pub fn propose_spend(
 - 50% quorum (of staked DALLA)
 
 ```javascript
-// Propose runtime upgrade
-const newRuntimeWasm = fs.readFileSync('runtime.wasm');
-
-await api.tx.governance.propose(
-  api.tx.system.setCode(newRuntimeWasm),
-  0  // No treasury funds
+// Submit a proposal (gov-track). Runtime upgrades go through
+// ratify_runtime_upgrade, not a system::setCode proposal.
+await api.tx.governance.submitProposal(
+  'Upgrade runtime',   // title
+  'See attached WASM', // description
+  0,                   // proposalTypeIndex
+  0,                   // thresholdIndex
+  false,               // isEmergency
+  null                 // districtIndex
 ).signAndSend(proposer, { value: 10_000_000_000_000_000n });  // 10K DALLA bond
 ```
 

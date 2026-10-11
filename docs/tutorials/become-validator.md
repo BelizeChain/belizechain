@@ -33,7 +33,7 @@ Learn how to become a BelizeChain validator - set up your node, bond DALLA stake
 - ✅ Command line comfortable
 - ✅ Network security knowledge
 - ✅ 24/7 availability commitment
-- ✅ Minimum 10,000 DALLA stake
+- ✅ Minimum 1,000 DALLA stake
 
 **Time commitment**:
 - Setup: 2-3 hours
@@ -86,7 +86,7 @@ Learn how to become a BelizeChain validator - set up your node, bond DALLA stake
 
 ### Financial Requirements
 
-- [ ] Minimum 10,000 DALLA for stake
+- [ ] Minimum 1,000 DALLA for stake
 - [ ] Extra DALLA for transaction fees (~100 DALLA)
 - [ ] Server budget ($50-150/month)
 - [ ] Emergency fund (3 months server costs)

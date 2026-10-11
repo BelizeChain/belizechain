@@ -50,10 +50,11 @@ async function bridgeToEthereum() {
   const amount = 1000 * 1e12;  // 1,000 DALLA
   const ethRecipient = '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb';
   
-  const tx = api.tx.interoperability.initiateBridgeTransfer(
-    'Ethereum',  // Target chain
-    ethRecipient,
-    amount
+  const tx = api.tx.interoperability.initiateBridge(
+    0,            // targetChainIndex (u8 — see ChainConfigurations)
+    ethRecipient, // target address as bytes
+    amount,
+    0             // assetIndex (u8)
   );
   
   await tx.signAndSend(alice, ({ status, events }) => {
@@ -146,16 +147,11 @@ console.log('✅ wDALLA burned, wait ~150 seconds for BelizeChain confirmation')
 **Step 2: Claim on BelizeChain**
 
 ```javascript
-// Relayer submits Ethereum event proof to BelizeChain
-const ethBlockHash = '0xabc123...';  // Block containing burn event
-const merkleProof = [/* Merkle proof of burn event */];
+// A registered oracle operator confirms the burn; not a general relayer call.
+// `txId` is the BridgeTransactions id whose burn proof is being confirmed.
+await api.tx.interoperability.confirmBurnProof(txId).signAndSend(oracleOperator);
 
-await api.tx.interoperability.confirmBridgeTransfer(
-  bridgeId,
-  merkleProof
-).signAndSend(alice);
-
-// DALLA tokens minted to your BelizeChain address
+// DALLA tokens are released to your BelizeChain address
 ```
 
 ---
@@ -385,9 +381,10 @@ Subsequent LPs: LP_tokens = min(
 const dallaIn = 100 * 1e12;
 
 // Calculate expected output (constant product formula)
-const reserves = await api.query.belizex.reserves(pairId);
-const dallaReserve = reserves.unwrap()[0].toBigInt();
-const bbzdReserve = reserves.unwrap()[1].toBigInt();
+// Reserves live inside the TradingPairs entry, not a separate `reserves` map.
+const pair = await api.query.belizex.tradingPairs([0, 1]);  // [baseAsset, quoteAsset]
+const dallaReserve = pair.unwrap().baseReserve.toBigInt();
+const bbzdReserve = pair.unwrap().quoteReserve.toBigInt();
 
 const dallaInWithFee = dallaIn * 997n;  // 0.3% fee = 0.997 multiplier
 const numerator = dallaInWithFee * bbzdReserve;
@@ -397,11 +394,12 @@ const bbzdOut = numerator / denominator;
 console.log(`Expected output: ${bbzdOut / 1e12} bBZD`);
 
 // Execute swap
-await api.tx.belizex.swap(
-  pairId,
+await api.tx.belizex.executeTrade(
+  0,                      // baseAsset (u8)
+  1,                      // quoteAsset (u8)
   dallaIn,
-  bbzdOut * 95n / 100n,  // minAmountOut with 5% slippage
-  ['DALLA', 'bBZD']  // Path
+  bbzdOut * 95n / 100n,   // minAmountOut with 5% slippage
+  false                   // isTourismTrade
 ).signAndSend(trader);
 ```
 

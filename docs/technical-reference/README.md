@@ -183,7 +183,7 @@
 - **Identity**: 1 DALLA (one-time)
 
 ### Validator Economics
-- **Minimum Stake**: 10,000 DALLA
+- **Minimum Stake**: 1,000 DALLA (`MIN_VALIDATOR_STAKE`)
 - **Rewards**: 15% APY (varies by performance)
 - **Commission**: 5-20% (validator sets)
 - **Slashing**: 0.1% - 10% (severity-based)

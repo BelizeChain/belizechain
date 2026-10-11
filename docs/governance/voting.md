@@ -47,11 +47,12 @@ const api = await ApiPromise.create({
   provider: new WsProvider('ws://localhost:9944') 
 });
 
-// Vote Aye with 4x conviction
-await api.tx.governance.vote(
+// Vote Aye with conviction
+await api.tx.governance.castVote(
   proposalId,
-  {
-    Standard: {
+  0,  // voteChoiceIndex (index into the pallet's VoteChoice enum)
+  1   // conviction
+);
       vote: {
         aye: true,
         conviction: 'Locked4x'

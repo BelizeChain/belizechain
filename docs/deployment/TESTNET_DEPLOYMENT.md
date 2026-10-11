@@ -465,10 +465,9 @@ polkadot-js-api \
 
 ### 5. Bond Funds & Validate
 
-1. **Bond DALLA**: Minimum 10,000 DALLA
-2. **Set controller**: Separate account for management
-3. **Set session keys**: From step 1
-4. **Start validating**: Call `staking.validate()`
+1. **Stake DALLA**: Minimum 1,000 DALLA (`MIN_VALIDATOR_STAKE`)
+2. **Set session keys**: From step 1
+3. **Join the validator set**: `staking.joinValidators(stake, computeCapacity, location)`
 
 ---
 

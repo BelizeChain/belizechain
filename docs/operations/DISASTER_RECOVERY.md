@@ -366,12 +366,12 @@ sudo nano /etc/prometheus/prometheus.yml
 **CRITICAL ACTIONS**:
 
 ```bash
-# 1. IMMEDIATELY chill validator (stop validation)
+# 1. IMMEDIATELY leave the validator set (stop validating)
 # Via Polkadot.js Apps:
 # - Connect to any RPC node
 # - Go to Developer → Extrinsics
-# - Select: staking.chill()
-# - Sign with controller account
+# - Select: staking.leaveValidators()
+# - Sign with the validator account
 # - Submit transaction
 
 # 2. Transfer all funds from compromised accounts

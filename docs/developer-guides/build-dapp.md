@@ -418,8 +418,8 @@ export default function Home() {
     const api = await connectToBlockchain();
     
     // Query governance pallet for proposals
-    const proposalCount = await api.query.governance.proposalCount();
-    const count = proposalCount.toNumber();
+    const nextId = await api.query.governance.nextProposalId();
+    const count = nextId.toNumber();
     
     const proposalList: Proposal[] = [];
     
@@ -1062,8 +1062,8 @@ export default function Home() {
     const api = await connectToBlockchain();
     
     // Query governance pallet for proposals
-    const proposalCount = await api.query.governance.proposalCount();
-    const count = proposalCount.toNumber();
+    const nextId = await api.query.governance.nextProposalId();
+    const count = nextId.toNumber();
     
     const proposalList: Proposal[] = [];
     

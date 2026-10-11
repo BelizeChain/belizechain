@@ -342,21 +342,25 @@ The identity pallet provides BelizeID credentials for governance participants.
 
 ```rust
 // Check if account has valid BelizeID
+// NOTE: the identity pallet exposes no `has_identity()` / `get_identity()`.
+// The real KYC surface is `IdentityOracleProvider`, which the pallets call
+// through an associated `T::Identity` type:
+//     fn get_kyc_level(account) -> Option<u8>
+//     fn meets_kyc_requirement(account, required_level) -> bool
+//     fn is_sanctioned(account) -> bool
 pub fn verify_identity(account: &T::AccountId) -> DispatchResult {
+    // Governance requires at least the Standard (L2) KYC level.
     ensure!(
-        T::Identity::has_identity(account),
-        Error::<T>::NoIdentity
-    );
-    
-    // Get identity data
-    let identity = T::Identity::get_identity(account)?;
-    
-    // Verify citizenship or residency for governance
-    ensure!(
-        identity.citizenship_status.is_eligible_for_governance(),
+        T::Identity::meets_kyc_requirement(account, 2),
         Error::<T>::NotEligibleForGovernance
     );
-    
+
+    // Sanctioned accounts are barred outright.
+    ensure!(
+        !T::Identity::is_sanctioned(account),
+        Error::<T>::NotEligibleForGovernance
+    );
+
     Ok(())
 }
 
@@ -364,14 +368,14 @@ pub fn verify_identity(account: &T::AccountId) -> DispatchResult {
 pub fn register_council_member_identity(
     council_member: &T::AccountId,
 ) -> DispatchResult {
-    // Verify Enhanced KYC through identity pallet
+    // Verify Enhanced (L3) KYC
     ensure!(
-        T::Identity::has_enhanced_verification(council_member),
+        T::Identity::meets_kyc_requirement(council_member, 3),
         Error::<T>::RequiresEnhancedKYC
     );
     
     // Store council member identity link
-    CouncilIdentities::<T>::insert(council_member, identity);
+    CouncilIdentities::<T>::insert(council_member, council_member);
     
     Ok(())
 }

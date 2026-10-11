@@ -107,19 +107,16 @@ const api = await ApiPromise.create({ provider });
 const keyring = new Keyring({ type: 'sr25519' });
 const account = keyring.addFromUri('//YourSeed');
 
-// Bond 1,000 DALLA
-const bond = api.tx.staking.bond(
-  1_000_000_000_000_000n,  // 1,000 DALLA
-  { Staked: null }  // Rewards go to staked balance
+// Join the validator set.
+// There is no nominator role and no reward-destination (`payee`) concept —
+// validators are PoUW participants, not nominator-pool operators.
+const join = api.tx.staking.joinValidators(
+  1_000_000_000_000_000n,  // stake: 1,000 DALLA (MIN_VALIDATOR_STAKE floor)
+  100,                     // computeCapacity
+  'Belize City'            // location
 );
 
-await bond.signAndSend(account);
-
-// Nominate validators (up to 16)
-const nominate = api.tx.staking.nominate([
-  '5GrwvaEF...',
-  '5FHneW...'
-]);
+await join.signAndSend(account);
 
 await nominate.signAndSend(account);
 ```
@@ -151,12 +148,14 @@ Validators earn additional rewards by performing useful computations:
 ### How do I claim staking rewards?
 
 ```javascript
-// Automatic compounding if payee = Staked
-// Manual claim:
-const claim = api.tx.staking.payoutStakers(
-  validatorAddress,
-  era  // Current era - 1
+// Rewards are distributed by the pallet (staking.distributeRewards) from the
+// per-epoch pool. There is no per-account claim and no `payoutStakers`.
+const pool = await api.query.staking.epochRewards(
+  await api.query.staking.currentEpoch()
 );
+
+// See "Epoch reward pool" above — distribution is automatic, not claimed.
+```
 
 await claim.signAndSend(account);
 ```

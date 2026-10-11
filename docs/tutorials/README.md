@@ -110,7 +110,7 @@
 **Level**: ⭐⭐⭐⭐ Expert
 
 **Requirements**:
-- 10,000 DALLA minimum stake
+- 1,000 DALLA minimum stake (`MIN_VALIDATOR_STAKE`)
 - Dedicated server (4 CPU, 8GB RAM, 500GB SSD)
 - Static IP address
 - Technical knowledge
