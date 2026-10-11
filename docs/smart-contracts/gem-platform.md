@@ -232,4 +232,4 @@ For detailed tutorials, see:
 - **Security Audits**: [Audit Results](gem-security-audit.md)
 - **Code Examples**: [GEM Examples](gem-examples.md)
 - **Discord**: [discord.gg/belizechain](https://discord.gg/belizechain)
-- **Forum**: [forum.belizechain.org/c/smart-contracts](https://forum.belizechain.org/c/smart-contracts)
+- **Forum**: [forum.belizechain.org/c/smart-contracts](https://forum.belizechain.org/c/smart-contracts) — planned, not yet published

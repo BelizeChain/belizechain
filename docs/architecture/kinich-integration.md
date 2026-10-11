@@ -11,7 +11,7 @@ Kinich provides quantum computing capabilities to BelizeChain through configured
 ```
 ┌─────────────────┐
 │ BelizeChain     │
-│ Consensus Pallet│ ← Proof of Quantum Work (PQW)
+│ Quantum Pallet  │ ← quantum job registry (PQW contributions)
 └────────┬────────┘
          │ HTTP REST
          ↓
@@ -46,24 +46,38 @@ print(f"Quantum: 6.8x → {data_size / 6.8} bytes")  # 2x better!
 ### 2. Proof of Quantum Work (PQW)
 Validators earn rewards by solving quantum optimization problems:
 
+Kinich registers each job in the on-chain **Quantum** pallet; the resulting work is
+recorded against the validator in the **Staking** pallet for reward accounting.
+There is no `Consensus.submit_quantum_work` extrinsic.
+
 ```rust
-// belizechain/pallets/consensus/src/lib.rs
-pub fn submit_quantum_work(
+// belizechain/pallets/quantum/src/lib.rs
+#[pallet::call_index(0)]
+pub fn submit_quantum_job(
     origin: OriginFor<T>,
-    problem_id: u64,
-    quantum_solution: Vec<u8>,
-    proof: QuantumProof
-) -> DispatchResult {
-    // Verify quantum signature
-    ensure!(
-        Self::verify_quantum_proof(&problem_id, &quantum_solution, &proof),
-        Error::<T>::InvalidQuantumProof
-    );
-    
-    // Reward validator
-    let reward = 50 * DALLA;
-    T::Currency::deposit_creating(&who, reward);
-}
+    job_id: BoundedVec<u8, ConstU32<MAX_JOB_ID_LENGTH>>,
+    backend_index: u8,       // Index into the QuantumBackend enum
+    circuit_hash: [u8; 32],  // SHA-256 of the circuit
+    num_qubits: u16,         // 1..=100
+    circuit_depth: u32,
+    num_shots: u32,          // 1..=1_000_000
+) -> DispatchResult { /* cost reserved, job stored in QuantumJobs */ }
+```
+
+The contribution is then recorded for rewards:
+
+```rust
+// belizechain/pallets/staking/src/lib.rs
+#[pallet::call_index(5)]
+pub fn record_quantum_contribution(
+    origin: OriginFor<T>,
+    job_id: BoundedVec<u8, ConstU32<64>>,
+    validator: T::AccountId,
+    num_qubits: u16,
+    circuit_depth: u32,
+    num_shots: u32,
+    accuracy_score: u8,      // 0..=100
+) -> DispatchResult { /* stored in QuantumContributions */ }
 ```
 
 ### 3. Error Mitigation
@@ -94,18 +108,21 @@ async def request_quantum_compression(content: bytes) -> str:
 
 ### Kinich → Blockchain
 ```python
-# Submit PQW proof
-async def submit_pqw_proof(problem_id: int, solution: bytes):
-    call = substrate.compose_call(
-        call_module='Consensus',
-        call_function='submit_quantum_work',
-        call_params={
-            'problem_id': problem_id,
-            'quantum_solution': solution.hex(),
-            'proof': generate_quantum_proof(solution)
-        }
-    )
-    receipt = substrate.submit_extrinsic(call, keypair=validator_key)
+# Submit a quantum job (Kinich -> Quantum pallet).
+# Mirrors kinich.blockchain.belizechain_adapter.BelizeChainAdapter.submit_quantum_job.
+call = substrate.compose_call(
+    call_module='Quantum',
+    call_function='submit_quantum_job',
+    call_params={
+        'job_id': job_id.encode('utf-8'),
+        'backend_index': backend_index,  # 0..=7, see the QuantumBackend enum
+        'circuit_hash': circuit_hash,    # 32 bytes
+        'num_qubits': num_qubits,
+        'circuit_depth': circuit_depth,
+        'num_shots': num_shots,
+    }
+)
+receipt = substrate.submit_extrinsic(call, keypair=validator_key)
 ```
 
 ---

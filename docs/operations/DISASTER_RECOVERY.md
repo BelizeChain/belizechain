@@ -555,7 +555,7 @@ For mission-critical validators, setup automated failover:
 
 - **Emergency**: emergency@belizechain.org (24/7 mainnet)
 - **Discord**: https://discord.gg/belizechain (#validators)
-- **Forum**: https://forum.belizechain.org/c/operations
+- **Forum**: https://forum.belizechain.org/c/operations — planned, not yet published
 
 ---
 

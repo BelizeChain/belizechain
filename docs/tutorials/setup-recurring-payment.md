@@ -870,7 +870,7 @@ Settings → Notifications → Recurring Payments:
 **Try on testnet first** (free, no risk):
 
 1. Get testnet Maya Wallet: https://wallet.belizechain.org
-2. Get free test tokens: https://faucet.belizechain.org
+2. Get free test tokens: faucet.belizechain.org — planned, not yet published
 3. Create weekly recurring payment ($10 to yourself)
 4. Wait for first payment (or test immediately)
 5. Modify amount
@@ -886,8 +886,8 @@ Settings → Notifications → Recurring Payments:
 
 ### During Tutorial
 - **Video guide**: https://youtube.com/watch?v=recurring-payments
-- **Live demo**: Try interactive demo at demo.belizechain.org
-- **Forum**: forum.belizechain.org/tutorials/recurring
+- **Live demo**: Try interactive demo at demo.belizechain.org — planned, not yet published
+- **Forum**: forum.belizechain.org/tutorials/recurring — planned, not yet published
 
 ### Stuck or Have Questions?
 - **Live Chat**: In Maya Wallet - Menu → Help

@@ -114,7 +114,7 @@ pakit upload --dir . --manifest
 
 **Via Web UI:**
 ```
-1. Visit https://bns.belizechain.org/hosting
+1. Visit https://bns.belizechain.org/hosting — planned, not yet published
 2. Select your domain
 3. Click "Activate Hosting"
 4. Choose hosting tier:

@@ -20,6 +20,7 @@ Date: January 2026
 
 import pytest
 import asyncio
+import hashlib
 import os
 from pathlib import Path
 
@@ -31,10 +32,11 @@ try:
     
     from kinich.core.quantum_node import QuantumNode, NodeConfig
     from kinich.queue.job_scheduler import QuantumJobQueue
-    from kinich.blockchain.consensus_connector import ConsensusConnector
+    from kinich.blockchain.belizechain_adapter import BelizeChainAdapter
     
-    from pakit.storage.proof_manager import ProofManager
-    from pakit.storage.ipfs_backend import IPFSBackend
+    from pakit.backends.ipfs_backend import IPFSBackend
+    from pakit.blockchain.storage_proof_connector import StorageProofConnector
+    from pakit.core.merkle_storage_proofs import build_proof_from_blocks
 except ImportError as e:
     pytest.skip(f"Missing dependencies: {e}", allow_module_level=True)
 
@@ -219,19 +221,23 @@ async def test_kinich_to_blockchain_pqw_flow(blockchain_connection):
     status = await job_queue.get_job_status(job.job_id)
     assert status["status"] == "completed"
     
-    # Simulate PQW proof submission (in production, use ConsensusConnector)
-    consensus_connector = ConsensusConnector(blockchain_url=BLOCKCHAIN_URL)
-    
-    pqw_result = await consensus_connector.submit_quantum_work(
-        validator_address="5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
+    # Submit the job to the on-chain Quantum pallet. Requires a running node —
+    # skip rather than assert against a chain we cannot reach.
+    adapter = BelizeChainAdapter(node_url=BLOCKCHAIN_URL)
+    if not await adapter.connect():
+        pytest.skip("BelizeChain node not reachable")
+
+    tx_hash = await adapter.submit_quantum_job(
         job_id=job.job_id,
-        circuit_hash="0xabcd1234...",
-        result_hash="0xef567890...",
-        execution_time=2.5,
+        backend="azure",
+        circuit_hash=b"\xab\xcd" * 16,   # 32 bytes
+        num_qubits=2,
+        circuit_depth=2,
+        num_shots=1024,
     )
     
-    assert pqw_result["success"], "PQW submission should succeed"
-    print(f"✅ Kinich → Blockchain PQW flow complete: {pqw_result}")
+    assert tx_hash, "Quantum job submission should return a tx hash"
+    print(f"✅ Kinich → Blockchain Quantum job submitted: {tx_hash}")
     
     # Cleanup
     await node.stop()
@@ -250,47 +256,41 @@ async def test_pakit_to_blockchain_proof_flow(blockchain_connection):
     Flow:
     1. User uploads document to IPFS
     2. Pakit generates storage proof
-    3. Proof submitted to LandLedger pallet
+    3. Proof submitted to the StorageProof pallet
     4. Blockchain stores proof on-chain
     """
     # Setup IPFS backend
     ipfs_backend = IPFSBackend(api_url=IPFS_URL)
     
-    # Setup proof manager
-    proof_manager = ProofManager(blockchain_url=BLOCKCHAIN_URL)
+    # Setup chain connector (mock mode — no live node required)
+    connector = StorageProofConnector(node_url=BLOCKCHAIN_URL, mock_mode=True)
+    await connector.connect()
     
     # Create test document
     test_data = b"Test land title document for property #12345"
     
-    # Upload to IPFS
-    cid = await ipfs_backend.upload(test_data)
-    assert cid is not None, "Upload should return CID"
-    print(f"Uploaded to IPFS: {cid}")
+    # Store the document
+    content_id = hashlib.sha256(test_data).hexdigest()
+    assert ipfs_backend.store(content_id, test_data), "Store should succeed"
+    print(f"Stored: {content_id}")
     
-    # Generate proof
-    proof = await proof_manager.generate_proof(
-        cid=cid,
-        document_type="land_title",
-        owner_address="5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
-        metadata={
-            "property_id": "12345",
-            "location": "Belize City",
-            "size_acres": "2.5",
-        }
+    # Build a Merkle storage proof over the block
+    built = build_proof_from_blocks(
+        target_block_hash_hex=content_id,
+        content_bytes=test_data,
+        parent_block_hashes_hex=["0x" + "ab" * 32],
+    )
+    assert built is not None, "Proof build should succeed"
+    onchain_content_id, proof = built
+
+    # Submit proof to the StorageProof pallet
+    result = await connector.submit_storage_zk_proof(
+        content_id=onchain_content_id,
+        zk_proof=proof.to_chain_args(),
+        proof_type="merkle",
     )
     
-    assert proof["cid"] == cid
-    assert "merkle_root" in proof
-    
-    # Submit proof to blockchain
-    result = await proof_manager.register_proof(
-        proof_id=proof["proof_id"],
-        cid=cid,
-        merkle_root=proof["merkle_root"],
-        owner_address="5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
-    )
-    
-    assert result["success"], "Proof registration should succeed"
+    assert result, "Proof submission should succeed"
     print(f"✅ Pakit → Blockchain proof flow complete: {result}")
 
 

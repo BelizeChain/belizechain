@@ -1280,7 +1280,7 @@ Before deploying your pallet:
 
 **Join Community**:
 - Discord: https://discord.gg/belizechain
-- Forum: https://forum.belizechain.org
+- Forum: https://forum.belizechain.org — planned, not yet published
 - GitHub: https://github.com/BelizeChain/belizechain
 
 ---

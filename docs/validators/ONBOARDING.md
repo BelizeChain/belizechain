@@ -757,7 +757,7 @@ sudo systemctl restart belizechain-validator
 Need help? We're here for you!
 
 - **Discord**: https://discord.gg/belizechain (#validators channel)
-- **Forum**: https://forum.belizechain.org/c/validators
+- **Forum**: https://forum.belizechain.org/c/validators — planned, not yet published
 - **Email**: validators@belizechain.org (response within 24 hours)
 - **Emergency**: emergency@belizechain.org (mainnet critical issues)
 

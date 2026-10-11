@@ -30,7 +30,7 @@ Before listing a domain:
 
 **Via Web UI:**
 ```
-1. Visit https://bns.belizechain.org/marketplace
+1. Visit https://bns.belizechain.org/marketplace — planned, not yet published
 2. Click "My Domains"
 3. Select domain to sell
 4. Click "List for Sale"
@@ -107,7 +107,7 @@ listDomain().catch(console.error);
 
 **Via Web UI:**
 ```
-1. Visit https://bns.belizechain.org/marketplace
+1. Visit https://bns.belizechain.org/marketplace — planned, not yet published
 2. Filter by:
    - Price range
    - Domain length
@@ -495,7 +495,7 @@ console.log('Top 10 Most Traded:', popular);
 - Unverified marketplace websites
 
 **Safe Practices:**
-- Only use https://bns.belizechain.org
+- Only use https://bns.belizechain.org — planned, not yet published
 - Verify transactions on-chain
 - Check domain ownership history
 - Report suspicious listings
@@ -598,7 +598,7 @@ async function filterActive(listings) {
 
 ## Support
 
-- **Marketplace**: https://bns.belizechain.org/marketplace
+- **Marketplace**: https://bns.belizechain.org/marketplace — planned, not yet published
 - **Discord**: #marketplace-support
 - **Report Fraud**: security@belizechain.org
 - **FAQs**: https://belizechain.org/docs/belizechain/bns

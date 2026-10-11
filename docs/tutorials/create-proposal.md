@@ -579,7 +579,7 @@ Details: https://portal.belizechain.org
 
 ### Strategy 2: Forum Discussion
 
-**Post in**: https://forum.belizechain.org/proposals
+**Post in**: https://forum.belizechain.org/proposals — planned, not yet published
 
 **Example Thread**:
 ```
@@ -973,7 +973,7 @@ What's Next:
 
 **Tools**:
 - [Proposal Dashboard](https://portal.belizechain.org)
-- [Forum](https://forum.belizechain.org/proposals)
+- [Forum](https://forum.belizechain.org/proposals) — planned, not yet published
 - [Discord #governance](https://discord.gg/belizechain)
 
 **Support**:

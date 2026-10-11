@@ -709,7 +709,7 @@ Want to send everything?
 - **Response**: Usually < 1 hour
 
 ### Community
-- **Forum**: forum.belizechain.org
+- **Forum**: forum.belizechain.org — planned, not yet published
 - **Discord**: discord.gg/belizechain
 - **Telegram**: t.me/belizechain
 

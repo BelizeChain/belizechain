@@ -86,14 +86,18 @@ response = requests.post(
 proof = response.json()['proof']
 # proof = ['hash1', 'hash2', 'hash3']  ← Merkle path
 
-# Submit to blockchain
+# Submit to blockchain. NOTE: LandLedger has no `register_document_proof`
+# extrinsic — the on-chain verification path is the StorageProof pallet.
 substrate.compose_call(
-    call_module='LandLedger',
-    call_function='register_document_proof',
+    call_module='StorageProof',
+    call_function='submit_storage_proof',
     call_params={
-        'deed_id': 123,
-        'content_hash': content_hash,
-        'merkle_proof': proof
+        'content_id': content_id,  # 32-byte BLAKE2-256 Merkle root
+        'proof': {
+            'leaf': leaf_hash,     # 32-byte block content hash
+            'siblings': proof,     # [{'node': h, 'node_is_left': bool}, ...]
+        },
+        'proof_type': 'Merkle',
     }
 )
 ```
@@ -144,10 +148,12 @@ def upload_bns_site(domain: str, site_files: dict):
     # Register on blockchain
     substrate.compose_call(
         call_module='BNS',
-        call_function='update_domain_content',
+        call_function='update_hosting_content',
         call_params={
-            'domain': domain,
-            'content_hash': content_hash
+            'domain_name': domain_name,
+            'new_content_hash': content_hash,
+            'description': description,
+            'size_bytes': size_bytes,
         }
     )
     

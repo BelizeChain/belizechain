@@ -170,7 +170,7 @@ published; testnet values are simulated protocol parameters.
 **Faucet**: Testnet DALLA distribution:
 - **Amount**: 1,000 DALLA per claim
 - **Cooldown**: 24 hours
-- **URL**: https://faucet.belizechain.org
+- **URL**: https://faucet.belizechain.org — planned, not yet published
 
 **Federated Learning**: Privacy-preserving ML training. Local data stays on device, only gradients shared.
 

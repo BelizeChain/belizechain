@@ -978,8 +978,8 @@ Recent Votes:
 
 ### During Tutorial
 - **Video guide**: https://youtube.com/watch?v=vote-proposals
-- **Live demo**: Try interactive demo at demo.belizechain.org
-- **Forum**: forum.belizechain.org/tutorials/voting
+- **Live demo**: Try interactive demo at demo.belizechain.org — planned, not yet published
+- **Forum**: forum.belizechain.org/tutorials/voting — planned, not yet published
 
 ### Stuck or Have Questions?
 - **Live Chat**: In Maya Wallet - Menu → Help

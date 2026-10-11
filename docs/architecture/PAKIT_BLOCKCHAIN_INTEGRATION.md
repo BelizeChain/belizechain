@@ -169,15 +169,15 @@ from substrateinterface import SubstrateInterface, Keypair
 # Connect to BelizeChain
 substrate = SubstrateInterface(url="ws://localhost:9944")
 
-# Create extrinsic
+# Submit a Merkle storage proof on-chain (StorageProof pallet).
+# NOTE: LandLedger has no `register_document_proof` extrinsic.
 call = substrate.compose_call(
-    call_module='LandLedger',
-    call_function='register_document_proof',
+    call_module='StorageProof',
+    call_function='submit_storage_proof',
     call_params={
-        'content_id': content_id,
-        'ipfs_cid': ipfs_cid,
-        'arweave_tx': arweave_tx,
-        'metadata': json.dumps(metadata)
+        'content_id': content_id,   # 32-byte BLAKE2-256 Merkle root
+        'proof': {'leaf': leaf_hash, 'siblings': merkle_path},
+        'proof_type': 'Merkle',
     }
 )
 
@@ -188,6 +188,11 @@ receipt = substrate.submit_extrinsic(extrinsic, wait_for_inclusion=True)
 ```
 
 ## LandLedger Pallet Requirements
+
+> **Not implemented as described below.** The shipped on-chain storage-proof path is
+> `StorageProof::submit_storage_proof` (`pallets/storage-proof`), keyed by the 32-byte
+> content commitment and accepting Merkle proofs only. The items below are kept as the
+> original design proposal.
 
 ### Proposed Storage Items
 

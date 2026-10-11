@@ -56,9 +56,9 @@ BelizeChain uses a multi-repository architecture for independent development, de
 - **Used By**: All components query blockchain state
 
 ### HTTP REST (Component ↔ Component)
-- **Nawal → Blockchain**: Submit PoUW rewards (POST /staking/report_training)
-- **Kinich → Blockchain**: Submit PQW proofs (POST /consensus/submit_quantum_work)
-- **Pakit → Blockchain**: Register storage proofs (POST /landledger/register_document_proof)
+- **Nawal → Blockchain**: Submit model-training deltas (`Staking.submit_model_delta`)
+- **Kinich → Blockchain**: Register quantum jobs (`Quantum.submit_quantum_job`) and record PQW contributions (`Staking.record_quantum_contribution`)
+- **Pakit → Blockchain**: Submit storage proofs (`StorageProof.submit_storage_proof`)
 - **UI → All**: Query endpoints for dashboard data
 
 ### Message Queue / Event Bus (Planned)

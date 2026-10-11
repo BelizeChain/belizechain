@@ -357,7 +357,7 @@
 2. "Multi-Currency Stablecoin Mechanisms"
 3. "Cross-Chain Interoperability in Practice"
 
-**Access**: https://research.belizechain.org
+**Access**: https://research.belizechain.org — planned, not yet published
 
 ---
 

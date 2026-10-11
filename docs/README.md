@@ -165,7 +165,7 @@ docs/
 
 ### Get Support
 - 📧 Email: support@belizechain.org
-- 💬 Community Forum: https://forum.belizechain.org
+- 💬 Community Forum: https://forum.belizechain.org — planned, not yet published
 - 🐛 Report Bug: https://github.com/belizechain/issues
 - 📞 Phone: +501-CHAIN (24246)
 

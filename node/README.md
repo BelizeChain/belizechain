@@ -164,11 +164,10 @@ Use `--disable-default-bootnode` on both export steps so the CLI does not inject
 | Bootnode | 0 | 500 | ❌ | ❌ | 6s |
 
 ### Mainnet Bootnodes
-```
-/dns4/bootnode1.belizechain.org/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp (Belize City)
-/dns4/bootnode2.belizechain.org/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMuD (San Pedro)
-/dns4/bootnode3.belizechain.org/tcp/30333/p2p/12D3KooWLmrYDLoNTyTYtRdDyZLWDe1paxzxTw5RgjmHLfzW96SX (Belmopan)
-```
+
+> **None published.** `BootstrapNodes::mainnet()` and `BootstrapNodes::testnet()` are both
+> empty — the chain has no public bootnodes yet, so a node must be given a peer explicitly.
+> (The `bootnode1-3.belizechain.org` names were never created.)
 
 ## 🔧 Build Instructions
 
@@ -191,8 +190,8 @@ cargo check -p belizechain-node
 ## 📊 Telemetry
 
 Mainnet and testnet nodes report to:
-- **Endpoint**: `wss://telemetry.belizechain.org:443/submit/`
-- **Dashboard**: `https://telemetry.belizechain.org`
+- **Endpoint**: `wss://telemetry.polkadot.io/submit/` (public Polkadot telemetry; `telemetry.belizechain.org` is planned, not yet published)
+- **Dashboard**: `https://telemetry.polkadot.io/`
 
 Disable telemetry with `--no-telemetry` flag.
 

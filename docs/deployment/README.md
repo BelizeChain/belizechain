@@ -460,7 +460,7 @@ cargo build --release
 | Validator | 4 cores | 16 GB | 500 GB | 10 Mbps | $200-500 |
 | RPC Endpoint | 8 cores | 32 GB | 1 TB | 100 Mbps | $500-1000 |
 
-**Calculator**: https://calculator.belizechain.org
+**Calculator**: https://calculator.belizechain.org — planned, not yet published
 
 ---
 
@@ -558,13 +558,13 @@ max_response_size = 15  # MB
 
 ### Community Support
 - **Discord**: #validators, #node-operators channels
-- **Forum**: forum.belizechain.org/infrastructure
+- **Forum**: forum.belizechain.org/infrastructure — planned, not yet published
 - **Telegram**: @belizechain_validators
 
 ### Professional Support
 - **Email**: infra@belizechain.org
 - **Phone**: +501-CHAIN (24246)
-- **Managed Services**: https://managed.belizechain.org
+- **Managed Services**: https://managed.belizechain.org — planned, not yet published
 
 ---
 

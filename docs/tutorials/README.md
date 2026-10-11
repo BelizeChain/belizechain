@@ -339,8 +339,8 @@ All tutorials also available as videos:
 Try tutorials in safe testnet environment:
 
 - **Testnet Wallet**: https://wallet.belizechain.org
-- **Testnet Explorer**: https://testnet.explorer.belizechain.org
-- **Free Test Tokens**: https://faucet.belizechain.org
+- **Testnet Explorer**: https://explorer.belizechain.org
+- **Free Test Tokens**: https://faucet.belizechain.org — planned, not yet published
 
 **Benefits**:
 - Practice without risk
@@ -356,7 +356,7 @@ Try tutorials in safe testnet environment:
 - **Pause and reread** - No rush!
 - **Check screenshots** - Visual guides included
 - **Try troubleshooting section** - Common issues listed
-- **Ask community** - forum.belizechain.org
+- **Ask community** - forum.belizechain.org — planned, not yet published
 
 ### Stuck?
 - **Live Chat**: In Maya Wallet - Menu → Help

@@ -32,7 +32,7 @@ rm -rf ~/.local/share/belizechain/chains/belizechain/db/
 ./target/release/belizechain-node --chain dev --tmp
 
 # Solution 2: Use archived state snapshot
-wget https://snapshots.belizechain.org/latest.tar.gz
+# snapshots.belizechain.org is planned, not yet published — serve the archive yourself
 tar -xzf latest.tar.gz -C ~/.local/share/belizechain/chains/belizechain/
 
 # Solution 3: Fix permissions
@@ -111,7 +111,7 @@ iostat -x 1
   --sync warp
 
 # Solution 2: Download state snapshot
-wget https://snapshots.belizechain.org/belizechain-state-latest.tar.gz
+# snapshots.belizechain.org is planned, not yet published — serve the archive yourself
 tar -xzf belizechain-state-latest.tar.gz
 ./target/release/belizechain-node --chain belizechain
 

@@ -51,7 +51,7 @@ Let's get your first API payment working!
 
 #### Step 1: Login to Business Dashboard
 
-1. Go to https://business.belizechain.org
+1. Go to https://business.belizechain.org — planned, not yet published
 2. Login with your business account
 3. Click **"Settings"** in the top menu
 4. Click **"API Keys"** in the left sidebar
@@ -255,7 +255,7 @@ curl -X POST http://localhost:3000/api/create-payment \
 ```json
 {
   "paymentId": "pay_1A2B3C4D5E",
-  "paymentUrl": "https://pay.belizechain.org/pay_1A2B3C4D5E",
+  "paymentUrl": "https://<your-pay-host>/pay_1A2B3C4D5E",
   "expiresAt": "2025-10-14T15:30:00Z"
 }
 ```
@@ -707,7 +707,7 @@ Response:
 ```json
 {
   "id": "pay_1A2B3C4D5E",
-  "url": "https://pay.belizechain.org/pay_1A2B3C4D5E",
+  "url": "https://<your-pay-host>/pay_1A2B3C4D5E",
   "status": "created"
 }
 ```
@@ -1043,7 +1043,7 @@ async function createPaymentWithRetry(data, maxRetries = 3) {
 
 View real-time payment data:
 
-### **Business Dashboard**
+### **Business Dashboard** (planned — not yet published)
 
 https://business.belizechain.org
 
@@ -1265,7 +1265,7 @@ await bc.paymentIntents.confirm(intent.id);
    ```
 
 3. **Check webhook logs** in dashboard:
-   - https://business.belizechain.org/webhooks
+   - https://business.belizechain.org/webhooks — planned, not yet published
    - View delivery attempts, errors, response codes
 
 4. **Use ngrok for local testing** (see Testing section).

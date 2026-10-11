@@ -751,7 +751,7 @@ https://explorer.belizechain.org/tx/0x7d4e3f2a...
 
 **API Access**:
 ```
-https://api.explorer.belizechain.org
+https://explorer.belizechain.org
 
 Endpoints:
   /blocks
@@ -896,13 +896,13 @@ Language:
 
 **Tools**:
 - **Blue Hole Explorer**: https://explorer.belizechain.org
-- **API Docs**: https://docs.explorer.belizechain.org
+- **API Docs**: https://belizechain.org/docs
 - **Mobile App**: Search "Blue Hole Explorer" in app stores
 
 **Support**:
 - **Email**: explorer@belizechain.org
 - **Discord**: #explorer-help channel
-- **Forum**: forum.belizechain.org/explorer
+- **Forum**: forum.belizechain.org/explorer — planned, not yet published
 
 ---
 

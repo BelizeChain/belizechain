@@ -640,7 +640,7 @@ amtool alert add alertname=test severity=critical
 ## Support
 
 - **Discord**: https://discord.gg/belizechain (#monitoring channel)
-- **Forum**: https://forum.belizechain.org/c/operations
+- **Forum**: https://forum.belizechain.org/c/operations — planned, not yet published
 - **Email**: support@belizechain.org
 
 ---

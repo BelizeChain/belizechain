@@ -124,54 +124,52 @@ print(is_valid)  # True
 
 ---
 
-## LandLedger Integration
+## Storage-Proof Pallet Integration
 
-### Registering Document Proofs
+### Submitting Storage Proofs
 
 ```rust
-// belizechain/pallets/landledger/src/lib.rs
+// belizechain/pallets/storage-proof/src/lib.rs
+// NOTE: LandLedger has no `register_document_proof` extrinsic. On-chain storage
+// proofs are verified and recorded by the StorageProof pallet.
 
+/// CID commitment -> submitter + height.
 #[pallet::storage]
-pub type DocumentProofs<T: Config> = StorageMap<
-    _,
-    Blake2_128Concat,
-    PropertyId,                    // Property ID
-    (Hash, Vec<Hash>, BlockNumber) // (doc_hash, merkle_proof, registered_at)
->;
+pub type StorageProofs<T: Config> =
+    StorageMap<_, Blake2_128Concat, ContentId, ProofRecord<BlockNumberFor<T>, T::AccountId>>;
 
 #[pallet::call]
 impl<T: Config> Pallet<T> {
-    #[pallet::weight(10_000)]
-    pub fn register_document_proof(
+    #[pallet::call_index(0)]
+    pub fn submit_storage_proof(
         origin: OriginFor<T>,
-        property_id: PropertyId,
-        document_hash: Hash,        // Pakit DAG block hash
-        merkle_proof: Vec<Hash>,    // Merkle path
+        content_id: ContentId,   // 32-byte BLAKE2-256 Merkle root
+        proof: MerkleProof,      // { leaf: [u8;32], siblings: Vec<MerkleStep> }
+        proof_type: ProofType,   // ProofType::Merkle only (Groth16 not accepted)
     ) -> DispatchResult {
-        let who = ensure_signed(origin)?;
+        let submitter = ensure_signed(origin)?;
         
-        // Verify caller owns property
+        // Walk the Merkle path leaf -> root (BLAKE2-256 on each concat).
+        let derived_root = Self::derive_merkle_root(&proof.leaf, &proof.siblings);
+        ensure!(derived_root == content_id, Error::<T>::RootMismatch);
         ensure!(
-            Self::property_owner(&property_id) == Some(who.clone()),
-            Error::<T>::NotPropertyOwner
+            !StorageProofs::<T>::contains_key(derived_root),
+            Error::<T>::ContentAlreadyProven
+        );
+
+        // Record the proof on-chain (immutable).
+        StorageProofs::<T>::insert(
+            derived_root,
+            ProofRecord {
+                submitter: submitter.clone(),
+                submitted_at: frame_system::Pallet::<T>::block_number(),
+                proof_type,
+            }
         );
         
-        // Verify document is in Pakit DAG
-        ensure!(
-            Self::verify_dag_proof(&document_hash, &merkle_proof),
-            Error::<T>::InvalidStorageProof
-        );
-        
-        // Store proof on-chain (immutable!)
-        DocumentProofs::<T>::insert(
-            property_id,
-            (document_hash, merkle_proof, <frame_system::Pallet<T>>::block_number())
-        );
-        
-        Self::deposit_event(Event::DocumentProofRegistered {
-            property_id,
-            document_hash,
-            registrar: who
+        Self::deposit_event(Event::StorageProofAccepted {
+            content_id: derived_root,
+            submitter,
         });
         
         Ok(())
@@ -189,19 +187,18 @@ from substrateinterface import SubstrateInterface
 # Connect to BelizeChain
 substrate = SubstrateInterface(url="<operator-provided-rpc-url>")
 
-# Query document proof for property
-property_id = 12345
+# Query a storage proof by content id
+content_id = "0xa1b2c3d4..."  # 32-byte BLAKE2-256 Merkle root
 proof_data = substrate.query(
-    module='LandLedger',
-    storage_function='DocumentProofs',
-    params=[property_id]
+    module='StorageProof',
+    storage_function='StorageProofs',
+    params=[content_id]
 )
 
 if proof_data:
-    document_hash, merkle_proof, registered_at = proof_data.value
-    print(f"Document hash: {document_hash.hex()}")
-    print(f"Merkle proof: {[h.hex() for h in merkle_proof]}")
-    print(f"Registered at block: {registered_at}")
+    print(f"Submitter: {proof_data.value['submitter']}")
+    print(f"Proof type: {proof_data.value['proof_type']}")
+    print(f"Submitted at block: {proof_data.value['submitted_at']}")
 ```
 
 ---
@@ -217,39 +214,46 @@ if proof_data:
 impl<T: Config> Pallet<T> {
     pub fn activate_hosting(
         origin: OriginFor<T>,
-        domain: Vec<u8>,
-        tier: HostingTier,
-        content_hash: Hash,  // Pakit DAG root hash
-        auto_renew: bool
+        domain_name: Vec<u8>,
+        tier: u8,            // 0=Free, 1=Basic, 2=Pro, 3=Enterprise
+        content_hash: [u8; 32],  // Pakit DAG root hash
+        auto_renew: bool,
     ) -> DispatchResult {
         let who = ensure_signed(origin)?;
-        
+        let domain = Self::validate_domain_name(domain_name)?;
+
+        // Convert tier from u8
+        let hosting_tier = match tier {
+            0 => HostingTier::Free,
+            1 => HostingTier::Basic,
+            2 => HostingTier::Pro,
+            3 => HostingTier::Enterprise,
+            _ => return Err(Error::<T>::InvalidTier.into()),
+        };
+
         // Verify domain ownership
         let domain_record = DomainRegistry::<T>::get(&domain)
             .ok_or(Error::<T>::DomainNotFound)?;
-        
-        ensure!(
-            domain_record.owner == who,
-            Error::<T>::NotDomainOwner
-        );
-        
-        // Store hosting info (includes Pakit DAG hash)
+        ensure!(domain_record.owner == who, Error::<T>::NotDomainOwner);
+
+        // Store hosting info (includes the Pakit DAG hash)
+        let current_block = frame_system::Pallet::<T>::block_number();
         HostedWebsites::<T>::insert(&domain, HostingInfo {
             subscriber: who.clone(),
-            tier,
-            content_hash,  // Points to Pakit DAG!
-            monthly_fee: Self::tier_monthly_fee(&tier),
-            activated_at: now,
-            expires_at: now + T::BlocksPerMonth::get(),
+            tier: hosting_tier,
+            content_hash,  // Points to Pakit DAG
+            activated_at: current_block,
+            last_payment_at: current_block,
+            expires_at: current_block.saturating_add(BLOCKS_PER_MONTH.into()),
+            data_size: 0,
+            monthly_fee: Self::calculate_hosting_fee(&hosting_tier),
             auto_renew,
-            payment_status: PaymentStatus::Active
         });
         
         Self::deposit_event(Event::HostingActivated {
             domain,
-            subscriber: who,
-            content_hash,
-            tier
+            owner: who,
+            tier,
         });
         
         Ok(())
@@ -301,22 +305,22 @@ class StorageProofConnector:
         self.substrate = SubstrateInterface(url=node_url)
         self.keypair = keypair
     
-    def register_proof(
+    def submit_storage_zk_proof(
         self,
-        property_id: int,
-        document_hash: str,
-        merkle_proof: List[str]
+        content_id: str,
+        leaf: str,
+        siblings: List[Dict[str, object]]
     ) -> bool:
-        """Register storage proof on-chain."""
+        """Submit a Merkle storage proof on-chain."""
         
         # Compose extrinsic
         call = self.substrate.compose_call(
-            call_module='LandLedger',
-            call_function='register_document_proof',
+            call_module='StorageProof',
+            call_function='submit_storage_proof',
             call_params={
-                'property_id': property_id,
-                'document_hash': f'0x{document_hash}',
-                'merkle_proof': [f'0x{h}' for h in merkle_proof]
+                'content_id': content_id,
+                'proof': {'leaf': leaf, 'siblings': siblings},
+                'proof_type': 'Merkle',
             }
         )
         
@@ -339,10 +343,10 @@ connector = StorageProofConnector(
     keypair=alice_keypair
 )
 
-success = connector.register_proof(
-    property_id=12345,
-    document_hash=deed_hash,
-    merkle_proof=merkle_path
+success = connector.submit_storage_zk_proof(
+    content_id=content_id,
+    zk_proof={'leaf': leaf_hash, 'siblings': merkle_path},
+    proof_type='merkle'
 )
 ```
 
@@ -369,11 +373,11 @@ success = connector.register_proof(
 ### Gas Costs (BelizeChain)
 
 ```rust
-// Weight calculation for register_document_proof
+// Weight calculation for submit_storage_proof
 impl<T: Config> WeightInfo for SubstrateWeight<T> {
-    fn register_document_proof() -> Weight {
+    fn submit_storage_proof(s: u32) -> Weight {
         Weight::from_parts(50_000_000, 0)
-            .saturating_add(RocksDbWeight::get().reads(2))   // Read property + verify
+            .saturating_add(RocksDbWeight::get().reads(1))   // Read proof record
             .saturating_add(RocksDbWeight::get().writes(1))  // Write proof
     }
 }
@@ -471,15 +475,13 @@ else:
 Monitor storage proof registrations in real-time:
 
 ```python
-def on_proof_registered(event_data):
-    """Callback for DocumentProofRegistered events."""
-    property_id = event_data['property_id']
-    document_hash = event_data['document_hash']
-    registrar = event_data['registrar']
+def on_proof_accepted(event_data):
+    """Callback for StorageProofAccepted events."""
+    content_id = event_data['content_id']
+    submitter = event_data['submitter']
     
-    print(f"📄 New proof: Property {property_id}")
-    print(f"   Hash: {document_hash}")
-    print(f"   By: {registrar}")
+    print(f"📄 New storage proof: {content_id.hex()}")
+    print(f"   By: {submitter}")
 
 # Subscribe to events
 substrate.subscribe_block_headers(on_proof_registered)

@@ -19,8 +19,8 @@ Before installing, ensure you have:
 ## ⚡ Quick Install (Recommended)
 
 ```bash
-# Download and run installation script
-curl -sSf https://get.belizechain.org | bash
+# get.belizechain.org is planned, not yet published — build from source instead
+# (see the Build From Source section below)
 
 # Follow prompts:
 # - Node type: validator / full / archive

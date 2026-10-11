@@ -455,7 +455,7 @@ Validators can submit proposals for:
 ## Support
 
 - **Discord**: https://discord.gg/belizechain (#validators)
-- **Forum**: https://forum.belizechain.org/c/validators
+- **Forum**: https://forum.belizechain.org/c/validators — planned, not yet published
 - **Email**: validators@belizechain.org
 - **Reward Calculator**: https://belizechain.org/calculator
 

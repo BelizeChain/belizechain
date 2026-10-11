@@ -171,10 +171,10 @@
 
 ### Interactive Demos
 - [Try Maya Wallet (Testnet)](https://wallet.belizechain.org)
-- [Explore Test Blockchain](https://testnet.explorer.belizechain.org)
+- [Explore Test Blockchain](https://explorer.belizechain.org)
 
 ### Community
-- [Forum](https://forum.belizechain.org) - Ask questions
+- [Forum](https://forum.belizechain.org) — planned, not yet published - Ask questions
 - [Discord](https://discord.gg/belizechain) - Live chat
 - [Telegram](https://t.me/belizechain) - Announcements
 
@@ -186,7 +186,7 @@
 
 1. **Search the docs**: Use Ctrl+F or Cmd+F
 2. **Check glossary**: [Terms explained](../getting-started/glossary.md)
-3. **Ask community**: [Forum](https://forum.belizechain.org)
+3. **Ask community**: [Forum](https://forum.belizechain.org) — planned, not yet published
 4. **Contact support**: support@belizechain.org
 
 ### Report Documentation Issues

@@ -342,7 +342,7 @@ ws.onmessage = (event) => {
 
 - **Documentation**: https://belizechain.org/docs
 - **GitHub**: https://github.com/BelizeChain/relayer-network
-- **Relayer Dashboard**: https://relayers.belizechain.org
+- **Relayer Dashboard**: https://relayers.belizechain.org — planned, not yet published
 - **Support**: relayers@belizechain.org
 
 ---

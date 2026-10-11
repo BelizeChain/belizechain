@@ -313,7 +313,7 @@ ExecStart=/usr/local/bin/belizechain \
   --chain belizechain \
   --name "YourValidatorName" \
   --validator \
-  --telemetry-url "wss://telemetry.belizechain.org/submit/ 0" \
+  --telemetry-url "wss://telemetry.polkadot.io/submit/ 0" \
   --prometheus-external
 Restart=always
 RestartSec=10
@@ -457,7 +457,7 @@ scp validator@95.216.X.X:~/keystore_backup.tar.gz.gpg ~/
 
 ### Step 1: Access Staking Interface
 
-**Open in browser**: https://staking.belizechain.org
+**Open in browser**: https://staking.belizechain.org — planned, not yet published
 
 **Or use Maya Wallet**:
 - Open Maya Wallet
@@ -594,7 +594,7 @@ Your node will appear in validator list shortly.
 
 ### Dashboard
 
-**Access**: https://telemetry.belizechain.org
+**Access**: https://telemetry.belizechain.org — planned, not yet published; use https://telemetry.polkatdot.io/ meanwhile
 
 **Your validator stats**:
 
@@ -801,7 +801,7 @@ Staking → My Validator → Claim Rewards
 
 ### Upgrade Node (When New Release)
 
-**Announcements**: https://forum.belizechain.org/validators
+**Announcements**: https://forum.belizechain.org/validators — planned, not yet published
 
 **Upgrade process**:
 
@@ -905,7 +905,7 @@ journalctl -u belizechain -n 100 --no-pager
 2. **Lower commission** (attract nominators)
 3. **Improve uptime** (99.9%+ goal)
 4. **Promote yourself**:
-   - Forum: https://forum.belizechain.org/validators
+   - Forum: https://forum.belizechain.org/validators — planned, not yet published
    - Discord: #validators channel
    - Social media
    - Validator profile
@@ -921,14 +921,14 @@ journalctl -u belizechain -n 100 --no-pager
 - [Validator Monitoring](../deployment/monitoring.md)
 
 **Tools**:
-- [Telemetry Dashboard](https://telemetry.belizechain.org)
+- [Telemetry Dashboard](https://telemetry.polkadot.io/)
 - [Block Explorer](https://explorer.belizechain.org)
-- [Validator Leaderboard](https://validators.belizechain.org)
+- [Validator Leaderboard](https://validators.belizechain.org) — planned, not yet published
 - [Monitoring Scripts](https://github.com/belizechain/validator-tools)
 
 **Community**:
 - **Discord**: #validators channel
-- **Forum**: https://forum.belizechain.org/validators
+- **Forum**: https://forum.belizechain.org/validators — planned, not yet published
 - **Telegram**: @BelizeChainValidators
 - **Monthly Calls**: First Wednesday, 8 PM UTC
 

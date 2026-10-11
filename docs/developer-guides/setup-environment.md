@@ -1192,7 +1192,7 @@ docker run hello-world
 ### **Community**
 
 - **BelizeChain Discord**: https://discord.gg/belizechain
-- **Forum**: https://forum.belizechain.org
+- **Forum**: https://forum.belizechain.org — planned, not yet published
 - **Stack Overflow**: Tag `belizechain`
 - **GitHub Discussions**: https://github.com/BelizeChain/belizechain/discussions
 

@@ -390,6 +390,7 @@ Simple HTML button:
   Pay with BelizeChain
 </belizechain-button>
 
+<!-- pay.belizechain.org is planned, not yet published -->
 <script src="https://pay.belizechain.org/button.js"></script>
 ```
 

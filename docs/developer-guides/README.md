@@ -328,7 +328,7 @@ async function getProposals() {
 
 ### Developer Support
 - **Discord**: #developers channel - discord.gg/belizechain
-- **Forum**: forum.belizechain.org/developers
+- **Forum**: forum.belizechain.org/developers — planned, not yet published
 - **GitHub**: github.com/belizechain/belizechain
 - **Email**: dev@belizechain.org
 

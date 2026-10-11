@@ -257,8 +257,8 @@ print(f"  Corrected counts: {corrected_counts}")
 ### 6. Result Verification & PQW Submission
 
 ```python
-# Verify quantum execution and submit proof to blockchain
-from kinich.blockchain.consensus_connector import ConsensusConnector
+# Verify quantum execution and submit the job to the blockchain
+from kinich.blockchain.belizechain_adapter import BelizeChainAdapter
 
 # Calculate circuit complexity score
 complexity_score = calculate_complexity(
@@ -267,29 +267,23 @@ complexity_score = calculate_complexity(
     gate_count=sum(optimized_qc.count_ops().values())
 )
 
-# Generate quantum signature (proof of execution)
-quantum_signature = generate_quantum_signature(
-    circuit=optimized_qc,
-    result=corrected_counts,
-    backend=backend.name,
-    job_id=job_id
-)
-
-# Submit PQW to blockchain
-connector = ConsensusConnector(ws_endpoint='<operator-provided-rpc-url>')
-tx_hash = await connector.submit_quantum_work(
-    validator_id='5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY',
+# Submit the job to the Quantum pallet (real adapter method).
+adapter = BelizeChainAdapter(node_url='<operator-provided-rpc-url>')
+tx_hash = await adapter.submit_quantum_job(
     job_id=job_id,
-    circuit_hash=hash(optimized_qc.qasm()),
-    complexity_score=complexity_score,
     backend=backend.name,
-    quantum_signature=quantum_signature,
-    execution_time=42.5,  # seconds
-    error_mitigation='zne',
-    result_hash=hash(str(corrected_counts))
+    circuit_hash=hashlib.sha256(optimized_qc.qasm().encode()).digest(),
+    num_qubits=optimized_qc.num_qubits,
+    circuit_depth=optimized_qc.depth(),
+    num_shots=shots,
+    backend_index=backend_index,
 )
 
-print(f"PQW submitted: {tx_hash}")
+print(f"Quantum job submitted: {tx_hash}")
+```
+
+> The PQW **reward** is a separate on-chain step: an authorized Oracle operator
+> calls `Staking.record_quantum_contribution` with the job's `accuracy_score`.
 
 # Reward calculation (50-200 DALLA based on complexity)
 base_reward = 50

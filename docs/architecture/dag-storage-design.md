@@ -445,7 +445,7 @@ print(len(orphans))  # 42 blocks need referencing
 | **Verification** | Merkle DAG proofs | Merkle tree proofs |
 | **Compression** | Multi-algo + quantum | None built-in |
 | **Deduplication** | Automatic | Manual chunking |
-| **Blockchain Integration** | Native (LandLedger pallet) | External oracle |
+| **Blockchain Integration** | Native (StorageProof pallet) | External oracle |
 | **Censorship Resistance** | Multiple paths | Single path |
 | **Performance** | Parallel verification | Sequential verification |
 
@@ -459,39 +459,43 @@ print(len(orphans))  # 42 blocks need referencing
 
 ## On-Chain Integration
 
-### Storage Proofs in LandLedger
+### Storage Proofs On-Chain
 
 ```rust
-// belizechain/pallets/landledger/src/lib.rs
+// belizechain/pallets/storage-proof/src/lib.rs
+// NOTE: LandLedger has no `register_document_proof` extrinsic — on-chain
+// storage proofs are verified and recorded by the StorageProof pallet.
 
 #[pallet::call]
 impl<T: Config> Pallet<T> {
-    pub fn register_document_proof(
+    #[pallet::call_index(0)]
+    pub fn submit_storage_proof(
         origin: OriginFor<T>,
-        property_id: PropertyId,
-        document_hash: Hash,  // DAG block hash
-        merkle_proof: Vec<Hash>,  // Merkle path
+        content_id: ContentId,   // 32-byte BLAKE2-256 Merkle root (= DAG root)
+        proof: MerkleProof,      // { leaf: [u8;32], siblings: Vec<MerkleStep> }
+        proof_type: ProofType,   // ProofType::Merkle only
     ) -> DispatchResult {
-        let who = ensure_signed(origin)?;
-        
-        // Verify document is in Pakit DAG
-        ensure!(
-            Self::verify_dag_proof(&document_hash, &merkle_proof),
-            Error::<T>::InvalidStorageProof
-        );
-        
+        let submitter = ensure_signed(origin)?;
+
+        // Verify the Merkle path against the committed root
+        let derived_root = Self::derive_merkle_root(&proof.leaf, &proof.siblings);
+        ensure!(derived_root == content_id, Error::<T>::RootMismatch);
+
         // Store proof on-chain (immutable record)
-        DocumentProofs::<T>::insert(
-            property_id,
-            (document_hash, merkle_proof, Self::block_number())
+        StorageProofs::<T>::insert(
+            derived_root,
+            ProofRecord {
+                submitter: submitter.clone(),
+                submitted_at: frame_system::Pallet::<T>::block_number(),
+                proof_type,
+            }
         );
-        
-        Self::deposit_event(Event::DocumentProofRegistered {
-            property_id,
-            document_hash,
-            registrar: who
+
+        Self::deposit_event(Event::StorageProofAccepted {
+            content_id: derived_root,
+            submitter,
         });
-        
+
         Ok(())
     }
 }

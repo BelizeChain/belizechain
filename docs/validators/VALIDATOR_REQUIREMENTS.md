@@ -445,7 +445,7 @@ Validators may be removed for:
 
 ### Community
 - **Discord**: https://discord.gg/belizechain (#validators channel)
-- **Forum**: https://forum.belizechain.org/c/validators
+- **Forum**: https://forum.belizechain.org/c/validators — planned, not yet published
 - **Telegram**: @BelizeChainValidators
 
 ### Technical Support

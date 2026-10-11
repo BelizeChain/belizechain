@@ -378,7 +378,7 @@ Testing: Audited by 3 security firms
 5. ✅ Have I discussed with community?
 
 **Get Feedback First**:
-- Post in forum: forum.belizechain.org
+- Post in forum: forum.belizechain.org — planned, not yet published
 - Discuss in Discord: #governance channel
 - Talk to validators
 - Refine your idea
@@ -515,7 +515,7 @@ Vote YES: https://portal.belizechain.org
 ```
 
 **2. Post in Forum**
-- forum.belizechain.org/proposals
+- forum.belizechain.org/proposals — planned, not yet published
 - Explain reasoning
 - Answer questions
 - Address concerns
@@ -930,7 +930,7 @@ Risk: Low (tested extensively)
 ### Get Help
 
 **Discord**: #governance channel - Most active!  
-**Forum**: forum.belizechain.org/governance  
+**Forum**: forum.belizechain.org/governance — planned, not yet published  
 **Email**: governance@belizechain.org  
 **Phone**: +501-CHAIN (24246), option 3
 
@@ -957,8 +957,8 @@ Risk: Low (tested extensively)
 
 ### External Resources
 - **Governance Dashboard**: https://portal.belizechain.org
-- **Proposal Archive**: https://proposals.belizechain.org
-- **Voting Statistics**: https://stats.belizechain.org/governance
+- **Proposal Archive**: https://proposals.belizechain.org — planned, not yet published
+- **Voting Statistics**: https://stats.belizechain.org/governance — planned, not yet published
 
 ---
 

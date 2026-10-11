@@ -586,7 +586,7 @@ Maria,5Grwv...,5000,DALLA,Contractor
 **Try this on testnet first** (free test tokens):
 
 1. Get testnet Maya Wallet: https://wallet.belizechain.org
-2. Get free test tokens: https://faucet.belizechain.org
+2. Get free test tokens: faucet.belizechain.org — planned, not yet published
 3. Create CSV with 5 test addresses
 4. Send batch payment
 5. Verify all succeeded
@@ -600,8 +600,8 @@ Maria,5Grwv...,5000,DALLA,Contractor
 
 ### During Tutorial
 - **Video guide**: https://youtube.com/watch?v=batch-payments
-- **Live demo**: Try interactive demo at demo.belizechain.org
-- **Forum**: forum.belizechain.org/tutorials/batch-payments
+- **Live demo**: Try interactive demo at demo.belizechain.org — planned, not yet published
+- **Forum**: forum.belizechain.org/tutorials/batch-payments — planned, not yet published
 
 ### Stuck or Have Questions?
 - **Live Chat**: In Maya Wallet - Menu → Help

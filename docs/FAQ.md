@@ -38,7 +38,7 @@ No. BelizeChain is built on **Substrate** (same framework as Polkadot) but is a 
 ### How do I get DALLA or bBZD?
 
 **DALLA**:
-- Testnet faucet: https://faucet.belizechain.org (1,000 DALLA/claim)
+- Testnet faucet: https://faucet.belizechain.org — planned, not yet published (1,000 DALLA/claim)
 - Mainnet: Buy on exchanges, earn through staking/PoUW, receive tourism cashback
 
 **bBZD**:

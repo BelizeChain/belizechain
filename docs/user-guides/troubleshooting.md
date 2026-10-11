@@ -619,7 +619,7 @@ See [Installation Issues](#installation-issues) → Mac section
 - 📍 Orange Walk: Main Street, next to Scotia Bank (9am-4pm)
 
 **Community**:
-- Forum: forum.belizechain.org
+- Forum: forum.belizechain.org — planned, not yet published
 - Discord: discord.gg/belizechain
 - Telegram: t.me/belizechain
 

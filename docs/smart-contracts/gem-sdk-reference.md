@@ -332,7 +332,7 @@ await sdk.nftMint(
     beliNftContract,
     alice,
     bob.address,
-    'https://nft.belizechain.org/metadata/1.json'
+    'https://example.com/metadata/1.json'
 );
 ```
 

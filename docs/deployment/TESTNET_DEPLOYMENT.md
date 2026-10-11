@@ -233,7 +233,7 @@ belizechain-node --chain belizechain-testnet-raw.json
     "<bootnode-multiaddr-from-published-spec-2>"
   ],
   "telemetryEndpoints": [
-    ["wss://telemetry.belizechain.org/submit/", 0]
+    ["wss://telemetry.polkadot.io/submit/", 0]
   ],
   "protocolId": "bzc-testnet",
   "properties": {
@@ -320,7 +320,7 @@ ExecStart=/usr/local/bin/belizechain-node \
     --rpc-external \
     --ws-external \
     --pruning archive \
-    --telemetry-url "wss://telemetry.belizechain.org/submit/ 0"
+    --telemetry-url "wss://telemetry.polkadot.io/submit/ 0"
 
 Restart=always
 RestartSec=10
@@ -662,7 +662,7 @@ curl -H "Content-Type: application/json" \
 ## Support
 
 - **Discord**: https://discord.gg/belizechain
-- **Forum**: https://forum.belizechain.org
+- **Forum**: https://forum.belizechain.org — planned, not yet published
 - **Email**: validators@belizechain.org
 - **Emergency**: emergency@belizechain.org
 

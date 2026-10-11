@@ -1358,7 +1358,7 @@ sudo nano /etc/nginx/sites-available/community-voting
 # Add:
 server {
     listen 80;
-    server_name voting.belizechain.org;
+    server_name vote.example.com;   # your own domain
     
     location / {
         proxy_pass http://localhost:3000;
@@ -1376,7 +1376,7 @@ sudo nginx -t
 sudo systemctl reload nginx
 
 # Setup SSL with Let's Encrypt
-sudo certbot --nginx -d voting.belizechain.org
+sudo certbot --nginx -d vote.example.com   # your own domain
 ```
 
 ---
@@ -1524,7 +1524,7 @@ pnpm install
 
 **Join Community**:
 - Discord: https://discord.gg/belizechain
-- Forum: https://forum.belizechain.org
+- Forum: https://forum.belizechain.org — planned, not yet published
 - GitHub: https://github.com/BelizeChain/belizechain
 
 ---

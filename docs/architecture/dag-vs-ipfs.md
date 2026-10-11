@@ -234,24 +234,34 @@ const decompressed = zlib.gunzipSync(retrieved);
 ### Pakit: Native Integration
 
 ```rust
-// belizechain/pallets/landledger/src/lib.rs
+// belizechain/pallets/storage-proof/src/lib.rs
+// NOTE: LandLedger has no `register_document_proof` extrinsic — the on-chain
+// verification path is the StorageProof pallet.
 
 #[pallet::call]
 impl<T: Config> Pallet<T> {
-    pub fn register_document_proof(
+    #[pallet::call_index(0)]
+    pub fn submit_storage_proof(
         origin: OriginFor<T>,
-        property_id: PropertyId,
-        document_hash: Hash,  // Pakit DAG block hash
-        merkle_proof: Vec<Hash>,  // Pakit Merkle proof
+        content_id: ContentId,   // 32-byte BLAKE2-256 Merkle root
+        proof: MerkleProof,      // { leaf: [u8;32], siblings: Vec<MerkleStep> }
+        proof_type: ProofType,   // ProofType::Merkle only
     ) -> DispatchResult {
-        // Verify with Pakit node
-        ensure!(
-            Self::verify_dag_proof(&document_hash, &merkle_proof),
-            Error::<T>::InvalidStorageProof
-        );
+        let submitter = ensure_signed(origin)?;
+
+        // Verify the Merkle path against the committed root
+        let derived_root = Self::derive_merkle_root(&proof.leaf, &proof.siblings);
+        ensure!(derived_root == content_id, Error::<T>::RootMismatch);
         
         // Store on-chain
-        DocumentProofs::<T>::insert(property_id, document_hash);
+        StorageProofs::<T>::insert(
+            derived_root,
+            ProofRecord {
+                submitter: submitter.clone(),
+                submitted_at: frame_system::Pallet::<T>::block_number(),
+                proof_type,
+            }
+        );
         
         Ok(())
     }
@@ -269,11 +279,12 @@ impl<T: Config> Pallet<T> {
 ### IPFS: External Oracle Required
 
 ```rust
-// Hypothetical IPFS integration
+// Hypothetical IPFS integration — this extrinsic does not exist; it illustrates
+// why an external oracle would be required.
 
 #[pallet::call]
 impl<T: Config> Pallet<T> {
-    pub fn register_document_proof(
+    pub fn hypothetical_register_ipfs_document(
         origin: OriginFor<T>,
         property_id: PropertyId,
         ipfs_cid: Vec<u8>,  // IPFS CID
@@ -447,15 +458,15 @@ await ipfs.pin.add(cid);
 # Store property deed
 deed_hash = pakit.store(deed_pdf)
 
-# Register on blockchain (native)
-blockchain.landledger.register_document_proof(
-    property_id=12345,
-    document_hash=deed_hash,
-    merkle_proof=pakit.get_merkle_proof(deed_hash)
+# Submit a storage proof on-chain (native)
+blockchain.storage_proof.submit_storage_proof(
+    content_id=pakit.merkle_root(deed_hash),
+    proof=pakit.get_merkle_proof(deed_hash),
+    proof_type='Merkle'
 )
 
-# Verify (trustless, on-chain)
-is_valid = blockchain.landledger.verify_proof(property_id)
+# Query the recorded proof (trustless, on-chain)
+record = blockchain.query('StorageProof', 'StorageProofs', [content_id])
 ```
 
 **IPFS Approach**:

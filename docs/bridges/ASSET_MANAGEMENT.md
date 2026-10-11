@@ -464,8 +464,8 @@ await sdk.governance.propose({
 ## Resources
 
 - **Documentation**: https://belizechain.org/docs
-- **Asset Registry**: https://assets.belizechain.org
-- **Bridge UI**: https://bridge.belizechain.org
+- **Asset Registry**: https://assets.belizechain.org — planned, not yet published
+- **Bridge UI**: https://bridge.belizechain.org — planned, not yet published
 - **Support**: bridges@belizechain.org
 
 ---

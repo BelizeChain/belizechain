@@ -519,41 +519,15 @@ await api.queryMulti([
 
 #### Custom Pallet Methods
 
-**Economy Pallet**:
+> **Not implemented.** The node exposes exactly ONE custom RPC method,
+> `belizechain_getChainInfo`. There are no `economy.*`, `payroll.*`, `nawal.*`
+> or `kinich.*` RPC namespaces — pallet state is read through `state_getStorage`
+> / `api.query.<pallet>.<item>`, and the sibling-service APIs are the
+> nginx-proxied HTTP endpoints (`/api/nawal`, `/api/kinich`, `/api/pakit`).
+
 ```javascript
-// Get exchange rate (Oracle-based for merchant verification, NOT for bBZD peg)
-const rate = await api.rpc.economy.getExchangeRate('DALLA', 'USD');
-
-// Get treasury balance
-const balance = await api.rpc.economy.treasuryBalance();
-```
-
-**Payroll Pallet**:
-```javascript
-// Generate payslip
-const payslip = await api.rpc.payroll.generatePayslip({
-  employerId: 'employer-123',
-  employeeId: 'BZ-ID-12345',
-  period: '2026-01'
-});
-```
-
-**Nawal Pallet**:
-```javascript
-// Get training round status
-const round = await api.rpc.nawal.getTrainingRound(42);
-
-// Get PoUW score
-const score = await api.rpc.nawal.getPoUWScore(validatorAddress, 42);
-```
-
-**Kinich Pallet**:
-```javascript
-// Get quantum job status
-const job = await api.rpc.kinich.getQuantumJob('kinich-job-a3f7b2c9');
-
-// Get PQW score
-const score = await api.rpc.kinich.getPQWScore(validatorAddress);
+// The only custom RPC the node registers:
+const info = await api.rpc.belizechain.getChainInfo();
 ```
 
 ## GraphQL API

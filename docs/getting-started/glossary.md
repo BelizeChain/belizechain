@@ -92,7 +92,8 @@ Small amount paid to send transactions. On BelizeChain: typically $0.01 (one cen
 - **Comparison**: Banks charge $5-25, BelizeChain charges $0.01
 
 ### Faucet
-Free DALLA dispenser for testing. Visit faucet.belizechain.org to get test tokens.
+Free DALLA dispenser for testing. Visit faucet.belizechain.org to get test tokens
+(planned — not yet published).
 
 ---
 
@@ -370,7 +371,7 @@ Format for blockchain code. BelizeChain runtime compiles to WASM.
 **Get help:**
 - 📞 Call: +501-CHAIN (24246)
 - 📧 Email: support@belizechain.org
-- 💬 Forum: forum.belizechain.org
+- 💬 Forum: forum.belizechain.org — planned, not yet published
 - 🏢 Visit: BelizeChain Support Center
 
 **Remember**: You don't need to know all these terms to use BelizeChain! Just like you don't need to know how a car engine works to drive. 🚗

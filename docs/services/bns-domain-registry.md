@@ -30,7 +30,7 @@ Before registering, verify the domain is available:
 
 **Via UI:**
 ```
-1. Visit https://bns.belizechain.org
+1. Visit https://bns.belizechain.org — planned, not yet published
 2. Enter desired domain name
 3. Click "Check Availability"
 4. View results and pricing
@@ -98,7 +98,7 @@ console.log('KYC Level:', kycLevel.level);
 **Via Web UI (Recommended for Beginners):**
 
 ```
-1. Visit https://bns.belizechain.org/register
+1. Visit https://bns.belizechain.org/register — planned, not yet published
 2. Enter domain name (without .bz)
 3. Select domain tier:
    - Standard (100 DALLA)
@@ -517,7 +517,7 @@ await sdk.api.tx.utility.batch(calls).signAndSend(alice, ({ status }) => {
 
 ## Support
 
-- **Domain Search**: https://bns.belizechain.org
+- **Domain Search**: https://bns.belizechain.org — planned, not yet published
 - **Discord**: #bns-support channel
 - **Troubleshooting**: https://belizechain.org/docs/belizechain/bns
 - **Report Issues**: security@belizechain.org
