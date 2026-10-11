@@ -29,12 +29,17 @@ Comprehensive guide to BelizeChain's regulatory compliance framework.
 
 **Verification time:** Instant (automated)
 
+KYC is **not** self-service: there is no `compliance.submitKycApplication`. The
+level is set by an authorised issuer holding `ComplianceOrigin` (FSC officers and
+delegated issuers), not by the applicant.
+
 ```javascript
-// Apply for Basic KYC
-await api.tx.compliance.submitKycApplication(
-  'Basic',
-  [emailProofHash, phoneProofHash],  // Document hashes
-).signAndSend(applicant);
+// Issuer-side: raise the account's verification level and risk rating
+await api.tx.compliance.verifyAccount(
+  applicant,
+  1,  // verificationLevel: 1 = Basic (0 None, 2 Standard, 3 Enhanced)
+  0   // riskLevel: 0 = Low (1 Medium, 2 High, 3 Prohibited)
+).signAndSend(issuer);
 ```
 
 ### Level 2: Verified
@@ -54,15 +59,17 @@ await api.tx.compliance.submitKycApplication(
 **Verification time:** 1-3 business days
 
 ```typescript
-// Apply for Verified KYC
+// Upload the evidence off-chain (Pakit), then have an issuer set the level.
 const idHash = await uploadDocumentToPakit(passport);
 const addressProofHash = await uploadDocumentToPakit(utilityBill);
 const selfieHash = await uploadDocumentToPakit(selfieWithId);
 
-await api.tx.compliance.submitKycApplication(
-  'Verified',
-  [idHash, addressProofHash, selfieHash]
-).signAndSend(applicant);
+// Issuer-side only — the applicant cannot self-raise their level.
+await api.tx.compliance.verifyAccount(
+  applicant,
+  2,  // Standard (L2)
+  0   // Low risk
+).signAndSend(issuer);
 ```
 
 ### Level 3: Enhanced
@@ -188,25 +195,25 @@ pub fn check_cross_border_transfer(
 **FSC Officers** review flagged accounts:
 
 ```javascript
-// FSC officer reviews flagged account
-const flaggedAccounts = await api.query.compliance.flaggedAccounts.entries();
+// FSC officer reviews flagged accounts. There is no `flaggedAccounts` map —
+// reports live in `suspiciousActivities`, keyed by account.
+const flaggedAccounts = await api.query.compliance.suspiciousActivities.entries();
 
-for (const [key, flagData] of flaggedAccounts) {
+for (const [key, reports] of flaggedAccounts) {
   const account = key.args[0].toString();
-  const { reason, flagged_at, evidence } = flagData.unwrap();
-  
-  console.log(`Account: ${account}`);
-  console.log(`Reason: ${reason}`);
-  console.log(`Flagged: ${new Date(flagged_at * 1000).toISOString()}`);
+  for (const report of reports) {
+    console.log(`Account: ${account}`);
+    console.log(`Report: ${report}`);
+  }
   
   // FSC officer investigates and approves/rejects
   if (investigation_clears_account(account)) {
-    await api.tx.compliance.clearFlag(account).signAndSend(fscOfficer);
+    // There is no `clearFlag`; restrictions are lifted explicitly.
+    await api.tx.compliance.liftRestriction(account).signAndSend(fscOfficer);
   } else {
-    await api.tx.compliance.freezeAccount(
+    await api.tx.compliance.restrictAccount(
       account,
-      'PERMANENT',
-      'AML violation confirmed'
+      'AML violation confirmed'  // reason (bytes, max 256)
     ).signAndSend(fscOfficer);
   }
 }
@@ -294,14 +301,15 @@ Off-chain: Encrypted database (AES-256)
 4. Transaction history remains (blockchain immutability)
 
 ```javascript
-// Request data deletion (GDPR Article 17)
-await api.tx.identity.requestDeletion().signAndSend(user);
-
-// FSC processes after 7 years
-await api.tx.compliance.deletePii(
-  userAccount,
-  deletionProof  // Proof of 7-year retention completion
-).signAndSend(fscOfficer);
+// There is no identity.requestDeletion, no compliance.deletePii, and no
+// on-chain "deleted" account flag. The chain holds no PII to delete — the
+// identity pallet stores salted hashes and an optional DID-doc CID, never
+// personal data. Erasure is therefore an off-chain operation against the
+// issuer's own records, and it cannot touch chain history.
+//
+// The only on-chain right of erasure available today is withdrawing an
+// attestation, which an issuer performs with `identity.revoke`.
+await api.tx.identity.revoke(target).signAndSend(issuer);
 ```
 
 **Limitations:**
@@ -311,13 +319,20 @@ await api.tx.compliance.deletePii(
 
 ---
 
-## Compliance Reporting
-
 ### Quarterly Reports (Public)
 
-**Published on-chain:**
+**Not published on-chain.** There is no `compliance.publishQuarterlyReport`
+extrinsic. Regulatory reporting is an off-chain statutory obligation: the report
+is produced from indexed chain data plus `compliance.auditRecords`, then filed
+with the FSC directly. The `report` object below is the *shape* of that filing,
+not a payload submitted to the chain.
+
 ```javascript
-// Quarterly compliance report
+// On-chain counters you can read to build the report:
+const stats = await api.query.compliance.complianceStats();
+const audit = await api.query.compliance.auditRecords.entries();
+
+// Quarterly compliance report (filed off-chain with the FSC)
 const report = {
   quarter: "Q1 2026",
   kyc_applications: {
@@ -343,10 +358,6 @@ const report = {
     fines_imposed: 50_000 * DALLA
   }
 };
-
-await api.tx.compliance.publishQuarterlyReport(
-  JSON.stringify(report)
-).signAndSend(fscDirector);
 ```
 
 ### Annual Audit

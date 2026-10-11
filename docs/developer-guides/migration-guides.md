@@ -141,12 +141,15 @@ await BridgeContract.methods.lockTokens(
 
 // Wait for 12 block confirmations (~3 minutes)
 
-// BelizeChain side: Mint wrapped tokens
+// BelizeChain side: credit the incoming unlock
 const api = await ApiPromise.create({ provider });
-const bridge = api.tx.interoperability.mintWrappedToken(
-  'ETHEREUM',
+// sourceChainIndex (u8), sourceTxHash, recipient, amount, assetIndex (u8)
+const bridge = api.tx.interoperability.submitIncomingUnlock(
+  0,                   // sourceChainIndex — see ChainConfigurations
   ethereumTxHash,
-  '1000000000000000000'
+  belizechainAccount,
+  1_000_000_000_000_000_000n,
+  0                    // assetIndex
 );
 
 await bridge.signAndSend(belizechainAccount);
@@ -425,28 +428,31 @@ impl OnRuntimeUpgrade for Pallet<T> {
 
 ### Breaking API Changes
 
-**v1.0 → v2.0 Breaking Changes**:
-
-| Category | v1.0 | v2.0 | Migration |
-|----------|------|------|-----------|
-| Transfer | `economy.transfer(to, amount)` | `economy.transfer(to, amount, currency)` | Add currency parameter |
-| KYC | `identity.setKycLevel(level)` | `identity.updateKyc(data)` | Use structured data object |
-| Staking | `staking.bond(amount)` | `staking.bond(amount, payee)` | Specify reward destination |
+> **There is no v1.0 of BelizeChain.** The table that used to sit here described a
+> `v1.0 → v2.0` migration for calls (`economy.transfer`, `identity.setKycLevel`,
+> `staking.bond`) that have never existed on this chain. It has been removed
+> rather than corrected, because there is no migration to describe.
+>
+> Parameters **do** change between runtime specs — `spec_version` is currently
+> versioned via hot `set_code` upgrades. For parameter-level changes, read the
+> pallet source and the runtime's `construct_runtime!` block; the metadata served
+> over RPC is the authoritative interface for any given spec.
 
 **Migration script**:
-```javascript
-// Update all transfer calls
-const oldCalls = await api.query.system.events();
 
-for (const record of oldCalls) {
-  if (record.event.method === 'transfer' && record.event.section === 'economy') {
-    // Old: transfer(to, amount)
-    // New: transfer(to, amount, 'DALLA')
-    
-    const [to, amount] = record.event.data;
-    
-    // Resubmit with currency parameter
-    await api.tx.economy.transfer(to, amount, 'DALLA').signAndSend(account);
+When a call's parameters change between specs, replay is not automatic. Filter
+`system.events` for the affected section/method and resubmit with the new
+signature the metadata reports:
+
+```javascript
+// Example shape only — substitute the section/method/signature that actually
+// changed in the spec you are migrating to.
+const events = await api.query.system.events();
+
+for (const record of events) {
+  if (record.event.section === '<pallet>' && record.event.method === '<event>') {
+    const [who, amount] = record.event.data;
+    await api.tx.<pallet>.<newCall>(who, amount).signAndSend(account);
   }
 }
 ```

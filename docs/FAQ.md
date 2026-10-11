@@ -173,13 +173,14 @@ Rewards distributed every era (~24 hours).
 3. **Programmatically**:
 
 ```javascript
-const vote = api.tx.governance.vote(
+// VoteChoice indices: 0 = Aye, 1 = Nay, 2 = Abstain. Voting weight comes from
+// your token lock, not from an amount you pass here — conviction sets the lock:
+// 0 = none, 1-6 = locked, rising weight with longer lock.
+const vote = api.tx.governance.castVote(
   proposalId,
-  {
-    aye: {  // or 'nay'
-      conviction: 'Locked2x',  // Lock tokens for 2x voting power
-      amount: 100_000_000_000_000n  // 100 DALLA
-    }
+  0,  // Aye
+  2   // conviction
+);
   }
 );
 

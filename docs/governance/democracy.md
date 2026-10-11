@@ -199,13 +199,13 @@ Conviction multipliers: 1x to 6x
 ```
 
 ```typescript
-// Vote on proposal
-await api.tx.governance.vote(
+// Vote on proposal. Conviction is an integer (0-6); there are no named locks.
+// Voting weight follows your own balance — no amount is passed.
+await api.tx.governance.castVote(
   proposalId,
-  {
-    aye: true,
-    conviction: 'Locked4x'  // 28-day lock for 4x voting power
-  }
+  0,  // Aye
+  4   // conviction
+).signAndSend(voter);
 ).signAndSend(voter);
 ```
 

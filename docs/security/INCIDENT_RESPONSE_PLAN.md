@@ -680,15 +680,30 @@ BelizeChain
 
 2. **Emergency Pause (3 minutes)**
    ```bash
-   # Activate emergency pause (sudo required)
+   # There is no economy.emergencyPause / economy.isPaused. The real levers:
+   #
+   # a) Revoke minting rights from every authorized minter
    polkadot-js-api tx.sudo.sudo(
-     api.tx.economy.emergencyPause()
+     api.tx.economy.setMinterAuthorization(<minter>, false)
    ).signAndSend(sudoKey)
-   
-   # Verify pause active
-   polkadot-js-api query.economy.isPaused
-   # Should return: true
+
+   # b) Freeze identity issuance (stops new BelizeIDs / attestations)
+   polkadot-js-api tx.sudo.sudo(
+     api.tx.identity.setPause(true)
+   ).signAndSend(sudoKey)
+
+   # c) Halt DEX trading
+   polkadot-js-api tx.sudo.sudo(
+     api.tx.belizex.pauseGlobal()
+   ).signAndSend(sudoKey)
+
+   # Verify minter is revoked
+   polkadot-js-api query.economy.authorizedMinters <minter>
+   # Should return: false
    ```
+
+   Note: `economy.mintingHalted` is **not** settable by hand — the pallet sets it
+   automatically in `on_initialize` when bBZD supply exceeds reserves.
 
 3. **Freeze Attacker Accounts (5 minutes)**
    ```bash
@@ -719,11 +734,21 @@ BelizeChain
 
 6. **Restore Services (15 minutes)**
    ```bash
-   # Unpause Economy pallet
+   # Re-grant minting rights to the authorized minter
    polkadot-js-api tx.sudo.sudo(
-     api.tx.economy.resume()
+     api.tx.economy.setMinterAuthorization(<minter>, true)
    ).signAndSend(sudoKey)
-   
+
+   # Lift the identity freeze
+   polkadot-js-api tx.sudo.sudo(
+     api.tx.identity.setPause(false)
+   ).signAndSend(sudoKey)
+
+   # Resume DEX trading
+   polkadot-js-api tx.sudo.sudo(
+     api.tx.belizex.resumeGlobal()
+   ).signAndSend(sudoKey)
+
    # Monitor for exploit recurrence
    tail -f /var/log/substrate/node.log | grep "Treasury"
    ```
@@ -754,8 +779,14 @@ BelizeChain
      --rpc-url $ETH_RPC
    
    # Pause BelizeChain bridge pallet
+   # There is no interoperability.pauseBridge(chain). Disable the chain config:
    polkadot-js-api tx.sudo.sudo(
-     api.tx.interoperability.pauseBridge("Ethereum")
+     api.tx.interoperability.updateBridgeConfig(
+       0,      # chainIndex (u8)
+       false,  # enabled
+       0,      # feeRate
+       0       # maxAmount
+     )
    ).signAndSend(sudoKey)
    ```
 
@@ -813,11 +844,16 @@ BelizeChain
 6. **Resume Bridge (30 minutes)**
    ```bash
    # Verify fix deployed
-   # Re-enable bridge
+   # Re-enable the chain config
    polkadot-js-api tx.sudo.sudo(
-     api.tx.interoperability.resumeBridge("Ethereum")
+     api.tx.interoperability.updateBridgeConfig(
+       0,      # chainIndex (u8)
+       true,   # enabled
+       <feeRate>,
+       <maxAmount>
+     )
    ).signAndSend(sudoKey)
-   
+
    # Monitor for anomalies (24 hours)
    ```
 

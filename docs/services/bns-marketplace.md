@@ -56,11 +56,11 @@ async function listDomain() {
     const price = 1000 * 1e12;  // Convert to planck
     const duration = 30 * 24 * 600;  // 30 days in blocks (6s blocks)
     
-    await sdk.api.tx.bns.listForSale(
+    await sdk.api.tx.bns.listDomain(
         'alice',      // Domain name (without .bz)
         price,        // Asking price
-        duration,     // Listing duration (blocks)
-        null          // Minimum offer (null = no offers)
+        null,         // Minimum offer (null = no offers)
+        duration      // Listing duration (blocks)
     ).signAndSend(alice, ({ status, events }) => {
         if (status.isInBlock) {
             console.log('✅ Domain listed for sale!');
@@ -299,13 +299,14 @@ console.log('Recent Sales:', sales);
 
 ```javascript
 // Cancel existing listing
-await sdk.api.tx.bns.delistDomain('alice').signAndSend(alice);
+await sdk.api.tx.bns.unlistDomain('alice').signAndSend(alice);
 
 // Create new listing with updated price
-await sdk.api.tx.bns.listForSale(
+await sdk.api.tx.bns.listDomain(
     'alice',
-    1200 * 1e12,  // New price: 1,200 DALLA
-    30 * 24 * 600
+    1200 * 1e12,   // New price: 1,200 DALLA
+    null,          // Minimum offer
+    30 * 24 * 600  // Duration (blocks)
 ).signAndSend(alice);
 ```
 
@@ -323,8 +324,8 @@ await sdk.api.tx.bns.listForSale(
 
 **Via SDK:**
 ```javascript
-// Delist domain
-await sdk.api.tx.bns.delistDomain(
+// Remove the listing
+await sdk.api.tx.bns.unlistDomain(
     'alice'  // Domain name
 ).signAndSend(alice);
 
@@ -401,9 +402,10 @@ Sale: 925 DALLA (87.875 to seller, 46.25 fee)
 const totalListings = await sdk.api.query.bns.domainListings.entries();
 console.log('Active Listings:', totalListings.length);
 
-// Total marketplace revenue
-const totalRevenue = await sdk.api.query.bns.totalMarketplaceRevenue();
-console.log('Total Revenue:', (totalRevenue.toNumber() / 1e12).toFixed(2), 'DALLA');
+// Total marketplace revenue is NOT tracked on-chain: there is no
+// `totalMarketplaceRevenue` storage item. Sum the fee fields from
+// `DomainSold` events instead.
+// const totalRevenue = await sdk.api.query.bns.totalMarketplaceRevenue();
 
 // Average sale price (calculate from events)
 const avgPrice = sales.reduce((sum, s) => sum + s.price, 0) / sales.length;

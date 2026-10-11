@@ -94,16 +94,18 @@ Annual PQW bonus: ~78K DALLA
 
 ### Nominator Rewards
 
-**Nominate validators instead of running your own node:**
+**Join the validator set yourself:**
 
 ```javascript
-// Nominate up to 16 validators
-await api.tx.staking.nominate([
-  validator1Address,
-  validator2Address,
-  validator3Address,
-  // ... up to 16 total
-]).signAndSend(nominatorAccount);
+// BelizeChain staking has no nominator role — `staking.nominate` does not exist.
+// You either run a validator (joinValidators) or you do not stake. Voting-power
+// delegation is a governance feature (see Delegation Incentives below), but it
+// does not share staking rewards.
+await api.tx.staking.joinValidators(
+  10_000n * 10n ** 12n,  // stake
+  100,                   // computeCapacity
+  'Belize City'          // location
+).signAndSend(operatorAccount);
 ```
 
 **Returns:**
@@ -160,18 +162,18 @@ await api.tx.balances.transferKeepAlive(
 
 **Merchant Perspective:**
 ```javascript
-// Register as verified tourism merchant
-await api.tx.economy.registerMerchant(
-  'Hotels',  // Category
-  2  // KYC level (Verified required)
-).signAndSend(merchantAccount);
-
-// Oracle pallet verifies merchant (NOT price feed)
-await api.tx.oracle.registerMerchantVerification(
+// Merchant verification lives entirely in the Oracle pallet — Economy has no
+// merchant registry, and there is no self-registration. An oracle operator
+// verifies the merchant on their behalf.
+await api.tx.oracle.verifyMerchant(
   merchantAccount,
-  'Hotels',
-  verificationProof
-).signAndSend(verifierAccount);
+  0,               // category (u8)
+  certification,   // BoundedVec<u8>
+  license,         // BoundedVec<u8>
+  null             // location: Option<(i32, i32)>
+).signAndSend(operatorAccount);
+
+// Reads back as: api.query.oracle.merchantCategories(merchantAccount)
 ```
 
 ### Cashback Economics
@@ -267,10 +269,11 @@ Small, but encourages participation!
 
 **Delegate voting power to expert:**
 ```javascript
-// Delegate 10,000 DALLA voting power
-await api.tx.governance.delegate(
+// Governance delegation carries no amount — your whole voting weight moves.
+// `expiresAt` is an optional block number.
+await api.tx.governance.delegateVote(
   expertAddress,
-  10_000_000_000_000_000n
+  null  // expiresAt: Option<BlockNumber>
 ).signAndSend(delegator);
 ```
 

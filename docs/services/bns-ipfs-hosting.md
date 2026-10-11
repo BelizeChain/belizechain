@@ -6,6 +6,29 @@ Complete guide to hosting static websites on .bz domains using Pakit's sovereign
 
 ---
 
+> ### ⚠️ Implementation status
+>
+> The hosting **core** described here is implemented in `pallet-bns`:
+> `activate_hosting`, `renew_hosting`, `deactivate_hosting`,
+> `update_hosting_content`, `rollback_content`, `update_ssl_certificate`,
+> `register_external_domain`, `verify_external_domain`, `approve_external_domain`,
+> backed by `HostedWebsites`, `ContentHistory`, `SSLCertificates`, `ExternalDomains`
+> and `DomainVerification` storage.
+>
+> These sections describe a **designed but unbuilt** layer. There is no extrinsic
+> or storage item behind them, so the calls below illustrate the intended
+> interface rather than a usable API — they are marked inline as they appear:
+>
+> | Described below | Status |
+> |---|---|
+> | CDN caching / cache purge | not implemented |
+> | Compression control | not implemented |
+> | Hosting analytics | not implemented |
+> | Auto-renewal | not implemented |
+> | External-domain content updates | not implemented |
+>
+> `pallets/bns/src/lib.rs` is the authoritative surface.
+
 ## Hosting Overview
 
 BNS provides decentralized web hosting with:
@@ -215,7 +238,7 @@ pakit upload --dir . --manifest
 **Via SDK:**
 ```javascript
 // Update to new content hash
-await sdk.api.tx.bns.updateContent(
+await sdk.api.tx.bns.updateHostingContent(
     'alice',      // Domain
     newContentHash  // New DAG hash
 ).signAndSend(alice);
@@ -258,14 +281,15 @@ await sdk.api.tx.bns.rollbackContent(
 
 ---
 
-### Pause Hosting
+### Deactivate Hosting
 
 ```javascript
-// Pause hosting (content preserved, stops billing)
-await sdk.api.tx.bns.pauseHosting('alice').signAndSend(alice);
+// Stops serving the site. Content history is preserved.
+// There is no `pauseHosting`/`resumeHosting` pair — deactivating is the only
+// stop, and re-activating goes through `activateHosting` again.
+await sdk.api.tx.bns.deactivateHosting('alice').signAndSend(alice);
 
-// Resume hosting (restarts billing)
-await sdk.api.tx.bns.resumeHosting('alice', true).signAndSend(alice);  // auto-renew
+// To resume serving: activateHosting('alice', tier, contentHash)
 ```
 
 ---
@@ -313,14 +337,19 @@ await sdk.api.tx.bns.renewHosting(
 
 ### Auto-Renewal
 
+> **Not implemented.** There is no `setAutoRenewal` extrinsic and no auto-renewal
+> flag in `HostingInfo` — renewal is always the explicit `renewHosting` call above.
+
 **Enable:**
 ```javascript
-await sdk.api.tx.bns.setAutoRenewal('alice', true).signAndSend(alice);
+// NOT IMPLEMENTED — no such extrinsic exists (see the status banner at the top)
+// await sdk.api.tx.bns.setAutoRenewal('alice', true);
 ```
 
 **Disable:**
 ```javascript
-await sdk.api.tx.bns.setAutoRenewal('alice', false).signAndSend(alice);
+// NOT IMPLEMENTED — no such extrinsic exists (see the status banner at the top)
+// await sdk.api.tx.bns.setAutoRenewal('alice', false);
 ```
 
 **How It Works:**
@@ -338,7 +367,7 @@ Host websites on your existing (.com, .org, .net) domains using BelizeChain.
 
 ```javascript
 // Register example.com for hosting
-await sdk.api.tx.bns.registerExternal(
+await sdk.api.tx.bns.registerExternalDomain(
     'example.com',     // External domain
     'alice',           // Link to alice.bz
     1                  // Tier: 1=Basic (10 DALLA/month)
@@ -372,7 +401,7 @@ TTL: 3600
 
 ```javascript
 // Trigger verification check
-await sdk.api.tx.bns.verifyExternal('example.com').signAndSend(alice);
+await sdk.api.tx.bns.verifyExternalDomain('example.com').signAndSend(alice);
 
 // BelizeChain queries DNS for TXT record
 // If match: domain verified
@@ -401,7 +430,10 @@ pakit upload --dir ./example-com-website --manifest
 // Content Hash: 0x9876543210...
 
 // Update external domain content
-await sdk.api.tx.bns.updateExternalContent(
+// Not implemented: there is no `updateExternalContent`. Once verified, an
+// external domain is served from the same `HostedWebsites` entry as a .bz domain,
+// so use `updateHostingContent`.
+await sdk.api.tx.bns.updateHostingContent(
     'example.com',
     '0x9876543210...'
 ).signAndSend(alice);
@@ -442,7 +474,8 @@ For enterprise customers:
 
 ```javascript
 // Upload custom SSL cert (Enterprise tier only)
-await sdk.api.tx.bns.uploadCustomCert(
+// The real call is `updateSslCertificate` (ownership-gated).
+await sdk.api.tx.bns.updateSslCertificate(
     'alice',
     certHash,      // SHA-256 hash of cert
     serialNumber,  // Cert serial number
@@ -456,6 +489,9 @@ await sdk.api.tx.bns.uploadCustomCert(
 
 ### CDN Caching (Pro/Enterprise)
 
+> **Not implemented.** There is no `purgeCdnCache` extrinsic and no CDN layer in
+> the pallet — caching is handled by the reverse proxy in front of Pakit.
+
 **Cache Settings:**
 - Static assets: 30-day cache
 - HTML files: 1-hour cache
@@ -464,8 +500,8 @@ await sdk.api.tx.bns.uploadCustomCert(
 
 **Purge Cache:**
 ```javascript
-// Force CDN cache refresh
-await sdk.api.tx.bns.purgeCdnCache('alice').signAndSend(alice);
+// NOT IMPLEMENTED — no such extrinsic exists (see the status banner at the top)
+// await sdk.api.tx.bns.purgeCdnCache('alice');
 
 // All CDN nodes refresh within 60 seconds
 ```
@@ -474,6 +510,9 @@ await sdk.api.tx.bns.purgeCdnCache('alice').signAndSend(alice);
 
 ### Compression
 
+> **Not implemented.** There is no `setCompression` extrinsic. Compression is a
+> Pakit-side concern, chosen per object rather than per domain.
+
 **Automatic:**
 - Brotli compression for text files
 - GZIP fallback for legacy browsers
@@ -481,17 +520,20 @@ await sdk.api.tx.bns.purgeCdnCache('alice').signAndSend(alice);
 
 **Manual Control:**
 ```javascript
-// Enable/disable compression
-await sdk.api.tx.bns.setCompression(
-    'alice',
-    true,     // Enable
-    'brotli'  // Algorithm: 'brotli', 'gzip', 'zstd'
-).signAndSend(alice);
+// NOT IMPLEMENTED — no such extrinsic exists (see the status banner at the top)
+// await sdk.api.tx.bns.setCompression(
+//     'alice',
+//     true,     // Enable
+//     'brotli'  // Algorithm: 'brotli', 'gzip', 'zstd'
+// );
 ```
 
 ---
 
 ## Analytics (Enterprise Tier)
+
+> **Not implemented.** There is no `hostingAnalytics` storage item. Request
+> metrics must be collected from the reverse proxy, not read from the chain.
 
 **Metrics Tracked:**
 - Page views
@@ -503,7 +545,9 @@ await sdk.api.tx.bns.setCompression(
 
 **Query Analytics:**
 ```javascript
-const analytics = await sdk.api.query.bns.hostingAnalytics('alice');
+// NOT IMPLEMENTED — no such storage item exists (see the status banner at the top)
+// const analytics = await sdk.api.query.bns.hostingAnalytics('alice');
+const analytics = { pageViews: 0, uniqueVisitors: 0 };  // placeholder
 
 console.log('Last 30 Days:');
 console.log('  Page Views:', analytics.pageViews.toNumber());
@@ -544,7 +588,8 @@ if (hosting.isNone) {
 
 **Purge CDN cache:**
 ```javascript
-await sdk.api.tx.bns.purgeCdnCache('alice').signAndSend(alice);
+// NOT IMPLEMENTED — no such extrinsic exists (see the status banner at the top)
+// await sdk.api.tx.bns.purgeCdnCache('alice');
 ```
 
 ---

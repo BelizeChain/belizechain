@@ -27,23 +27,14 @@ BelizeChain's on-chain payroll system automates salary processing for both gover
 ### 1. Initial Setup
 
 ```javascript
-// Register employer via Maya Wallet or Blue Hole Portal
-const payroll = await api.tx.payroll.registerEmployer({
-  employerType: 'PrivateLarge',
-  companyName: 'Belize Cacao Company Ltd',
-  taxId: 'TIN-123456789',
-  socialSecurityId: 'SSI-987654321',
-  businessLicense: 'BL-2025-456',
-  paymentSchedule: 'Biweekly',
-  preferredCurrency: 'bBZD',
-  bankAccount: 'optional-for-fiat-reconciliation',
-  contactPerson: {
-    name: 'Maria Gonzalez',
-    belizeId: 'BZ-ID-12345',
-    phone: '+501-XXX-XXXX',
-    email: 'payroll@belizecacao.bz'
-  }
-}).signAndSend(employerAccount);
+// Employer registration is NOT self-service — there is no `payroll.registerEmployer`.
+// An authorised verifier (T::VerifierOrigin) calls `verifyEmployer`, which creates
+// the EmployerProfile. The rich company/tax/contact payload is off-chain onboarding
+// data; the chain stores the account, its type, and its schedules.
+await api.tx.payroll.verifyEmployer(
+  employerAccount,
+  'Enterprise'  // EmployerType: Government | Enterprise | SME | Cooperative | GigPlatform | NonProfit
+).signAndSend(verifier);
 ```
 
 ### 2. KYC Requirements
@@ -88,7 +79,17 @@ const employees = [
   }
 ];
 
-await api.tx.payroll.addEmployees(employerId, employees).signAndSend(account);
+// One call per employee — there is no `addEmployees` batch extrinsic.
+// addEmployee(employee, salary, workerType, departmentId, metadataHash)
+for (const e of employees) {
+  await api.tx.payroll.addEmployee(
+    e.account,
+    e.salary,
+    'FullTime',    // WorkerType: FullTime|PartTime|Contractor|Freelancer|Seasonal|Intern
+    0,             // departmentId
+    metadataHash   // [u8; 32] — blake2_256 of the off-chain record
+  ).signAndSend(employerAccount);
+}
 ```
 
 ## Payment Schedules
@@ -221,21 +222,17 @@ const payrollData = {
 };
 
 // On-chain transaction
-await api.tx.payroll.processPayment({
-  employerId: 'employer-123',
-  employeeId: 'BZ-ID-78901',
-  walletAddress: '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY',
-  grossAmount: 5350,
-  deductions: [
-    { type: 'SocialSecurity', amount: 360, recipient: 'SSB-treasury' },
-    { type: 'IncomeTax', amount: 950.83, recipient: 'tax-authority' },
-    { type: 'LoanRepayment', amount: 300, recipient: 'bank-account' },
-    { type: 'HealthInsurance', amount: 80, recipient: 'insurance-provider' }
-  ],
-  netAmount: 3659.17,
-  currency: 'bBZD',
-  payPeriod: '2026-01-01 to 2026-01-15'
-}).signAndSend(employerAccount);
+// `executePayment` takes only the employee account — the amount and deductions
+// already live on-chain (Employee.salary, EmployeeDeductions), set beforehand
+// with `addEmployee` and `setDeduction`.
+await api.tx.payroll.executePayment(employeeAccount).signAndSend(employerAccount);
+
+// Deductions are configured separately, once per employee:
+await api.tx.payroll.setDeduction(
+  employeeAccount,
+  'SocialSecurity',  // DeductionType: IncomeTax|SocialSecurity|Pension|HealthInsurance
+  360
+).signAndSend(employerAccount);
 ```
 
 ## Payslip Generation
@@ -287,9 +284,13 @@ const payslip = {
   }
 };
 
-// Generate PDF via API
-const pdf = await api.rpc.payroll.generatePayslip(payslip);
-// Uploaded to Pakit DAG storage, hash stored on-chain
+// There is no `api.rpc.payroll.*` namespace — the payroll pallet exposes no
+// custom RPC. Payslips are rendered off-chain from chain state:
+//   api.query.payroll.employees(account)         -> salary, workerType, dept
+//   api.query.payroll.employeeDeductions(account)
+//   api.query.payroll.payrollRecords(<recordId>) -> what was actually paid
+// The rendered document can then be pinned to Pakit and its hash recorded in the
+// employee's `metadataHash`.
 ```
 
 ### Distribution Methods
@@ -304,12 +305,11 @@ const pdf = await api.rpc.payroll.generatePayslip(payslip);
 ### Monthly Reporting
 
 ```javascript
-// Generate monthly payroll summary for tax authorities
-const monthlyReport = await api.rpc.payroll.generateMonthlyReport({
-  employerId: 'employer-123',
-  month: '2026-01',
-  reportType: 'TaxAuthority'
-});
+// There is no `api.rpc.payroll.generateMonthlyReport`, and no on-chain tax
+// report. Aggregate from indexed chain data instead:
+const records = await api.query.payroll.payrollRecords.entries();
+const totalGross = records.reduce((sum, [, r]) => sum + r.amount, 0n);
+```
 
 // Report includes:
 // - Total employees paid
@@ -376,12 +376,13 @@ const hybridPayment = {
   }
 };
 
-// Employee can stake DALLA portion automatically
-await api.tx.staking.stakeAndEarn({
-  amount: 1463.67,
-  validators: ['validator-1', 'validator-2'],
-  apy: 544 // Current staking APY
-});
+// Staking has no `stakeAndEarn` and no fixed APY constant — rewards come from
+// the per-epoch pool (`staking.epochRewards`) and vary with PoUW performance.
+await api.tx.staking.joinValidators(
+  1463n * 10n ** 12n,  // stake
+  100,                 // computeCapacity
+  'Belize City'        // location
+);
 ```
 
 ### 2. Tourism Sector Bonuses
@@ -404,18 +405,10 @@ Government departments use council-majority approval for batch payments:
 
 ```javascript
 // Ministry of Health batch payroll
-const batchPayment = await api.tx.payroll.processBatchPayroll({
-  department: 'Ministry of Health',
-  employees: 1500,
-  totalGross: 6_750_000, // bBZD
-  totalNet: 4_500_000,
-  approvalSignatures: [
-    'financial-secretary',
-    'permanent-secretary',
-    'chief-accountant',
-    'payroll-manager'
-  ] // council majority required (7 of 12 seats)
-}).signAndSend(treasuryAccount);
+// `batchPayment()` takes no arguments: it pays every active employee of the
+// calling employer in one extrinsic. Approval is enforced by the caller's
+// origin (the treasury account must be the one authorised to spend).
+await api.tx.payroll.batchPayment().signAndSend(treasuryAccount);
 ```
 
 ## Troubleshooting
@@ -430,10 +423,10 @@ await api.tx.balances.transfer(employerTreasuryAccount, requiredAmount);
 
 **2. Employee Not Registered**
 ```javascript
-// Solution: Verify BelizeID and wallet address
-const employee = await api.query.identity.identity(belizeId);
-if (!employee) {
-  // Employee must complete Basic KYC first
+// Solution: Verify the BelizeID and wallet address
+const identityId = await api.query.identity.identityOf(belizeId);
+if (identityId.isNone) {
+  // Employee must be KYC'd first
   console.error('Employee must register BelizeID');
 }
 ```
@@ -468,8 +461,12 @@ export function PayslipHistory() {
 
   useEffect(() => {
     async function fetchPayslips() {
-      const history = await api.query.payroll.payrollHistory(account.address);
-      setPayslips(history);
+      // Records are keyed by a u64 record id, not by account. Filter by owner.
+      const records = await api.query.payroll.payrollRecords.entries();
+      const mine = records
+        .filter(([, r]) => r.employee.toString() === account.address)
+        .map(([k, r]) => ({ id: k.args[0].toNumber(), ...r }));
+      setPayslips(mine);
     }
     fetchPayslips();
   }, [account]);

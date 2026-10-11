@@ -290,7 +290,9 @@ console.log('Reserved:', balance.reserved.toString());
 console.log('Frozen:', balance.frozen.toString());
 
 // Check transaction fee
-const info = await api.tx.economy.transfer(to, amount).paymentInfo(from);
+// DALLA is the native currency, so transfers go through the balances pallet —
+// there is no `economy.transfer`.
+const info = await api.tx.balances.transferKeepAlive(to, amount).paymentInfo(from);
 console.log('Estimated fee:', info.partialFee.toString());
 
 // Calculate required balance
@@ -302,7 +304,7 @@ console.log('Available:', balance.free.toString());
 **Solution**:
 ```javascript
 // Top up account
-const faucet = await api.tx.economy.transfer(
+const faucet = await api.tx.balances.transferKeepAlive(
   insufficientAccount,
   1_000_000_000_000_000n  // 1,000 DALLA
 );
@@ -330,11 +332,11 @@ console.log('Pending txs:', pending.length);
 **Solution**:
 ```javascript
 // Solution 1: Let SDK manage nonce automatically
-await api.tx.economy.transfer(to, amount).signAndSend(keypair);
+await api.tx.balances.transferKeepAlive(to, amount).signAndSend(keypair);
 
 // Solution 2: Manually specify nonce
 const nonce = await api.rpc.system.accountNextIndex(address);
-await api.tx.economy.transfer(to, amount).signAndSend(keypair, { nonce });
+await api.tx.balances.transferKeepAlive(to, amount).signAndSend(keypair, { nonce });
 
 // Solution 3: Wait for pending txs to finalize
 await new Promise(resolve => setTimeout(resolve, 12000)); // Wait 12s for finality

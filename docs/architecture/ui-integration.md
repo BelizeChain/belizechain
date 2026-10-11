@@ -112,7 +112,9 @@ export function useCashback(merchantAddress: string) {
   
   useEffect(() => {
     async function fetchCashbackRate() {
-      const merchant = await api.query.economy.merchants(merchantAddress);
+      // Merchant categories live in the Oracle pallet, not Economy. There is no
+      // `economy.merchants` map.
+      const merchant = await api.query.oracle.merchantCategories(merchantAddress);
       
       if (merchant.isSome) {
         const category = merchant.unwrap().category.toString();
@@ -143,11 +145,12 @@ async function stakeDALLA(amount: number) {
   const api = await connectWallet();
   const injector = await web3FromAddress(accountAddress);
   
-  // Bond DALLA for staking
-  const bondTx = api.tx.staking.bond(
-    accountAddress,  // Controller (same as stash for simplicity)
-    amount * 1_000_000_000_000,  // Amount in smallest units
-    'Staked'  // RewardDestination
+  // Join the validator set. There is no `staking.bond` and no reward destination:
+  // validators are PoUW participants with their own stake and capacity.
+  const bondTx = api.tx.staking.joinValidators(
+    amount * 1_000_000_000_000,  // stake in smallest units
+    100,                         // computeCapacity
+    'Belize City'                // location
   );
   
   await bondTx.signAndSend(
@@ -224,11 +227,12 @@ export function ComplianceDashboard() {
     async function fetchKycStats() {
       const api = await connectWallet();
       
-      // Query all KYC entries
-      const entries = await api.query.identity.kycRecords.entries();
+      // There is no `identity.kycRecords` map. The compliance gate is the
+      // authoritative per-account KYC state.
+      const entries = await api.query.compliance.complianceStatusOf.entries();
       
       const stats = entries.reduce((acc, [_key, value]) => {
-        const status = value.unwrap().status.toString();
+        const status = value.verificationLevel.toString();
         acc[status] = (acc[status] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
@@ -304,15 +308,15 @@ export function AnalyticsDashboard() {
         });
       }
       
-      // Staking participation
+      // Staking participation. There is no nominator role and no
+      // `staking.nominators` map — every entry in `validators` is an operator.
       const validators = await api.query.staking.validators.entries();
-      const nominators = await api.query.staking.nominators.entries();
       
       setMetrics({
         totalAccounts: accounts.length,
         dailyTransactions: txCount * 144,  // Extrapolate to 24h
         avgTransactionValue: Number(txValue / BigInt(txCount || 1)) / 1e12,
-        stakingParticipation: ((validators.length + nominators.length) / accounts.length) * 100
+        stakingParticipation: (validators.length / accounts.length) * 100
       });
     }
     

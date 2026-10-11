@@ -95,18 +95,18 @@ Governance::vote(
 
 ### Vote Splitting
 
-**Vote with different amounts on same proposal:**
+**Can you split a vote?**
+
+No. `cast_vote` records a single choice per proposal — `Aye`, `Nay`, or
+`Abstain` — and there is no `Split` variant. To hedge, vote on separate proposals
+rather than splitting one:
 
 ```javascript
-// Split 15K DALLA: 10K Aye, 5K Nay (hedge your bet)
-await api.tx.governance.vote(
+// VoteChoice indices: 0 = Aye, 1 = Nay, 2 = Abstain
+await api.tx.governance.castVote(
   proposalId,
-  {
-    Split: {
-      aye: 10_000_000_000_000_000n,  // 10K DALLA Aye
-      nay: 5_000_000_000_000_000n    // 5K DALLA Nay
-    }
-  }
+  0,   // Aye
+  1    // conviction
 ).signAndSend(voter);
 ```
 
@@ -123,10 +123,15 @@ await api.tx.governance.vote(
 **Threshold:** Simple majority (>50%)
 
 ```javascript
-// Submit public referendum
-await api.tx.governance.propose(
-  api.tx.treasury.approveProposal(proposalId),
-  50_000_000_000_000_000n  // 50K DALLA treasury request
+// Submit a proposal. The treasury amount is NOT a parameter — disbursement is a
+// separate treasury-proposal flow (governance.proposeTreasurySpend).
+await api.tx.governance.submitProposal(
+  'Fund the road repair',  // title
+  'See attached estimate', // description
+  0,                       // proposalTypeIndex
+  0,                       // thresholdIndex
+  false,                   // isEmergency
+  null                     // districtIndex
 ).signAndSend(proposer);
 ```
 
@@ -185,11 +190,11 @@ threshold_90 = 0.5 + (0.25 * 0.1)  # 52.5% needed
 **Delegate to expert voter:**
 
 ```typescript
-// Delegate 10K DALLA voting power to expert
-await api.tx.governance.delegate(
+// Delegate your voting weight. There is no amount or conviction — the whole
+// weight moves, and `expiresAt` is an optional block number.
+await api.tx.governance.delegateVote(
   expertAddress,
-  'Locked2x',  // Conviction for delegated votes
-  10_000_000_000_000_000n  // 10K DALLA
+  null  // expiresAt: Option<BlockNumber>
 ).signAndSend(delegator);
 ```
 

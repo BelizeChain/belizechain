@@ -620,12 +620,15 @@ export default function CreateProposalForm({ account, onClose, onSuccess }: Crea
       // Convert amount to blockchain units
       const amountInUnits = parseBalance(amount);
 
-      // Create proposal transaction
-      const tx = api.tx.governance.propose(
+      // Create proposal transaction. A treasury amount is not a parameter of
+      // submit_proposal — disbursement is a separate treasury-proposal flow.
+      const tx = api.tx.governance.submitProposal(
         title,
         description,
-        amountInUnits,
-        beneficiary
+        0,      // proposalTypeIndex
+        0,      // thresholdIndex
+        false,  // isEmergency
+        null    // districtIndex
       );
 
       // Sign and send transaction
@@ -807,8 +810,8 @@ export default function ProposalCard({ proposal, currentAccount, onVote }: Propo
       const api = await connectToBlockchain();
       const injector = await getInjector(currentAccount);
 
-      // Create vote transaction
-      const tx = api.tx.governance.vote(proposal.id, voteType);
+      // Create vote transaction. VoteChoice indices: 0 = Aye, 1 = Nay, 2 = Abstain.
+      const tx = api.tx.governance.castVote(proposal.id, voteType, 1);
 
       // Sign and send
       await tx.signAndSend(

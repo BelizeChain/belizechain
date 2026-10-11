@@ -376,10 +376,11 @@ await tx.signAndSend(sender, { signer });
 #### **Vote on Proposal**
 
 ```javascript
-// Vote on proposal
-const tx = api.tx.governance.vote(
+// Vote on proposal. voteChoiceIndex: 0 = Aye, 1 = Nay, 2 = Abstain.
+const tx = api.tx.governance.castVote(
   proposalId,  // Proposal ID
-  'Yes'        // Vote: 'Yes', 'No', or 'Abstain'
+  0,           // voteChoiceIndex
+  1            // conviction
 );
 
 await tx.signAndSend(sender, { signer });
@@ -388,11 +389,12 @@ await tx.signAndSend(sender, { signer });
 #### **Stake Tokens**
 
 ```javascript
-// Bond tokens for staking
-const tx = api.tx.staking.bond(
-  controller,            // Controller account
-  1000000000000000,      // Amount (1000 DALLA)
-  'Staked'               // Reward destination
+// Join the validator set. There is no controller/payee split — the signing
+// account is the validator, and its stake is the bond.
+const tx = api.tx.staking.joinValidators(
+  1000000000000000,  // stake (1,000 DALLA)
+  100,               // computeCapacity
+  'Belize City'      // location
 );
 
 await tx.signAndSend(sender, { signer });

@@ -293,7 +293,7 @@ fn delist_domain(
 **Example:**
 ```javascript
 // Remove from marketplace
-await api.tx.bns.delistDomain('alice').signAndSend(alice);
+await api.tx.bns.unlistDomain('alice').signAndSend(alice);
 ```
 
 ---
@@ -388,9 +388,15 @@ fn update_content(
 
 **Example:**
 ```javascript
-// Update website (creates version 2)
+// Update website (creates a new content version)
 const newContentHash = '0xfedcba...';
-await api.tx.bns.updateContent('alice', newContentHash).signAndSend(alice);
+// updateHostingContent(domain, newContentHash, description, sizeBytes)
+await api.tx.bns.updateHostingContent(
+  'alice',
+  newContentHash,
+  'Homepage refresh',
+  4096
+).signAndSend(alice);
 ```
 
 ---
@@ -671,34 +677,25 @@ if (version.isSome) {
 
 ### totalDomains
 
-Get total registered domains count.
+> **Not implemented.** There is no `totalDomains()` query or counter storage item.
+> Count the map instead:
 
-**Query:**
-```rust
-totalDomains() -> u64
-```
-
-**Example:**
 ```javascript
-const total = await api.query.bns.totalDomains();
-console.log('Total .bz domains:', total.toNumber());
+const entries = await api.query.bns.domainRegistry.entries();
+console.log('Total .bz domains:', entries.length);
 ```
 
 ---
 
 ### totalMarketplaceRevenue
 
-Get cumulative marketplace fees collected.
+> **Not implemented.** Marketplace fees are not accumulated in a storage item.
+> Sum the fee fields from `DomainSold` events to derive revenue:
 
-**Query:**
-```rust
-totalMarketplaceRevenue() -> u128
-```
-
-**Example:**
 ```javascript
-const revenue = await api.query.bns.totalMarketplaceRevenue();
-console.log('Marketplace Revenue:', (revenue.toNumber() / 1e12).toFixed(2), 'DALLA');
+// Derive from events rather than a storage query
+const sold = await api.query.system.events();
+// ...filter section 'bns', method 'DomainSold'
 ```
 
 ---

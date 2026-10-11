@@ -172,15 +172,13 @@ After registration, set up domain resolution records:
 **Set Wallet Address:**
 ```javascript
 // Point domain to your wallet for payments
-await sdk.api.tx.bns.updateResolution(
-    'alice',  // Domain name
-    {
-        walletAddress: alice.address,  // Payment destination
-        contentHash: null,              // No website yet
-        avatar: null,                   // No avatar
-        metadata: '{}',                 // Empty metadata
-        textRecords: []                 // No text records
-    }
+// Real signature: setResolution(domain, walletAddress, contentHash, metadata).
+// Avatar and text records are separate calls (setAvatar / setTextRecord).
+await sdk.api.tx.bns.setResolution(
+    'alice',         // Domain name
+    alice.address,   // walletAddress (Option<AccountId>)
+    null,            // contentHash (Option<[u8;32]>) — no website yet
+    '{}'             // metadata (UTF-8 bytes)
 ).signAndSend(alice);
 
 // Now payments to "alice.bz" route to your wallet!
@@ -188,25 +186,16 @@ await sdk.api.tx.bns.updateResolution(
 
 **Set Custom Text Records:**
 ```javascript
-// Add email, social media, etc.
-await sdk.api.tx.bns.updateResolution(
-    'alice',
-    {
-        walletAddress: alice.address,
-        contentHash: null,
-        avatar: null,
-        metadata: JSON.stringify({
-            bio: 'Software Developer',
-            location: 'Belize City'
-        }),
-        textRecords: [
-            { key: 'email', value: 'alice@example.com' },
-            { key: 'twitter', value: '@alice_dev' },
-            { key: 'github', value: 'github.com/alice' },
-            { key: 'url', value: 'https://alice.example.com' }
-        ]
-    }
-).signAndSend(alice);
+// Text records are set one key at a time — there is no bulk `textRecords` array.
+//   setTextRecord(domain, key, value)
+for (const rec of [
+    { key: 'email', value: 'alice@example.com' },
+    { key: 'twitter', value: '@alice_dev' },
+    { key: 'github', value: 'github.com/alice' },
+    { key: 'url', value: 'https://alice.example.com' }
+]) {
+    await sdk.api.tx.bns.setTextRecord('alice', rec.key, rec.value).signAndSend(alice);
+}
 ```
 
 ---
@@ -291,12 +280,11 @@ await sdk.api.tx.bns.transferDomain(
 **Change Wallet Address:**
 ```javascript
 // Update payment destination
-await sdk.api.tx.bns.updateResolution(
-    'alice',
-    {
-        walletAddress: newAddress,  // New wallet
-        // ... keep other fields unchanged
-    }
+await sdk.api.tx.bns.setResolution(
+    'alice',         // Domain name
+    newAddress,      // New walletAddress
+    null,            // contentHash — pass the existing value to keep it
+    '{}'             // metadata — pass the existing value to keep it
 ).signAndSend(alice);
 ```
 
@@ -304,12 +292,10 @@ await sdk.api.tx.bns.updateResolution(
 ```javascript
 // Set profile image (DAG hash or IPFS)
 const avatarHash = '0x1a2b3c4d...';  // 32-byte hash
-await sdk.api.tx.bns.updateResolution(
+// Avatar has its own call — it is not part of setResolution.
+await sdk.api.tx.bns.setAvatar(
     'alice',
-    {
-        avatar: avatarHash,
-        // ... keep other fields
-    }
+    avatarHash
 ).signAndSend(alice);
 ```
 
@@ -323,12 +309,11 @@ const newMetadata = {
     website: 'https://alice.bz'
 };
 
-await sdk.api.tx.bns.updateResolution(
+await sdk.api.tx.bns.setResolution(
     'alice',
-    {
-        metadata: JSON.stringify(newMetadata),
-        // ... keep other fields
-    }
+    null,                       // walletAddress — unchanged
+    null,                       // contentHash — unchanged
+    JSON.stringify(newMetadata) // metadata
 ).signAndSend(alice);
 ```
 

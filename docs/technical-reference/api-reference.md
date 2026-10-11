@@ -466,16 +466,15 @@ await api.query.system.account(address, ({ data: balance }) => {
 
 ```javascript
 // Watch specific storage key
-await api.query.staking.currentEra((era) => {
-  console.log(`Current era: ${era.toString()}`);
+await api.query.staking.currentEpoch((epoch) => {
+  console.log(`Current epoch: ${epoch.toString()}`);
 });
 
 // Watch multiple keys
 await api.queryMulti([
-  [api.query.staking.currentEra],
-  [api.query.staking.activeEra]
-], ([currentEra, activeEra]) => {
-  console.log(`Current: ${currentEra}, Active: ${activeEra.index}`);
+  [api.query.staking.currentEpoch]
+], ([currentEpoch]) => {
+  console.log(`Current epoch: ${currentEpoch}`);
 });
 ```
 
@@ -644,8 +643,8 @@ await cryptoWaitReady();
 const keyring = new Keyring({ type: 'sr25519' });
 const alice = keyring.addFromUri('//Alice');
 
-// Transfer DALLA
-const transfer = api.tx.economy.transfer(
+// Transfer DALLA (native currency → balances pallet, not economy)
+const transfer = api.tx.balances.transferKeepAlive(
   '5DTestULRhqKBKwZvZSrZjBwvZN2Mu9WkJJMYEDmLpkNuMQKB',
   1_000_000_000_000_000n  // 1,000 DALLA (12 decimals)
 );
