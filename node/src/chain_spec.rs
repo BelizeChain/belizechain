@@ -1058,17 +1058,23 @@ mod tests {
             "mainnet genesis must configure 4 validator session keys"
         );
         assert_eq!(
-            genesis["governance"]["councilMembers"].as_array().map(|a| a.len()),
+            genesis["governance"]["councilMembers"]
+                .as_array()
+                .map(|a| a.len()),
             Some(12),
             "mainnet genesis must seat 12 district council members"
         );
         assert_eq!(
-            genesis["governanceCouncil"]["members"].as_array().map(|a| a.len()),
+            genesis["governanceCouncil"]["members"]
+                .as_array()
+                .map(|a| a.len()),
             Some(12),
             "mainnet genesis must seat the GovernanceCouncil collective"
         );
         assert_eq!(
-            genesis["technicalCouncil"]["members"].as_array().map(|a| a.len()),
+            genesis["technicalCouncil"]["members"]
+                .as_array()
+                .map(|a| a.len()),
             Some(7),
             "mainnet genesis must seat the TechnicalCouncil collective, otherwise its \
              14 gated origins stay sudo-only"
@@ -1087,19 +1093,25 @@ mod tests {
         .expect("testnet_genesis must succeed");
 
         assert_eq!(
-            genesis["governance"]["councilMembers"].as_array().map(|a| a.len()),
+            genesis["governance"]["councilMembers"]
+                .as_array()
+                .map(|a| a.len()),
             Some(12),
             "testnet must seat 12 district council members"
         );
         assert_eq!(
-            genesis["governanceCouncil"]["members"].as_array().map(|a| a.len()),
+            genesis["governanceCouncil"]["members"]
+                .as_array()
+                .map(|a| a.len()),
             Some(12),
             "testnet must seat the GovernanceCouncil collective, otherwise \
              GovernanceCouncilMajority can never be satisfied and every \
              council-majority call silently degrades to sudo"
         );
         assert_eq!(
-            genesis["technicalCouncil"]["members"].as_array().map(|a| a.len()),
+            genesis["technicalCouncil"]["members"]
+                .as_array()
+                .map(|a| a.len()),
             Some(7),
             "testnet must seat the TechnicalCouncil collective, otherwise its 14 \
              gated origins (compliance, AI authority, emergency, oracle, payroll, \

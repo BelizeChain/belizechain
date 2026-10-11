@@ -1261,8 +1261,8 @@ fn set_resolution_preserves_text_records() {
             b"{}".to_vec()
         ));
 
-        let resolution = DomainResolution::<Test>::get(domain_key(b"mysite"))
-            .expect("resolution should exist");
+        let resolution =
+            DomainResolution::<Test>::get(domain_key(b"mysite")).expect("resolution should exist");
         assert_eq!(resolution.text_records.len(), 1);
         assert_eq!(
             resolution.text_records[0].value.to_vec(),

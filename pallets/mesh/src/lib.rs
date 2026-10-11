@@ -1736,7 +1736,10 @@ pub mod pallet {
             T::DbWeight::get()
                 .reads(processed as u64)
                 .saturating_add(T::DbWeight::get().writes((processed as u64).saturating_mul(2) + 1))
-                .saturating_add(Weight::from_parts(processed as u64 * 2_000_000, 64 * processed as u64))
+                .saturating_add(Weight::from_parts(
+                    processed as u64 * 2_000_000,
+                    64 * processed as u64,
+                ))
         }
     }
 }

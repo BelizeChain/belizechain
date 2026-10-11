@@ -2355,7 +2355,10 @@ pub mod pallet {
             GovernanceParameters::<T>::insert(GovernanceParameter::LaunchPeriod, 28800u32); // 2 days
             GovernanceParameters::<T>::insert(GovernanceParameter::MinimumDeposit, 1000u32); // 1000 DALLA
             GovernanceParameters::<T>::insert(GovernanceParameter::SupermajorityThreshold, 66u32); // 66%
-            GovernanceParameters::<T>::insert(GovernanceParameter::CouncilSize, MAX_COUNCIL_MEMBERS); // 12 seats
+            GovernanceParameters::<T>::insert(
+                GovernanceParameter::CouncilSize,
+                MAX_COUNCIL_MEMBERS,
+            ); // 12 seats
             GovernanceParameters::<T>::insert(GovernanceParameter::EmergencyTimeout, 86400u32);
             // 1 day
         }

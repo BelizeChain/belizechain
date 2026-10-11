@@ -154,12 +154,8 @@ pub mod pallet {
     /// "first registered" default, so this is only populated on request.
     #[pallet::storage]
     #[pallet::getter(fn primary_domain)]
-    pub type PrimaryDomain<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        BoundedVec<u8, T::MaxDomainLength>,
-    >;
+    pub type PrimaryDomain<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, BoundedVec<u8, T::MaxDomainLength>>;
 
     /// Domain marketplace listings
     #[pallet::storage]
@@ -572,7 +568,8 @@ pub mod pallet {
             // Preserve anything this call does not set. Previously `text_records`
             // and `avatar` were unconditionally reset to empty, so updating the
             // wallet address silently destroyed every text record on the domain.
-            let existing = DomainResolution::<T>::get(&domain).unwrap_or_else(Self::empty_resolution);
+            let existing =
+                DomainResolution::<T>::get(&domain).unwrap_or_else(Self::empty_resolution);
 
             let resolution = ResolutionRecords {
                 wallet_address,
@@ -609,8 +606,9 @@ pub mod pallet {
                 DomainRegistry::<T>::get(&domain).ok_or(Error::<T>::DomainNotFound)?;
             ensure!(domain_record.owner == who, Error::<T>::NotDomainOwner);
 
-            let key: BoundedVec<u8, ConstU32<32>> =
-                key.try_into().map_err(|_| Error::<T>::InvalidTextRecordKey)?;
+            let key: BoundedVec<u8, ConstU32<32>> = key
+                .try_into()
+                .map_err(|_| Error::<T>::InvalidTextRecordKey)?;
             ensure!(!key.is_empty(), Error::<T>::InvalidTextRecordKey);
 
             let value: BoundedVec<u8, ConstU32<128>> = value
@@ -630,7 +628,10 @@ pub mod pallet {
                 Some(record) => record.value = value,
                 None => resolution
                     .text_records
-                    .try_push(TextRecord { key: key.clone(), value })
+                    .try_push(TextRecord {
+                        key: key.clone(),
+                        value,
+                    })
                     .map_err(|_| Error::<T>::MaxTextRecordsReached)?,
             }
 
@@ -660,11 +661,12 @@ pub mod pallet {
                 DomainRegistry::<T>::get(&domain).ok_or(Error::<T>::DomainNotFound)?;
             ensure!(domain_record.owner == who, Error::<T>::NotDomainOwner);
 
-            let key: BoundedVec<u8, ConstU32<32>> =
-                key.try_into().map_err(|_| Error::<T>::InvalidTextRecordKey)?;
+            let key: BoundedVec<u8, ConstU32<32>> = key
+                .try_into()
+                .map_err(|_| Error::<T>::InvalidTextRecordKey)?;
 
-            let mut resolution = DomainResolution::<T>::get(&domain)
-                .ok_or(Error::<T>::TextRecordNotFound)?;
+            let mut resolution =
+                DomainResolution::<T>::get(&domain).ok_or(Error::<T>::TextRecordNotFound)?;
             let before = resolution.text_records.len();
             resolution.text_records.retain(|record| record.key != key);
             ensure!(
@@ -1358,8 +1360,8 @@ pub mod pallet {
                 .try_into()
                 .map_err(|_| Error::<T>::DomainTooLong)?;
 
-            let mut external_info = ExternalDomains::<T>::get(&external_bounded)
-                .ok_or(Error::<T>::DomainNotFound)?;
+            let mut external_info =
+                ExternalDomains::<T>::get(&external_bounded).ok_or(Error::<T>::DomainNotFound)?;
             ensure!(!external_info.verified, Error::<T>::VerificationFailed);
 
             external_info.verified = true;

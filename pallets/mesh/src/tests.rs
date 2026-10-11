@@ -387,13 +387,7 @@ fn pending_mesh_transaction_is_processed_on_initialize() {
         assert!(Mesh::pending_mesh_transactions(tx_hash).is_none());
         assert_eq!(Mesh::processed_mesh_transactions(tx_hash), Some(block));
         assert_eq!(Mesh::pending_mesh_tx_count(), 0);
-        System::assert_has_event(
-            Event::MeshTransactionProcessed {
-                tx_hash,
-                block,
-            }
-            .into(),
-        );
+        System::assert_has_event(Event::MeshTransactionProcessed { tx_hash, block }.into());
     });
 }
 

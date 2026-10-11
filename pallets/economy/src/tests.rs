@@ -1133,10 +1133,7 @@ fn process_tourism_payment_records_payment_on_chain() {
         assert_eq!(Economy::next_payment_id(), 2);
 
         // The first record is untouched by the second payment
-        assert_eq!(
-            Economy::tourism_payments(0).map(|r| r.category),
-            Some(0)
-        );
+        assert_eq!(Economy::tourism_payments(0).map(|r| r.category), Some(0));
     });
 }
 

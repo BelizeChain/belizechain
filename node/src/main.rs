@@ -326,24 +326,49 @@ mod tests {
         );
     }
 
+    /// Mainnet is gated on real council keys: `MAINNET_COUNCIL` and
+    /// `MAINNET_TECHNICAL_COUNCIL` ship empty on purpose, so
+    /// `belizechain_mainnet_config()` refuses to build until representatives are
+    /// designated. These two arms must therefore fail closed today and succeed
+    /// once the councils are populated.
     #[test]
-    fn test_load_spec_empty_string_succeeds() {
+    fn test_load_spec_empty_string_fails_closed_until_mainnet_keys_are_configured() {
         let cli = default_cli();
         let result = cli.load_spec("");
-        assert!(
-            result.is_ok(),
-            "load_spec(\"\") must succeed when mainnet keys are configured"
-        );
+        if chain_spec::MAINNET_COUNCIL.is_empty() {
+            let err = result
+                .err()
+                .expect("mainnet must not build with an empty council");
+            assert!(
+                err.contains("at least"),
+                "the failure must name the missing seats: {err}"
+            );
+        } else {
+            assert!(
+                result.is_ok(),
+                "load_spec(\"\") must succeed once mainnet keys are configured"
+            );
+        }
     }
 
     #[test]
-    fn test_load_spec_belize_succeeds() {
+    fn test_load_spec_belize_fails_closed_until_mainnet_keys_are_configured() {
         let cli = default_cli();
         let result = cli.load_spec("belize");
-        assert!(
-            result.is_ok(),
-            "load_spec(\"belize\") must succeed when mainnet keys are configured"
-        );
+        if chain_spec::MAINNET_COUNCIL.is_empty() {
+            let err = result
+                .err()
+                .expect("mainnet must not build with an empty council");
+            assert!(
+                err.contains("at least"),
+                "the failure must name the missing seats: {err}"
+            );
+        } else {
+            assert!(
+                result.is_ok(),
+                "load_spec(\"belize\") must succeed once mainnet keys are configured"
+            );
+        }
     }
 
     #[test]

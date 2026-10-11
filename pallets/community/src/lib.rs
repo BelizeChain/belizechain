@@ -2283,7 +2283,9 @@ pub mod pallet {
                 // silently storing 0: a genesis reward that does not fit in u64 is a
                 // misconfigured chain spec, not a zero-reward module.
                 let reward_u64: u64 = (*reward_amount).try_into().unwrap_or_else(|_| {
-                    panic!("community genesis: education module {module_id} reward does not fit u64")
+                    panic!(
+                        "community genesis: education module {module_id} reward does not fit u64"
+                    )
                 });
 
                 let module = EducationModule {
@@ -2302,11 +2304,11 @@ pub mod pallet {
             for (project_id, title, _description, _funding_goal, current_funding, is_active) in
                 &self.green_projects
             {
-                let bounded_title: BoundedVec<u8, ConstU32<128>> = title
-                    .clone()
-                    .try_into()
-                    .unwrap_or_else(|_| {
-                        panic!("community genesis: green project {project_id} title exceeds 128 bytes")
+                let bounded_title: BoundedVec<u8, ConstU32<128>> =
+                    title.clone().try_into().unwrap_or_else(|_| {
+                        panic!(
+                            "community genesis: green project {project_id} title exceeds 128 bytes"
+                        )
                     });
 
                 // Convert BalanceOf<T> to u64 for storage. Fail loudly rather than

@@ -968,8 +968,7 @@ pub mod pallet {
                     amount: amount_u128,
                     incentive: incentive_amount.saturated_into::<u128>(),
                     category: category_id,
-                    block_number: frame_system::Pallet::<T>::block_number()
-                        .saturated_into::<u32>(),
+                    block_number: frame_system::Pallet::<T>::block_number().saturated_into::<u32>(),
                 },
             );
 

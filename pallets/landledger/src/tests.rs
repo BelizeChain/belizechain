@@ -1805,7 +1805,9 @@ fn get_latest_anchor_resolves_any_content_hash_to_the_chain_tip() {
         ));
 
         let genesis_anchor = PropertyAnchorChain::<Test>::get(1).unwrap();
-        let genesis_content = LandAnchors::<Test>::get(genesis_anchor).unwrap().content_hash;
+        let genesis_content = LandAnchors::<Test>::get(genesis_anchor)
+            .unwrap()
+            .content_hash;
 
         // A lone anchor is its own chain tip.
         assert_eq!(
