@@ -265,18 +265,29 @@ HostedWebsites: Map<domain_name, HostingInfo>
 
 ### Extrinsics (Functions)
 
-| Extrinsic | Description | Fee |
-|-----------|-------------|-----|
-| `register_domain(name, tier)` | Register new .bz domain | Tier price |
-| `update_resolution(domain, records)` | Update resolution data | ~15K gas |
-| `transfer_domain(domain, to)` | Transfer ownership | ~18K gas |
-| `list_for_sale(domain, price)` | List on marketplace | ~12K gas |
-| `buy_domain(domain)` | Purchase listed domain | Price + 5% |
-| `activate_hosting(domain, tier, content)` | Start web hosting | Tier fee |
-| `renew_hosting(domain)` | Extend hosting period | Monthly fee |
-| `update_content(domain, content_hash)` | Update website | ~20K gas |
-| `register_external(domain, tier)` | Register external domain | Tier fee |
-| `verify_external(domain)` | Verify DNS ownership | Free |
+Fees are weight-based, not gas — see [Performance Metrics](#on-chain-efficiency)
+below for how to price a specific call.
+
+| Extrinsic | Description |
+|-----------|-------------|
+| `register_domain(domain_name, tier)` | Register a new .bz domain. `tier`: 0=Standard, 1=Premium, 2=Government, 3=Verified |
+| `set_resolution(domain_name, wallet_address, content_hash, metadata)` | Set resolution data (wallet, content hash, metadata) |
+| `transfer_domain(domain_name, new_owner)` | Transfer ownership |
+| `list_domain(domain_name, price, min_offer, duration_blocks)` | List on the marketplace |
+| `unlist_domain(domain_name)` | Withdraw a listing |
+| `buy_domain(domain_name, offer_price)` | Purchase a listed domain |
+| `activate_hosting(domain_name, tier, content_hash, auto_renew)` | Start web hosting. `tier`: 0=Free, 1=Basic, 2=Pro, 3=Enterprise |
+| `renew_hosting(domain_name, months)` | Extend the hosting period |
+| `update_hosting_content(domain_name, new_content_hash, description, size_bytes)` | Publish new website content |
+| `rollback_content(domain_name, version)` | Revert to a previous content version |
+| `register_external_domain(external_domain, linked_bns_domain, tier)` | Register an externally owned domain |
+| `verify_external_domain(external_domain)` | Verify DNS ownership of an external domain |
+| `approve_external_domain(external_domain)` | Approve an external domain |
+| `set_primary_domain(domain_name)` / `clear_primary_domain()` | Set or clear the account's reverse record |
+| `set_text_record(domain_name, key, value)` / `remove_text_record(domain_name, key)` | Manage custom text records |
+| `set_avatar(domain_name, avatar_hash)` | Set a profile image |
+| `update_ssl_certificate(domain_name, cert_hash)` | Attach a TLS certificate |
+| `deactivate_hosting(domain_name)` | Stop hosting |
 
 ### Events
 
@@ -436,30 +447,59 @@ Community governance controls:
 ## Integration Examples
 
 ### Wallet Payment Routing
-```rust
-// Resolve domain to wallet address
-let wallet = BNS::resolve_wallet("alice.bz")?;
 
-// Send payment to domain instead of address
-Economy::transfer(origin, "alice.bz", 100 * DALLA);
+A domain is not payable directly — there is no `Economy::transfer(origin, "alice.bz", …)`
+and no `BNS::resolve_wallet` helper. `DomainResolution` carries the address; resolve
+it first, then send a normal balance transfer.
+
+```javascript
+// Domain names are stored as bounded bytes, so encode before querying.
+const name = new TextEncoder().encode('alice.bz');
+const resolution = await api.query.bns.domainResolution(name);
+
+if (resolution.isNone) throw new Error('alice.bz is not registered');
+
+const { walletAddress } = resolution.unwrap();
+if (walletAddress.isNone) throw new Error('alice.bz has no wallet address set');
+
+// Payment goes to the resolved address through the balances pallet, as any
+// transfer does — the domain is a lookup, not a transfer target.
+await api.tx.balances.transferKeepAlive(walletAddress.unwrap(), 100n * DALLA).signAndSend(signer);
 ```
+
+The owner sets that address with `bns.setResolution(domainName, walletAddress, contentHash, metadata)`.
 
 ### Website Resolution
-```javascript
-// Resolve domain to content hash
-const content = await bns.resolveContent("alice.bz");
 
-// Fetch website from DAG storage
-const html = await pakit.getDagBlock(content.hash);
+`DomainResolution.contentHash` is the DAG block hash. There is no `bns.resolveContent`
+call and no `pakit.getDagBlock` client — Pakit is reached over HTTP.
+
+```javascript
+const name = new TextEncoder().encode('alice.bz');
+const { contentHash } = (await api.query.bns.domainResolution(name)).unwrap();
+
+if (contentHash.isNone) throw new Error('alice.bz has no content hash');
+
+const cid = `0x${Buffer.from(contentHash.unwrap()).toString('hex')}`;
+const html = await fetch(`https://testnet.belizechain.org/api/pakit/v1/dag/${cid}`).then((r) => r.text());
 ```
 
-### Identity Verification
-```rust
-// Check if domain is verified
-let verified = BNS::is_verified("business.bz");
+Hosting content is versioned: `bns.currentContentVersion(name)` is the live version and
+`bns.contentHistory(name)` is the superseded list, with `bns.rollbackContent(name, version)`
+to revert.
 
-// Get domain tier
-let tier = BNS::get_domain_tier("business.bz");
+### Verification and Tiers
+
+There is no `BNS::is_verified` or `BNS::get_domain_tier`. Verification is its own map, and
+the tier is a parameter chosen at registration (there is no getter).
+
+```javascript
+// VerificationStatus<BlockNumber>, keyed by the domain bytes.
+const verification = await api.query.bns.domainVerification(name);
+const verified = verification.isSome;
+
+// Tier is a u8 passed to registerDomain: 0=Standard, 1=Premium, 2=Government, 3=Verified.
+await api.tx.bns.registerDomain(name, 0).signAndSend(signer);
 ```
 
 ---
@@ -467,10 +507,24 @@ let tier = BNS::get_domain_tier("business.bz");
 ## Performance Metrics
 
 ### On-Chain Efficiency
-- **Register Domain**: ~50,000 gas (~0.00005 DALLA)
-- **Update Resolution**: ~15,000 gas (~0.000015 DALLA)
-- **Transfer Domain**: ~18,000 gas (~0.000018 DALLA)
-- **List for Sale**: ~12,000 gas (~0.000012 DALLA)
+
+Substrate does not meter execution in "gas", so there is no fixed DALLA price per
+operation to quote. Each call declares a weight as `ref_time` (picoseconds) and
+`proof_size` (bytes), and the fee is derived from that weight plus a length fee at
+the moment it is dispatched.
+
+The pallet ships generated weights per call in `pallets/bns/src/weights.rs` — for
+example `register_domain` and `update_hosting_content` each have their own
+function. To get the real cost of a specific call, ask the node rather than
+trusting a table:
+
+```javascript
+const info = await api.tx.bns.registerDomain(name, 0).paymentInfo(signer);
+console.log(info.weight.refTime.toString(), info.weight.proofSize.toString(), info.partialFee.toString());
+```
+
+Anything quoting flat per-operation DALLA costs for this chain is guessing — the
+figures that previously sat here were not measured.
 
 ### Off-Chain Hosting
 - **DAG Storage**: O(1) content-addressed retrieval

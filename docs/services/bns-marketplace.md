@@ -254,10 +254,23 @@ Treasury Fee:      50 DALLA (5%)
 Total: 1,000 DALLA
 ```
 
-**Gas Costs:**
-- List domain: ~12,000 gas (~0.000012 DALLA)
-- Buy domain: ~25,000 gas (~0.000025 DALLA)
-- Delist domain: ~10,000 gas (~0.00001 DALLA)
+**Transaction Costs:**
+
+Substrate has no per-operation "gas" price, so the figures that previously sat
+here (a fixed DALLA cost per list/buy/delist) were not measured and have been
+removed. Each call declares a weight — `ref_time` (picoseconds) and `proof_size`
+(bytes) — in `pallets/bns/src/weights.rs`, and the fee follows from that weight
+plus a length fee at dispatch time.
+
+Ask the node for the real number for a specific call:
+
+```javascript
+// listDomain(domainName, price, minOffer, durationBlocks) — all four are required.
+const info = await api.tx.bns
+  .listDomain(name, 1_000n * DALLA, null, 1_000_000)
+  .paymentInfo(signer);
+console.log(info.weight.refTime.toString(), info.partialFee.toString());
+```
 
 ---
 
