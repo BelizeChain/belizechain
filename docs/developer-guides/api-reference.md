@@ -431,9 +431,9 @@ api.query.system.events((events) => {
       console.log(`Transfer: ${from} -> ${to}: ${amount}`);
     }
     
-    if (api.events.governance.ProposalCreated.is(event)) {
+    if (api.events.governance.ProposalSubmitted.is(event)) {
       const [proposer, proposalId] = event.data;
-      console.log(`Proposal ${proposalId} created by ${proposer}`);
+      console.log(`Proposal ${proposalId} submitted by ${proposer}`);
     }
   });
 });
@@ -450,7 +450,7 @@ api.query.system.events((events) => {
 
 #### **Governance Events**
 
-- `governance.ProposalCreated` - New proposal
+- `governance.ProposalSubmitted` - New proposal submitted
 - `governance.VoteCast` - Vote cast
 - `governance.ProposalApproved` - Proposal approved
 - `governance.ProposalRejected` - Proposal rejected
@@ -458,10 +458,11 @@ api.query.system.events((events) => {
 
 #### **Staking Events**
 
-- `staking.Bonded` - Tokens bonded
-- `staking.Unbonded` - Tokens unbonded
-- `staking.Rewarded` - Staking reward paid
-- `staking.Slashed` - Validator slashed
+- `staking.ValidatorJoined` - Validator joined the PoUW validator set
+- `staking.UnbondingStarted` - Unbonding period started after leaving the set
+- `staking.StakeWithdrawn` - Stake withdrawn after the unbonding period
+- `staking.RewardsDistributed` - Epoch rewards distributed
+- `staking.ValidatorSlashed` - Validator slashed for an offense
 
 #### **System Events**
 

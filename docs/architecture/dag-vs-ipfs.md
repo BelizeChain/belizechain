@@ -475,14 +475,23 @@ record = blockchain.query('StorageProof', 'StorageProofs', [content_id])
 const cid = await ipfs.add(deedPdf);
 await ipfs.pin.add(cid);  // Don't forget to pin!
 
-// Register on blockchain (requires oracle)
-await blockchain.landledger.registerDocument(
-    propertyId: 12345,
-    ipfsCid: cid.toString()
-);
+// Register on blockchain. LandLedger has no `registerDocument` /
+// `verifyDocument`: a property is registered with `register_property`, which
+// takes the title number, description, coordinates, area, type and value.
+await api.tx.landLedger
+  .registerProperty(
+    'BLZ-2024-00123',        // title_number
+    'Beachfront parcel',     // description
+    [17421000, -88013000],   // coordinates (i64, i64)
+    1250,                    // area_sqm
+    0,                       // property_type_index
+    250000000000,            // assessed_value (u128)
+  )
+  .signAndSend(owner);
 
-// Verify (trusting oracle)
-const isValid = await blockchain.landledger.verifyDocument(propertyId);
+// Verify: `verify_property(property_id)` is a surveyor/government action, not a
+// read. Reading the record needs no oracle — it is on-chain state.
+const record = await api.query.landLedger.properties(propertyId);
 ```
 
 **Winner**: Pakit (native verification, no oracle)

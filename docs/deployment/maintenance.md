@@ -36,7 +36,7 @@ systemctl status belizechain
 **Check sync status**:
 
 ```bash
-curl -s http://localhost:9933 -H "Content-Type: application/json" \
+curl -s http://localhost:9944 -H "Content-Type: application/json" \
   -d '{"id":1,"jsonrpc":"2.0","method":"system_health"}' \
   | jq '.result'
 ```
@@ -438,18 +438,26 @@ sudo systemctl start belizechain
 
 3. **Check remaining stake**:
    ```bash
-   curl -s http://localhost:9933 -H "Content-Type: application/json" \
-     -d '{"id":1,"jsonrpc":"2.0","method":"query.staking.ledger","params":["YOUR_ADDRESS"]}' \
-     | jq '.result.active'
+   # There is no `staking.ledger`. Your validator record is `staking.validators`.
+   curl -s http://localhost:9944 -H "Content-Type: application/json" \
+     -d '{"id":1,"jsonrpc":"2.0","method":"query.staking.validators","params":["YOUR_ADDRESS"]}' \
+     | jq '.result'
    ```
 
-4. **Bond additional stake** (if needed):
+4. **Restake** (if needed):
+
+   There is no `staking.bondExtra` — stake is fixed at join time, so a top-up means
+   leaving and rejoining:
    ```bash
-   polkadot-js-api \
-     --ws <operator-provided-rpc-url> \
-     --seed "your seed" \
-     tx.staking.bondExtra \
-     AMOUNT
+   # Leave (starts the unbonding period), wait 14_400 blocks (~24h), withdraw, rejoin
+   polkadot-js-api --ws <operator-provided-rpc-url> --seed "your seed" \
+     tx.staking.leaveValidators
+
+   polkadot-js-api --ws <operator-provided-rpc-url> --seed "your seed" \
+     tx.staking.withdrawUnbonded
+
+   polkadot-js-api --ws <operator-provided-rpc-url> --seed "your seed" \
+     tx.staking.joinValidators AMOUNT COMPUTE_CAPACITY LOCATION
    ```
 
 ---
@@ -552,7 +560,7 @@ if ! systemctl is-active --quiet belizechain; then
 fi
 
 # Check peer count
-PEERS=$(curl -s http://localhost:9933 -H "Content-Type: application/json" \
+PEERS=$(curl -s http://localhost:9944 -H "Content-Type: application/json" \
   -d '{"id":1,"jsonrpc":"2.0","method":"system_health"}' \
   | jq '.result.peers')
 
@@ -561,7 +569,7 @@ if [ "$PEERS" -lt 5 ]; then
 fi
 
 # Check sync status
-IS_SYNCING=$(curl -s http://localhost:9933 -H "Content-Type: application/json" \
+IS_SYNCING=$(curl -s http://localhost:9944 -H "Content-Type: application/json" \
   -d '{"id":1,"jsonrpc":"2.0","method":"system_health"}' \
   | jq '.result.isSyncing')
 

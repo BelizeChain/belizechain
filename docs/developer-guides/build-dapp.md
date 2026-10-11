@@ -643,8 +643,8 @@ export default function CreateProposalForm({ account, onClose, onSuccess }: Crea
             events.forEach(({ event }) => {
               if (api.events.system.ExtrinsicFailed.is(event)) {
                 setError('Transaction failed');
-              } else if (api.events.governance.ProposalCreated.is(event)) {
-                console.log('✅ Proposal created successfully');
+              } else if (api.events.governance.ProposalSubmitted.is(event)) {
+                console.log('✅ Proposal submitted successfully');
                 onSuccess();
                 onClose();
               }

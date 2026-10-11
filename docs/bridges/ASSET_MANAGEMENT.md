@@ -410,24 +410,34 @@ console.log(`Total fees: $${result.totalFees}`);
 
 ### Cross-Chain Governance Proposal
 
+Governance proposals on BelizeChain are **typed**, not arbitrary call batches.
+`Governance.submit_proposal` takes a `proposal_type_index` and a
+`threshold_index`; there is no `{ pallet, call, args }` preimage list as in
+Polkadot's democracy pallet. Enactment is carried out by governance itself once
+the proposal passes.
+
 ```typescript
-// Submit proposal to increase wETH/DALLA liquidity rewards
-await sdk.governance.propose({
-  title: 'Increase wETH/DALLA rewards to 25%',
-  description: 'Boost liquidity for Ethereum bridge',
-  actions: [
-    {
-      pallet: 'AssetManager',
-      call: 'setLiquidityRewards',
-      args: {
-        pool: 'wETH/DALLA',
-        rewardRate: 2500,  // 25% APY
-      },
-    },
-  ],
-  deposit: 1000_000_000_000_000,  // 1000 DALLA
-});
+// Economic proposal (proposal_type_index 1) on simple majority (threshold_index 0)
+const proposalType = 1; // 0 Constitutional | 1 Economic | 2 Council | 3 Technical
+                        // 4 Emergency | 5 International | 6 Community
+const threshold = 0;    // 0 SimpleMajority | 1 Supermajority | 2 Unanimous | 3 Custom
+
+await api.tx.governance
+  .submitProposal(
+    'Increase wETH/DALLA liquidity incentives',
+    'Boost liquidity for the Ethereum bridge by raising the wETH/DALLA pool incentive.',
+    proposalType,
+    threshold,
+    false, // is_emergency
+    null,  // district_index — null for a national proposal
+  )
+  .signAndSend(councilAccount);
 ```
+
+> **Note**: `submit_proposal` only records the proposal and opens voting. There is
+> no `setLiquidityRewards` extrinsic — bridge pool configuration is changed with
+> `Interoperability.update_bridge_config`, and pool liquidity is provided with
+> `Interoperability.create_liquidity_pool(chain_index, asset_index, initial_liquidity)`.
 
 ## Performance Benchmarks
 

@@ -707,14 +707,20 @@ BelizeChain
 
 3. **Freeze Attacker Accounts (5 minutes)**
    ```bash
-   # Identify attacker addresses (check transaction logs)
-   grep "Treasury.Proposed" /var/log/substrate/node.log
-   
-   # Freeze accounts (governance call)
-   polkadot-js-api tx.governance.freezeAccounts([
-     '5GAttacker1...',
-     '5GAttacker2...'
-   ]).signAndSend(councilKey)
+   # Identify attacker addresses (check the node's event log)
+   docker logs ceiba-node 2>&1 | grep "TreasurySpendProposed"
+
+   # Restrict the accounts. There is no `governance.freezeAccounts` and no
+   # batch form — account restriction lives in the Compliance pallet and is
+   # called once per account, from the configured ComplianceOrigin
+   # (governance/sudo).
+   polkadot-js-api tx.compliance.restrictAccount \
+     '5GAttacker1...' \
+     'bridge double-spend investigation'
+
+   polkadot-js-api tx.compliance.restrictAccount \
+     '5GAttacker2...' \
+     'bridge double-spend investigation'
    ```
 
 4. **Snapshot State (10 minutes)**
@@ -724,8 +730,8 @@ BelizeChain
      --output /backup/emergency-snapshot-$(date +%s).json
    
    # Calculate stolen amount
-   polkadot-js-api query.system.events | \
-     grep "Treasury.Awarded" | \
+   docker logs ceiba-node 2>&1 | \
+     grep "TreasurySpendExecuted" | \
      awk '{sum+=$3} END {print sum}'
    ```
 
@@ -792,9 +798,12 @@ BelizeChain
 
 2. **Calculate Discrepancy (10 minutes)**
    ```bash
-   # Query BelizeChain bridge reserve
+   # There is no `interoperability.reserve` storage item. Locked bridge assets
+   # are tracked per (chain, asset) in `TotalLockedAssets`, keyed by the
+   # BridgeChain and BridgeAsset enums — and the only bridgeable assets are
+   # DALLA and BBZD (sovereignty policy), not USDC.
    BELIZECHAIN_RESERVE=$(polkadot-js-api \
-     query.interoperability.reserve "Ethereum" "USDC")
+     query.interoperability.totalLockedAssets Ethereum DALLA)
    
    # Query Ethereum bridge reserve
    ETH_RESERVE=$(cast call $BRIDGE_CONTRACT \
@@ -803,16 +812,17 @@ BelizeChain
    
    # Calculate difference
    DISCREPANCY=$((BELIZECHAIN_RESERVE - ETH_RESERVE))
-   echo "Discrepancy: $DISCREPANCY USDC"
+   echo "Discrepancy: $DISCREPANCY DALLA"
    ```
 
 3. **Identify Double-Spent Transactions (30 minutes)**
    ```bash
-   # Export bridge transaction logs
-   polkadot-js-api query.interoperability.transactions \
-     --from-block $START_BLOCK \
-     --to-block $END_BLOCK \
-     --output bridge-tx.json
+   # There is no `interoperability.transactions` storage item and no
+   # block-range export. Bridge transactions are `BridgeTransactions`, a map
+   # keyed by tx id (u32); the reliable way to enumerate them is to read the
+   # `BridgeTransactionInitiated` events for the block range.
+   docker logs ceiba-node 2>&1 | \
+     grep "BridgeTransactionInitiated" > bridge-tx.json
    
    # Compare with Ethereum logs
    cast logs --from-block $START_BLOCK \
@@ -827,10 +837,14 @@ BelizeChain
 
 4. **Revoke Compromised Relayers (15 minutes)**
    ```bash
-   # If relayer private key compromised
-   polkadot-js-api tx.interoperability.removeRelayer(
-     '5GCompromisedRelayer...'
-   ).signAndSend(adminKey)
+   # There is no `interoperability.removeRelayer`. Bridge validators are
+   # registered and removed through `register_bridge_validator` /
+   # `remove_bridge_validator`, and removal requires the GovernanceOrigin.
+   polkadot-js-api tx.sudo.sudo(
+     api.tx.interoperability.removeBridgeValidator(
+       '5GCompromisedRelayer...'
+     )
+   ).signAndSend(sudoKey)
    
    # Rotate remaining relayer keys (manual process)
    # Coordinate with relayer operators
