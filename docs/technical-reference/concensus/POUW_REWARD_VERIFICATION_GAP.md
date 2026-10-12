@@ -1,9 +1,74 @@
 # PoUW Reward Verification Gap
 
-**Status:** OPEN — finding documented, no fix applied
+**Status:** PARTIALLY FIXED 2026-10-12 — items **A and B applied**; **C and D still open**.
 **Severity:** High for N-validator operation. Currently latent (1 validator, no adversaries).
 **Raised:** 2026-09-30
 **Related:** `POUW_CONSENSUS_DESIGN.md` (the design this audits), `pallets/staking`, `pallets/storage-proof`
+
+---
+
+## Fix applied 2026-10-12 (`pallets/staking`)
+
+### A — `honesty_score` is now a function of adjudicated offences  ✅ DONE
+
+It was a constant (95 on join, 50 on force-join, and **no code anywhere ever
+updated it**), so 20% of every reward was a flat payment for existing.
+
+It now starts at `INITIAL_HONESTY_SCORE` (100) and loses
+`HONESTY_PENALTY_PER_OFFENCE` (20) per proven offence:
+
+- `slash_validator` decays the stored field — the only writer after join.
+- `honesty_from_spans` derives it from `SlashingSpans`, which **persists across
+  leave/rejoin**. Joining seeds from that same counter, so a validator cannot
+  restore their honesty by exiting the set and rejoining.
+- Severity is deliberately *not* factored in here: the stake slash already
+  carries severity, and honesty answers only "has this account been proven to
+  have misbehaved".
+
+Covered by `adjudicated_offence_decays_honesty`, which also asserts the stored
+score agrees with the persisted span count.
+
+### B — `quality_score` demoted from a reward term to an anti-spam gate  ✅ DONE
+
+The 25% `quality` term is **removed from `calculate_validator_reward`**. The
+heuristic still runs, but now as `MIN_QUALITY_TO_ACCEPT` (40) in
+`submit_model_delta`: a payload that fails it is **rejected outright**
+(`Error::QualityBelowThreshold`) instead of being paid a reduced amount.
+
+This is the correct shape for this heuristic. It inspects the size and Shannon
+entropy of an *encrypted* blob, so it is trustworthy for rejecting empty,
+undersized and degenerate payloads, and untrustworthy for ranking real ones.
+
+> **Note found while implementing:** the entropy penalty also fires on
+> **>7.5 bits/byte**, which is exactly what *encrypted* data looks like. A real
+> encrypted delta therefore scores ~55, not the ~80 the table below assumed for
+> "ordinary entropy". The threshold of 40 was chosen against that: it admits
+> encrypted deltas (55) while rejecting undersized (30) and degenerate (10)
+> payloads. A threshold of 60 would have rejected every genuine submission.
+
+### C and D — still open
+
+- **C (storage-proof payout)**: unchanged. `pallet_storage_proof` still verifies
+  correctly and still has no payout path. This is the cheapest remaining win.
+- **D (`quantum_score`, 30%)**: unchanged and still unverified. It is now the
+  **last unverified weight**, and therefore 30 of the 75 rewarded points.
+  Marked `INTERIM` in the reward function with a pointer back to this document.
+  It should be replaced by a solution verifier before the validator set grows.
+
+### Resulting weights
+
+| Term | Weight | Verifier |
+|---|---|---|
+| Timeliness | 20% | objective (submission block vs deadline) |
+| Honesty | 20% | **adjudicated offences** (fixed) |
+| Quantum | 30% | **none — INTERIM, item D** |
+| Stake bonus | 5% | objective (capital) |
+| ~~Quality~~ | ~~25%~~ | **removed — now a gate** |
+
+**Unverified share of the payout: 30 of 75 points (40%), down from 75 of 100.**
+It does not reach zero until item D lands.
+
+---
 
 ## Summary
 
@@ -18,7 +83,11 @@ The system therefore pays for claims and does not pay for proofs.
 
 ## Evidence
 
-`pallets/staking/src/lib.rs:1644` — `calculate_validator_reward`:
+`pallets/staking/src/lib.rs` — `calculate_validator_reward`.
+
+> **This table is the pre-fix state (2026-09-30) and is kept as the record of what
+> was wrong.** Items A and B have since been applied — see "Fix applied" above
+> for the current weights.
 
 | Weight | Input | How it is produced | Verifies |
 |---|---|---|---|

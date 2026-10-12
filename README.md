@@ -259,16 +259,31 @@ Project documentation is available in [`docs/`](docs/). For live topology and op
 
 ## 🔒 Security & Audits
 
-Audit artifacts are stored in [`audit_results/`](audit_results/). Review the current reports before claiming a clean release state.
+Audit artifacts are stored in [`audit_results/`](audit_results/).
 
-### Current Audit Artifacts
+> **These are dated snapshots, not live status.** Every file in `audit_results/` was
+> captured in April 2026 and describes the tree as it stood then. The codebase has
+> moved on substantially since, so a finding listed here may already be fixed and a
+> clean entry does not mean the current tree is clean. Re-run the tools below to get
+> a statement about the present tree; treat anything in `audit_results/` as history.
 
-| Tool | Target | Status | Reports |
+### Dated Audit Artifacts
+
+| Tool | Target | Captured | Reports |
 |------|--------|--------|---------|
-| **cargo-audit** | Rust dependencies | Review required: current artifact contains at least one advisory in transitive network dependencies | [audit_results/cargo_audit_20260213.txt](audit_results/cargo_audit_20260213.txt) |
-| **bandit** | Python and sibling-service audit surfaces | Findings present in the readable report; review before release decisions | [audit_results/bandit_readable.txt](audit_results/bandit_readable.txt) |
-| **Consolidated audit** | Cross-repo snapshot | Current summary artifact | [audit_results/FINAL_CONSOLIDATED_AUDIT_2026.md](audit_results/FINAL_CONSOLIDATED_AUDIT_2026.md) |
-| **safety** | Python dependencies | Review required: current artifact reports 6 vulnerabilities in the scanned environment | [audit_results/safety_readable.txt](audit_results/safety_readable.txt) |
+| **cargo-audit** | Rust dependencies | 2026-04 | [audit_results/cargo_audit_20260213.txt](audit_results/cargo_audit_20260213.txt) |
+| **bandit** | Python and sibling-service audit surfaces | 2026-04 | [audit_results/bandit_readable.txt](audit_results/bandit_readable.txt) |
+| **safety** | Python dependencies | 2026-04 | [audit_results/safety_readable.txt](audit_results/safety_readable.txt) |
+
+The prior consolidated audit report was **removed** rather than left in place: it
+asserted "39 CRITICAL findings remain" and "NOT MAINNET-READY" against a March 2026
+tree, was never marked superseded, and had no remediation tracker mapping its finding
+IDs to a fix status. Presenting that as a current summary would have been a false
+statement about the tree. A copy remains under `audit_results/old_audits/` as history.
+
+> The advisories currently blocking CI are the known upstream-capped ones, not the
+> April snapshot: `hickory-resolver` (transitive via `libp2p-dns`, no in-range fix)
+> and, in `nawal-ai`, `cryptography` (capped by `flwr`).
 
 ### Run Security Audit
 

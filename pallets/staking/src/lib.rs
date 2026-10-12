@@ -44,6 +44,26 @@ const STAKING_ID: LockIdentifier = *b"bzstking";
 /// constant, so the enforced minimum cannot drift from the documented one.
 pub const MIN_VALIDATOR_STAKE: u128 = 1_000 * 1_000_000_000_000; // 1,000 DALLA (12 decimals)
 
+/// Honesty score a validator starts with, before any adjudicated offence.
+pub const INITIAL_HONESTY_SCORE: u8 = 100;
+
+/// Honesty lost per adjudicated offence recorded in `SlashingSpans`.
+///
+/// Deliberately independent of the slashed amount: the stake slash already
+/// carries the severity, while honesty answers only "has this account been
+/// proven to have misbehaved".
+pub const HONESTY_PENALTY_PER_OFFENCE: u8 = 20;
+
+/// Minimum `evaluate_model_quality` score a model delta must reach to be
+/// accepted at all.
+///
+/// This is an anti-spam gate, not a quality grade. The heuristic can only see
+/// the size and Shannon entropy of an *encrypted* blob, so it is trustworthy
+/// for rejecting empty, undersized and random payloads, and not trustworthy
+/// for ranking real ones. 40 rejects anything under ~128 bytes or with heavily
+/// degraded entropy, while admitting every payload a real delta would produce.
+pub const MIN_QUALITY_TO_ACCEPT: u8 = 40;
+
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
@@ -545,6 +565,8 @@ pub mod pallet {
         QuantumJobAlreadyRecorded,
         /// Invalid accuracy score provided (must be 0-100)
         InvalidAccuracyScore,
+        /// Model delta rejected by the anti-spam quality gate (PoUW-B)
+        QualityBelowThreshold,
         /// Invalid domain index (Phase 3)
         InvalidDomainIndex,
         /// Operator has no domain contributions (Phase 3)
@@ -739,7 +761,9 @@ pub mod pallet {
                 last_fl_contribution: frame_system::Pallet::<T>::block_number(),
                 quality_score: 80,    // Starting quality score
                 timeliness_score: 90, // Starting timeliness score
-                honesty_score: 95,    // Starting honesty score
+                // Derived from adjudicated offences rather than fixed, so
+                // leaving and rejoining cannot restore it.
+                honesty_score: Self::honesty_from_spans(SlashingSpans::<T>::get(&who)),
                 total_contributions: 0,
             };
 
@@ -954,6 +978,17 @@ pub mod pallet {
 
             // Calculate scores based on submission quality and timeliness
             let quality_score = Self::evaluate_model_quality(&encrypted_delta);
+
+            // PoUW (B): quality is an anti-spam GATE, not a rewarded score.
+            // The heuristic cannot see inside the encrypted delta, so it is
+            // used to reject empty / undersized / random payloads outright
+            // rather than to pay them a reduced amount. It no longer appears
+            // in `calculate_validator_reward`.
+            ensure!(
+                quality_score >= MIN_QUALITY_TO_ACCEPT,
+                Error::<T>::QualityBelowThreshold
+            );
+
             let timeliness_score =
                 Self::calculate_timeliness_score(current_block, active_task.deadline);
 
@@ -1289,7 +1324,7 @@ pub mod pallet {
                 last_fl_contribution: frame_system::Pallet::<T>::block_number(),
                 quality_score: 1, // CONS-008: Start at minimum until real work is submitted
                 timeliness_score: 50,
-                honesty_score: 50,
+                honesty_score: Self::honesty_from_spans(SlashingSpans::<T>::get(&who)),
                 total_contributions: 0,
             };
 
@@ -1568,6 +1603,20 @@ pub mod pallet {
             raw.min(MAX_EFFECTIVE_MULTIPLIER)
         }
 
+        /// Honesty score implied by a validator's adjudicated offences.
+        ///
+        /// PoUW (A): honesty is a function of proven faults, not of tenure.
+        /// Deriving it from `SlashingSpans` — which already persists across
+        /// leave/rejoin — means the score cannot be reset by exiting the set
+        /// and rejoining, and it stays consistent with the incremental decay
+        /// applied in `slash_validator`.
+        fn honesty_from_spans(spans: u32) -> u8 {
+            let penalty = spans
+                .saturating_mul(HONESTY_PENALTY_PER_OFFENCE as u32)
+                .min(u8::MAX as u32) as u8;
+            INITIAL_HONESTY_SCORE.saturating_sub(penalty)
+        }
+
         /// Evaluate model contribution quality based on delta size and Shannon entropy.
         ///
         /// S6-3 HARDENING: Uses proper Shannon entropy (bits/byte) instead of a
@@ -1666,8 +1715,14 @@ pub mod pallet {
             }
         }
 
-        /// Calculate final reward for validator based on contribution scores (Phase 2.2 Enhanced)
-        /// New formula: FL Quality(25%) + FL Timeliness(20%) + FL Honesty(20%) + Quantum(30%) + Bonus(5%)
+        /// Calculate final reward for validator based on contribution scores.
+        ///
+        /// Formula: Timeliness(20%) + Honesty(20%) + Quantum(30%) + Bonus(5%).
+        ///
+        /// The former Quality(25%) term was REMOVED: it was paid against
+        /// `evaluate_model_quality`, which can only inspect the size and
+        /// entropy of an encrypted blob and therefore cannot judge quality at
+        /// all. That heuristic is now a gate in `submit_model_delta`.
         #[allow(clippy::type_complexity)]
         fn calculate_validator_reward(
             validator_info: &ValidatorInfo<
@@ -1677,17 +1732,23 @@ pub mod pallet {
             >,
             base_reward: <T::Currency as Currency<T::AccountId>>::Balance,
         ) -> <T::Currency as Currency<T::AccountId>>::Balance {
-            // Updated PoUW weights (Phase 2.2)
-            let quality_weight = Perbill::from_percent(25); // Reduced from 40%
-            let timeliness_weight = Perbill::from_percent(20); // Reduced from 30%
-            let honesty_weight = Perbill::from_percent(20); // Reduced from 30%
-            let quantum_weight = Perbill::from_percent(30); // NEW: Quantum computing contribution
-            let bonus_weight = Perbill::from_percent(5); // Stake/uptime bonus
+            // PoUW weights after the verification pass.
+            //
+            // `quality` is gone (see the fn doc above). `honesty` is now
+            // derived from adjudicated offences via `honesty_from_spans` /
+            // `slash_validator`, so it is a real signal rather than the
+            // constant 95 it used to be.
+            //
+            // `quantum` remains an explicitly UNVERIFIED interim term — see
+            // docs/technical-reference/concensus/POUW_REWARD_VERIFICATION_GAP.md
+            // item D. It is the last unverified weight and should be replaced
+            // by a solution verifier before the validator set grows.
+            let timeliness_weight = Perbill::from_percent(20);
+            let honesty_weight = Perbill::from_percent(20);
+            let quantum_weight = Perbill::from_percent(30);
+            let bonus_weight = Perbill::from_percent(5);
 
             // Calculate FL contribution rewards
-            let quality_reward = quality_weight
-                * Perbill::from_percent(validator_info.quality_score as u32)
-                * base_reward;
             let timeliness_reward = timeliness_weight
                 * Perbill::from_percent(validator_info.timeliness_score as u32)
                 * base_reward;
@@ -1715,8 +1776,7 @@ pub mod pallet {
 
             // Combine all rewards
 
-            quality_reward
-                .saturating_add(timeliness_reward)
+            timeliness_reward
                 .saturating_add(honesty_reward)
                 .saturating_add(quantum_reward)
                 .saturating_add(stake_bonus)
@@ -1753,6 +1813,16 @@ pub mod pallet {
                 );
                 let current_slashes = SlashingSpans::<T>::get(validator);
                 SlashingSpans::<T>::insert(validator, current_slashes.saturating_add(1));
+
+                // PoUW (A): an adjudicated offence costs honesty. This is the
+                // only writer of `honesty_score` after join, which is what
+                // makes the term depend on a proven fault rather than on
+                // merely existing. Kept consistent with `honesty_from_spans`
+                // so that a leave/rejoin cannot restore the score.
+                validator_info.honesty_score = validator_info
+                    .honesty_score
+                    .saturating_sub(HONESTY_PENALTY_PER_OFFENCE);
+
                 Validators::<T>::insert(validator, validator_info);
 
                 Self::deposit_event(Event::ValidatorSlashed {

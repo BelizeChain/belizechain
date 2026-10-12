@@ -86,7 +86,9 @@ fn join_validators_works() {
         assert_eq!(validator.compliance_score, 100);
         assert_eq!(validator.quality_score, 80);
         assert_eq!(validator.timeliness_score, 90);
-        assert_eq!(validator.honesty_score, 95);
+        // PoUW (A): honesty starts at full and decays only on adjudicated
+        // offences, so a fresh validator has the initial score.
+        assert_eq!(validator.honesty_score, INITIAL_HONESTY_SCORE);
         assert_eq!(validator.total_contributions, 0);
 
         // Verify count incremented
@@ -311,7 +313,9 @@ fn claim_pouw_reward_works() {
         let mut log = [0u8; 32];
         log[0] = 1;
         log[1] = 2;
-        let delta: Vec<u8> = (0u8..64).collect();
+        // PoUW (B): must clear MIN_QUALITY_TO_ACCEPT. A 64-byte payload scores
+        // 30 (undersized) and is refused; 128 bytes scores 60 and passes.
+        let delta: Vec<u8> = (0u8..128).collect();
         let bounded_delta = BoundedVec::try_from(delta.clone()).unwrap();
         let commitment = make_valid_commitment(&delta, ALICE, System::block_number() as u32);
 
@@ -581,6 +585,55 @@ fn slash_validator_for_downtime_works() {
     });
 }
 
+/// PoUW (A): honesty is a function of adjudicated offences, not of tenure.
+///
+/// Every proven offence costs `HONESTY_PENALTY_PER_OFFENCE`, independent of the
+/// slashed amount (the stake slash already carries severity). The score is kept
+/// consistent with the persisted `SlashingSpans` count, which is what stops a
+/// validator restoring it by leaving the set and rejoining.
+#[test]
+fn adjudicated_offence_decays_honesty() {
+    new_test_ext().execute_with(|| {
+        let stake = 10_000_000_000u128;
+
+        assert_ok!(BelizeStaking::join_validators(
+            RuntimeOrigin::signed(ALICE),
+            stake,
+            100,
+            test_location("Belize City")
+        ));
+        assert_eq!(
+            BelizeStaking::validators(ALICE).unwrap().honesty_score,
+            INITIAL_HONESTY_SCORE
+        );
+
+        for offence in 1..=2u8 {
+            assert_ok!(BelizeStaking::report_validator_offense(
+                RuntimeOrigin::root(),
+                ALICE,
+                5, // 5% stake slash — severity lives here, not in honesty
+                1, // MissedDeadline
+            ));
+
+            let expected =
+                INITIAL_HONESTY_SCORE.saturating_sub(HONESTY_PENALTY_PER_OFFENCE * offence);
+            assert_eq!(
+                BelizeStaking::validators(ALICE).unwrap().honesty_score,
+                expected,
+                "honesty after {offence} adjudicated offence(s)"
+            );
+        }
+
+        // The score must agree with the span count the pallet persists, since
+        // that is the value a rejoin re-derives from.
+        assert_eq!(
+            SlashingSpans::<Test>::get(ALICE),
+            2,
+            "two adjudicated offences should be recorded"
+        );
+    });
+}
+
 #[test]
 fn slash_validator_applies_to_pending_unbond_stake() {
     new_test_ext().execute_with(|| {
@@ -682,8 +735,11 @@ fn report_validator_offense_slashes_unbonding_validator() {
 // SCORE CALCULATION TESTS
 // ============================================================================
 
+/// PoUW (B): `quality_score` no longer contributes to the payout — it is an
+/// anti-spam gate. What this establishes is that two validators whose deltas
+/// pass the gate are both paid.
 #[test]
-fn quality_score_affects_rewards() {
+fn accepted_deltas_earn_rewards() {
     new_test_ext().execute_with(|| {
         let stake = 10_000_000_000u128;
 
@@ -718,8 +774,8 @@ fn quality_score_affects_rewards() {
             l[0] = seed;
             l
         };
-        let alice_delta_vec: Vec<u8> = (0u8..64).map(|x| x.wrapping_add(1)).collect();
-        let bob_delta_vec: Vec<u8> = (0u8..64).collect();
+        let alice_delta_vec: Vec<u8> = (0u8..128).map(|x| x.wrapping_add(1)).collect();
+        let bob_delta_vec: Vec<u8> = (0u8..128).collect();
         let alice_delta = BoundedVec::try_from(alice_delta_vec.clone()).unwrap();
         let bob_delta = BoundedVec::try_from(bob_delta_vec.clone()).unwrap();
         let alice_commitment =
@@ -1026,7 +1082,7 @@ fn submit_model_delta_errors_work() {
         ));
 
         // Fails when no active FL task
-        let delta_vec: Vec<u8> = (0u8..64).collect();
+        let delta_vec: Vec<u8> = (0u8..128).collect();
         let delta = BoundedVec::try_from(delta_vec.clone()).unwrap();
         let commitment = make_valid_commitment(&delta_vec, ALICE, System::block_number() as u32);
         let mut log = [0u8; 32];
@@ -1076,6 +1132,23 @@ fn submit_model_delta_errors_work() {
                 log,
             ),
             Error::<Test>::InvalidComputationCommitment
+        );
+
+        // PoUW (B): a payload the anti-spam gate judges undersized is refused
+        // outright rather than paid a reduced amount.
+        let small_delta_vec: Vec<u8> = (0u8..64).collect();
+        let small_delta = BoundedVec::try_from(small_delta_vec.clone()).unwrap();
+        let small_commitment =
+            make_valid_commitment(&small_delta_vec, ALICE, System::block_number() as u32);
+        assert_noop!(
+            BelizeStaking::submit_model_delta(
+                RuntimeOrigin::signed(ALICE),
+                5,
+                small_delta,
+                small_commitment,
+                log,
+            ),
+            Error::<Test>::QualityBelowThreshold
         );
 
         // Valid submission works
