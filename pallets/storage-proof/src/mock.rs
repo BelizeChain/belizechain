@@ -100,12 +100,70 @@ impl frame_support::traits::EnsureOrigin<RuntimeOrigin> for RevocationOrigin {
     }
 }
 
+/// Term used by test commitments, in blocks — `TEST_PROOFS` × `TEST_INTERVAL_RAW`.
+const TEST_DURATION_RAW: u64 = 100;
+/// Proof interval used by test commitments, in blocks.
+const TEST_INTERVAL_RAW: u64 = 10;
+
+/// Escrow used by test commitments — comfortably above `MinEscrow`.
+pub const TEST_ESCROW: u128 = 100_000_000_000;
+/// Proofs a test commitment pays: `TEST_DURATION_RAW / TEST_INTERVAL_RAW`.
+pub const TEST_PROOFS: u128 = 10;
+/// Per-proof payout for a test commitment.
+pub const TEST_TRANCHE: u128 = TEST_ESCROW / TEST_PROOFS;
+
+parameter_types! {
+    /// Minimum proof interval accepted by the mock.
+    pub const MinStorageProofInterval: BlockNumberFor<Test> = 5;
+    /// Longest term accepted by the mock.
+    pub const MaxStorageCommitmentDuration: BlockNumberFor<Test> = 1_000_000;
+    /// Challenge window used by the mock — 20 blocks.
+    pub const StorageChallengeWindow: BlockNumberFor<Test> = 20;
+    /// Interval for test commitments.
+    pub const TestInterval: BlockNumberFor<Test> = TEST_INTERVAL_RAW as BlockNumberFor<Test>;
+    /// Term for test commitments.
+    pub const TestDuration: BlockNumberFor<Test> = TEST_DURATION_RAW as BlockNumberFor<Test>;
+}
+
 impl pallet_storage_proof::Config for Test {
     type RevocationOrigin = RevocationOrigin;
     type Currency = Balances;
     /// Refundable deposit used in tests — 1 DALLA at 12 decimals.
     type StorageDeposit = frame_support::traits::ConstU128<1_000_000_000>;
+    /// Minimum escrow for tests — 10 DALLA at 12 decimals.
+    type MinEscrow = frame_support::traits::ConstU128<10_000_000_000>;
+    type MinProofInterval = MinStorageProofInterval;
+    type MaxCommitmentDuration = MaxStorageCommitmentDuration;
+    type MaxOpenCommitments = ConstU32<4>;
+    type ChallengeWindow = StorageChallengeWindow;
     type WeightInfo = ();
+}
+
+/// Advances the mock chain by `blocks`.
+pub fn advance(blocks: BlockNumberFor<Test>) {
+    let now = frame_system::Pallet::<Test>::block_number();
+    frame_system::Pallet::<Test>::set_block_number(now + blocks);
+}
+
+/// Opens a commitment for `content_id` funded by `client`, leaving the block
+/// number untouched.
+pub fn commit_only(client: u64, content_id: [u8; 32]) {
+    frame_support::assert_ok!(crate::pallet::Pallet::<Test>::commit_storage(
+        RuntimeOrigin::signed(client),
+        content_id,
+        TEST_ESCROW,
+        TestInterval::get(),
+        TestDuration::get(),
+    ));
+}
+
+/// `commit_only` plus one interval, so the first proof is due.
+///
+/// Every successful submission needs a funded commitment — without one the
+/// pallet's anchor check rejects the proof outright.
+pub fn commit_and_advance(client: u64, content_id: [u8; 32]) {
+    commit_only(client, content_id);
+    advance(TestInterval::get());
 }
 
 pub fn new_test_ext() -> sp_io::TestExternalities {

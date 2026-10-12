@@ -452,10 +452,19 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     //   `pallet-proxy` (16). These fill the previously-unused 14-19 index gap,
     //   so no existing pallet index moves. No storage migration: all three
     //   start from empty storage.
-    spec_version: 114,
+    // - 115: `pallet-storage-proof` gains the storage commitment registry —
+    //   `commit_storage` (call 2), `refund_expired` (call 3),
+    //   `challenge_provider` (call 4) and `claim_challenge_failed` (call 5),
+    //   plus `Commitments` / `ClientCommitmentCount` storage. Purely additive:
+    //   no existing call index, storage key or value shape changes, so there is
+    //   no migration. `submit_storage_proof` now requires a funded commitment
+    //   and pays from the client's escrow instead of minting.
+    spec_version: 115,
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,
-    transaction_version: 1,
+    // Adding call indices to a live pallet is additive, but the version
+    // advertises that the extrinsics set changed.
+    transaction_version: 2,
     system_version: 1,
 };
 
@@ -1863,14 +1872,39 @@ impl pallet_belize_moderation::Config for Runtime {
 
 // =============================================================================
 // Phase 6A: Storage Proof Pallet Configuration
-// Pakit DAG storage proof verification (Merkle-first, ZK-gated Stage B).
+// Pakit DAG storage proof verification, plus the storage commitment registry
+// that funds it. Nothing is minted: a provider is paid from the escrow of the
+// client that asked for the data to be stored.
 // =============================================================================
+parameter_types! {
+    /// ⚠️ POLICY PLACEHOLDER — needs product sign-off before mainnet.
+    /// Minimum escrow per commitment (10 DALLA). Also guarantees a non-zero
+    /// per-proof tranche after integer division.
+    pub const MinStorageEscrow: Balance = 10 * DOLLARS;
+    /// ⚠️ POLICY PLACEHOLDER — minimum blocks between paid proofs (~10 min at 6s).
+    pub const MinStorageProofInterval: BlockNumber = 100;
+    /// ⚠️ POLICY PLACEHOLDER — longest commitment term (~1 year at 6s).
+    pub const MaxStorageCommitmentDuration: BlockNumber = 5_256_000;
+    /// ⚠️ POLICY PLACEHOLDER — open commitments allowed per client.
+    pub const MaxOpenStorageCommitments: u32 = 16;
+    /// ⚠️ POLICY PLACEHOLDER — blocks a provider has to answer a challenge
+    /// before the client may reclaim the remaining escrow (~10 min at 6s).
+    /// A longer window is more forgiving but weaker, because a provider that has
+    /// discarded the data could fetch it on demand inside the window.
+    pub const StorageChallengeWindow: BlockNumber = 100;
+}
+
 impl pallet_storage_proof::Config for Runtime {
     /// Root/sudo may revoke a proof (byzantine storage provider dispute path).
     type RevocationOrigin = EnsureRoot<Self::AccountId>;
     type Currency = Balances;
     /// Refundable deposit per stored proof — prevents free permanent state growth.
     type StorageDeposit = ConstU128<DOLLARS>;
+    type MinEscrow = MinStorageEscrow;
+    type MinProofInterval = MinStorageProofInterval;
+    type MaxCommitmentDuration = MaxStorageCommitmentDuration;
+    type MaxOpenCommitments = MaxOpenStorageCommitments;
+    type ChallengeWindow = StorageChallengeWindow;
     type WeightInfo = pallet_storage_proof::weights::SubstrateWeight<Runtime>;
 }
 

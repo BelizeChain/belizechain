@@ -1,6 +1,7 @@
 # PoUW Reward Verification Gap
 
-**Status:** PARTIALLY FIXED 2026-10-12 — items **A and B applied**; **C and D still open**.
+**Status:** FIXED 2026-10-12 — items **A, B, C and D applied**. No unverified reward
+term remains in the PoUW payout path.
 **Severity:** High for N-validator operation. Currently latent (1 validator, no adversaries).
 **Raised:** 2026-09-30
 **Related:** `POUW_CONSENSUS_DESIGN.md` (the design this audits), `pallets/staking`, `pallets/storage-proof`
@@ -46,38 +47,114 @@ undersized and degenerate payloads, and untrustworthy for ranking real ones.
 > encrypted deltas (55) while rejecting undersized (30) and degenerate (10)
 > payloads. A threshold of 60 would have rejected every genuine submission.
 
-### C and D — still open
+### C — storage proofs are paid from client escrow, not minted  ✅ DONE
 
-- **C (storage-proof payout)**: unchanged. `pallet_storage_proof` still verifies
-  correctly and still has no payout path. This is the cheapest remaining win.
-- **D (`quantum_score`, 30%)**: unchanged and still unverified. It is now the
-  **last unverified weight**, and therefore 30 of the 75 rewarded points.
-  Marked `INTERIM` in the reward function with a pointer back to this document.
-  It should be replaced by a solution verifier before the validator set grows.
+This was the one pallet already performing real on-chain verification, and it had
+no payout path. It now pays a provider from escrow that a **client** funded.
+
+**Two gaps had to be closed, not one.**
+
+1. **The verification was circular.** `submit_storage_proof(content_id, proof, _)` took
+   *both* the root and the Merkle path from the caller and checked only that they agreed
+   — proving the caller built a self-consistent tree, nothing more. Any account could pass
+   it with arbitrary bytes.
+2. **Nothing funded the storage.** With no payer, any reward must be *minted*, and minting
+   against a caller-declared root is free money.
+
+**The first fix attempt failed, and the reason matters.** Anchoring the root in LandLedger
+cannot work: pakit derives `content_id = derive_merkle_root(BLAKE2(block content), parent
+hashes)` and submits it via `storageProof.submit_storage_proof`, while LandLedger commits
+`blake2_256(property_id ‖ title_number)`. Those are **disjoint value spaces**, so the anchor
+would have rejected *every real pakit proof*. That work was reverted before shipping.
+
+**What shipped instead: a storage commitment registry**, which closes both gaps at once by
+removing the mint. A client opens a commitment with their own escrow (`commit_storage`); the
+first accepted proof claims the deal's provider slot; each accepted proof releases one tranche
+from that escrow. Every balance movement is `reserve` / `repatriate_reserved` / `unreserve`,
+so **`total_issuance` is invariant and there is no `deposit_creating` anywhere.**
+
+The consequences are the interesting part:
+
+- **The anchor no longer needs to be unfakeable** — only cheap to check and honest about who
+  is paying. Self-dealing moves an actor's own money between its own accounts for a net loss
+  of fees, so a self-declared root buys nothing.
+- **An incorrectly accepted proof moves the client's own escrow**, never the chain's.
+  Verification quality is a client-protection concern, not a consensus-safety one — a much
+  more honest requirement than the minted model demanded.
+- **pakit needs no change.** `commit_storage` is a *client* action, so the existing
+  integration keeps working, and `derive_merkle_root` is byte-for-byte unchanged — the
+  parity asserted with `pakit-storage/core/merkle_storage_proofs.py` still holds.
+- `ContentAlreadyProven` was **removed**: under a tranche model a duplicate guard would cap
+  every deal at a single payment. Spacing (`ProofTooSoon`) bounds payment instead.
+
+**Retention is still not proven, and is not claimed to be.** A Merkle path shows the provider
+*could* produce a path at proof time, not that it still holds the bytes. What was added is a
+client-initiated challenge (`challenge_provider` → `claim_challenge_failed`) that makes
+non-retention detectable and costly for the party whose money is at stake, plus a discretionary
+`release_provider` exit. `STORAGE_COMMITMENT_REGISTRY_DESIGN.md` §6 states the limit in full;
+§15 records the three defects found during implementation and the invariants that make some
+guards unreachable.
+
+> **Superseded content removed.** An earlier revision of this section described a LandLedger
+> anchor gate, a minted `ProofReward`, and a `MERKLE_NODE_DOMAIN` separator. All three were
+> reverted. The preimage-collision analysis in that revision was *correct* — the untagged fold
+> really did collide with LandLedger's 64-byte preimage, confirmed empirically
+> (`untagged fold == anchored hash: True`) — but none of it was needed once the mint was
+> removed, because there was nothing left to farm.
+
+### D — the `quantum_score` weight is removed rather than faked  ✅ DONE
+
+The 30% `quantum` term was the last unverified weight: `ValidatorQuantumStatsMap`
+was read but never reliably populated. It has been **removed from
+`calculate_validator_reward`**, taking its reader (`ValidatorQuantumStatsMap`) out
+of the reward path with it.
+
+This is the honest option, not the convenient one. There is no way to verify a
+quantum-compute claim on-chain today, and inventing a proxy would have recreated
+exactly the defect item B removed — a payment for an unverifiable input. The
+pallet's own comment records that every surviving term is non-assertable and why,
+and explicitly accepts the resulting emission reduction: weights now sum to **45%**
+of `MaxValidatorReward`, so total PoUW validator emission is **40% lower** than
+before A–D.
+
+Reinstating a quantum term requires a mechanical solution verifier for quantum
+jobs. Until then, quantum work is unpaid by this pallet — which is the correct
+trade against paying for unverified claims.
 
 ### Resulting weights
+
+Staking rewards (`calculate_validator_reward`) — every term now has a real verifier:
 
 | Term | Weight | Verifier |
 |---|---|---|
 | Timeliness | 20% | objective (submission block vs deadline) |
-| Honesty | 20% | **adjudicated offences** (fixed) |
-| Quantum | 30% | **none — INTERIM, item D** |
+| Honesty | 20% | **adjudicated offences** (item A) |
 | Stake bonus | 5% | objective (capital) |
-| ~~Quality~~ | ~~25%~~ | **removed — now a gate** |
+| ~~Quality~~ | ~~25%~~ | **removed — now a gate** (item B) |
+| ~~Quantum~~ | ~~30%~~ | **removed — no verifier exists** (item D) |
+| **Total** | **45%** | — |
 
-**Unverified share of the payout: 30 of 75 points (40%), down from 75 of 100.**
-It does not reach zero until item D lands.
+Separately, `pallet_storage_proof` now pays a provider from **client escrow** rather
+than minting, against a mechanically verifiable Merkle path (item C). Because the payer
+is a funded commitment rather than the chain, no supply ceiling is involved and
+`total_issuance` is unchanged.
+
+**Unverified share of the payout: 0 of 45 points.** Every rewarded point is
+backed by a check that cannot be satisfied by declaration alone.
 
 ---
 
-## Summary
+## Summary (as originally raised, 2026-09-30)
 
-Every validator reward in `pallet_belize_staking` is paid against an input that either
-verifies nothing, verifies a constant, or verifies only the *shape* of an opaque blob.
-There is no reward term that depends on a checkable *result*.
+Every validator reward in `pallet_belize_staking` was paid against an input that either
+verified nothing, verified a constant, or verified only the *shape* of an opaque blob.
+There was no reward term that depended on a checkable *result*.
 
-Simultaneously, the one pallet that **does** perform real on-chain verification —
-`pallet_storage_proof` — has **no payout path at all**.
+Simultaneously, the one pallet that **did** perform real on-chain verification —
+`pallet_storage_proof` — had **no payout path at all**.
+
+Both halves are now closed: the unverifiable terms are removed (A, B, D) and the
+verifiable one is paid from a funder's escrow instead of a mint (C).
 
 The system therefore pays for claims and does not pay for proofs.
 
@@ -86,18 +163,18 @@ The system therefore pays for claims and does not pay for proofs.
 `pallets/staking/src/lib.rs` — `calculate_validator_reward`.
 
 > **This table is the pre-fix state (2026-09-30) and is kept as the record of what
-> was wrong.** Items A and B have since been applied — see "Fix applied" above
-> for the current weights.
+> was wrong.** All four items — A, B, C and D — have since been applied; see
+> "Fix applied" above for the current weights (45%, every term verifiable).
 
 | Weight | Input | How it is produced | Verifies |
 |---|---|---|---|
-| 25% | `quality_score` | `evaluate_model_quality` (`:1552`) | **shape of a blob** |
-| 20% | `timeliness_score` | `calculate_timeliness_score` (`:1619`) | **when**, not what |
+| 25% | `quality_score` | `evaluate_model_quality` | **shape of a blob** |
+| 20% | `timeliness_score` | `calculate_timeliness_score` | **when**, not what |
 | 20% | `honesty_score` | **never computed** | **nothing** |
-| 30% | `quantum_score` | counters in `record_quantum_contribution` (`:1162`) | **nothing** |
+| 30% | `quantum_score` | counters in `record_quantum_contribution` | **nothing** |
 | 5% | stake bonus | stake ratio | **capital**, not work |
 
-**75% of every reward is therefore unverified.**
+**75% of every reward was therefore unverified.**
 
 ### `evaluate_model_quality` does not evaluate model quality
 
@@ -132,15 +209,18 @@ produced:
 
 So the enum variants exist; the detection that would use them does not.
 
-### The one correct verifier is unpaid
+### The one correct verifier was unpaid (fixed as item C)
 
-`pallets/storage-proof/src/lib.rs` (354 lines) verifies Merkle proofs fully on-chain —
+`pallets/storage-proof/src/lib.rs` verifies Merkle proofs fully on-chain —
 `derive_merkle_root` against the CID commitment — and hard-errors on the `Groth16` path
 when the feature is off, explicitly preserving the invariant *"never accept a proof we
 could not verify."*
 
-Its **only** currency calls are `reserve` (`:253`) and `unreserve` (`:284`) for a
-refundable anti-spam deposit. **There is no transfer, mint, or payout.**
+As originally raised, its **only** currency calls were `reserve`/`unreserve` for a
+refundable anti-spam deposit. **There was no transfer, mint, or payout** — while the
+verification was also circular, because the root it checked was caller-supplied. Item C
+closed both: a client must have funded the content, so the verification is no longer
+circular, and each accepted proof pays a tranche from that client's escrow.
 
 ## Root cause
 
@@ -211,30 +291,44 @@ first:
 2. **Sample / challenge** — random spot-check of a subset
 3. **Redundancy** — N parties do the same work and must agree (works anywhere, costs N×)
 
-Applied:
+Applied — see the "Fix applied 2026-10-12" section at the top for what actually landed,
+including the two places this recommendation was incomplete.
 
-**A. `honesty_score` (20%) — do first, no new machinery.** Either derive it from
+**A. `honesty_score` (20%) — do first, no new machinery.** ✅ *Applied as recommended.* Either derive it from
 *already-adjudicated* faults (slashing events, revoked or failed proofs) starting at 100
 and decaying on proven offence, or delete the term and redistribute the weight. Either
 way: stop paying a fifth of every reward for existing.
 
-**B. `quality_score` (25%) — reclassify as a gate, not a score.** The heuristic is not
+**B. `quality_score` (25%) — reclassify as a gate, not a score.** ✅ *Applied as recommended.* The heuristic is not
 worthless: it rejects empty, undersized, and random-garbage payloads. That is a legitimate
 *anti-spam filter*, and a filter is cheap and reversible — a false accept is caught later,
 a false reject is just resubmitted. Keep it as the gate it effectively is; remove it from
 the reward calculation. This eliminates a quarter of unearned payout with no new code.
 
-**C. Storage — wire the payout; the verifier already exists.** `pallet_storage_proof`
+**C. Storage — wire the payout; the verifier already exists.** ⚠️ *Applied, but this recommendation was incomplete.*
+`pallet_storage_proof`
 proves the work correctly and is the only component that got the ordering right:
 verifier first, trust second. Add a reward for accepted proofs. **This is the template,
 and it is the cheapest real win available.**
 
-**D. `quantum_score` (30%) — verify the solution, not the computation.** For
+> **Correction:** "the verifier already exists" was wrong. The Merkle check took both the
+> root and the proof from the caller, so it verified self-consistency, not content — and
+> paying against it on a *minted* reward would have been free money. The payout needed a
+> payer, which is what the storage commitment registry supplies. Ordering *within* the
+> pallet was right; the *funding* was what was missing.
+
+**D. `quantum_score` (30%) — verify the solution, not the computation.** ⚠️ *Not applied as recommended — the term was deleted instead.*
+For
 optimisation-type jobs there is no need to re-run a quantum computer: score the *returned
 solution* classically against the objective and constraints. Small circuits are also
 classically simulable, so deterministic re-derivation covers a wide class. Sample and
-re-execute the remainder. Until a verifier exists, treat this weight as a documented
-interim provision that decays rather than a settled entitlement.
+re-execute the remainder.
+
+> **Why deleted rather than verified:** the recommended solution-verifier does not exist
+> yet, and `ValidatorQuantumStatsMap` was not reliably populated either — so there was no
+> input to check. Building a scoring heuristic now would have reproduced the exact defect
+> item B removed. The weight was removed and the 40% emission reduction accepted; a
+> quantum term can return once a mechanical verifier for returned solutions exists.
 
 **E. `timeliness` (20%) and stake (5%) — leave alone.** Both are objective and low-risk.
 Note that timeliness measures *punctuality*, so it should not carry more weight than that.
@@ -300,32 +394,44 @@ It is not urgent-for-harm-today. It is **blocking-for-N-validators**.
 
 ## What not to do
 
-- **Do not add a "compute reward" term now.** A reward for unverified compute widens the
-  surface that is already 75% open.
+- **Do not add a "compute reward" term now.** A reward for unverified compute is what
+  items B and D removed; it would reopen the surface they closed.
 - **Do not delete the heuristic** — reclassify it as the gate (B).
 - **Do not let a model become the payment authority.** Detection yes; adjudication of
   payment no.
 - **Do not fix this after onboarding validators.**
 - **Do not unpick the `storage-proof` Groth16 guard** — its hard-error behaviour preserves
   a correct invariant and is the model to copy, not to relax.
+- **Do not make a commitment payable on a caller-declared root.** The commitment is the
+  anchor: a proof is only paid because somebody funded *that* content id. Wiring payment
+  to a self-reported value would restore the free-money exploit that C removed.
 
 ## Verification commands
 
 ```bash
-# The reward formula and its weights
-sed -n '1644,1700p' pallets/staking/src/lib.rs
+# Reward formula: which terms survive, and their weights
+grep -n "calculate_validator_reward" -A 45 pallets/staking/src/lib.rs
 
-# Quality is byte statistics, not model quality
-sed -n '1552,1620p' pallets/staking/src/lib.rs
+# No unverifiable term is read in the reward path
+grep -n "ValidatorQuantumStatsMap" pallets/staking/src/lib.rs
 
-# honesty_score: field, two initialisations, one use — nothing computes it
-grep -n "honesty_score" pallets/staking/src/lib.rs
+# honesty_score: field, seed, and the single decay writer
+grep -n "honesty_score\|HONESTY_PENALTY_PER_OFFENCE" pallets/staking/src/lib.rs
 
 # Slashing needs root; only consensus offences are automatic
 grep -n "ensure_root" pallets/staking/src/lib.rs
-sed -n '580,590p' runtime/src/lib.rs
 
-# storage-proof: verification present, payout absent
-grep -n "reserve\|unreserve\|transfer\|mint" pallets/storage-proof/src/lib.rs
-wc -l pallets/storage-proof/src/lib.rs
+# storage-proof: commitment gate + escrow payout, Groth16 still hard-errors
+grep -n "NoCommitment\|Commitments\|repatriate_reserved\|Groth16NotYetAccepted" \
+  pallets/storage-proof/src/lib.rs
+
+# Nothing is minted on this path
+grep -n "deposit_creating\|total_issuance" pallets/storage-proof/src/lib.rs
+
+# The registry design, its limitations, and the bugs found building it
+sed -n '1,40p' docs/technical-reference/concensus/STORAGE_COMMITMENT_REGISTRY_DESIGN.md
+
+# Tests that pin both behaviour changes
+cargo test -p pallet-storage-proof
+cargo test -p pallet-belize-staking
 ```

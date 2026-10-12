@@ -64,4 +64,47 @@ impl<T: frame_system::Config> super::WeightInfo for SubstrateWeight<T> {
 			.saturating_add(T::DbWeight::get().reads(1_u64))
 			.saturating_add(T::DbWeight::get().writes(1_u64))
 	}
+
+	// ---------------------------------------------------------------------
+	// NOT BENCHMARKED — hand-written estimates added with the storage
+	// commitment registry (2026-10-12). The header above is stale for these
+	// four: regenerate this file once the registry lands, then delete this
+	// notice. They are deliberately pessimistic (reads/writes over-counted)
+	// so nothing is under-charged in the interim.
+	// ---------------------------------------------------------------------
+
+	/// Storage: `StorageProof::Commitments` (r:1 w:1), `StorageProof::ClientCommitmentCount` (r:1 w:1)
+	fn commit_storage() -> Weight {
+		Weight::from_parts(68_000_000, 8_000)
+			.saturating_add(T::DbWeight::get().reads(3_u64))
+			.saturating_add(T::DbWeight::get().writes(3_u64))
+	}
+
+	/// Storage: `StorageProof::Commitments` (r:1 w:1), `StorageProof::ClientCommitmentCount` (r:1 w:1)
+	fn refund_expired() -> Weight {
+		Weight::from_parts(52_000_000, 6_000)
+			.saturating_add(T::DbWeight::get().reads(2_u64))
+			.saturating_add(T::DbWeight::get().writes(3_u64))
+	}
+
+	/// Storage: `StorageProof::Commitments` (r:1 w:1)
+	fn challenge_provider() -> Weight {
+		Weight::from_parts(48_000_000, 5_000)
+			.saturating_add(T::DbWeight::get().reads(2_u64))
+			.saturating_add(T::DbWeight::get().writes(2_u64))
+	}
+
+	/// Storage: `StorageProof::Commitments` (r:1 w:1), `StorageProof::ClientCommitmentCount` (r:1 w:1)
+	fn claim_challenge_failed() -> Weight {
+		Weight::from_parts(54_000_000, 6_000)
+			.saturating_add(T::DbWeight::get().reads(2_u64))
+			.saturating_add(T::DbWeight::get().writes(3_u64))
+	}
+
+	/// Storage: `StorageProof::Commitments` (r:1 w:1), `StorageProof::ClientCommitmentCount` (r:1 w:1)
+	fn release_provider() -> Weight {
+		Weight::from_parts(54_000_000, 6_000)
+			.saturating_add(T::DbWeight::get().reads(2_u64))
+			.saturating_add(T::DbWeight::get().writes(3_u64))
+	}
 }
