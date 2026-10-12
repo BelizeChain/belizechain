@@ -963,6 +963,9 @@ mod tests {
     }
 
     #[test]
+    // This assert is the tripwire that must fire the moment a house is actually
+    // populated, so the const comparison is the point of the test.
+    #[allow(clippy::const_is_empty)]
     fn test_mainnet_genesis_refuses_unpopulated_councils() {
         // Both houses ship empty because no real representatives have been
         // designated. An empty house reduces its council-majority origins to
@@ -972,8 +975,7 @@ mod tests {
             "a house is now populated - replace this test with a success assertion"
         );
         let err = mainnet_genesis_with_councils(&[], &[])
-            .err()
-            .expect("empty councils must be rejected");
+            .expect_err("empty councils must be rejected");
         assert!(
             err.contains("at least 7"),
             "error should name the minimum seat count, got: {err}"
@@ -1034,8 +1036,7 @@ mod tests {
         tech[0] = gov[0].clone();
 
         let err = mainnet_genesis_with_councils(&gov, &tech)
-            .err()
-            .expect("shared membership must be rejected");
+            .expect_err("shared membership must be rejected");
         assert!(
             err.contains("BOTH houses"),
             "error should name the bicameral violation, got: {err}"

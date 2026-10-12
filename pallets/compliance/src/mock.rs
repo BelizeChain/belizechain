@@ -87,8 +87,6 @@ impl pallet_timestamp::Config for Test {
     type WeightInfo = ();
 }
 
-use crate::VerificationLevel;
-
 parameter_types! {
     pub const TravelRuleThreshold: u128 = 10_000_000_000; // 10K DALLA
     pub const VerificationValidityPeriod: u64 = 31_536_000; // 1 year in seconds

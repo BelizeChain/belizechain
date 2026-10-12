@@ -332,13 +332,15 @@ mod tests {
     /// designated. These two arms must therefore fail closed today and succeed
     /// once the councils are populated.
     #[test]
+    // The branch is deliberate: it must flip once the council is populated, and
+    // today the const genuinely is empty, so only one arm is reachable.
+    #[allow(clippy::const_is_empty)]
     fn test_load_spec_empty_string_fails_closed_until_mainnet_keys_are_configured() {
         let cli = default_cli();
         let result = cli.load_spec("");
         if chain_spec::MAINNET_COUNCIL.is_empty() {
             let err = result
-                .err()
-                .expect("mainnet must not build with an empty council");
+                .expect_err("mainnet must not build with an empty council");
             assert!(
                 err.contains("at least"),
                 "the failure must name the missing seats: {err}"
@@ -352,13 +354,14 @@ mod tests {
     }
 
     #[test]
+    // See the sibling test above: same deliberate fail-closed branch.
+    #[allow(clippy::const_is_empty)]
     fn test_load_spec_belize_fails_closed_until_mainnet_keys_are_configured() {
         let cli = default_cli();
         let result = cli.load_spec("belize");
         if chain_spec::MAINNET_COUNCIL.is_empty() {
             let err = result
-                .err()
-                .expect("mainnet must not build with an empty council");
+                .expect_err("mainnet must not build with an empty council");
             assert!(
                 err.contains("at least"),
                 "the failure must name the missing seats: {err}"
