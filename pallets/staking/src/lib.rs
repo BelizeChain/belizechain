@@ -1734,18 +1734,27 @@ pub mod pallet {
         ) -> <T::Currency as Currency<T::AccountId>>::Balance {
             // PoUW weights after the verification pass.
             //
-            // `quality` is gone (see the fn doc above). `honesty` is now
-            // derived from adjudicated offences via `honesty_from_spans` /
-            // `slash_validator`, so it is a real signal rather than the
-            // constant 95 it used to be.
+            // Every term below now depends on an input the validator cannot
+            // assert: `timeliness` is the submission block measured against the
+            // assigned deadline, `honesty` is derived from adjudicated offences
+            // via `slash_validator`, and the stake bonus is the validator's
+            // actual staked capital.
             //
-            // `quantum` remains an explicitly UNVERIFIED interim term — see
+            // The `quantum` term (30%) is GONE. It was the last unverified
+            // weight: `record_quantum_contribution` took `accuracy_score` as a
+            // call argument and scored job count and `num_qubits × depth` from
+            // the same call — authenticated by an authorized oracle operator,
+            // but never verified. Removing it takes the unverified share of the
+            // payout from 40% to zero. See
             // docs/technical-reference/concensus/POUW_REWARD_VERIFICATION_GAP.md
-            // item D. It is the last unverified weight and should be replaced
-            // by a solution verifier before the validator set grows.
+            // item D.
+            //
+            // CONSEQUENCE, deliberately accepted: the remaining weights sum to
+            // 45%, so emissions per validator are 40% lower than before. A
+            // verified quantum term should re-add that share; until then the
+            // system does not pay for an unverifiable claim.
             let timeliness_weight = Perbill::from_percent(20);
             let honesty_weight = Perbill::from_percent(20);
-            let quantum_weight = Perbill::from_percent(30);
             let bonus_weight = Perbill::from_percent(5);
 
             // Calculate FL contribution rewards
@@ -1754,12 +1763,6 @@ pub mod pallet {
                 * base_reward;
             let honesty_reward = honesty_weight
                 * Perbill::from_percent(validator_info.honesty_score as u32)
-                * base_reward;
-
-            // Calculate quantum contribution reward
-            let quantum_stats = ValidatorQuantumStatsMap::<T>::get(&validator_info.account);
-            let quantum_reward = quantum_weight
-                * Perbill::from_percent(quantum_stats.quantum_score as u32)
                 * base_reward;
 
             // CONS-032 FIX: Stake bonus is proportional to validator stake.
@@ -1778,7 +1781,6 @@ pub mod pallet {
 
             timeliness_reward
                 .saturating_add(honesty_reward)
-                .saturating_add(quantum_reward)
                 .saturating_add(stake_bonus)
         }
 
