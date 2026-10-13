@@ -18,34 +18,31 @@ targets = [
 # Each must have a justification comment.
 ignore = [
     # ── Verified live 2026-10-12 ─────────────────────────────────────────────
-    # These 9 are the ONLY advisories reported for the current lockfile. Verified
+    # These 8 are the ONLY advisories reported for the current lockfile. Verified
     # with both cargo-deny 0.19.0 (the version CI pins) and 0.20.2, each run
-    # against a copy of this file with `ignore = []`; both reported exactly these
-    # 9 and nothing else. The 31 entries previously listed here no longer matched
-    # any crate: a suppression that cannot fire protects nothing, and it would
-    # silently mask a re-introduction. Re-verify with:
+    # against a copy of this file with `ignore = []`. The 31 entries previously
+    # listed here no longer matched any crate: a suppression that cannot fire
+    # protects nothing, and it would silently mask a re-introduction.
+    # RUSTSEC-2026-0118 was a 9th and was dropped on 2026-10-12 when the
+    # stable2609 bump moved litep2p to 0.15.3 (hickory 0.26.3, past the fix);
+    # cargo-deny then reported it as advisory-not-detected. Re-verify with:
     #   cargo deny check advisories --config <copy of this file, ignore = []>
 
-    # hickory-proto is reached by TWO node-level paths and only one is movable:
-    #   libp2p-dns 0.42.0 <- libp2p 0.54.1 <- sc-network   (hickory 0.24.4)
-    #   litep2p 0.14.3     <- sc-network                    (hickory 0.25.2)
-    # Clearing either needs hickory >= 0.26.1. The libp2p path would need
-    # libp2p-dns >= 0.45.0, i.e. libp2p >= 0.57.0 — but polkadot-sdk pins
-    # libp2p 0.54.1 in stable2606, stable2609 AND master, so no released (or
-    # unreleased) rev clears it. stable2609 does move litep2p to 0.15.3
-    # (hickory 0.26.x), but that removes only one of the two copies, so both
-    # advisories stay reported either way — and the rev is not worth paying for
-    # that: it is a workspace-wide pin set (74 pins) that the runtime consumes
-    # too, so it changes the runtime Wasm and needs a spec_version bump and a
-    # live upgrade, for zero hickory benefit. Hickory is node-only (absent from
-    # the runtime graph) and the resolver is engaged only for /dns/ multiaddrs;
-    # testnet-spec.json sets bootNodes: [].
+    # hickory-proto is reached by TWO node-level paths. After the stable2609 bump
+    # only one still carries an advisory:
+    #   libp2p-dns 0.42.0 <- libp2p 0.54.1 <- sc-network   (hickory 0.24.4) ← STILL AFFECTED
+    #   litep2p 0.15.3    <- sc-network                    (hickory 0.26.3) ← cleared
+    # stable2609 moved litep2p 0.14.3 -> 0.15.3, whose hickory 0.26.3 is past the
+    # fix, so RUSTSEC-2026-0118 (which that copy triggered) no longer applies and
+    # its ignore was removed.
+    # What remains needs hickory >= 0.26.1 for the libp2p copy, i.e.
+    # libp2p-dns >= 0.45.0 — but polkadot-sdk pins libp2p 0.54.1 in stable2606,
+    # stable2609 AND master, so no released (or unreleased) rev clears it. A
+    # runtime upgrade cannot help either: hickory is absent from the runtime
+    # graph entirely. Exposure is limited because the resolver is engaged only
+    # for /dns/ multiaddrs and testnet-spec.json sets bootNodes: [].
     # DNS message-compression CPU exhaustion (O(n^2) name compression).
     "RUSTSEC-2026-0119",
-    # DNSSEC NSEC3 closest-encloser validation loop. No patched release exists;
-    # the only unaffected versions are < 0.25.0-alpha.3 or >= 0.26.0-beta.1,
-    # neither of which the SDK's resolver lines use.
-    "RUSTSEC-2026-0118",
 
     # tracing-subscriber 0.3.19 ANSI escape injection into logs. polkadot-sdk
     # exact-pins it ("=0.3.19", checked at stable2606 and stable2609), so only an
