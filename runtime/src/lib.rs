@@ -457,7 +457,26 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     //   no existing call index, storage key or value shape changes, so there is
     //   no migration. `submit_storage_proof` now requires a funded commitment
     //   and pays from the client's escrow instead of minting.
-    spec_version: 115,
+    //
+    // - 116: regenerated FRAME weights for all 19 benchmarked pallets. Measured
+    //   on AC power at steps=50/repeat=20 with a 1.25x safety multiplier applied
+    //   to `ref_time` only (`BENCH_MUL`, `scripts/bench_weights.sh`). No pallet
+    //   logic, call index, storage key or storage value shape changes, so there
+    //   is no migration and `transaction_version` is unchanged.
+    //
+    //   This supersedes two classes of stale value:
+    //   * `submit_storage_proof` shipped in 115 at a figure benchmarked while the
+    //     benchmark host was on battery power, where it throttles to about a
+    //     third of its clocks. Those weights came out 1.4-1.8x inflated; this
+    //     corrects the whole affected set.
+    //   * Five extrinsics had weights older than storage changes on the same
+    //     pallet, so they under-counted reads/writes: `economy::update_inflation`
+    //     (3/5 -> 4/6), `landledger::register_property` (4/6 -> 4/7),
+    //     `landledger::transfer_property` (7/8 -> 7/10),
+    //     `mesh::submit_mesh_transaction` (6/4 -> 7/5) and
+    //     `governance::veto_emergency` (270/69 -> 271/69, proof 520977 ->
+    //     523564 bytes).
+    spec_version: 116,
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,
     // Adding call indices to a live pallet is additive, but the version

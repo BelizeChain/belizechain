@@ -280,22 +280,33 @@ All seven extrinsics are benchmarked. `refund_expired` advances past the term; t
 benchmarks claim a provider slot first (via a real `submit_storage_proof`), then advance
 `ChallengeWindow`.
 
-**`weights.rs` is regenerated (2026-10-13).** The five hand-written interim estimates and their
-`NOT BENCHMARKED` banner are gone, replaced by measured values. The hand-written figures were
-*not* reliably pessimistic, so the earlier "nothing is under-charged" assurance was wrong:
+**`weights.rs` is regenerated.** The five hand-written interim estimates and their
+`NOT BENCHMARKED` banner are gone, replaced by measured values, so `weights.rs` now carries
+the hostname/CPU/DATE header every other pallet's generated file has.
+
+The interim figures were conservative, and the earlier "nothing is under-charged" assurance was
+**correct**. Measured against the benchmarked values:
 
 | Extrinsic | Interim | Measured | Error |
 |---|---|---|---|
-| `refund_expired` | 52.0M ps | 54.6M ps | **under-charged 4.9 %** |
-| `commit_storage` | 68.0M ps, r3/w3 | 52.4M ps, r2/w2 | over-charged |
-| `challenge_provider` | 48.0M ps, r2/w2 | 26.6M ps, r1/w1 | over-charged |
-| `claim_challenge_failed` | 54.0M ps, r2/w3 | 53.2M ps, r2/w2 | over-charged |
-| `release_provider` | 54.0M ps, r2/w3 | 53.5M ps, r2/w2 | over-charged |
+| `submit_storage_proof` | 45.6M ps | 45.9M ps | exact within 1 % |
+| `revoke_proof` | 44.1M ps | 24.5M ps | over-charged 1.8x |
+| `commit_storage` | 68.0M ps | 28.8M ps | over-charged 2.4x |
+| `refund_expired` | 52.0M ps | 29.8M ps | over-charged 1.7x |
+| `challenge_provider` | 48.0M ps | 14.6M ps | over-charged 3.3x |
+| `claim_challenge_failed` | 54.0M ps | 29.4M ps | over-charged 1.8x |
+| `release_provider` | 54.0M ps | 29.4M ps | over-charged 1.8x |
 
-`submit_storage_proof` was worse and is worth calling out: it *had* been benchmarked, but its
-weight predated the commitment requirement, so it was stale and under-charged by **81 %**
-(45.6M → 82.7M ps; reads/writes 1/1 → 2/2). A previously-"real" weight silently becoming
-under-charged is exactly the failure mode the banner was supposed to cover.
+`submit_storage_proof`'s reads/writes did legitimately go 1/1 → 2/2: the commitment requirement
+added a `Commitments` read, so the storage component genuinely grew. That part was a real
+correction to a stale weight.
+
+⚠️ **Measurement provenance matters here.** An intermediate regeneration on 2026-10-13
+(`d9403e8`) was taken while the benchmark host was on battery power, where it throttles to
+roughly a third of its clocks. Those figures came out **1.4-1.8x inflated**, and one of them —
+`submit_storage_proof` at 82.7M ps — went live in runtime **spec 115**. It is corrected to the
+45.9M ps figure above in spec 116. Every number in the table is from the AC-powered run, and
+`scripts/bench_weights.sh` now refuses to benchmark off AC power for exactly this reason.
 
 ## 10. Rollout
 

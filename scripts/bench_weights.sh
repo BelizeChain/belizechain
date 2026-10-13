@@ -13,9 +13,23 @@
 # Usage:
 #   ./scripts/bench_weights.sh <pallet_name> [<pallet_name> ...]
 #   ./scripts/bench_weights.sh --all
+#   BENCH_MUL=1.25 ./scripts/bench_weights.sh --all
 #
 # Prerequisites:
 #   cargo build --release -p belizechain-node --features runtime-benchmarks
+#   ** ON AC POWER ** - these are wall-clock measurements. On battery this host
+#   throttles to roughly a third of its clocks and the weights come out 40-80%
+#   inflated (verified 2026-10-13: bns buy_domain 114M on AC vs 179M on battery).
+#   Check `/sys/class/power_supply/ADP1/online` is 1 before starting.
+#
+# Weight multiplier (BENCH_MUL):
+#   FRAME's benchmark CLI has no multiplier flag in this SDK version, so the
+#   factor is applied by this script, to the generated file, right after the CLI
+#   writes it. Only `ref_time` (the first `Weight::from_parts` argument) is
+#   scaled - the second argument is a proof size in bytes, not a time. Rounding
+#   is always UP, so it can never under-charge. Regenerating a pallet whose
+#   committed file already carries a factor REQUIRES passing the same BENCH_MUL;
+#   otherwise the run fails rather than silently dropping it.
 #
 # Notes:
 #   * The pallet name is the `define_benchmarks!` identifier (e.g.
@@ -32,6 +46,72 @@ NODE_BIN="${ROOT_DIR}/target/release/belizechain-node"
 STEPS="${BENCH_STEPS:-50}"
 REPEAT="${BENCH_REPEAT:-20}"
 
+# Safety factor applied to every generated `ref_time` (see header). Empty = 1.0,
+# i.e. raw measured values with no factor.
+MUL="${BENCH_MUL:-}"
+
+# Read the multiplier stamped into an existing weights file, if any.
+#
+# ALWAYS returns 0, even when there is no stamp: this script runs under
+# `set -euo pipefail`, and `committed_mul="$(existing_mul ...)"` would abort the
+# whole run if the function returned non-zero for "no multiplier found". (The
+# no-stamp case is the common one, so that bug made the script exit silently
+# before generating anything.) The grep's failure is therefore swallowed inside
+# the substitution, not in the pipeline.
+existing_mul() {
+    local f="$1" line=""
+    [[ -f "$f" ]] || return 0
+    line="$(grep -m1 -oE 'WEIGHT MULTIPLIER: [0-9]+(\.[0-9]+)?' "$f" 2>/dev/null || true)"
+    if [[ -n "$line" ]]; then
+        printf '%s' "${line##*: }"
+    fi
+    return 0
+}
+
+# Scale the ref_time component of every `Weight::from_parts` in a generated file,
+# rounding up, and stamp the factor into the header so it is self-documenting.
+apply_multiplier() {
+    local file="$1" mul="$2"
+    python3 - "$file" "$mul" <<'PY'
+import decimal, math, re, sys
+
+path, mul_text = sys.argv[1], sys.argv[2]
+mul = decimal.Decimal(mul_text)
+src = open(path, encoding="utf-8").read()
+
+
+def scale(match):
+    # `Weight::from_parts(<ref_time>, <proof_size>)` - only ref_time is a time.
+    raw = match.group(1).replace("_", "")
+    scaled = int(math.ceil(decimal.Decimal(raw) * mul))
+    return "Weight::from_parts(%s," % format(scaled, ",").replace(",", "_")
+
+
+src, count = re.subn(r"Weight::from_parts\(([0-9_]+),", scale, src)
+if count == 0:
+    sys.exit("%s: no Weight::from_parts found - refusing to leave it unscaled" % path)
+
+stamp = "//! WEIGHT MULTIPLIER: %s (ref_time only; applied by scripts/bench_weights.sh)" % mul_text
+if "WEIGHT MULTIPLIER" not in src:
+    src = re.sub(r"//! DATE: .*\n", lambda m: m.group(0) + stamp + "\n", src, count=1)
+
+open(path, "w", encoding="utf-8").write(src)
+PY
+}
+# These are wall-clock measurements, so power state is part of the measurement.
+# On battery this host drops to roughly a third of its clocks and every weight
+# comes out 40-80% inflated (measured 2026-10-13). Checking per pallet means a
+# cable being unplugged mid-run fails loudly instead of writing a set whose
+# pallets were measured under two different performance regimes.
+require_ac_power() {
+    local node=/sys/class/power_supply/ADP1/online
+    [[ -r "$node" ]] || return 0   # not a laptop, or no AC node: do not block
+    if [[ "$(cat "$node")" != "1" ]]; then
+        echo ">>> ABORT: not on AC power (ADP1/online != 1); refusing to write weights." >&2
+        echo "    Battery-measured weights are inflated 40-80% - see this file's header." >&2
+        exit 1
+    fi
+}
 if [[ ! -x "$NODE_BIN" ]]; then
     echo "❌ node binary not found: $NODE_BIN" >&2
     echo "   Run: cargo build --release -p belizechain-node --features runtime-benchmarks" >&2
@@ -80,8 +160,11 @@ count_bench_fns() {
 # benchmark. Otherwise the generated file omits methods the trait still declares
 # (or invents ones it does not), and the crate stops compiling.
 #
-# This guard exists because a partially-benchmarked pallet is easy to overlook:
-# `community` has 15 weight functions but only 4 benchmarks.
+# This guard is a live safety net for any pallet that is mid-way through gaining
+# benchmarks. `community` used to be the example (15 weight functions, only 4
+# benchmarks); it has since been fully benchmarked, so every pallet now passes
+# this check. The guard stays because a partially-benchmarked pallet silently
+# generates a file that does not match its `WeightInfo` trait.
 check_coverage() {
     local dir="$1" trait_file trait_count bench_file bench_count
     trait_file="${ROOT_DIR}/pallets/${dir}/src/weights.rs"
@@ -139,6 +222,8 @@ fi
 
 FAIL=0
 for pallet in "${TARGETS[@]}"; do
+    require_ac_power
+
     dir="$(pallet_dir "$pallet")"
     output="$(resolve_output "$pallet")"
     if [[ -z "$output" ]]; then
@@ -153,7 +238,22 @@ for pallet in "${TARGETS[@]}"; do
         continue
     fi
 
-    echo "=== Generating weights: ${pallet} (steps=${STEPS} repeat=${REPEAT}) ==="
+    # Never silently change a factor that is already committed: regenerating
+    # without the same BENCH_MUL would quietly revert the weights to raw values.
+    committed_mul="$(existing_mul "$output")"
+    if [[ -n "$committed_mul" && -z "$MUL" ]]; then
+        echo ">>> FAIL: ${pallet} - committed weights carry a ${committed_mul}x multiplier." >&2
+        echo "         Re-run with BENCH_MUL=${committed_mul}, or edit deliberately." >&2
+        FAIL=$((FAIL + 1))
+        continue
+    fi
+    if [[ -n "$committed_mul" && -n "$MUL" && "$MUL" != "$committed_mul" ]]; then
+        echo ">>> FAIL: ${pallet} - multiplier change ${committed_mul}x -> ${MUL}x needs a deliberate decision." >&2
+        FAIL=$((FAIL + 1))
+        continue
+    fi
+
+    echo "=== Generating weights: ${pallet} (steps=${STEPS} repeat=${REPEAT}, mul=${MUL:-1}) ==="
     template="$(template_for "$output")"
     echo "    template: ${template#"${ROOT_DIR}/"}"
     if ! "$NODE_BIN" benchmark pallet \
@@ -167,6 +267,10 @@ for pallet in "${TARGETS[@]}"; do
         echo ">>> FAIL: ${pallet} — weights left untouched" >&2
         FAIL=$((FAIL + 1))
         continue
+    fi
+
+    if [[ -n "$MUL" ]]; then
+        apply_multiplier "$output" "$MUL"
     fi
 
     echo ">>> OK: ${pallet} → ${output#"${ROOT_DIR}/"}"
