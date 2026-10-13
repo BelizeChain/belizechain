@@ -27,6 +27,15 @@ ignore = [
     # stable2609 bump moved litep2p to 0.15.3 (hickory 0.26.3, past the fix);
     # cargo-deny then reported it as advisory-not-detected. Re-verify with:
     #   cargo deny check advisories --config <copy of this file, ignore = []>
+    #
+    # Deliberately absent: RUSTSEC-2026-0344 (ruzstd 0.8.2 decompression bomb,
+    # high). cargo-audit flags it because it scans the whole Cargo.lock, but it
+    # is reached only through `frame-benchmarking-cli`, an OPTIONAL node
+    # dependency enabled solely by the non-default `runtime-benchmarks` feature.
+    # This file's feature graph never includes it, so cargo-deny does not report
+    # it and an ignore here could never fire. Listing it would contradict the
+    # rule above and risk masking a real advisory later. The suppression lives
+    # in .github/workflows/security-audit.yml, next to the rationale.
 
     # hickory-proto is reached by TWO node-level paths. After the stable2609 bump
     # only one still carries an advisory:
