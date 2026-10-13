@@ -59,7 +59,7 @@ use frame_support::{
     weights::constants::RocksDbWeight,
 };
 use frame_system::pallet_prelude::*;
-use sp_runtime::traits::{Saturating, SaturatedConversion, Zero};
+use sp_runtime::traits::{SaturatedConversion, Saturating, Zero};
 
 pub use pallet::*;
 
@@ -587,7 +587,10 @@ pub mod pallet {
             let client = ensure_signed(origin)?;
             let now = <frame_system::Pallet<T>>::block_number();
 
-            ensure!(escrow >= T::MinEscrow::get(), Error::<T>::EscrowBelowMinimum);
+            ensure!(
+                escrow >= T::MinEscrow::get(),
+                Error::<T>::EscrowBelowMinimum
+            );
             ensure!(
                 proof_interval >= T::MinProofInterval::get(),
                 Error::<T>::IntervalBelowMinimum
@@ -614,8 +617,7 @@ pub mod pallet {
                 Error::<T>::TooManyCommitments
             );
 
-            T::Currency::reserve(&client, escrow)
-                .map_err(|_| Error::<T>::InsufficientEscrow)?;
+            T::Currency::reserve(&client, escrow).map_err(|_| Error::<T>::InsufficientEscrow)?;
 
             let expires_at = now.saturating_add(duration);
             Commitments::<T>::insert(
@@ -634,9 +636,7 @@ pub mod pallet {
                     challenged_at: None,
                 },
             );
-            ClientCommitmentCount::<T>::mutate(&client, |open| {
-                *open = open.saturating_add(1)
-            });
+            ClientCommitmentCount::<T>::mutate(&client, |open| *open = open.saturating_add(1));
 
             Self::deposit_event(Event::StorageCommitted {
                 content_id,
@@ -660,7 +660,10 @@ pub mod pallet {
             let now = <frame_system::Pallet<T>>::block_number();
             // Strictly after, so it cannot race a proof submitted on the final
             // block of the term (which `submit_storage_proof` accepts).
-            ensure!(now > commitment.expires_at, Error::<T>::CommitmentNotExpired);
+            ensure!(
+                now > commitment.expires_at,
+                Error::<T>::CommitmentNotExpired
+            );
 
             let remainder = commitment.total.saturating_sub(commitment.released);
             if !remainder.is_zero() {
@@ -693,10 +696,7 @@ pub mod pallet {
             let mut commitment =
                 Commitments::<T>::get(content_id).ok_or(Error::<T>::NoCommitment)?;
             ensure!(who == commitment.client, Error::<T>::NotCommitmentClient);
-            ensure!(
-                commitment.provider.is_some(),
-                Error::<T>::NoProvider
-            );
+            ensure!(commitment.provider.is_some(), Error::<T>::NoProvider);
             ensure!(
                 commitment.challenged_at.is_none(),
                 Error::<T>::ChallengeAlreadyOpen
@@ -723,13 +723,18 @@ pub mod pallet {
         /// a client cannot rug a provider that is still answering challenges.
         #[pallet::weight(T::WeightInfo::claim_challenge_failed())]
         #[pallet::call_index(5)]
-        pub fn claim_challenge_failed(origin: OriginFor<T>, content_id: ContentId) -> DispatchResult {
+        pub fn claim_challenge_failed(
+            origin: OriginFor<T>,
+            content_id: ContentId,
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
             let commitment = Commitments::<T>::get(content_id).ok_or(Error::<T>::NoCommitment)?;
             ensure!(who == commitment.client, Error::<T>::NotCommitmentClient);
 
-            let challenged_at = commitment.challenged_at.ok_or(Error::<T>::NoOpenChallenge)?;
+            let challenged_at = commitment
+                .challenged_at
+                .ok_or(Error::<T>::NoOpenChallenge)?;
             let now = <frame_system::Pallet<T>>::block_number();
             ensure!(
                 now >= challenged_at.saturating_add(T::ChallengeWindow::get()),

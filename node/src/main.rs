@@ -339,8 +339,7 @@ mod tests {
         let cli = default_cli();
         let result = cli.load_spec("");
         if chain_spec::MAINNET_COUNCIL.is_empty() {
-            let err = result
-                .expect_err("mainnet must not build with an empty council");
+            let err = result.expect_err("mainnet must not build with an empty council");
             assert!(
                 err.contains("at least"),
                 "the failure must name the missing seats: {err}"
@@ -360,8 +359,7 @@ mod tests {
         let cli = default_cli();
         let result = cli.load_spec("belize");
         if chain_spec::MAINNET_COUNCIL.is_empty() {
-            let err = result
-                .expect_err("mainnet must not build with an empty council");
+            let err = result.expect_err("mainnet must not build with an empty council");
             assert!(
                 err.contains("at least"),
                 "the failure must name the missing seats: {err}"

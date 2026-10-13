@@ -974,8 +974,8 @@ mod tests {
             MAINNET_COUNCIL.is_empty() && MAINNET_TECHNICAL_COUNCIL.is_empty(),
             "a house is now populated - replace this test with a success assertion"
         );
-        let err = mainnet_genesis_with_councils(&[], &[])
-            .expect_err("empty councils must be rejected");
+        let err =
+            mainnet_genesis_with_councils(&[], &[]).expect_err("empty councils must be rejected");
         assert!(
             err.contains("at least 7"),
             "error should name the minimum seat count, got: {err}"
