@@ -10,6 +10,7 @@ use frame_benchmarking::v2::*;
 use frame_support::traits::Currency;
 use frame_system::RawOrigin;
 use sp_std::vec;
+use sp_std::vec::Vec;
 
 const SEED: u32 = 0;
 
@@ -101,8 +102,29 @@ mod benchmarks {
         )
         .expect("assign_fl_task should succeed");
 
-        let encrypted_delta: BoundedVec<u8, ConstU32<1024>> =
-            vec![0u8; 64].try_into().expect("delta fits");
+        // The delta must clear the PoUW quality gate that `submit_model_delta`
+        // applies (`quality_score >= MIN_QUALITY_TO_ACCEPT`, which is 40).
+        // `evaluate_model_quality` scores size minus an entropy penalty:
+        //
+        //   len  64  -> size score 30   (32..=127 bracket)
+        //   len 256  -> size score 60   (128..=511 bracket)
+        //   entropy < 1.0 bits/byte -> penalty 50, > 7.5 -> penalty 25
+        //   entropy 3.0-7.5 bits/byte -> no penalty, as that is the plausible
+        //   band for real ML gradients
+        //
+        // A zeroed delta scores 30 - 50 = 0 and is correctly refused. It was the
+        // fixture here until the quality gate landed, which is why this benchmark
+        // started failing. The pattern below is 256 bytes over 64 distinct values,
+        // i.e. a uniform 6.0 bits/byte, so the penalty is 0 and the score is 60.
+        //
+        // Bounded and deterministic on purpose: a plain random fill would land at
+        // 8.0 bits/byte, trip the "random garbage, not real gradients" penalty of
+        // 25, and score 35 - still below the gate.
+        let encrypted_delta: BoundedVec<u8, ConstU32<1024>> = (0..256u32)
+            .map(|i| (i % 64) as u8)
+            .collect::<Vec<u8>>()
+            .try_into()
+            .expect("delta fits");
         // C-3 FIX: Compute correct commitment = H(delta || who || block_number)
         // so the benchmark exercises the real validation path.
         let current_block: u32 = frame_system::Pallet::<T>::block_number().saturated_into();

@@ -276,13 +276,26 @@ account.** No benchmark-only bypass exists — no forgery hook, no feature-gated
 benchmark exercises exactly the path a real client takes. Because the anchor is a funded
 commitment rather than a hash, there is nothing to fake: the benchmark simply funds one.
 
-All six extrinsics are benchmarked. `refund_expired` advances past the term; the challenge
+All seven extrinsics are benchmarked. `refund_expired` advances past the term; the challenge
 benchmarks claim a provider slot first (via a real `submit_storage_proof`), then advance
 `ChallengeWindow`.
 
-**`weights.rs` is still stale.** The four new entries are hand-written pessimistic estimates
-with an explicit `NOT BENCHMARKED` banner; the file should be regenerated before this is
-considered weight-correct. Nothing is under-charged in the interim.
+**`weights.rs` is regenerated (2026-10-13).** The five hand-written interim estimates and their
+`NOT BENCHMARKED` banner are gone, replaced by measured values. The hand-written figures were
+*not* reliably pessimistic, so the earlier "nothing is under-charged" assurance was wrong:
+
+| Extrinsic | Interim | Measured | Error |
+|---|---|---|---|
+| `refund_expired` | 52.0M ps | 54.6M ps | **under-charged 4.9 %** |
+| `commit_storage` | 68.0M ps, r3/w3 | 52.4M ps, r2/w2 | over-charged |
+| `challenge_provider` | 48.0M ps, r2/w2 | 26.6M ps, r1/w1 | over-charged |
+| `claim_challenge_failed` | 54.0M ps, r2/w3 | 53.2M ps, r2/w2 | over-charged |
+| `release_provider` | 54.0M ps, r2/w3 | 53.5M ps, r2/w2 | over-charged |
+
+`submit_storage_proof` was worse and is worth calling out: it *had* been benchmarked, but its
+weight predated the commitment requirement, so it was stale and under-charged by **81 %**
+(45.6M → 82.7M ps; reads/writes 1/1 → 2/2). A previously-"real" weight silently becoming
+under-charged is exactly the failure mode the banner was supposed to cover.
 
 ## 10. Rollout
 

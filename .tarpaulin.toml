@@ -49,3 +49,14 @@ fail-under    = 40.0
 skip-clean    = true
 out           = ["Lcov"]
 output-dir    = "target/coverage"
+
+# Time to wait for a response from the test binary (tarpaulin's own default is
+# 60s). The node crate's chain-spec tests build full genesis states, which is
+# slow under tarpaulin's ptrace instrumentation: the node suite runs 64 tests in
+# ~31s uninstrumented, and the CI run on 2026-10-13 went 127s without emitting an
+# event before aborting with "Failed to run tests: Error: Timed out waiting for
+# test response". That killed the coverage job before it could print any number,
+# so the gate never reported a real result - the failure was never a coverage
+# shortfall. 300s leaves the slow-but-legitimate tests room while still surfacing
+# a genuinely hung test.
+timeout       = "300s"
