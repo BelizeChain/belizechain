@@ -432,7 +432,7 @@ published; testnet values are simulated protocol parameters.
 
 → See [Staking Rewards](economics/staking-rewards.md)
 
-**Substrate**: Blockchain framework by Parity Technologies. BelizeChain is built on the Polkadot SDK (`stable2606`).
+**Substrate**: Blockchain framework by Parity Technologies. BelizeChain is built on the Polkadot SDK (`stable2609`).
 
 → See [Architecture](technical-reference/architecture.md)
 

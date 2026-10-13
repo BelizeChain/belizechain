@@ -401,4 +401,4 @@ When adding new scripts:
 ---
 
 **Last Updated**: October 4, 2026  
-**BelizeChain Version**: stable2606
+**BelizeChain Version**: stable2609

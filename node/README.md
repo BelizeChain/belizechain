@@ -1,6 +1,6 @@
 # BelizeChain Node
 
-The sovereign blockchain node implementation for Belize, built on Substrate framework with Polkadot SDK stable2606.
+The sovereign blockchain node implementation for Belize, built on Substrate framework with Polkadot SDK stable2609.
 
 ## 📦 Overview
 

@@ -264,4 +264,4 @@ When modifying the runtime:
 
 ---
 
-**Note**: This runtime is production-ready and has been migrated to Polkadot SDK stable2606 (FRAME v48).
+**Note**: This runtime is production-ready and has been migrated to Polkadot SDK stable2609 (FRAME v49).

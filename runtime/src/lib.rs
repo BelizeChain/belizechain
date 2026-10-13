@@ -45,8 +45,6 @@ use sp_runtime::{
     ApplyExtrinsicResult, MultiSignature, Perbill, Perquintill,
 };
 use sp_std::prelude::*;
-#[cfg(feature = "std")]
-use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 
 // Re-exports for downstream
@@ -467,14 +465,6 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     transaction_version: 2,
     system_version: 1,
 };
-
-#[cfg(feature = "std")]
-pub fn native_version() -> NativeVersion {
-    NativeVersion {
-        runtime_version: VERSION,
-        can_author_with: Default::default(),
-    }
-}
 
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 

@@ -10,7 +10,7 @@ Complete guide to developing and modifying BelizeChain's core blockchain.
 
 ### Substrate-based Stack
 
-BelizeChain uses **Polkadot SDK stable2606**:
+BelizeChain uses **Polkadot SDK stable2609**:
 
 ```
 ┌─────────────────────────────────────┐

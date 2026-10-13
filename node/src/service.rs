@@ -215,7 +215,12 @@ pub fn new_full<
     // P2P-FIX-002: Content-based block announce validation (defense-in-depth)
     // Peer identity filtering is handled by --reserved-only (P2P-FIX-003)
 
-    let (network, system_rpc_tx, tx_handler_controller, sync_service) =
+    // stable2609 widens this to a 5-tuple: build_network now also returns a
+    // bitswap handle. Bitswap is not enabled in this node's network
+    // configuration and nothing consumes the handle, so it is discarded. The
+    // pre-2609 signature returned 4 elements; if this stops compiling after a
+    // future bump, re-check the tuple arity first.
+    let (network, system_rpc_tx, tx_handler_controller, sync_service, _bitswap) =
         sc_service::build_network(sc_service::BuildNetworkParams {
             config: &config,
             client: client.clone(),
@@ -236,6 +241,10 @@ pub fn new_full<
             block_relay: None,
             metrics,
             net_config,
+            // stable2609 adds this required field. `None` derives the policy from
+            // the block pruning configuration, which is what applied before the
+            // field existed, so prior gap-sync behaviour is preserved.
+            gap_sync_body_policy: None,
         })?;
 
     if config.offchain_worker.enabled {

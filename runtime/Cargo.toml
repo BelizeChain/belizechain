@@ -86,7 +86,12 @@ log = { workspace = true, default-features = false }
 hex-literal = "1.1"
 
 [build-dependencies]
-substrate-wasm-builder = "33.0.0"
+# Tracks the polkadot-sdk rev above and must move with it. It is a crates.io
+# pin rather than a git rev, so bumping the rev alone is not enough: leaving
+# this at 33.0.0 while the SDK moves to stable2609 pulls polkavm-linker 0.33
+# (picosimd ^0.9.2), which cannot unify with the polkavm 0.35 that stable2609's
+# sc-executor-common requires (picosimd ^0.9.6), and resolution fails outright.
+substrate-wasm-builder = "35.0.0"
 
 [dev-dependencies]
 sp-io = { workspace = true, default-features = false }

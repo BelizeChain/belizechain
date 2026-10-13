@@ -4,7 +4,7 @@
 > **Runtime**: `spec_version = 111` in source, `impl_version = 1`, `tx_version = 1`.
 > The **live** Ceiba testnet still runs **110** — 111 carries regenerated
 > `pallet-belize-bns` weights and has **not** been deployed yet.
-> **SDK**: Polkadot SDK `stable2606` (rev `660acefe66599a3e54363797007befcb01bd610b`)
+> **SDK**: Polkadot SDK `stable2609` (rev `7a8daa68e18718c18823c1109513fdc1c8aa71fe`)
 > **Network**: Ceiba testnet (`chain_id = belizechain_testnet`, SS58 prefix `1981`)
 
 ---
