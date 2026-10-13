@@ -241,6 +241,21 @@ jobs:
     # (e.g. a minimum balance of 1) and pass where the dev-chain run fails.
     steps:
       - uses: actions/checkout@v7
+        with:
+          # `check_weights_freshness.sh` compares each weights.rs DATE against
+          # the last commit touching its pallet's lib.rs/benchmarking.rs. Under
+          # the default shallow clone `git log` reports the tip commit for every
+          # path, which makes that comparison vacuous - it would pass on a stale
+          # tree. Full history is required (and only ~37MB packed).
+          fetch-depth: 0
+
+      - name: Check weights are not stale
+        # Runs before the build so a stale tree fails in seconds rather than
+        # after a full benchmark build. Catches the failure mode that shipped a
+        # stale `submit_storage_proof` in spec 115.
+        run: |
+          chmod +x ./scripts/check_weights_freshness.sh
+          ./scripts/check_weights_freshness.sh
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.90.0

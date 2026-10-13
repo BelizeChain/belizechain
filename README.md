@@ -284,6 +284,10 @@ statement about the tree. A copy remains under `audit_results/old_audits/` as hi
 > The advisories currently blocking CI are the known upstream-capped ones, not the
 > April snapshot: `hickory-resolver` (transitive via `libp2p-dns`, no in-range fix)
 > and, in `nawal-ai`, `cryptography` (capped by `flwr`).
+>
+> These are tracked individually, with the exact dependency path, the reason each
+> cannot move, its real exposure, and the condition that clears it, in
+> [docs/security/DEPENDENCY_ADVISORY_RESIDUALS.md](docs/security/DEPENDENCY_ADVISORY_RESIDUALS.md).
 
 ### Run Security Audit
 
