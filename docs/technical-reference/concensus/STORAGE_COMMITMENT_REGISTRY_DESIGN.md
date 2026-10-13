@@ -316,6 +316,24 @@ pakit proofs have been accepted on the live chain, those records predate the com
 requirement and `revoke_proof` must keep working for them — which it does, since `revoke_proof`
 is unchanged and reads only `StorageProofs`. Record the count in the upgrade note either way.
 
+**Recorded 2026-10-13 (`StorageProofs` rows = 0).** Checked over RPC immediately before the
+upgrade: `state_getKeysPaged` on the `StorageProof::StorageProofs` prefix returned no keys, so
+there are no pre-commitment-acceptance rows and the back-compatibility question is moot in
+practice. The chain was at `spec_version` 114, `transaction_version` 1.
+
+**Deployed 2026-10-13 (`spec_version 115`).** Hot `sudo.sudo(System::set_code)` from 114; no
+node restart. Blob 1,489,480 B, blake2b-256
+`0ba718768be4dafea9088d14d5f4c652d712a741f3268cc0e4b14e99111945e3`, built with
+`--features testnet-fast-epoch`. The blob was booted in a throwaway chain before submission and
+`BabeApi_current_epoch` read directly (duration 300), and again after: the 318 → 319 epoch
+boundary crossed with `duration 300` and 2 authorities, so the upgrade did not reproduce the
+empty-authority or wrong-epoch-duration stalls. `Commitments` and `ClientCommitmentCount` are
+present in live metadata. Rollback blob (the 114 `:code`) is preserved on the host at
+`/data/upgrade-115/onchain-code-114.wasm`.
+
+Note this upgrade also carried regenerated `staking` and `storage-proof` weights (see
+`pallets/*/src/weights.rs`); weights compile into the runtime, so they ride the same blob.
+
 ## 11. What this superseded
 
 All of the following was **reverted before implementation**, so the diff that ships contains
