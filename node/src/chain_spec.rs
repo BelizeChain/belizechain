@@ -1144,6 +1144,25 @@ mod tests {
         }
     }
 
+    // Skipped only under `cargo tarpaulin` (`#[cfg_attr(tarpaulin, ignore)]` is
+    // tarpaulin's own documented mechanism; it compiles with `--cfg=tarpaulin`).
+    // It is the ONLY test in this file that calls `build_storage()`, so it is the
+    // only one that executes the whole genesis builder, hashes the ~1.49 MB
+    // runtime Wasm into `:code`, and computes the full state-trie root. The other
+    // genesis tests build the cheap JSON patch and never pay that cost.
+    //
+    // Measured 2026-10-13: this was the sole cause of the Coverage Gate failing.
+    // libtest reported "test chain_spec::tests::test_testnet_spec_applies_council
+    // _genesis_to_storage has been running for over 60 seconds" and tarpaulin then
+    // killed it at its 300s limit, aborting the whole job with "Timed out waiting
+    // for test response" before any coverage number was printed. Raising the limit
+    // only moved the wall (it fired at ~305s), which is why the exclusion is here
+    // rather than another timeout bump.
+    //
+    // Nothing is weakened: this file's tests run uninstrumented in the "Rust Tests"
+    // job (`cargo test --release --workspace`), which still compiles and passes it
+    // in full, including the `build_storage()` assertion below.
+    #[cfg_attr(tarpaulin, ignore)]
     #[test]
     fn test_testnet_spec_applies_council_genesis_to_storage() {
         // `pallet_collective`'s genesis asserts that members are unique and that

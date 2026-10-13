@@ -8,6 +8,15 @@ license = "MIT"
 homepage = "https://belizechain.org"
 repository = "https://github.com/BelizeChain/belizechain/"
 
+[lints.rust]
+# `cfg(tarpaulin)` is set by cargo-tarpaulin (`--cfg=tarpaulin`, which it passes
+# unless --avoid-cfg-tarpaulin is given) and is used by exactly ONE test in
+# chain_spec.rs to opt out of the instrumented coverage pass. rustc's
+# unexpected_cfgs lint does not know that name - verified directly - and the CI
+# lint job runs `cargo clippy --workspace --all-targets -- -D warnings`, so
+# without this declaration the warning would fail the build.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin)'] }
+
 [dependencies]
 # Substrate core
 frame-benchmarking = { workspace = true, features = ["std"] }

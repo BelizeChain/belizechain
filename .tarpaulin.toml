@@ -50,13 +50,20 @@ skip-clean    = true
 out           = ["Lcov"]
 output-dir    = "target/coverage"
 
-# Time to wait for a response from the test binary (tarpaulin's own default is
-# 60s). The node crate's chain-spec tests build full genesis states, which is
-# slow under tarpaulin's ptrace instrumentation: the node suite runs 64 tests in
-# ~31s uninstrumented, and the CI run on 2026-10-13 went 127s without emitting an
-# event before aborting with "Failed to run tests: Error: Timed out waiting for
-# test response". That killed the coverage job before it could print any number,
-# so the gate never reported a real result - the failure was never a coverage
-# shortfall. 300s leaves the slow-but-legitimate tests room while still surfacing
-# a genuinely hung test.
+# Headroom, NOT the fix. The Coverage Gate used to abort with "Timed out waiting
+# for test response" before printing any coverage number, and the first reading of
+# that was a too-low default timeout (tarpaulin's is 60s, humantime `timeout` key -
+# rename = "timeout", default_test_timeout() = 60s; NOT `timeout-seconds`).
+#
+# That was wrong. Raising it to 300s moved the wall rather than removing it: the
+# 2026-10-13 run logged libtest's own "test chain_spec::tests::test_testnet_spec_
+# applies_council_genesis_to_storage has been running for over 60 seconds", then
+# tarpaulin killed it at ~305s. ONE test, not a slow suite - `build_storage()` on
+# the public testnet config, which is unbounded under ptrace instrumentation. That
+# single test now carries `#[cfg_attr(tarpaulin, ignore)]` (node/src/chain_spec.rs),
+# which is the actual fix; the "Rust Tests" job still runs it uninstrumented.
+#
+# This stays as a safety net for genuinely slow-but-bounded tests elsewhere in the
+# node package, so a transient slowdown cannot kill the job outright. It surfaces a
+# real hang instead of masking one.
 timeout       = "300s"
