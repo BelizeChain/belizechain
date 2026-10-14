@@ -121,10 +121,17 @@ md_files() { # $1 = dir
   # records), docs/archive/ and ui-docs-archive/ are frozen snapshots of a past
   # state — their links describe what existed when they were written, not what
   # exists now.
+  #
+  # .doc-claims-src is excluded because the CI workflow checks THIS script out
+  # there. That checkout is a full clone of belizechain, so without this the
+  # checker walks its own source repo and reports belizechain's workspace-relative
+  # links as dead in whatever repo happens to be calling it — which is exactly what
+  # happened on the first run, in all seven fetching repos.
   find "$1" -name '*.md' \
     -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/.next/*' \
     -not -path '*/.venv/*' -not -path '*/venv/*' -not -path '*/site-packages/*' \
     -not -path '*/target/*' -not -path '*/dist/*' -not -path '*/build/*' \
+    -not -path '*/.doc-claims-src/*' \
     -not -path '*/old_audits/*' -not -path '*/audit/*' -not -path '*/audits/*' \
     -not -path '*/docs/archive/*' -not -path '*/ui-docs-archive/*' \
     2>/dev/null
@@ -342,7 +349,7 @@ check_node_alignment() { # $1 = repo root, $2 = repo label
     bad=$((bad + 1)); emitted "$repo" "$label: Node $ver at $f:$ln but .nvmrc=$want"
   done < <(grep -rnE 'FROM [^ ]*node:[0-9]+|node-version: .[0-9]+' \
              --include='Dockerfile*' --include='*.yml' "$repo" 2>/dev/null \
-           | grep -vE '/node_modules/|/\.next/')
+           | grep -vE '/node_modules/|/\.next/|/\.doc-claims-src/')
   [ "$bad" -eq 0 ] && pass "$label: Node $want aligned across Dockerfiles/workflows"
 }
 
