@@ -129,9 +129,35 @@ this file now exists.
 | `pakit-storage` | not started |
 | `nawal-ai` | not started |
 | `gem` | not started |
-| `infra` | not started (alert hygiene done separately, §4.2) |
+| `infra` | **SWEPT 2026-10-14** — `api-gateway` + `indexer` (the only unaudited services) are **clean**; see below |
 | `ui` | partial — fabricated service fallbacks removed 2026-10-07; **page-level seed data remains** |
 | `belizechain.org` | not started |
+
+**`infra` sweep detail (2026-10-14).** `api-gateway` and `indexer` are the newest services
+(added 2026-10-11) and had never been audited. They came out **clean**, and unusually so —
+the docs state what is *not* verified, which is the opposite of the failure mode this sweep
+looks for. Verified rather than trusted:
+
+- README endpoint lists match the code exactly: 13 REST routes, 10 GraphQL queries, 9 gateway
+  RPC methods. `belizechain_getChainInfo` is genuinely **not** served — it appears only in
+  comments explaining the deliberate omission.
+- The README's load-bearing claim (state is pruned, so a from-genesis backfill is impossible)
+  **reproduces against the live node**: `state_getStorage` fails with `UnknownBlock: State
+  already discarded` at blocks 100/1000/50000, and succeeds ~5 blocks back from the head.
+  Boundary probe: readable at head−250, discarded at head−255 — consistent with the stated
+  256-block window.
+- Cross-service contract holds: the gateway queries `indexer.{blocks,transactions,gaps}` — the
+  exact tables the indexer creates — behind a `to_regclass` existence guard.
+- No committed secrets or build output: only `.env.example` is tracked (`dist/`, `node_modules/`,
+  `.env` are ignored), and `keystores/`, `backups/`, `data/` have **0** tracked files.
+- The services report absence honestly: misses report the range actually searched and
+  distinguish a *confirmed* absence from an *unestablished* one.
+
+One real finding, annotated not rewritten: `infra/docs/NEXT3_ROADMAP_LANDED_2026-09-10.md`
+claims "all 4 validators healthy", which describes the local `docker-compose.validators.yml`
+harness rather than Ceiba — the live chain is **single-authority** (verified 2026-10-14 via
+`GrandpaApi_grandpa_authorities`: a 41-byte payload = 1 × 32-byte key + 8-byte weight). Its
+`ui` claims also conflict with `ui/UI_WIRING_STATUS_CURRENT.md`.
 
 Method that has worked: verify every finding against source; **prove the new test fails on
 the old code** (use a `git worktree` of HEAD) rather than only passing on the new; use
@@ -274,6 +300,15 @@ falsifies it. In-repo scripts that run inside the container default to `ws://cei
   `.github/{agents,instructions,prompts,hooks}` in `.git/info/exclude`, so those files exist
   only on one machine and edits to them never appear in `git status`. Verify a
   customization file is *tracked* before relying on it.
+- **A checker that a document can trip is a checker with a false-positive class.**
+  `check_dead_links` extracted link targets with a regex that ignored inline code spans, so a
+  doc *explaining* link syntax — including this file, describing that very check — was read as
+  a dead link to the literal word `path`. Fixed by stripping code spans first. Rule: when a
+  doc that documents a tool breaks that tool, fix the tool, not the wording.
+- **`shellcheck deploy/*.sh` in CI passes no `--severity`, so an `info`-level finding fails the
+  build.** A bare `sed 's/`…`//g'` trips SC2016 (backticks look like command substitution).
+  The literal backticks are the point, so the fix is a scoped `# shellcheck disable=SC2016`
+  with the reason, not quoting changes.
 - **`docker compose config` aborts on the FIRST missing required var**, so one new
   `${VAR:?}` turns a whole CI job red while validating nothing. Now guarded by CHECK 6.
 - **A `permissions:` block REPLACES the token defaults** rather than adding to them — list
