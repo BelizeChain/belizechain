@@ -95,7 +95,7 @@ Live on `belizechain_testnet` (full addresses in
 
 ## Live Testnet Extrinsics Verification (2026-09-03)
 
-The ethical safeguard and governance pallets were exercised end-to-end against the live 2-validator Ceiba testnet (`100.81.45.25`) using `@polkadot/api` (`scripts/live-pallet-integration-test.js`). All submitted extrinsics were signed, included in canonical blocks, and verified in on-chain storage:
+The ethical safeguard and governance pallets were exercised end-to-end against the live 2-validator Ceiba testnet (`100.81.45.25` — the host **retired 2026-10-07**; this paragraph is a dated record, not current state. See `docs/ECOSYSTEM_STATE.md` for the live chain) using `@polkadot/api` (`scripts/live-pallet-integration-test.js`). All submitted extrinsics were signed, included in canonical blocks, and verified in on-chain storage:
 
 1. **`pallet-belize-moderation` (Index 37, Phase 5C)**:
    - Call: `belizeModeration.flagContent(contentHash, 2)` (Reason: Spam).

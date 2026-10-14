@@ -6,6 +6,28 @@
 - **Language**: Rust
 - **Branch**: `belizechain` (default)
 
+## ⚠️ Live state — read this first
+
+**This file holds conventions, not live values.** No spec versions, no host IPs, no
+container counts — those drift, and a restated value is a second copy that cannot be
+verified. This file previously said `spec_version = 110` and `10.0.0.229`; both had gone
+stale by 2026-10-14.
+
+→ **Read [`docs/ECOSYSTEM_STATE.md`](docs/ECOSYSTEM_STATE.md) before any claim about live
+state and before starting work in this repo.** It carries the current chain / host /
+endpoint facts (each with the date verified), the authority order for when documents
+disagree, and the open workstreams.
+**If this file and that one disagree about a live value, that one wins.**
+
+### How to work here
+
+- **Verify, don't infer.** Read the source or query the live system. Say "not verified"
+rather than asserting — an unsourced factual claim is a defect, not a shortcut.
+- **When a doc contradicts the code, the code wins**, and the doc is a bug to fix.
+- **Put volatile facts in `ECOSYSTEM_STATE.md`, not here.** Conventions stay here.
+- **Prove a fix changes behaviour** (test fails on the old code, passes on the new)
+rather than only passing on the new.
+
 ## Architecture
 - Core workspace: `node/`, `runtime/`, `pallets/`, `scripts/`, `tests/`, `docs/`
 - 19 Belize-specific pallets in `pallets/` plus shared `pallets/common`: belizex, bns, community, compliance, consensus, economy, governance, identity, interoperability, justice, landledger, mesh, moderation, oracle, payroll, quantum, staking, storage-proof, whistleblower
@@ -16,16 +38,16 @@
 - Ports: 30333 (P2P), 9944 (RPC, unified HTTP+WS), 9615 (Prometheus). Legacy 9933 is not exposed by current SDK.
 
 ## Production Deployment (LIVE)
-- **Primary Host**: `ceiba` (Ubuntu 26.04 LTS, `100.119.97.38` over Tailscale) — the stack moved here 2026-10-06; provisioned as `ceiba2`, renamed `ceiba` on 2026-10-07. The original host is **decommissioned and wiped** — it ran the dead Chain C and no longer exists on the network.
+- **Primary Host**: `ceiba` (`100.119.97.38` over Tailscale; LAN `10.0.0.19`) — the stack moved here 2026-10-06, provisioned as `ceiba2` and renamed 2026-10-07. The original host (`100.81.45.25`, LAN `10.0.0.222`) is **decommissioned** — it ran the dead Chain C and runs no containers. Current host/chain/container facts live in `docs/ECOSYSTEM_STATE.md`.
 - **Runtime**: Docker Compose at `/opt/belizechain` (not `--dev`, not raw systemd)
 - **Live Chain**: **Chain D ("Jade")** — see `docs/operations/CHAIN_LINEAGE.md`
 - **Live Genesis**: `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef` — **identical to Chain C's**, because D was re-genesised from C's spec. The hash alone does **not** identify the chain; use host + head height.
 - **Live Epoch**: `BabeEpochDuration = 300` slots (~30 min). This is the **`testnet-fast-epoch` build feature**, used so a session rotation can be observed in minutes; the default build keeps 14,400 slots (~24 h) for mainnet
-- **Live Runtime**: `spec_version = 110`. Hot `sudo.sudo(System::set_code(…))` upgrade **2026-10-08 on Chain D**, from 109 — no node restart — carrying the bridge-seeding migration (`interoperability::ChainConfigurations`, runtime migration V1 → V2). The genesis runtime embedded in `testnet-spec.json` is still **107**, so a re-genesis would boot at 107 and upgrade forward. Rollback blob: `/data/upgrade-110/onchain-code-109.wasm` on `ceiba`
+- **Live Runtime**: the current `spec_version` and the active upgrade/rollback blob hashes are recorded in **`docs/ECOSYSTEM_STATE.md` §2.1** rather than here, because this line had drifted six versions behind before 2026-10-14. The durable part: upgrades ship as a hot `sudo.sudo(System::set_code(…))`, never a regenerated spec, and the genesis runtime embedded in `testnet-spec.json` is **107**, so a re-genesis boots at 107 and upgrades forward.
 - ⚠️ **Any forward runtime upgrade MUST be built with `--features testnet-fast-epoch`.** A blob built without it silently changes the epoch length from 300 to 14,400 and permanently halts block import — that is exactly how Chain C died on 2026-10-04. `scripts/upgrade-runtime.py` refuses to proceed if the duration would change; always run its dry run first.
 - ✅ `scripts/upgrade-runtime.py` no longer carries a default endpoint: `--rpc` is required (or `CEIBA_RPC_URL`), so it can never silently target a dead host. Pass `--rpc ws://100.119.97.38:9944` explicitly.
 - **Primary Access**: `ssh wicked@ceiba` or `ssh wicked@100.119.97.38` (Tailscale)
-- **LAN Fallback**: `ssh wicked@10.0.0.229` (wired)
+- **LAN Fallback**: `ssh wicked@10.0.0.19` (wired; `10.0.0.229` was the WiFi address, disabled 2026-10-07)
 - **Node Args**: `--chain /data/chain/testnet-spec.json --base-path /data/chain --rpc-port 9944 --prometheus-port 9615`
 - **Chain Data**: `/data/chain/chains/belizechain_testnet`
 - **Binding Note**: RPC is exposed on the host's Tailscale address (not localhost)
@@ -69,7 +91,7 @@ curl -H "Content-Type: application/json" -d '{"id":1,"jsonrpc":"2.0","method":"s
 - No floating-point in consensus logic
 - All state transitions must be deterministic
 - Use `Result<T, Error>` — no `unwrap()` in production
-- Treat `Cargo.toml`, `runtime/src/lib.rs`, and active operations docs as authoritative when prose docs disagree
+- Treat `Cargo.toml`, `runtime/src/lib.rs`, `docs/ECOSYSTEM_STATE.md`, and active operations docs as authoritative when prose docs disagree — in that order (code > state doc > narrative)
 - For docs and sibling rollout state, prefer `docs/operations/CEIBA_OPERATIONS_RUNBOOK.md`, `docs/deployment/PHASE2_CEIBA_SERVICES_PLAN.md`, and `gh` repo metadata over older summaries
 - Mark historical or generated architecture reports as snapshots when they no longer match the live branch
 - High-impact ops commands should include preflight checks, blast radius, and rollback context before execution
