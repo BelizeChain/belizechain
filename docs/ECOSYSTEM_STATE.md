@@ -165,13 +165,27 @@ the old code** (use a `git worktree` of HEAD) rather than only passing on the ne
 
 ### 4.2 Code scanning / GHAS alerts — verified 2026-10-14
 
+> **Why nothing was visible before 2026-10-14.** Code Security and Secret Protection are
+> GitHub **Advanced Security** features. The org is on **GitHub Team**, where they are
+> **paid add-ons for private repos** and free only on public ones — so six of the eight
+> repos were structurally blind: `code_security: disabled`, and the alerts API answered
+> **403**. CodeQL had been running and uploading successfully the whole time; the findings
+> were simply never exposed. Code Security was enabled on all six (≈$30/committer/mo, one
+> seat); Secret Protection stays off, as chosen. Enabling it is per-repo:
+> `gh api -X PATCH repos/BelizeChain/<repo> -f 'security_and_analysis[code_security][status]=enabled'`.
+>
+> **Do not read "0 open" as "clean" on a repo whose Code Security is disabled** — that is
+> the state that hid 307 open alerts.
+
 | repo | open | note |
 |---|---|---|
-| `belizechain` · `ui` · `gem` · `infra` | **0** | clean |
-| `pakit-storage` | 1 | Trivy `ecdsa 0.19.2` — **no fixed version exists** |
-| `nawal-ai` | 268 | all Trivy; the large majority are no-fix base-image noise, not code |
-| `kinich-quantum` | 41 | 35 CodeQL + 6 Trivy, **all false positives** — dismissal requests still awaiting approval |
-| `belizechain.org` | 1 | `js/stored-xss` — see below |
+| `belizechain` · `ui` | **0** | public, so scanning always worked (`belizechain`: 132 dismissed / 35 fixed) |
+| `infra` | **0** | 11 total, all fixed |
+| `gem` | **0** | 17 total, all fixed |
+| `pakit-storage` | **1** | Trivy `CVE-2024-23342` (`ecdsa`) — **no fixed version exists** |
+| `belizechain.org` | **1** | `js/stored-xss` — see below |
+| `kinich-quantum` | **49** | 35 CodeQL + 14 Trivy; 25 are `py/undefined-export`, the known FP class |
+| `nawal-ai` | **256** | **all Trivy**; the bulk are no-fix base-image noise, not our code |
 
 - **`infra` 11 → 0** and **`belizechain.org` 8 → 1**, fixed 2026-10-13/14 by the same two
   moves: workflow-level `permissions: contents: read`, and SHA-pinned third-party actions
@@ -284,8 +298,36 @@ falsifies it. In-repo scripts that run inside the container default to `ws://cei
 
 ---
 
+#### 4.4.3 Docs checker now runs in all 8 repos — DONE 2026-10-14
+
+Only `infra` ran `check-doc-claims.sh`; the other seven had **0** callers, which is how a
+host retired on 2026-10-07 survived in six of them unnoticed. It now lives once, at
+`belizechain/scripts/doc-claims/` — public, so a sibling can fetch it with no token and
+no cross-repo credentials — and all 8 repos run it in CI. `infra`'s copy is now a shim;
+its `deploy/lib/host-env.sh` stays, because eight other infra scripts source it.
+
+**The first run failed in all seven fetching repos, and that was a defect in this change.**
+The workflow checks the script out at `.doc-claims-src`, a full clone of `belizechain`, and
+`md_files()` walked it — reporting belizechain's own workspace-relative links
+(`../../../ui/…`, `../../../gem/…`) as dead in whichever repo was calling. Fixed by
+excluding `.doc-claims-src` from the walks; proven both ways against a real single-repo
+checkout (with the exclusion → PASSED; reverted → the four failures reproduce verbatim).
+
+**Cross-repo links now SKIP rather than FAIL.** `check_dead_links` reports a target that
+resolves outside the repo root as `⏭️ SKIP … escapes this checkout`. Before that change any
+correct `../../belizechain/…` link failed single-repo CI — which is what allows the
+live-state pointer to sit in all 8 instruction files without turning CI red.
+
 ## 5. Standing traps (durable — these do not go stale)
 
+- **A checker that walks its own checkout reports its own repo's links against the caller.**
+  The shared doc-claims workflow checks the script out *inside* the repo it is checking, so
+  the checker must exclude that path (`*/.doc-claims-src/*`) from every file walk. Watch for
+  this shape whenever a tool is vendored into the tree it inspects.
+- **"0 open" is not "clean" unless the scanner is enabled.** Six repos reported zero
+  findings for months purely because `code_security` was disabled and the API returned 403.
+  Enabling it revealed **307 open alerts**. Check the scanner is on before trusting the
+  absence of findings.
 - **Never restate a volatile value in a second document.** It will drift. Link here.
 - **Verify before asserting.** Unsourced live claims are how two workstreams ended up
   tracked only in chat.
