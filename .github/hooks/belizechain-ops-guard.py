@@ -21,7 +21,7 @@ HIGH_IMPACT_PATTERNS = [
     r"\brm\s+-rf\b",
     r"\bmv\b.+/data/chain",
     r"\btar\b.+/data/chain",
-    r"\bssh\b.+(100\.81\.45\.25|10\.0\.0\.222|ceiba)",
+    r"\bssh\b.+(100\.119\.97\.38|10\.0\.0\.19|ceiba)",
 ]
 
 RISK_MESSAGE = (

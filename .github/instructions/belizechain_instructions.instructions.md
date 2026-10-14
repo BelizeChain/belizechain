@@ -14,11 +14,19 @@ applyTo:
 
 ## Sources Of Truth
 
+- **For live state — chain version, head height, epoch, host address, service endpoints, deployed contract addresses — read `docs/ECOSYSTEM_STATE.md`.** It is the only place volatile values are recorded; each carries the date it was verified and the command to re-check it. **Do not trust a volatile value restated anywhere else** — not in a README, not in `copilot-instructions.md`, not in this file. A restated value is a second copy that cannot be verified, and it drifts.
 - For pallet presence, runtime topology, and wiring, prefer `Cargo.toml` and `runtime/src/lib.rs` over README prose.
 - For live operations, prefer `docs/operations/CEIBA_OPERATIONS_RUNBOOK.md` over older deployment docs unless the task explicitly targets a legacy path.
 - For multi-repo architecture and sibling responsibilities, use `docs/architecture/multi-repo-overview.md`.
 - For sibling service rollout state, use `docs/deployment/PHASE2_CEIBA_SERVICES_PLAN.md`.
 - For GitHub-facing repo status, releases, workflows, and PR state, prefer `gh` data over handwritten compatibility tables.
+
+## Verify Before Asserting
+
+- Every factual claim must come from something you read or ran **in this session**. A plausible-sounding number is not evidence — if you have not checked it, write "not verified" rather than stating it as fact.
+- Restate the requested change in one line before editing, then confirm afterwards that the diff contains only that change.
+- Run the cheapest check that could prove you wrong *before* making the claim, not after.
+- When a document and the implementation disagree, the implementation wins and the document is the bug — say which one you checked.
 
 ## Review Standard
 
