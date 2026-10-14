@@ -14,7 +14,7 @@ applyTo:
 
 ## Sources Of Truth
 
-- **For live state — chain version, head height, epoch, host address, service endpoints, deployed contract addresses — read `docs/ECOSYSTEM_STATE.md`.** It is the only place volatile values are recorded; each carries the date it was verified and the command to re-check it. **Do not trust a volatile value restated anywhere else** — not in a README, not in `copilot-instructions.md`, not in this file. A restated value is a second copy that cannot be verified, and it drifts.
+- **For live state — chain version, head height, epoch, host address, service endpoints, deployed contract addresses — read `../../docs/ECOSYSTEM_STATE.md`.** It is the only place volatile values are recorded; each carries the date it was verified and the command to re-check it. **Do not trust a volatile value restated anywhere else** — not in a README, not in `copilot-instructions.md`, not in this file. A restated value is a second copy that cannot be verified, and it drifts.
 - For pallet presence, runtime topology, and wiring, prefer `Cargo.toml` and `runtime/src/lib.rs` over README prose.
 - For live operations, prefer `docs/operations/CEIBA_OPERATIONS_RUNBOOK.md` over older deployment docs unless the task explicitly targets a legacy path.
 - For multi-repo architecture and sibling responsibilities, use `docs/architecture/multi-repo-overview.md`.

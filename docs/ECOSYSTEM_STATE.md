@@ -282,3 +282,16 @@ falsifies it. In-repo scripts that run inside the container default to `ws://cei
   work: a PEP 562 lazy module CodeQL cannot follow (27×), pip's **vendored** copies that
   Trivy mis-attributes to the installed package, and test constructs that *are* the
   assertion. Do not "fix" them by contorting the code.
+- **A `../` path in `.github/` is one level short.** `copilot-instructions.md` sits in
+  `.github/`, so reaching this repo's own `docs/` needs `../docs/` — and reaching a sibling
+  needs `../../belizechain/docs/`. Every one of the 8 files got this wrong on 2026-10-14
+  because the path was copied from a repo-root README, where `../belizechain/` *is* correct.
+  Agents and instructions files sit one level deeper still (`../../../`).
+- **A backtick path is not a checked path.** `check-doc-claims.sh` validates markdown-link
+  syntax `[x](path)` only, so the 35 inert `` `../../docs/…` `` spans were never verified —
+  and were all wrong. They resolve now (checked by hand), but nothing enforces it, so they
+  can rot silently. Prefer a real link where a link is what you mean.
+- **Cross-repo links cannot be validated in single-repo CI**, and only `infra` runs the
+  checker at all (1 workflow of 8 repos). `check_dead_links` now reports a link that
+  resolves outside the repo root as `⏭️ SKIP … escapes this checkout` rather than dead —
+  a skip, never a pass, so it stays visible. Do not read that skip as "verified".
