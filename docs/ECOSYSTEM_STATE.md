@@ -126,7 +126,7 @@ this file now exists.
 |---|---|
 | `belizechain` | **DONE** — `landledger` anchor, `community` deposit, orphan storage (277 items / 0 orphans), doc-API sweep (`e506ef4`) |
 | `kinich-quantum` | **DONE** — 5 rounds, `2cce5db`; tracker fabrication, XCM false success, ZNE/readout, CID/proofs |
-| `pakit-storage` | not started |
+| `pakit-storage` | **SWEPT 2026-10-14** — `3478c91`, `9a297ed`, `071576d`; declared-but-unbound public API, README documented a facade that never existed, 49 logging calls silently dropping messages; see below |
 | `nawal-ai` | not started |
 | `gem` | not started |
 | `infra` | **SWEPT 2026-10-14** — `api-gateway` + `indexer` (the only unaudited services) are **clean**; see below |
@@ -158,6 +158,40 @@ claims "all 4 validators healthy", which describes the local `docker-compose.val
 harness rather than Ceiba — the live chain is **single-authority** (verified 2026-10-14 via
 `GrandpaApi_grandpa_authorities`: a 41-byte payload = 1 × 32-byte key + 8-byte weight). Its
 `ui` claims also conflict with `ui/UI_WIRING_STATUS_CURRENT.md`.
+
+**`pakit-storage` sweep detail (2026-10-14).** Security posture came out clean; the
+**public API surface and the README** did not. Verified rather than trusted:
+
+- Auth is fail-closed: the dev bypass needs `PAKIT_ENV` in {development,dev,test}, otherwise it
+  logs and returns **False**; admin compares with `hmac.compare_digest` (503 unset / 403 mismatch).
+  `payment_strict` defaults **True**. All 8 documented `/api/v1/*` routes exist — no fabricated endpoints.
+- **Declared-but-unbound exports (real, silent).** `pakit/__init__.py` listed `Pakit`,
+  `PakitStorageEngine`, `StorageTier` in `__all__`, but `find_packages()` does not install the
+  repo-root `__init__.py`, so `from pakit import Pakit` raised `ImportError`. `backends/__init__.py`
+  did the same with `DagBackend`. Both were resolved with lazy `__getattr__` re-exports. The
+  regression test fails on pre-fix code (proven via `git worktree` of HEAD).
+- **The README documented an API that has never existed.** 22 call sites used a `pakit` facade
+  object (`pakit.store`, `pakit.quantum_compress`, `pakit.store_ipfs`, `pakit.pin`,
+  `pakit.train_ml_optimizer`, `pakit.enable_ml_optimization`, `pakit.get_metrics`, …) and four
+  more used `storage.get_dag_stats`/`get_info`; `DagBlock.create` and `MerkleDAG.add_block` do not
+  exist either, and the MerkleDAG proof methods are `@staticmethod` taking *blocks*, not
+  `target_hash=`/`root_hash=`. Also: `tier="auto"` could never match (`StorageTier` is a plain
+  Enum, so the string passed through and was used as a member), `local_path=` is `storage_dir=`,
+  `get_efficiency_report()` returns a **nested** dict, an invented cost/CO₂ metrics payload
+  (`data_farm_killer_score: 98.5`) was removed, and one code fence was unbalanced (39 — odd).
+  Features with no implementation are now marked **roadmap**, not shown as working code.
+- **49 logging calls silently dropped their message** (34 in `api_server.py`, 15 in
+  `storage_proof_connector.py`): they passed arguments to a `{}` template, but `logging`
+  interpolates `%`-style. `LogRecord.getMessage()` raises inside the handler, which `logging`
+  swallows into a stderr `--- Logging error ---` — so the line never appears. Rewritten to `%s`
+  with a repo-wide guard test.
+- Checked and **correct**: `auth/`, the payment gate, route wiring, the tracked `.env` (no secrets,
+  but it *was* tracked while `.gitignore` only covered `env/` — untracked, since secret scanning
+  is disabled on that repo). `.env`'s redundancy with `.env.example` was noted.
+- **Not fixed, flagged:** `setup.py` installs 23 generic top-level packages via `find_packages()`
+  (`core`, `ml`, `p2p`, `auth`, `blockchain`, …), which pollutes the global namespace; because
+  `core/__init__.py` imports via `pakit.core.*` while `api_server.py` imports flat `core.*`, the
+  same classes can load as two distinct module objects, so `isinstance` across the two can fail.
 
 Method that has worked: verify every finding against source; **prove the new test fails on
 the old code** (use a `git worktree` of HEAD) rather than only passing on the new; use
