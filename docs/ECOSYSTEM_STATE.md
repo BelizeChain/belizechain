@@ -185,11 +185,50 @@ the old code** (use a `git worktree` of HEAD) rather than only passing on the ne
   when a `${VAR:?}` in a compose file is missing from the `env:` block of the CI job that
   runs `docker compose config`. That trap broke `infra` CI on 2026-10-12 and had already
   fired twice before.
-- ✅ `belizechain.org` had no `agents/`/`instructions/`/`prompts/` surface; being brought
-  in line with the other seven repos.
-- 🔜 Sweep the retired host `100.81.45.25` out of current-state docs. **Dated records are
-  left alone** (`CHANGELOG.md`, `*_2026-*.md` baselines/drills, frozen `docs/audits/`) —
-  rewriting a dated record falsifies it. Those get an annotation, not a rewrite.
+- ✅ `belizechain.org` had no `agents/`/`instructions/`/`prompts/` surface; now byte-identical
+  to `ui`'s (closest sibling — also Next.js), so the profile is one profile, not eight
+  drifting copies.
+- ✅ All 8 `copilot-instructions.md` rewritten: volatile values removed, replaced with an
+  imperative pointer here. Before this, **6 of 8 repos still named the host retired
+  2026-10-07** and two named spec 110 while the chain ran 116.
+- ✅ Retired host swept out of current-state docs and code across 7 repos — see §4.4.1.
+
+#### 4.4.1 Host sweep — DONE 2026-10-14 (8 commits, all pushed)
+
+`100.81.45.25` (retired 2026-10-07) removed from live code and current-state docs:
+
+| Repo | Commit | What |
+|---|---|---|
+| `belizechain` | `b8e2e87` | this file; instructions pointer; `PHASE_STATUS.md` annotated |
+| `ui` | `fde1579` | 2 probe routes, 2 pages, e2e + indexer test |
+| `infra` | `c16c207` | README, shared/README, `benchmark_tps.ts` |
+| `gem` | `7aba977` | 8 sdk examples + 3 scripts + 8 docs + 1 doc comment |
+| `kinich-quantum` | `4c503a0` | instructions, readiness doc |
+| `nawal-ai` | `281af73` | `run_fl_round.py`, 2 guides |
+| `pakit-storage` | `e53f2e5` | instructions, `test_live_chain.py` |
+| `belizechain.org` | `fa39728` | instructions pointer; agent surface added |
+
+**Left deliberately** — each is a rationale, not a stale value; rewriting it deletes the
+reason: `infra/docker-compose.ceiba.yml:539`, `infra/deploy/lib/host-env.sh:6`, and dated
+records (`CHANGELOG.md`, `*_2026-*.md` baselines/drills, frozen `docs/audits/`,
+`gem/deployment-*.json`) which were **annotated, not rewritten** — rewriting a dated record
+falsifies it. In-repo scripts that run inside the container default to `ws://ceiba-node:9944`
+(the in-network name), not the public endpoint.
+
+**Still open:**
+- 🔜 The shared `instructions/*.instructions.md` files do **not** yet cite this file in their
+  *Sources Of Truth* section. They are auto-attached by `applyTo` on every code file, so they
+  are the highest-value place for the pointer. Small edit × 8 repos.
+- 🔜 Loose untracked duplicate at the **workspace root** (outside every repo):
+  `/home/wicked/Projects/Belizechain/scripts/live-pallet-integration-test.js` — stale copy of
+  the in-repo `belizechain/scripts/` version, still carrying the dead host. Nothing tracks it,
+  so nothing will ever fix it. Container-side default for the in-repo copy should be verified.
+- 🔜 `belizechain.org` prints live values on public pages, so it is the most exposed surface
+  for this class of drift — see §4.1.
+- ⚠️ **Seen while sweeping, not yet triaged:** `ui/blue-hole-portal/src/app/page.tsx` displays
+  `100.119.97.38:30333/30334` and labels the producer **"Aura / Grandpa"**. The chain is
+  **BABE** (with GRANDPA finality), not Aura. This looks like fabricated display data — the
+  same class as the honesty sweep is chasing. Verify before trusting any UI status panel.
 
 ---
 
