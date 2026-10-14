@@ -1,0 +1,37 @@
+# ──────────────────────────────────────────────────────────
+# Docs Claims Check — do the repo's docs and configs agree with reality?
+#
+# This repo hosts the canonical checker (`scripts/doc-claims/`), so it runs the
+# local copy. Every other BelizeChain repo fetches this same script from here
+# rather than keeping a copy that could drift.
+#
+# It verifies that markdown links resolve, that compose ${VAR:?} requirements
+# are supplied by the CI job that validates them, that Node versions align, and
+# that image pins are documented. It covers the MECHANICAL class of doc drift;
+# the semantic class ("is X actually live?") is handled by the docs-alignment
+# prompt during a live agent sweep.
+#
+# In CI only this repo is checked out, so cross-repo checks skip. Run it from a
+# full workspace checkout for those.
+# ──────────────────────────────────────────────────────────
+name: Docs Claims Check
+
+on:
+  push:
+    branches: [belizechain]
+  pull_request:
+    branches: [belizechain]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  doc-claims:
+    name: 📄 Docs claims vs reality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Run doc-claims checker
+        run: ./scripts/doc-claims/check-doc-claims.sh .
