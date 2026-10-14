@@ -216,19 +216,45 @@ falsifies it. In-repo scripts that run inside the container default to `ws://cei
 (the in-network name), not the public endpoint.
 
 **Still open:**
-- 🔜 The shared `instructions/*.instructions.md` files do **not** yet cite this file in their
-  *Sources Of Truth* section. They are auto-attached by `applyTo` on every code file, so they
-  are the highest-value place for the pointer. Small edit × 8 repos.
-- 🔜 Loose untracked duplicate at the **workspace root** (outside every repo):
-  `/home/wicked/Projects/Belizechain/scripts/live-pallet-integration-test.js` — stale copy of
-  the in-repo `belizechain/scripts/` version, still carrying the dead host. Nothing tracks it,
-  so nothing will ever fix it. Container-side default for the in-repo copy should be verified.
-- 🔜 `belizechain.org` prints live values on public pages, so it is the most exposed surface
-  for this class of drift — see §4.1.
-- ⚠️ **Seen while sweeping, not yet triaged:** `ui/blue-hole-portal/src/app/page.tsx` displays
-  `100.119.97.38:30333/30334` and labels the producer **"Aura / Grandpa"**. The chain is
-  **BABE** (with GRANDPA finality), not Aura. This looks like fabricated display data — the
-  same class as the honesty sweep is chasing. Verify before trusting any UI status panel.
+- ❗ **`belizechain.org` prints live values on public pages**, so it is the most exposed
+  surface for this class of drift — see §4.1.
+
+#### 4.4.2 Agent-surface hardening — DONE 2026-10-14
+
+- ✅ All 8 `instructions/*.instructions.md` now lead with this document in *Sources Of Truth*
+  and carry a **Verify Before Asserting** section. `applyTo` attaches these files to every
+  code file, so they are the one place an agent is guaranteed to see the pointer — the
+  highest-leverage spot, and until now it was empty.
+- ✅ All 8 `agents/belizechain.agent.md` state that live state is not memory, and list this
+  document first in the Working Method.
+- ✅ `belizechain.org` gained the `.github/hooks/` it was missing. All 8 repos now carry the
+  same surface: 3 agents, 1 instructions file, 1 prompt, 2 hook files.
+- ✅ **The ops guard was broken.** `.github/hooks/belizechain-ops-guard.py` matched `ssh`
+  against `100.81.45.25 | 10.0.0.222 | ceiba`. Both IPs have been dead since 2026-10-07, so
+  the guard only ever fired on the hostname form. **Proven, not inferred:** piping
+  `{"command":"ssh wicked@100.119.97.38"}` returned `permissionDecision: "allow"` before the
+  fix and `"ask"` after; a benign `ls` returned `allow` both times. All 7 repos repaired.
+  This is drift hiding in the one file nobody re-reads — a safety guard is not re-opened on
+  a host migration.
+
+**Blocked — needs a decision:**
+- 🔴 **`ui` and `gem` do not track the agent surface at all.** Both exclude `.github/agents/`,
+  `.github/hooks/`, `.github/instructions/`, `.github/prompts/` in **`.git/info/exclude`** — a
+  per-clone file that is never pushed. The surface in those two repos therefore exists only
+  on this machine, edits to it are invisible to `git status`, and a fresh clone gets nothing.
+  Until that is lifted, "all 8 repos share one profile" is true only locally. (The same file
+  also hides `ui`'s `blue-hole-portal/test-results/`, which is legitimate.)
+- ⚠️ **`ui/blue-hole-portal/src/app/page.tsx` — the validator panel is fabricated.** The
+  Aura→BABE label is fixed (`7b7f9a7`), but the block around it is hardcoded markup: a
+  **second validator** ("Edge-Validator-2", "Byzantine Backup & Validator", "1.2ms Zero
+  Drift") that does not exist — the live authority set is **1** — on ports **30333/30334**
+  where only 30333 is real. It sits beside one genuinely live value
+  (`systemInfo?.blockNumber`), which makes the invented rows read as verified. That is a
+  content decision, not a label fix: the owner's call.
+- ⚠️ `belizechain/scripts/live-pallet-integration-test.js` defaults its treasury key to a
+  **committed-looking BIP39 mnemonic** in source (`TREASURY_URI || 'coil apart warrior…'`).
+  The stale workspace-root duplicate used the safer `//treasury` dev URI and has been
+  deleted. Worth a look even though it is testnet.
 
 ---
 
@@ -240,6 +266,14 @@ falsifies it. In-repo scripts that run inside the container default to `ws://cei
 - **A doc that merely mentions a dead host is invisible to `check-doc-claims.sh`** — it
   checks links, compose/env coverage, Node alignment and image pins, not prose IPs. Grep
   for dead hosts by hand after any host retirement.
+- **A safety guard is the file nobody re-reads.** `.github/hooks/belizechain-ops-guard.py`
+  matched `ssh` against a host retired weeks earlier and so passed the live host straight
+  through — a guard that silently stopped guarding. Any host/volatile sweep must include
+  `.github/hooks/`, `.git/info/exclude` and `.github/workflows/`, not just prose docs.
+- **An agent surface excluded from version control is not a surface.** `ui` and `gem` hide
+  `.github/{agents,instructions,prompts,hooks}` in `.git/info/exclude`, so those files exist
+  only on one machine and edits to them never appear in `git status`. Verify a
+  customization file is *tracked* before relying on it.
 - **`docker compose config` aborts on the FIRST missing required var**, so one new
   `${VAR:?}` turns a whole CI job red while validating nothing. Now guarded by CHECK 6.
 - **A `permissions:` block REPLACES the token defaults** rather than adding to them — list
