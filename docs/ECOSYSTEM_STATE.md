@@ -126,7 +126,7 @@ this file now exists.
 |---|---|
 | `belizechain` | **DONE** — `landledger` anchor, `community` deposit, orphan storage (277 items / 0 orphans), doc-API sweep (`e506ef4`) |
 | `kinich-quantum` | **DONE** — 5 rounds, `2cce5db`; tracker fabrication, XCM false success, ZNE/readout, CID/proofs |
-| `pakit-storage` | **SWEPT 2026-10-14** — `3478c91`, `9a297ed`, `071576d`; declared-but-unbound public API, README documented a facade that never existed, 49 logging calls silently dropping messages; see below |
+| `pakit-storage` | **SWEPT 2026-10-14** — 13 commits `3478c91`→`28b6ea7`; declared-but-unbound public API, README documented a facade that never existed, dual module identity, inert ML, fabricated quantum results, ZK proofs never generated, a logging regression introduced *and* reverted here, CI red since 2026-10-03 → green; see below |
 | `nawal-ai` | not started |
 | `gem` | not started |
 | `infra` | **SWEPT 2026-10-14** — `api-gateway` + `indexer` (the only unaudited services) are **clean**; see below |
@@ -180,11 +180,17 @@ harness rather than Ceiba — the live chain is **single-authority** (verified 2
   `get_efficiency_report()` returns a **nested** dict, an invented cost/CO₂ metrics payload
   (`data_farm_killer_score: 98.5`) was removed, and one code fence was unbalanced (39 — odd).
   Features with no implementation are now marked **roadmap**, not shown as working code.
-- **49 logging calls silently dropped their message** (34 in `api_server.py`, 15 in
-  `storage_proof_connector.py`): they passed arguments to a `{}` template, but `logging`
-  interpolates `%`-style. `LogRecord.getMessage()` raises inside the handler, which `logging`
-  swallows into a stderr `--- Logging error ---` — so the line never appears. Rewritten to `%s`
-  with a repo-wide guard test.
+- ⚠️ **The logging finding was real but the fix was wrong, and this file recorded the wrong
+  conclusion.** `api_server.py` and `blockchain/storage_proof_connector.py` are the only two
+  modules using **loguru**, which interpolates **brace-style only**; every other module uses
+  stdlib `logging` (percent-style). 49 brace-style calls in those two files were rewritten to
+  `%s`, which made loguru print the placeholder literally and **drop the argument** — turning
+  49 working calls into 49 silently wrong ones. Reverted from the exact pre-fix lines, plus 4
+  further pre-existing percent-style calls in the same files. The guard test asserted `%s`
+  **everywhere** and so passed through the regression; it is now style-aware (loguru → braces,
+  stdlib → percent) and checks placeholder/argument counts. Verified it flags 52 sites on the
+  pre-fix revision and none now. **Lesson: check which logging library a file imports before
+  "fixing" a convention.**
 - Checked and **correct**: `auth/`, the payment gate, route wiring, the tracked `.env` (no secrets,
   but it *was* tracked while `.gitignore` only covered `env/` — untracked, since secret scanning
   is disabled on that repo). `.env`'s redundancy with `.env.example` was noted.
@@ -192,6 +198,56 @@ harness rather than Ceiba — the live chain is **single-authority** (verified 2
   (`core`, `ml`, `p2p`, `auth`, `blockchain`, …), which pollutes the global namespace; because
   `core/__init__.py` imports via `pakit.core.*` while `api_server.py` imports flat `core.*`, the
   same classes can load as two distinct module objects, so `isinstance` across the two can fail.
+
+**`pakit-storage` sweep, second pass (2026-10-14, later the same day).** The first pass found the
+doc/API fabrications; this pass found **live bugs**, then built the features the README had been
+describing. All verified against source and, where possible, against the live chain.
+
+- **Dual module identity (live bug).** `pakit.core.compression.CompressionAlgorithm is not
+  core.compression.CompressionAlgorithm` — two class objects, so `NS.AUTO != FLAT.AUTO` and a
+  comparison silently took the wrong branch, raising `ValueError: Algorithm not available`.
+  Resolved with an `_AliasLoader`/`_AliasFinder` so both import conventions yield the **same**
+  module object (`32232cc`).
+- **ML was completely inert.** Nothing ever called `ModelRegistry.register`, so the registry was
+  always empty and `MLDAGIntegration` fell back on every call (`fallback_activations: 1`,
+  `ml_suggestions_used: 0`). Now wired as **advisory hints only** (`6ff6e80`), behind
+  `ENABLE_ML_OPTIMIZATION` (default off), with the hint validated against real
+  `CompressionAlgorithm` members so determinism is never traded for a suggestion.
+- **Quantum results were fabricated.** `_submit_quantum_job` returned `success=True` with invented
+  counts (`{"00":500,"01":300,...}`) and an invented `circuit_depth`, against a backend name
+  (`qiskit_simulator`) that is not a Kinich local alias. Rewritten to report failure honestly
+  (`86bfd94`), plus a real `KinichClient` (`33da8f3`).
+- **ZK storage proofs were never generated.** The call used
+  `generate_storage_proof(content_id=, data_size=, storage_location=)` against a real signature of
+  `(block_cid, block_data, merkle_proof, replication_peers)`, and read `zk_proof.get('type')` on a
+  dataclass. A **test asserted the buggy kwargs**, which is why it went unnoticed (`4bf14bf`).
+- **The documented `Pakit` facade now exists** (`core/facade.py`, `aa88f69`) and delegates only —
+  so the imports the README always showed finally resolve. Then the features it described were
+  actually built: a budgeted `ResearchJobRunner` (`f75d2e5`) that estimates cost via Kinich's
+  `/api/v1/jobs/estimate`, **refuses to submit over budget**, and awards an achievement only on a
+  genuine success; a `BeliNftConnector` (`fa3bde0`) whose `can_mint()` proves the signer *is* the
+  contract owner before submitting; and IPFS `pin`/`unpin`/`is_pinned` (`7bc2dae`).
+- **Signer wiring was missing entirely.** `get_storage_proof_connector()` accepted no keypair, so
+  the economy/BNS/contracts connectors could never sign and every write returned "No keypair
+  configured". Now resolves `PAKIT_SIGNER_URI` via one shared loader (`e59deeb`).
+- ⚠️ **The `pakit.api_server` story — my first reading was wrong, and the live check disproved it.**
+  `main()` ended in `uvicorn.run("pakit.api_server:app")`, and `pakit/api_server.py` **has never
+  existed in git**. But the deployed `pakit/__init__.py` was a 297-byte redirect
+  (`__path__ = [dirname(dirname(abspath(__file__)))]`) that made `pakit.api_server` resolve to
+  `/app/api_server.py` — so **it worked in production**. Live check: `ceiba-pakit` **Up 20h,
+  healthy**, health 200. The `integration` job broke when `32232cc` replaced that redirect with the
+  alias finder (whose `_FLAT_PACKAGES` excludes `api_server`); `e59deeb` repointed uvicorn at
+  `api_server:app`. **Do not report a passing assertion as a bug without checking the mechanism it
+  encodes** — that test was correct at the time.
+- **CI was red from 2026-10-03 to 2026-10-14**; last green run `2026-10-03T20:17`. Two causes: a
+  pre-existing black failure on `blockchain/bns_integration.py`, and the `integration` break above.
+  Both workflows now pass. Note **black runs before ruff, so a black failure hides any ruff
+  violation** — check the gates separately.
+- `.github-instructions.md` describes a layout that does not exist (everything under a `pakit/`
+  package; `pakit/api_server.py` and `pakit/README.md` are neither present). It is not loaded by
+  Copilot and nothing references it — marked superseded with the falsehoods named, flagged for
+  deletion. Also present in `ui`; **not** an org convention (2 of 8 repos).
+
 
 Method that has worked: verify every finding against source; **prove the new test fails on
 the old code** (use a `git worktree` of HEAD) rather than only passing on the new; use
