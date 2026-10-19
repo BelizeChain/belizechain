@@ -35,17 +35,23 @@ value inline, so the next agent can see what moved.
 
 ## 2. Live state
 
-### 2.1 Chain — verified 2026-10-14
+### 2.1 Chain — verified 2026-10-19
 
 | | |
 |---|---|
 | Chain name | **Jade** (Chain D) |
 | Genesis | `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef` |
 | Runtime | **spec_version 116** · impl 1 · transaction 2 |
-| Head (2026-10-14) | **110104** |
-| Epoch | index 367 · **duration 300 slots** · 114-byte `Epoch` |
+| Head (2026-10-19) | **183,798** |
+| Epoch | index **613** · **duration 300 slots** · boundary crossed live 2026-10-19 |
 | Peers | 0 (`shouldHavePeers: false` — single node, expected) |
 | Repo agreement | `runtime/src/lib.rs:479` also reads `spec_version: 116` |
+
+⚠️ **`BabeApi_current_epoch` field [8:16] is the epoch's START slot, not the
+current slot** — it is constant for the whole epoch. Read the slot from the
+block's BABE `PreRuntime` digest instead (the live head advances ~1 slot/block).
+Arithmetic that treats it as the current slot reports the wrong time to the next
+boundary.
 
 ⚠️ **The genesis hash does NOT identify the chain.** Chain D re-genesised from Chain C's
 spec, so it shares C's hash exactly. Disambiguate by **name (Jade) + head height + date**,
@@ -60,14 +66,14 @@ curl -s -H 'Content-Type: application/json' -d '{"id":1,"jsonrpc":"2.0","method"
 ⚠️ The runtime-version method is **`state_getRuntimeVersion`** (integer result). There is
 no `runtime_version` method — using it returns nothing and looks like a dead node.
 
-### 2.2 Host — verified 2026-10-14
+### 2.2 Host — verified 2026-10-19
 
 | | |
 |---|---|
 | Host | **`ceiba`** — Tailscale `100.119.97.38`, LAN `10.0.0.19` |
 | Access | `ssh wicked@ceiba` (Tailscale). LAN fallback `10.0.0.19` |
-| Containers | **16 running** · host uptime 1 week |
-| Node image | `belizechain/ceiba-node:ff74ee9-stable2609-20261012` |
+| Containers | **16 running** · 0 exited · host uptime 12 days |
+| Node image | `belizechain/ceiba-node:76dea3f-stable2609-20261019` |
 | Public ingress | **Oracle edge proxy** `129.213.95.153` → ceiba over the tailnet |
 
 ⚠️ **`100.81.45.25` / `10.0.0.222` are the RETIRED host.** Decommissioned 2026-10-07 — it
@@ -127,7 +133,7 @@ this file now exists.
 | `belizechain` | **DONE** — `landledger` anchor, `community` deposit, orphan storage (277 items / 0 orphans), doc-API sweep (`e506ef4`) |
 | `kinich-quantum` | **DONE** — 5 rounds, `2cce5db`; tracker fabrication, XCM false success, ZNE/readout, CID/proofs |
 | `pakit-storage` | **SWEPT 2026-10-14** — 13 commits `3478c91`→`28b6ea7`; declared-but-unbound public API, README documented a facade that never existed, dual module identity, inert ML, fabricated quantum results, ZK proofs never generated, a logging regression introduced *and* reverted here, CI red since 2026-10-03 → green; see below |
-| `nawal-ai` | not started |
+| `nawal-ai` | **IN PROGRESS 2026-10-19** — 3 extrinsics corrected, 2 latent fabrications removed; see below |
 | `gem` | not started |
 | `infra` | **SWEPT 2026-10-14** — `api-gateway` + `indexer` (the only unaudited services) are **clean**; see below |
 | `ui` | partial — fabricated service fallbacks removed 2026-10-07; **page-level seed data remains** |
@@ -249,6 +255,55 @@ describing. All verified against source and, where possible, against the live ch
   deletion. Also present in `ui`; **not** an org convention (2 of 8 repos).
 
 
+**`nawal-ai` sweep, first pass (2026-10-19).** Verified against the live runtime
+rather than by reading alone: every `call_module`/`call_function` pair was resolved
+against `construct_runtime!`, and every `call_params` payload was composed with
+`substrate-interface` against Jade (spec 116) in a throwaway environment that never
+submits.
+
+- **Three extrinsics could never succeed** (`4c481d8`). Composing the shipped
+  payloads raises `ValueError: Parameter ... not specified`, so none could be included
+  in a block:
+  - `Oracle.submit_iot_data` — sent `feed_type`/`quality_score`; the pallet takes
+    `feed_type_index`, `data_hash` and the five separate quality metrics.
+    `prepare_oracle_submission()` **already returned the correct shape**; the submitter
+    rebuilt it wrongly and read a non-existent `feed_type` key.
+  - `Community.record_participation` — sent a free-text activity name; the pallet takes
+    a `u8` `activity_code` and returns `InvalidActivityType` otherwise. Added
+    `ACTIVITY_CODES` from `pallets/community/src/types.rs`; unknown names and the two
+    attestation-gated codes (2, 3) now fail before submission.
+  - `Community` SRS reads — `get_srs_info` read five fields (`participation_count`,
+    `volunteer_hours`, `education_modules_completed`, `green_project_contributions`,
+    `monthly_fee_exemption`) that **do not exist** on `SRSData`, so every real call
+    raised `KeyError` and was swallowed into `None`. Now reads `total_contributions`
+    plus the separate `CompletedEducationCount` / `GreenContributionStats` maps.
+    Volunteer hours and the fee-exemption **entitlement** have no on-chain source and
+    are reported as 0 rather than invented.
+  - Education and green contributions now use `complete_education_module` /
+    `contribute_to_green_project`: `record_participation` codes 4/5 do **not** feed the
+    SRS education/sustainability scores.
+  - **The tests had mocked the fabricated shapes**, which is why all three survived.
+    Corrected, and proven both ways: the new tests fail on the pre-fix source
+    (`git stash`) and pass after.
+- **Two latent fabrication paths removed** (`4dae6af`):
+  `_qsvm_forward` returned `np.random.rand(...)` (dead code, but exported and
+  test-asserted — the exact shape that becomes live); it now delegates to the real
+  HTTP path. `nawal/server/__init__.py` set `globals()[name] = None` on any import
+  failure; making it raise exposed a genuine circular import with `api_server`, so the
+  eager exports now raise with context and `ServerConfig` resolves lazily via PEP 562.
+- **Checked and correct:** all 13 extrinsic names exist; `payroll_connector` already
+  sent `{}` to `batch_payment(origin)` with a comment explaining that the pallet pays
+  registered employees; no `mock_mode=True` default exists anywhere in production code.
+- **Flagged, not changed:** `control/executor.py` registers `respond`/`reason`/
+  `validate`/`search`/`execute` as stubs returning `{"stub": ...}`, and
+  `controller.py` lists them in `_DEFAULT_TOOLS`; `ExecutiveController` has no
+  production caller. `_classical_fallback` returns a seeded random-projection matrix
+  labelled as a fallback (counted in `stats["fallback_calls"]`, but indistinguishable
+  from real output at the call site). Both need an owner decision.
+- **Not verified:** the `ss58_format=42` settings. The chain's prefix is 1981, but
+  `system_properties` returns `{}` and the value is cosmetic for AccountId encoding —
+  left alone rather than churned.
+
 Method that has worked: verify every finding against source; **prove the new test fails on
 the old code** (use a `git worktree` of HEAD) rather than only passing on the new; use
 `git stash` to prove a fix changed behaviour.
@@ -307,6 +362,16 @@ the old code** (use a `git worktree` of HEAD) rather than only passing on the ne
 - Upgrades are applied as a hot `sudo.sudo(System::set_code)` — **never** a regenerated
   spec (`testnet-spec.json` is gitignored and pins genesis). Rollback blob hashes live in
   `docs/operations/CEIBA_OPERATIONS_RUNBOOK.md`.
+- **Node image rebuilt 2026-10-19** (`76dea3f-stable2609-20261019`) for five new RustSec
+  advisories that appeared 2026-10-14: RUSTSEC-2026-0346/-0347/-0348/-0349 (`rustls`
+  ≤0.23.45 → **0.23.46**) and RUSTSEC-2026-0363 (`wasmtime` 36.0.16 → **36.0.18**).
+  Both are node-level crates, so this needed a node image, **not** a runtime upgrade.
+  Verified by booting before deploy: spec 116, `BabeApi_current_epoch` duration **300**,
+  `belizechain_getChainInfo` live-state shape; then deployed and observed the live
+  **epoch 612 → 613** boundary with duration held at 300 and continuous authoring.
+  Rollback: `.env.bak-pre-node-76dea3f-20261019` + the `ff74ee9-stable2609-20261012` image.
+  ⚠️ Still open and **not** fixed by this: `hickory-resolver 0.24.4` (GHSA-5j98-2g5x-46v6)
+  needs `libp2p-dns 0.45` upstream.
 
 ### 4.4 Documentation continuity — IN PROGRESS (opened 2026-10-14)
 
