@@ -133,7 +133,7 @@ this file now exists.
 | `belizechain` | **DONE** — `landledger` anchor, `community` deposit, orphan storage (277 items / 0 orphans), doc-API sweep (`e506ef4`) |
 | `kinich-quantum` | **DONE** — 5 rounds, `2cce5db`; tracker fabrication, XCM false success, ZNE/readout, CID/proofs |
 | `pakit-storage` | **SWEPT 2026-10-14** — 13 commits `3478c91`→`28b6ea7`; declared-but-unbound public API, README documented a facade that never existed, dual module identity, inert ML, fabricated quantum results, ZK proofs never generated, a logging regression introduced *and* reverted here, CI red since 2026-10-03 → green; see below |
-| `nawal-ai` | **IN PROGRESS 2026-10-19** — 3 extrinsics corrected, 2 latent fabrications removed; see below |
+| `nawal-ai` | **IN PROGRESS 2026-10-19** — 3 extrinsics corrected, 2 latent fabrications removed, 12 impossible storage reads found (6 remapped, 6 made honest); see below |
 | `gem` | not started |
 | `infra` | **SWEPT 2026-10-14** — `api-gateway` + `indexer` (the only unaudited services) are **clean**; see below |
 | `ui` | partial — fabricated service fallbacks removed 2026-10-07; **page-level seed data remains** |
@@ -303,6 +303,48 @@ submits.
 - **Not verified:** the `ss58_format=42` settings. The chain's prefix is 1981, but
   `system_properties` returns `{}` and the value is cosmetic for AccountId encoding —
   left alone rather than churned.
+
+**`nawal-ai` sweep, storage reads (2026-10-19, `4ef7059`).** The same method applied to
+reads: every `storage_function` name was checked against **live runtime metadata**
+(`substrate-interface` → `get_metadata()`, Jade spec 116) rather than against the source
+tree, because a first pass that only scanned `pallets/*/src/lib.rs` reported `System.*` as
+missing — a false positive, since `frame_system` is not in this repo. **12 of 26**
+`(pallet, storage item)` pairs do not exist. Every one is wrapped in `try/except`, so each
+failure was silent: the read returned `0` / `None` / `[]` and looked like empty state.
+
+The pattern behind it: the blockchain layer was written against a Polkadot-shaped chain.
+`Ledger`, `Bonded`, `CurrentEra`, `ValidatorPrefs`, `ActiveValidators`,
+`ErasValidatorReward` and `ValidatorMetadata` are all Substrate-standard names that
+`pallet_belize_staking` does not have.
+
+Corrected where a real equivalent exists:
+
+| read | was | now |
+|---|---|---|
+| `get_stake_info` | `Staking.Ledger` | `Staking.Validators[addr].stake` (no own/delegated split) |
+| `get_current_era` | `Staking.CurrentEra` | `Staking.CurrentEpoch` |
+| `get_active_validators` | `Staking.ActiveValidators` | keys of `Staking.Validators` |
+| `get_stake` | `Staking.Bonded` | `Staking.Validators[addr].stake` |
+| `get_operator_stats` | `Oracle.OperatorStats` | `Oracle.OracleOperatorStatsMap` |
+| `get_payroll_stats` | `Payroll.PeriodStats` | `Payroll.GlobalStats` — a single all-time aggregate; no per-period buckets and no government/private split, so the result is marked `scope: "all-time"` |
+
+Made honest where **nothing** exists on chain, rather than substituting a plausible value:
+`get_commission` (no `ValidatorPrefs`, no commission field on `ValidatorInfo`),
+`get_validator_rewards` (`EpochRewards` is one pool per epoch; there is no per-validator
+entry), `get_reputation_score` (no reputation registry in `pallet_belize_identity` —
+reputation is a local federated-learning signal), `get_employee_paystub`
+(`pallet_belize_payroll` stores a `payment_commitment` hash and keeps the breakdown
+off-chain by design), `get_pending_submissions` (`pallet_belize_oracle` has no pending-IoT
+queue; `PendingKycSubmissions` is KYC).
+
+Six tests asserted the fabricated shapes and were corrected; they fail on the pre-fix
+source and pass after. Full suite: 4031 passed, 1 skipped.
+
+**Flagged, not changed:** `mesh_network.discover_peers_from_chain` — dead code that cannot
+work as written. It queries `Staking.Validators` (a map) with no params and then reads a
+`network_address` field that does not exist; `ValidatorInfo` carries a free-text `location`
+`BoundedVec<u8, 64>`, not a multiaddr. On-chain peer discovery would need a new runtime
+field, so this is a design decision rather than a fix.
 
 Method that has worked: verify every finding against source; **prove the new test fails on
 the old code** (use a `git worktree` of HEAD) rather than only passing on the new; use
