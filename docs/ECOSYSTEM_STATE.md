@@ -340,11 +340,41 @@ queue; `PendingKycSubmissions` is KYC).
 Six tests asserted the fabricated shapes and were corrected; they fail on the pre-fix
 source and pass after. Full suite: 4031 passed, 1 skipped.
 
-**Flagged, not changed:** `mesh_network.discover_peers_from_chain` — dead code that cannot
-work as written. It queries `Staking.Validators` (a map) with no params and then reads a
-`network_address` field that does not exist; `ValidatorInfo` carries a free-text `location`
-`BoundedVec<u8, 64>`, not a multiaddr. On-chain peer discovery would need a new runtime
-field, so this is a design decision rather than a fix.
+**`nawal-ai` mesh comms layer (2026-10-19, `75a8d71`).** The mesh transport is a
+**communication layer**, not the training topology, and it was documented as a delivered
+v1.1.0 feature while being unusable three independent ways:
+
+- It bound `127.0.0.1`, so a node that is supposed to accept inbound gossip could not. Bind
+  host is now configurable (`NAWAL_MESH_LISTEN_HOST`), loopback default retained.
+- `discover_peers` queried `Staking.ValidatorMetadata` for a `network_address` field that does
+  not exist. **Neither on-chain source can supply an `ip:port`**: `ValidatorInfo` holds stake,
+  scores and a free-text `location` blob, while `pallet_belize_mesh` stores LoRa node IDs and
+  GPS coordinates. The query could only ever return zero peers. Replaced with peer exchange
+  over `/peers`, seeded by `NAWAL_MESH_BOOTSTRAP`; isolation is now reported as a configuration
+  fact instead of a silent empty list.
+- `/peers` did not serve `public_key`, so a discovered peer could never have a signature
+  verified and **every message from it was dropped**. Served now, and both payload shapes are
+  accepted.
+
+8 tests asserted the impossible chain query and were rewritten; all 8 fail on the previous
+module and pass on the new one. 4032 passed, 1 skipped.
+
+**Flagged, not changed:** `peer_id` is caller-supplied and not bound to the advertised public
+key, so a peer can claim another's `peer_id` and have its own signatures accepted under that
+identity. Fixing it changes the identity model.
+
+**Open architecture question — recorded, not decided.** The user has stated that Nawal is
+intended to be a **mesh neural network**, and that federated learning is the misaligned choice.
+What the repo contains today is unambiguously federated: the README is titled "Sovereign
+Federated Learning", `server/aggregator.py` is a central FedAvg aggregator, and
+`client/train.py` subclasses `fl.client.NumPyClient`. There is **no** gossip-SGD, DiLoCo or
+model-parallel training path anywhere. So this is not code drifting from docs — docs and code
+agree, and the disagreement is with intent.
+
+Scale of the change: `server/` + `client/` are **8,357 of 60,219** non-test Python lines
+(~14%). The other ~86% (chain integration, genome, storage, API, security, quantum) is
+topology-agnostic and survives either way. "Almost finished" therefore applies to the FL
+implementation specifically, not the platform.
 
 Method that has worked: verify every finding against source; **prove the new test fails on
 the old code** (use a `git worktree` of HEAD) rather than only passing on the new; use
