@@ -511,13 +511,13 @@ falsifies it. In-repo scripts that run inside the container default to `ws://cei
   on this machine, edits to it are invisible to `git status`, and a fresh clone gets nothing.
   Until that is lifted, "all 8 repos share one profile" is true only locally. (The same file
   also hides `ui`'s `blue-hole-portal/test-results/`, which is legitimate.)
-- ⚠️ **`ui/blue-hole-portal/src/app/page.tsx` — the validator panel is fabricated.** The
-  Aura→BABE label is fixed (`7b7f9a7`), but the block around it is hardcoded markup: a
-  **second validator** ("Edge-Validator-2", "Byzantine Backup & Validator", "1.2ms Zero
-  Drift") that does not exist — the live authority set is **1** — on ports **30333/30334**
-  where only 30333 is real. It sits beside one genuinely live value
-  (`systemInfo?.blockNumber`), which makes the invented rows read as verified. That is a
-  content decision, not a label fix: the owner's call.
+- ✅ **`ui/blue-hole-portal/src/app/page.tsx` — the fabricated validator panel is GONE**
+  (verified 2026-10-21). It was removed in `ba29bba` ("stop the portal fabricating its
+  validator fleet"). The panel now maps over `useStaking()` — i.e. `staking.validators` —
+  and every field it cannot read says so: `Not published` for PoUW quality, `Not tracked
+  by pallet` for slashes, plus an explicit "No validators registered" empty state. Repo-wide
+  grep for `Edge-Validator`, `Zero Drift` and `30334` returns nothing.
+  This entry said the panel was still fabricated until 2026-10-21; it had already been fixed.
 - ⚠️ `belizechain/scripts/live-pallet-integration-test.js` defaults its treasury key to a
   **committed-looking BIP39 mnemonic** in source (`TREASURY_URI || 'coil apart warrior…'`).
   The stale workspace-root duplicate used the safer `//treasury` dev URI and has been
