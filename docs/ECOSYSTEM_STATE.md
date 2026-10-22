@@ -83,9 +83,25 @@ no `runtime_version` method — using it returns nothing and looks like a dead n
 |---|---|
 | Host | **`ceiba`** — Tailscale `100.119.97.38`, LAN `10.0.0.19` |
 | Access | `ssh wicked@ceiba` (Tailscale). LAN fallback `10.0.0.19` |
-| Containers | **18 running** · 0 exited · 0 failed units · host uptime 15 days |
+| Containers | **19 running** · 0 exited · 0 failed units · host uptime 15 days |
 | Node image | `belizechain/ceiba-node:76dea3f-stable2609-20261019` |
 | Public ingress | **Oracle edge proxy** `129.213.95.153` → ceiba over the tailnet |
+
+**Image pins on the host** (`/opt/belizechain/.env`, verified 2026-10-22):
+
+| Service | Pinned image | Rollback tag |
+|---|---|---|
+| `ui` | `belizechain/blue-hole-portal:b08cd28-ceiba-20261022` | previous pin, see `.env` backups |
+| `maya` | `belizechain/maya-wallet:b08cd28-ceiba-20261022` | previous pin, see `.env` backups |
+| `nawal` | `belizechain/nawal:b3f1500-mesh-20261022` | `belizechain/nawal:39c4076-auth-20261020` |
+| `nawal-mesh` | *(shares `NAWAL_IMAGE`)* | same |
+| `kinich` | `belizechain/kinich-quantum:b1a048f-clean-20261022` | `belizechain/kinich-quantum:5220c8a-pgfix1` |
+| `org` | `belizechain/org-site:698b2be-org-20261021` | — |
+
+⚠️ **`.env` backups are the rollback mechanism**, not a documented previous-tag list.
+Before any pin change the live file is copied to `backups/.env.pre-<change>-<stamp>`; to
+roll back, restore that file and `up -d <service>`. Images are never pruned, so the old
+tag still exists locally.
 
 ⚠️ **`100.81.45.25` / `10.0.0.222` are the RETIRED host.** Decommissioned 2026-10-07 — it
 runs no containers. Any instruction naming it is stale. The name `ceiba` was reused for
@@ -119,6 +135,28 @@ and `/api/pakit/health` 200, zero absolute `belizechain.org` URLs baked into eit
 and the new page strings (`Register Handle`, `Chain of Title`, `Verify Commitment`) are
 present in the wallet image — the fabricated `Wicked (Founder Node)` / `Ambergris Caye &
 Cayes` strings are gone from both.
+
+**Backend services, 2026-10-22:** `nawal` and `kinich` were rebuilt on ceiba from the
+commits above and rolled one at a time, each verified before the next.
+
+- `nawal:b3f1500-mesh-20261022` (from `nawal-ai@b3f1500`) — healthy, logs
+  `Connected to BelizeChain: ws://ceiba-node:9944` and
+  `Identity verifier initialized (mode=production)`. Rollback `nawal:39c4076-auth-20261020`.
+- `kinich-quantum:b1a048f-clean-20261022` (from `kinich-quantum@b1a048f`, 1.71 GB) —
+  healthy, `Connected to BelizeChain`, `persisted API job state via PostgreSQL`, local
+  simulator enabled, Azure/IBM disabled. `/health` and `/api/v1/status` 200 in-network and
+  through the edge. Rollback `kinich-quantum:5220c8a-pgfix1`.
+- `ceiba-nawal-mesh` — new, see §4.5. Brought the host to **19 containers**.
+
+⚠️ **`gem` and `belizechain.org` needed no rebuild.** `gem@6ace3ff` changed only
+`.gitignore` plus agent files, and `belizechain.org@d76c381` changed only a comment in
+`lib/constants.ts` that the bundler strips — so `ORG_IMAGE` still points at
+`698b2be-org-20261021` and that is correct, not stale. A pin that lags HEAD is only a
+defect when the deployed bytes differ.
+
+⚠️ **`infra`'s `.env.example` and `README.md` are repo-only.** They do not exist in
+`/opt/belizechain`, so a "missing on host" report for them is expected — only
+`docker-compose.ceiba.yml` is a deployed file.
 
 ⚠️ Hostname routing is by `$root_backend` map in the edge nginx. Every name also serves
 `/rpc`, `/ws`, `/api/{nawal,kinich,pakit}`, `/ipfs` — the frontends derive those from
@@ -621,16 +659,16 @@ resolves outside the repo root as `⏭️ SKIP … escapes this checkout`. Befor
 correct `../../belizechain/…` link failed single-repo CI — which is what allows the
 live-state pointer to sit in all 8 instruction files without turning CI red.
 
-### 4.5 Mesh as the training topology — WORKED 2026-10-22
+### 4.5 Mesh as the training topology — DEPLOYED 2026-10-22
 
-The mesh stopped being a library and became a deployment unit. All local; nothing below is
-deployed to Ceiba yet.
+The mesh stopped being a library and became a deployment unit. `ceiba-nawal-mesh` is now
+running on the host (container 19 of 19).
 
 | What | State |
 |---|---|
-| `nawal-mesh` compose service | **defined** (`ceiba-nawal-mesh`), `docker compose config` valid, not yet started |
+| `nawal-mesh` compose service | **running** — `ceiba-nawal-mesh`, healthy, image `nawal:b3f1500-mesh-20261022` |
 | `python -m cli mesh` entrypoint | **works** — `cli/__main__.py` added so the container command has no `RuntimeWarning` |
-| File-backed signing key | **works** — `--key-file`, mode 0600, reused across restarts |
+| File-backed signing key | **proven** — `/data/nawal/mesh/ed25519.key`, mode 0600, pubkey identical across a real restart |
 | Adapter exchange over HTTP | **works** — `GET /adapters`, `GET /adapters/{id}`, verified on arrival by `fetch_adapter` |
 | Peer identity pinning | **works** — `_remember_peer_key` refuses a rebind of an id to a new key |
 | Chain-graph producer | **works** — `nawal chain-graph`, reads the two real transfer events |
@@ -642,10 +680,25 @@ to, amount }` (`pallets/economy/src/lib.rs:529`). `Economy` has **no** `Transfer
 **Tests:** 95 pass across the mesh suite; 11 are new adapter tests using real sockets, 10
 are new producer tests.
 
-⚠️ **Not deployed, and the doc says so:** no mesh node is running on Ceiba, `NAWAL_MESH_BOOTSTRAP`
-is empty by default so a lone node is isolated by construction, and the chain-graph producer
-is a CLI snapshot rather than a feed the training loop pulls. First contact with a peer is
-still unauthenticated — pinning protects a known peer id, not the first claim of one.
+⚠️ **Deployed, and idle by construction.** `NAWAL_MESH_BOOTSTRAP` is empty, so the node has
+`peers_count: 0` and serves nobody — a second peer must exist before this does any work.
+It is a running endpoint waiting for a peer, not a working mesh. Off-switch:
+`docker compose stop nawal-mesh`.
+
+⚠️ **The node does not announce its own isolation at boot.** `discover_peers()` — which is
+where the "mesh node {} is isolated" warning lives — is only reached when discovery is
+invoked, so a freshly started node logs `Mesh network started` and nothing about being
+alone. `GET /health` is the honest signal (`peers_count: 0`, `adapters: true`). Do not read
+a quiet log as a connected node.
+
+⚠️ **`/data/nawal/mesh` and `/data/nawal/adapters` must be owned by uid 999** (`nawal` in
+the image) — `/data/nawal` itself is `root:root`, so the container cannot create these
+subdirectories. Same trap as the other `/data/*` mounts. And because there is no passwd
+entry for 999 on the host, `ls -l` shows them as `dnsmasq`; the numeric uid is what counts.
+
+⚠️ **Still true, unchanged:** the chain-graph producer is a CLI snapshot rather than a feed
+the training loop pulls, and first contact with a peer is unauthenticated — pinning
+protects a known peer id, not the first claim of one.
 
 ### 4.6 UI-08 exports — VERIFIED against live metadata 2026-10-22
 
