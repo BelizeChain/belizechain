@@ -41,11 +41,22 @@ value inline, so the next agent can see what moved.
 |---|---|
 | Chain name | **Jade** (Chain D) |
 | Genesis | `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef` |
-| Runtime | **spec_version 116** · impl 1 · transaction 2 |
-| Head (2026-10-22) | **225,422** (`0x3708e`) |
-| Epoch | index **752** · **duration 300 slots** · start slot 298779445 |
+| Runtime | **spec_version 117** · impl 1 · transaction 2 |
+| Head (2026-10-22) | **227,401** (`0x37849`) |
+| Epoch | index **758** · **duration 300 slots** · start slot 298781245 |
 | Peers | 0 (`shouldHavePeers: false` — single node, expected) |
-| Repo agreement | `runtime/src/lib.rs:479` also reads `spec_version: 116` |
+| Repo agreement | `runtime/src/lib.rs:498` also reads `spec_version: 117` |
+
+**117** was applied hot (`sudo.sudo(System::set_code)`, 2026-10-22) from 116, with no
+node restart. Blob 1,492,283 bytes, blake2b-256
+`e4f072179dc326b5063df2c4bebcccd00c57d93b50574812206f22bc29811ca0`, built with
+`--features testnet-fast-epoch` and boot-verified at **duration 300, 1 authority** before
+submission. Content = removal of `pallet-belize-community`'s `FeeCalculator` trait and the
+whole SRS fee-exemption path (see §4.6). Verified live afterwards: `Community` metadata
+has **no** `FeeExemptionUsage` storage, no `FeeExemption*` event, error or constant, and
+still 15 calls / 24 events / 39 errors / 24 storage items. Rollback blob
+`/data/upgrade-117/onchain-code-116-rollback.wasm` (1,489,640 B, blake2b
+`5ec421fab9fbf6733a43779484fd46b7aebff33a00e0355d8a12ed30e69b3afe`).
 
 ⚠️ **`BabeApi_current_epoch` field [8:16] is the epoch's START slot, not the
 current slot** — it is constant for the whole epoch. Read the slot from the
@@ -85,7 +96,7 @@ the IP does.
 Deploy model: `/opt/belizechain` on ceiba is **not a git checkout**. Deploys copy changed
 files in; script + doc details in `docs/operations/CEIBA_OPERATIONS_RUNBOOK.md`.
 
-### 2.3 Public endpoints — verified 2026-10-14
+### 2.3 Public endpoints — verified 2026-10-22
 
 All five names resolve to `129.213.95.153` (Oracle edge, TLS terminates there):
 
@@ -96,6 +107,18 @@ All five names resolve to `129.213.95.153` (Oracle edge, TLS terminates there):
 | HTTP RPC | `https://belizechain.org/rpc` |
 | WS RPC | `wss://testnet.belizechain.org/ws` |
 | Per-name frontends | apex/`www` = org site · `testnet`/`portal` = Blue Hole Portal · `wallet` = Maya Wallet · `explorer` = explorer |
+
+**Frontend images, 2026-10-22:** both built on ceiba from `ui@b08cd28` and pinned in
+`/opt/belizechain/.env` — `UI_IMAGE=belizechain/blue-hole-portal:b08cd28-ceiba-20261022`
+(226 MB), `MAYA_IMAGE=belizechain/maya-wallet:b08cd28-ceiba-20261022` (231 MB). Rollback
+pin = the prior tags (`blue-hole-portal:3e30ab9-ceiba-20261021`,
+`maya-wallet:nawalproxy-20261022`); `.env` backup
+`backups/.env.pre-ui-b08cd28-20261022-164522`. Verified after the roll: six names serve the
+right app, `/rpc` and `/ws` answer 405 (POST/upgrade only) on every name, `/api/nawal/health`
+and `/api/pakit/health` 200, zero absolute `belizechain.org` URLs baked into either bundle,
+and the new page strings (`Register Handle`, `Chain of Title`, `Verify Commitment`) are
+present in the wallet image — the fabricated `Wicked (Founder Node)` / `Ambergris Caye &
+Cayes` strings are gone from both.
 
 ⚠️ Hostname routing is by `$root_backend` map in the edge nginx. Every name also serves
 `/rpc`, `/ws`, `/api/{nawal,kinich,pakit}`, `/ipfs` — the frontends derive those from
@@ -697,6 +720,17 @@ here:
   `Oracle.MerchantCategories` 0, `Bns.DomainRegistry` 0, `Bns.PrimaryDomain` 0,
   `Bns.HostedWebsites` 0, `Governance.DistrictRepresentation` 0, `Community.GreenProjects` 5.
   The newly-wired council tab correctly renders six "Vacant" seats.
+
+**Deployed 2026-10-22.** `ui@b08cd28` is live on Ceiba (both images rebuilt there, pins and
+verification in §2.3) and the fee-path removal is live as **spec 117** (§2.1). The removal
+was confirmed in live metadata after the upgrade, not inferred from the source tree:
+`Community` exposes 24 storage items with no `FeeExemptionUsage`, and no `FeeExemption*`
+event, error or constant.
+
+⚠️ **`reportTrainingContribution` was deleted, not wired.** Its only real extrinsic
+(`staking.submit_model_delta`) requires an active FL task and a ≥16-byte delta, so the
+shipped placeholder always failed. It belongs to the Nawal client, which should call
+`submitModelDelta` with the full payload — see `nawal-ai/docs/architecture/INTENT.md`.
 
 ## 5. Standing traps (durable — these do not go stale)
 
