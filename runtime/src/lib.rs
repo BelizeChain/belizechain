@@ -476,7 +476,26 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     //     `mesh::submit_mesh_transaction` (6/4 -> 7/5) and
     //     `governance::veto_emergency` (270/69 -> 271/69, proof 520977 ->
     //     523564 bytes).
-    spec_version: 116,
+    //
+    // - 117: removed `pallet-belize-community`'s `FeeCalculator` trait and the
+    //   whole SRS fee-exemption path (`calculate_effective_fee`,
+    //   `apply_fee_discount`, `calculate_fee_discount`,
+    //   `check_fee_exemption_limit`, `apply_fee_exemption`, the
+    //   `FeeExemptionUsage` map, the `FeeExemptionReset` event and the
+    //   `FeeExemptionLimitExceeded` error), plus the runtime's
+    //   `CommunityFeeCalculatorProvider` and `FeeExemptionMonthlyLimit`.
+    //
+    //   Nothing ever called the trait, so no transfer was ever discounted and
+    //   the exemption path never ran. `FeeExemptionMonthlyLimit` was also
+    //   `ConstU32<100>`, which lands in `BalanceOf` as 100 planck — not the
+    //   "100 dBZD" its comment claimed. Neither had an observable effect.
+    //
+    //   No storage migration: `FeeExemptionUsage` was written only from the
+    //   uncalled path, so it is empty on every account. Substrate derives each
+    //   storage key from the pallet prefix plus the item name, so removing an
+    //   item shifts no other item's keys. `transaction_version` is unchanged
+    //   because no call index was added, removed or reordered.
+    spec_version: 117,
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,
     // Adding call indices to a live pallet is additive, but the version
