@@ -603,187 +603,6 @@ fn test_no_srs_returns_zero_rank() {
 }
 
 // ================================
-// Phase 2: Zero-Fee Protocol Tests
-// ================================
-
-#[test]
-fn test_bronze_tier_no_discount() {
-    new_test_ext().execute_with(|| {
-        // Bronze tier gets 0% discount
-        assert_ok!(Community::record_participation(
-            RuntimeOrigin::signed(1),
-            1,
-            ActivityType::VoteCast.as_u8()
-        ));
-
-        let original_fee = 100;
-        let (discounted_fee, discount_pct) = Community::calculate_fee_discount(&1, original_fee);
-
-        assert_eq!(discounted_fee, 100); // No discount
-        assert_eq!(discount_pct, 0);
-    });
-}
-
-#[test]
-fn test_silver_tier_25_percent_discount() {
-    new_test_ext().execute_with(|| {
-        // Reach Silver tier (30 activities)
-        for _ in 0..30 {
-            assert_ok!(Community::record_participation(
-                RuntimeOrigin::signed(1),
-                1,
-                ActivityType::VoteCast.as_u8()
-            ));
-        }
-
-        let original_fee = 100;
-        let (discounted_fee, discount_pct) = Community::calculate_fee_discount(&1, original_fee);
-
-        assert_eq!(discounted_fee, 75); // 25% discount
-        assert_eq!(discount_pct, 25);
-    });
-}
-
-#[test]
-fn test_gold_tier_50_percent_discount() {
-    new_test_ext().execute_with(|| {
-        // Reach Gold tier (50 activities + votes)
-        for _ in 0..50 {
-            assert_ok!(Community::record_participation(
-                RuntimeOrigin::signed(1),
-                1,
-                ActivityType::ProposalSubmission.as_u8()
-            ));
-        }
-
-        let original_fee = 200;
-        let (discounted_fee, discount_pct) = Community::calculate_fee_discount(&1, original_fee);
-
-        assert_eq!(discounted_fee, 100); // 50% discount
-        assert_eq!(discount_pct, 50);
-    });
-}
-
-#[test]
-fn test_no_srs_no_discount() {
-    new_test_ext().execute_with(|| {
-        // Account with no SRS record
-        let original_fee = 100;
-        let (discounted_fee, discount_pct) = Community::calculate_fee_discount(&1, original_fee);
-
-        assert_eq!(discounted_fee, 100); // No discount
-        assert_eq!(discount_pct, 0);
-    });
-}
-
-#[test]
-fn test_monthly_limit_enforcement() {
-    new_test_ext().execute_with(|| {
-        // Reach Silver tier for 25% discount
-        for _ in 0..30 {
-            assert_ok!(Community::record_participation(
-                RuntimeOrigin::signed(1),
-                1,
-                ActivityType::VoteCast.as_u8()
-            ));
-        }
-
-        // Monthly limit is 100K dBZD
-        // First transaction: 40000 fee -> 30000 discounted = 10000 exemption (within limit)
-        let within_limit = Community::check_fee_exemption_limit(&1, 10_000);
-        assert!(within_limit);
-
-        // Apply the exemption
-        assert_ok!(Community::apply_fee_exemption(&1, 40_000, 30_000));
-
-        // Second transaction: 50000 more would use 50000*0.25 = 12500 more, total = 22500 (within 100K)
-        let within_limit = Community::check_fee_exemption_limit(&1, 12_500);
-        assert!(within_limit);
-
-        // But 400K exemption would exceed 100K limit
-        let within_limit = Community::check_fee_exemption_limit(&1, 95_000);
-        assert!(!within_limit); // Should be false - 10000 + 95000 > 100000
-    });
-}
-
-#[test]
-fn test_fee_exemption_usage_tracking() {
-    new_test_ext().execute_with(|| {
-        // Reach Silver tier
-        for _ in 0..30 {
-            assert_ok!(Community::record_participation(
-                RuntimeOrigin::signed(1),
-                1,
-                ActivityType::VoteCast.as_u8()
-            ));
-        }
-
-        // Apply first exemption
-        assert_ok!(Community::apply_fee_exemption(&1, 100, 75));
-
-        // Check usage was recorded
-        let fee_data = Community::fee_exemption_usage(1).unwrap();
-        assert_eq!(fee_data.used_this_month, 25); // 100 - 75 = 25
-
-        // Apply second exemption
-        assert_ok!(Community::apply_fee_exemption(&1, 100, 75));
-
-        let fee_data = Community::fee_exemption_usage(1).unwrap();
-        assert_eq!(fee_data.used_this_month, 50); // 25 + 25 = 50
-    });
-}
-
-#[test]
-fn test_monthly_limit_reset_after_30_days() {
-    new_test_ext().execute_with(|| {
-        // Reach Silver tier
-        for _ in 0..30 {
-            assert_ok!(Community::record_participation(
-                RuntimeOrigin::signed(1),
-                1,
-                ActivityType::VoteCast.as_u8()
-            ));
-        }
-
-        // Use up limit (100K)
-        assert_ok!(Community::apply_fee_exemption(&1, 400_000, 300_000)); // 100K exemption used
-        let within_limit = Community::check_fee_exemption_limit(&1, 5_000);
-        assert!(!within_limit); // Limit exceeded (100K + 5K > 100K)
-
-        // Advance 30 days (30 * 24 * 60 * 10 blocks)
-        let blocks_per_month = 30 * 24 * 60 * 10;
-        run_to_block(blocks_per_month + 1);
-
-        // Check limit reset
-        let within_limit = Community::check_fee_exemption_limit(&1, 100_000);
-        assert!(within_limit); // Limit reset, can use full 100K again
-    });
-}
-
-#[test]
-fn test_fee_calculator_trait_integration() {
-    new_test_ext().execute_with(|| {
-        // Reach Gold tier (50% discount)
-        for _ in 0..50 {
-            assert_ok!(Community::record_participation(
-                RuntimeOrigin::signed(1),
-                1,
-                ActivityType::ProposalSubmission.as_u8()
-            ));
-        }
-
-        // Calculate effective fee
-        let original_fee = 200;
-        let (effective_fee, discount_pct, within_limit) =
-            Community::calculate_effective_fee(&1, original_fee);
-
-        assert_eq!(effective_fee, 100); // 50% discount
-        assert_eq!(discount_pct, 50);
-        assert!(within_limit); // Within monthly limit
-    });
-}
-
-// ================================
 // Phase 3: Community Fund Management Tests
 // ================================
 
@@ -2223,70 +2042,6 @@ fn test_community_rank_trait_progression() {
 }
 
 #[test]
-fn test_fee_calculator_trait_bronze_no_discount() {
-    new_test_ext().execute_with(|| {
-        // Bronze gets 0% discount
-        Community::record_participation(
-            RuntimeOrigin::signed(1),
-            1,
-            ActivityType::VoteCast.as_u8(),
-        )
-        .ok();
-
-        let original_fee = 1000u64;
-        let (discounted_fee, discount_pct, within_limit) =
-            Community::calculate_effective_fee(&1, original_fee);
-
-        assert_eq!(discounted_fee, original_fee); // No discount
-        assert_eq!(discount_pct, 0);
-        assert!(within_limit);
-    });
-}
-
-#[test]
-fn test_fee_calculator_trait_silver_25_percent() {
-    new_test_ext().execute_with(|| {
-        // Build to Silver (25% discount) - need 2500+ score
-        // 51 votes should give: (51*25 gov + 51*50 participation) = 1275 + 2550 = 3825 (Silver)
-        for _ in 0..51 {
-            Community::record_participation(
-                RuntimeOrigin::signed(1),
-                1,
-                ActivityType::VoteCast.as_u8(),
-            )
-            .ok();
-        }
-        // record_participation already calls update_srs_internal
-
-        let srs = Community::get_srs(&1).expect("SRS should exist");
-        // Debug: print actual scores
-        println!("SRS Score: {}, Tier: {:?}", srs.score, srs.tier);
-        println!(
-            "Gov: {}, Part: {}",
-            srs.governance_score, srs.participation_score
-        );
-
-        let original_fee = 1000u64;
-
-        // Direct storage check to debug
-        let srs_from_storage = SocialResponsibilityScores::<Test>::get(1);
-        println!("SRS from storage before fee calc: {:?}", srs_from_storage);
-
-        let (discounted_fee, discount_pct, within_limit) =
-            <Community as FeeCalculator<u64, u64>>::calculate_effective_fee(&1, original_fee);
-
-        println!(
-            "Fee result: discounted={}, discount_pct={}, within={}",
-            discounted_fee, discount_pct, within_limit
-        );
-
-        assert_eq!(discount_pct, 25, "Silver tier should give 25% discount");
-        assert_eq!(discounted_fee, 750); // 25% off
-        assert!(within_limit);
-    });
-}
-
-#[test]
 fn test_pouw_contributor_trait() {
     new_test_ext().execute_with(|| {
         // Record PoUW contribution
@@ -2450,55 +2205,6 @@ fn test_governance_participation_council_activity() {
 }
 
 #[test]
-fn test_cross_pallet_fee_calculator_integration() {
-    new_test_ext().execute_with(|| {
-        // Simulate economy pallet using FeeCalculator trait
-
-        // Bronze tier - no discount
-        Community::record_participation(
-            RuntimeOrigin::signed(1),
-            1,
-            ActivityType::VoteCast.as_u8(),
-        )
-        .ok();
-        Community::update_srs(RuntimeOrigin::signed(1), 1).ok();
-        let (fee1, _, _) = Community::calculate_effective_fee(&1, 10_000u64);
-        assert_eq!(fee1, 10_000);
-
-        // Build to Gold tier (50% discount) - need 5000+ score
-        // Need enough participation to exceed 5000
-        // Use ProposalSubmission (100 gov points each) + VoteCast
-        for _ in 0..25 {
-            Community::record_participation(
-                RuntimeOrigin::signed(1),
-                1,
-                ActivityType::ProposalSubmission.as_u8(),
-            )
-            .ok();
-        }
-        for _ in 0..30 {
-            Community::record_participation(
-                RuntimeOrigin::signed(1),
-                1,
-                ActivityType::VoteCast.as_u8(),
-            )
-            .ok();
-        }
-        // Total records: 1 + 25 + 30 = 56
-        // Governance: 1*25 + 25*100 + 30*25 = 25 + 2500 + 750 = 3275 (capped at 2500) = 2500
-        // Participation: 56 * 50 = 2800 (capped at 2500) = 2500
-        // Honesty: 500
-        // Total: 2500 + 2500 + 500 = 5500 (Gold!)
-
-        Community::update_srs(RuntimeOrigin::signed(1), 1).ok();
-
-        let (fee2, discount, _) = Community::calculate_effective_fee(&1, 10_000u64);
-        assert_eq!(discount, 50);
-        assert_eq!(fee2, 5_000); // 50% off
-    });
-}
-
-#[test]
 fn test_full_integration_all_traits() {
     new_test_ext().execute_with(|| {
         // Test account 1 participates across all dimensions
@@ -2564,10 +2270,6 @@ fn test_full_integration_all_traits() {
         let rank = Community::get_community_rank(&1);
         assert!(rank >= 100, "Should have some rank");
 
-        // Verify FeeCalculator trait works
-        let (discounted_fee, _, _) = Community::calculate_effective_fee(&1, 1_000u64);
-        assert!(discounted_fee <= 1_000, "Should have some discount");
-
         // Verify PoUW score accessible
         let pouw = Community::get_pouw_score(&1);
         assert!(pouw > 0, "Should have PoUW score");
@@ -2614,51 +2316,6 @@ fn test_cross_pallet_community_rank() {
 
         let tier = <Community as CommunityRank<u64>>::get_srs_tier(&1);
         assert_eq!(tier, SRSTier::Bronze);
-    });
-}
-
-#[test]
-fn test_fee_calculator_integration() {
-    new_test_ext().execute_with(|| {
-        // Test FeeCalculator trait for economy pallet integration
-
-        // User with no SRS
-        let original_fee = 1000u64;
-        let (fee, discount, within_limit) =
-            <Community as FeeCalculator<u64, u64>>::calculate_effective_fee(&1, original_fee);
-        assert_eq!(fee, original_fee, "No discount without SRS");
-        assert_eq!(discount, 0);
-        assert!(within_limit);
-
-        // Create Gold tier SRS (50% discount) - need score of 5000+
-        // Participation: 50 * 50 = 2500, plus PoUW, endorsements, etc.
-        for _ in 0..50 {
-            attest_activity(1, ActivityType::ProposalApproved.as_u8());
-            Community::record_participation(
-                RuntimeOrigin::signed(1),
-                1,
-                ActivityType::ProposalApproved.as_u8(),
-            )
-            .ok();
-        }
-
-        // Add PoUW contributions to boost score
-        for _ in 0..5 {
-            Community::record_pouw_contribution(&1, 9_000, 9_000, 9_000).ok();
-        }
-
-        // Trigger SRS update to calculate tier
-        Community::update_srs(RuntimeOrigin::signed(1), 1).ok();
-
-        let srs = Community::get_srs(&1).unwrap();
-        assert_eq!(srs.tier, SRSTier::Gold, "Should reach Gold tier");
-
-        // Calculate fee with discount
-        let (discounted_fee, discount_pct, within) =
-            <Community as FeeCalculator<u64, u64>>::calculate_effective_fee(&1, original_fee);
-        assert_eq!(discount_pct, 50, "Gold tier gives 50% discount");
-        assert_eq!(discounted_fee, 500, "Fee should be halved");
-        assert!(within);
     });
 }
 
@@ -2801,45 +2458,6 @@ fn test_cross_pallet_srs_accumulation() {
 }
 
 #[test]
-fn test_fee_discount_with_exemption_limit() {
-    new_test_ext().execute_with(|| {
-        // Create Gold tier user (50% discount) - need score of 5000+
-        for _ in 0..50 {
-            attest_activity(1, ActivityType::ProposalApproved.as_u8());
-            Community::record_participation(
-                RuntimeOrigin::signed(1),
-                1,
-                ActivityType::ProposalApproved.as_u8(),
-            )
-            .ok();
-        }
-
-        // Add PoUW contributions to boost score to Gold
-        for _ in 0..5 {
-            Community::record_pouw_contribution(&1, 9_000, 9_000, 9_000).ok();
-        }
-
-        // Trigger SRS update to calculate tier
-        Community::update_srs(RuntimeOrigin::signed(1), 1).ok();
-
-        // First fee - should get discount
-        let (fee1, discount1, within1) =
-            <Community as FeeCalculator<u64, u64>>::calculate_effective_fee(&1, 1000);
-        assert_eq!(discount1, 50);
-        assert!(within1);
-
-        // Apply the fee discount
-        assert_ok!(<Community as FeeCalculator<u64, u64>>::apply_fee_discount(
-            &1, 1000, fee1
-        ));
-
-        // Verify exemption tracked
-        let fee_data = FeeExemptionUsage::<Test>::get(1).unwrap();
-        assert_eq!(fee_data.used_this_month, 500); // 50% of 1000
-    });
-}
-
-#[test]
 fn test_full_ecosystem_integration() {
     new_test_ext().execute_with(|| {
         // Simulate complete cross-pallet workflow
@@ -2880,13 +2498,7 @@ fn test_full_ecosystem_integration() {
             "Rank should increase with participation"
         );
 
-        // 6. Check fee discount available
-        let (discounted_fee, discount, _) =
-            <Community as FeeCalculator<u64, u64>>::calculate_effective_fee(&1, 1000);
-        assert!(discount > 0, "Should have fee discount");
-        assert!(discounted_fee < 1000, "Fee should be reduced");
-
-        // 7. Verify all history recorded
+        // 6. Verify all history recorded
         let history = ParticipationHistory::<Test>::get(1);
         assert_eq!(history.len(), 46); // 10 submissions + 5 approvals + 1 PoUW + 30 votes
     });

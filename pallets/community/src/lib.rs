@@ -59,7 +59,6 @@
 //!
 //! Exports traits for other pallets:
 //! - `CommunityRank` - Provides voting weights to governance
-//! - `FeeCalculator` - Provides fee discounts to economy
 //! - `ParticipationTracker` - Receives updates from staking/governance
 //!
 //! Consumes traits:
@@ -89,8 +88,8 @@ use alloc::vec::Vec;
 pub use crate::pallet::*;
 pub use types::{
     ActivityType, CommunityProposal, CommunityProposalType, CompletionData, EducationModule,
-    EndorsementType, EthicsConfig, FeeExemptionData, GreenProject, ParticipationRecord,
-    ProposalStats, ProposalStatus, SRSData, SRSTier, SanctionStatus, Vote,
+    EndorsementType, EthicsConfig, GreenProject, ParticipationRecord, ProposalStats,
+    ProposalStatus, SRSData, SRSTier, SanctionStatus, Vote,
 }; // Export for traits
 
 // Additional imports for genesis config
@@ -139,10 +138,6 @@ pub mod pallet {
         /// Proposal deposit percentage (default: 10%)
         #[pallet::constant]
         type ProposalDepositPercentage: Get<u32>;
-
-        /// Fee exemption monthly limit in dBZD (default: 100 dBZD)
-        #[pallet::constant]
-        type FeeExemptionMonthlyLimit: Get<u32>;
 
         /// Education module reward amount (governance-adjustable for inflation)
         #[pallet::constant]
@@ -276,22 +271,6 @@ pub mod pallet {
     #[pallet::getter(fn user_proposals)]
     pub type UserProposals<T: Config> =
         StorageMap<_, Blake2_128Concat, T::AccountId, ProposalStats, ValueQuery>;
-
-    // ================================
-    // Storage Items - Phase 2: Zero-Fee Protocol
-    // ================================
-
-    /// Fee exemption usage tracking (monthly limit)
-    /// Maps AccountId -> FeeExemptionData
-    #[pallet::storage]
-    #[pallet::getter(fn fee_exemption_usage)]
-    pub type FeeExemptionUsage<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        FeeExemptionData<BlockNumberFor<T>, BalanceOf<T>>,
-        OptionQuery,
-    >;
 
     // ================================
     // Storage Items - Phase 3: Community Fund
@@ -509,9 +488,6 @@ pub mod pallet {
             account: T::AccountId,
             public_display: bool,
         },
-        // FeeExemptionApplied, FeeExemptionLimitReached removed (E-7): orphaned, never emitted.
-        /// Fee exemption usage reset (new month)
-        FeeExemptionReset { account: T::AccountId },
 
         // === Phase 3: Community Fund Events ===
         /// Community proposal submitted
@@ -671,8 +647,6 @@ pub mod pallet {
         ParticipationHistoryFull,
         /// Account has no SRS record
         NoSRSRecord,
-        /// Monthly fee exemption limit exceeded
-        FeeExemptionLimitExceeded,
         /// Insufficient funds to pay discounted fee
         InsufficientFundsForFee,
         /// Invalid activity type code provided
@@ -1796,75 +1770,6 @@ pub mod pallet {
     // ================================
 
     impl<T: Config> Pallet<T> {
-        /// Check if account can use fee exemption (within monthly limit)
-        /// Returns true if within limit, false if exceeded
-        pub fn check_fee_exemption_limit(
-            account: &T::AccountId,
-            exemption_amount: BalanceOf<T>,
-        ) -> bool {
-            let current_block = frame_system::Pallet::<T>::block_number();
-            let monthly_limit: BalanceOf<T> = T::FeeExemptionMonthlyLimit::get().into();
-
-            // Get or create fee exemption data
-            let mut fee_data =
-                FeeExemptionUsage::<T>::get(account).unwrap_or_else(|| FeeExemptionData {
-                    used_this_month: 0u32.into(),
-                    last_reset_block: current_block,
-                });
-
-            // Check if month has passed (30 days = ~30 * 24 * 60 * 10 blocks)
-            let blocks_per_month: u32 = 30 * 24 * 60 * 10;
-            let current_u64: u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0);
-            let reset_u64: u64 = TryInto::<u64>::try_into(fee_data.last_reset_block).unwrap_or(0);
-            let blocks_since_reset: u32 = current_u64.saturating_sub(reset_u64) as u32;
-
-            if blocks_since_reset >= blocks_per_month {
-                // Reset monthly usage
-                fee_data.used_this_month = 0u32.into();
-                fee_data.last_reset_block = current_block;
-                FeeExemptionUsage::<T>::insert(account, fee_data.clone());
-
-                Self::deposit_event(Event::FeeExemptionReset {
-                    account: account.clone(),
-                });
-            }
-
-            // Check if adding this exemption would exceed limit
-            match fee_data.used_this_month.checked_add(&exemption_amount) {
-                Some(new_total) => new_total <= monthly_limit,
-                None => false, // Overflow means exceeded limit
-            }
-        }
-
-        /// Apply fee exemption and update usage tracking
-        pub fn apply_fee_exemption(
-            account: &T::AccountId,
-            original_fee: BalanceOf<T>,
-            discounted_fee: BalanceOf<T>,
-        ) -> DispatchResult {
-            let current_block = frame_system::Pallet::<T>::block_number();
-            let exemption_amount = if original_fee > discounted_fee {
-                original_fee - discounted_fee
-            } else {
-                return Ok(()); // No exemption to apply
-            };
-
-            // Get or create fee exemption data
-            let mut fee_data =
-                FeeExemptionUsage::<T>::get(account).unwrap_or_else(|| FeeExemptionData {
-                    used_this_month: 0u32.into(),
-                    last_reset_block: current_block,
-                });
-
-            // Update usage
-            fee_data.used_this_month = fee_data
-                .used_this_month
-                .checked_add(&exemption_amount)
-                .unwrap_or(fee_data.used_this_month);
-            FeeExemptionUsage::<T>::insert(account, fee_data);
-
-            Ok(())
-        }
         /// Get SRS data for an account
         pub fn get_srs(account: &T::AccountId) -> Option<SRSData<BlockNumberFor<T>>> {
             SocialResponsibilityScores::<T>::get(account)
@@ -2035,46 +1940,6 @@ pub mod pallet {
                 7_500..=9_999 => SRSTier::Platinum,
                 _ => SRSTier::Diamond,
             }
-        }
-
-        // ================================
-        // Phase 2: Fee Calculation Helpers
-        // ================================
-
-        /// Calculate effective fee after SRS-based discount
-        /// Returns (discounted_fee, discount_percentage)
-        pub fn calculate_fee_discount(
-            account: &T::AccountId,
-            original_fee: BalanceOf<T>,
-        ) -> (BalanceOf<T>, u32) {
-            // Get SRS tier
-            let tier = match SocialResponsibilityScores::<T>::get(account) {
-                Some(srs) => srs.tier,
-                None => return (original_fee, 0), // No discount without SRS
-            };
-
-            // Tier-based discount percentages
-            let discount_percentage = match tier {
-                SRSTier::Bronze => 0,    // 0% discount
-                SRSTier::Silver => 25,   // 25% discount
-                SRSTier::Gold => 50,     // 50% discount
-                SRSTier::Platinum => 75, // 75% discount
-                SRSTier::Diamond => 90,  // 90% discount
-            };
-
-            if discount_percentage == 0 {
-                return (original_fee, 0);
-            }
-
-            // Calculate discounted fee
-            let discount = original_fee * discount_percentage.into() / 100u32.into();
-            let discounted_fee = if original_fee > discount {
-                original_fee - discount
-            } else {
-                original_fee // Should never happen, but return original if calculation error
-            };
-
-            (discounted_fee, discount_percentage)
         }
 
         // ================================
@@ -2365,61 +2230,6 @@ impl<T: pallet::Config> CommunityRank<<T as frame_system::Config>::AccountId>
         Self::get_srs(account)
             .map(|data| data.tier)
             .unwrap_or(SRSTier::Bronze)
-    }
-}
-
-/// Trait for calculating fees with SRS-based discounts (exported to economy pallet)
-pub trait FeeCalculator<AccountId, Balance> {
-    /// Calculate effective fee after applying SRS tier discount
-    /// Returns (discounted_fee, discount_percentage, within_limit)
-    fn calculate_effective_fee(account: &AccountId, original_fee: Balance) -> (Balance, u32, bool);
-
-    /// Apply fee discount and track usage
-    fn apply_fee_discount(
-        account: &AccountId,
-        original_fee: Balance,
-        discounted_fee: Balance,
-    ) -> Result<(), &'static str>;
-}
-
-impl<T: Config> FeeCalculator<<T as frame_system::Config>::AccountId, BalanceOf<T>>
-    for pallet::Pallet<T>
-{
-    fn calculate_effective_fee(
-        account: &<T as frame_system::Config>::AccountId,
-        original_fee: BalanceOf<T>,
-    ) -> (BalanceOf<T>, u32, bool) {
-        let (discounted_fee, discount_percentage) =
-            Self::calculate_fee_discount(account, original_fee);
-
-        if discount_percentage == 0 {
-            // No discount, so no limit check needed
-            return (original_fee, 0, true);
-        }
-
-        // Calculate exemption amount by comparison
-        let within_limit = if original_fee > discounted_fee {
-            let exemption_amount = original_fee - discounted_fee;
-            Self::check_fee_exemption_limit(account, exemption_amount)
-        } else {
-            true // No exemption needed
-        };
-
-        if within_limit {
-            (discounted_fee, discount_percentage, true)
-        } else {
-            // Exceeded limit, charge full fee
-            (original_fee, 0, false)
-        }
-    }
-
-    fn apply_fee_discount(
-        account: &<T as frame_system::Config>::AccountId,
-        original_fee: BalanceOf<T>,
-        discounted_fee: BalanceOf<T>,
-    ) -> Result<(), &'static str> {
-        Self::apply_fee_exemption(account, original_fee, discounted_fee)
-            .map_err(|_| "Failed to apply fee exemption")
     }
 }
 

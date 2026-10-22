@@ -1717,7 +1717,6 @@ impl pallet_belize_community::Config for Runtime {
     type Currency = Balances;
     type BelizeKyc = CommunityKycProvider; // Use wrapper with benchmark bypass
     type ProposalDepositPercentage = ConstU32<10>; // 10% deposit for proposals
-    type FeeExemptionMonthlyLimit = ConstU32<100>; // 100 dBZD monthly limit
     type EducationRewardAmount = ConstU128<{ 50 * DOLLARS }>; // 50 DALLA per module
     type ReferralRewardAmount = ConstU128<{ 100 * DOLLARS }>; // 100 DALLA referral bonus
     type CommunityVotingPeriod = ConstU32<{ 7 * DAYS }>; // 7-day voting period
@@ -2335,22 +2334,6 @@ impl pallet_belize_landledger::LandLedgerOracleProvider<AccountId> for LandLedge
     }
     fn is_sanctioned(account: &AccountId) -> bool {
         providers::runtime_is_sanctioned(account)
-    }
-}
-
-/// Community FeeCalculator provider for Economy pallet (Phase 2 - Community Pallet)
-pub struct CommunityFeeCalculatorProvider;
-impl pallet_belize_community::FeeCalculator<AccountId, Balance> for CommunityFeeCalculatorProvider {
-    fn calculate_effective_fee(account: &AccountId, original_fee: Balance) -> (Balance, u32, bool) {
-        Community::calculate_effective_fee(account, original_fee)
-    }
-
-    fn apply_fee_discount(
-        account: &AccountId,
-        original_fee: Balance,
-        discounted_fee: Balance,
-    ) -> Result<(), &'static str> {
-        Community::apply_fee_discount(account, original_fee, discounted_fee)
     }
 }
 

@@ -120,7 +120,6 @@ pub type MockOracleAttestationOrigin = frame_system::EnsureSigned<u64>;
 // Community pallet configuration
 parameter_types! {
     pub const ProposalDepositPercentage: u32 = 1000; // 10% in basis points
-    pub const FeeExemptionMonthlyLimit: u32 = 100_000; // 100K dBZD for testing
     pub const EducationRewardAmount: u64 = 100;
     pub const ReferralRewardAmount: u64 = 100;
     pub const CommunityVotingPeriod: u64 = 7 * 24 * 60 * 10; // 7 days in blocks (~6s blocks)
@@ -135,7 +134,6 @@ impl pallet_belize_community::Config for Test {
     type Currency = Balances;
     type BelizeKyc = MockKyc;
     type ProposalDepositPercentage = ProposalDepositPercentage;
-    type FeeExemptionMonthlyLimit = FeeExemptionMonthlyLimit;
     type EducationRewardAmount = EducationRewardAmount;
     type ReferralRewardAmount = ReferralRewardAmount;
     type CommunityVotingPeriod = CommunityVotingPeriod;
@@ -176,13 +174,6 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
     let mut ext = sp_io::TestExternalities::new(t);
     ext.execute_with(|| System::set_block_number(1));
     ext
-}
-
-// Helper function to advance blocks
-pub fn run_to_block(n: u64) {
-    while System::block_number() < n {
-        System::set_block_number(System::block_number() + 1);
-    }
 }
 
 /// Pre-attest a high-value activity so `record_participation` won't reject it.

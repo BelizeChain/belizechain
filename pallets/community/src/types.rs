@@ -179,30 +179,6 @@ impl EndorsementType {
 }
 
 // ================================
-// Fee Exemption Types (Phase 2)
-// ================================
-
-/// Fee exemption data for zero-fee protocol
-#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
-pub struct FeeExemptionData<BlockNumber, Balance> {
-    /// Amount of fee exemption used this month
-    pub used_this_month: Balance,
-
-    /// Block number when usage was last reset
-    pub last_reset_block: BlockNumber,
-}
-
-/// Fee exemption tiers
-#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
-pub enum FeeExemptionTier {
-    None,      // No exemption
-    Basic,     // 100 dBZD/month (Bronze)
-    Standard,  // 100 dBZD/month (Silver)
-    Premium,   // 100 dBZD/month (Gold)
-    Unlimited, // Unlimited (Platinum+)
-}
-
-// ================================
 // Community Proposal Types (Phase 3)
 // ================================
 

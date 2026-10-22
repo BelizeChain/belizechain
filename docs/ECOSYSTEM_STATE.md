@@ -35,15 +35,15 @@ value inline, so the next agent can see what moved.
 
 ## 2. Live state
 
-### 2.1 Chain — verified 2026-10-19
+### 2.1 Chain — verified 2026-10-22
 
 | | |
 |---|---|
 | Chain name | **Jade** (Chain D) |
 | Genesis | `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef` |
 | Runtime | **spec_version 116** · impl 1 · transaction 2 |
-| Head (2026-10-19) | **183,798** |
-| Epoch | index **613** · **duration 300 slots** · boundary crossed live 2026-10-19 |
+| Head (2026-10-22) | **225,422** (`0x3708e`) |
+| Epoch | index **752** · **duration 300 slots** · start slot 298779445 |
 | Peers | 0 (`shouldHavePeers: false` — single node, expected) |
 | Repo agreement | `runtime/src/lib.rs:479` also reads `spec_version: 116` |
 
@@ -66,13 +66,13 @@ curl -s -H 'Content-Type: application/json' -d '{"id":1,"jsonrpc":"2.0","method"
 ⚠️ The runtime-version method is **`state_getRuntimeVersion`** (integer result). There is
 no `runtime_version` method — using it returns nothing and looks like a dead node.
 
-### 2.2 Host — verified 2026-10-19
+### 2.2 Host — verified 2026-10-22
 
 | | |
 |---|---|
 | Host | **`ceiba`** — Tailscale `100.119.97.38`, LAN `10.0.0.19` |
 | Access | `ssh wicked@ceiba` (Tailscale). LAN fallback `10.0.0.19` |
-| Containers | **16 running** · 0 exited · host uptime 12 days |
+| Containers | **18 running** · 0 exited · 0 failed units · host uptime 15 days |
 | Node image | `belizechain/ceiba-node:76dea3f-stable2609-20261019` |
 | Public ingress | **Oracle edge proxy** `129.213.95.153` → ceiba over the tailnet |
 
@@ -133,7 +133,7 @@ this file now exists.
 | `belizechain` | **DONE** — `landledger` anchor, `community` deposit, orphan storage (277 items / 0 orphans), doc-API sweep (`e506ef4`) |
 | `kinich-quantum` | **DONE** — 5 rounds, `2cce5db`; tracker fabrication, XCM false success, ZNE/readout, CID/proofs |
 | `pakit-storage` | **SWEPT 2026-10-14** — 13 commits `3478c91`→`28b6ea7`; declared-but-unbound public API, README documented a facade that never existed, dual module identity, inert ML, fabricated quantum results, ZK proofs never generated, a logging regression introduced *and* reverted here, CI red since 2026-10-03 → green; see below |
-| `nawal-ai` | **IN PROGRESS 2026-10-19** — 3 extrinsics corrected, 2 latent fabrications removed, 12 impossible storage reads found (6 remapped, 6 made honest); see below |
+| `nawal-ai` | **DONE 2026-10-20** — audit findings **F-01 … F-15 all closed**; 3 extrinsics corrected, 12 impossible storage reads remapped or made honest, mesh comms fixed and a runner added; see below |
 | `gem` | not started |
 | `infra` | **SWEPT 2026-10-14** — `api-gateway` + `indexer` (the only unaudited services) are **clean**; see below |
 | `ui` | partial — fabricated service fallbacks removed 2026-10-07; **page-level seed data remains** |
@@ -363,22 +363,65 @@ module and pass on the new one. 4032 passed, 1 skipped.
 key, so a peer can claim another's `peer_id` and have its own signatures accepted under that
 identity. Fixing it changes the identity model.
 
-**Open architecture question — recorded, not decided.** The user has stated that Nawal is
-intended to be a **mesh neural network**, and that federated learning is the misaligned choice.
-What the repo contains today is unambiguously federated: the README is titled "Sovereign
-Federated Learning", `server/aggregator.py` is a central FedAvg aggregator, and
-`client/train.py` subclasses `fl.client.NumPyClient`. There is **no** gossip-SGD, DiLoCo or
-model-parallel training path anywhere. So this is not code drifting from docs — docs and code
-agree, and the disagreement is with intent.
+**Architecture question — DECIDED 2026-10-19.** Nawal's training topology is a **mesh**;
+federated learning is the interim implementation, not the destination. The decision, and the
+reasoning behind every choice that follows from it, is recorded in
+[`nawal-ai/docs/architecture/INTENT.md`](../../nawal-ai/docs/architecture/INTENT.md) — that file is
+authoritative for *what Nawal is meant to be*. Do not re-litigate it from chat history.
 
-Scale of the change: `server/` + `client/` are **8,357 of 60,219** non-test Python lines
-(~14%). The other ~86% (chain integration, genome, storage, API, security, quantum) is
-topology-agnostic and survives either way. "Almost finished" therefore applies to the FL
-implementation specifically, not the platform.
+What changed in code (`46a6a7f`, `622c618`, and the genome/architecture commits of
+2026-10-19): `GossipStrategy` implements the existing `AggregationStrategy` protocol, so the
+central aggregator is one implementation among several rather than the only path;
+`server/adapter_exchange.py` moves LoRA-sized deltas over the mesh; `nawal mesh` is a real
+CLI runner; sequence primitives (Mamba SSM, LSTM/GRU, RMSNorm) and a graph MoE expert are
+buildable from a genome.
+
+⚠️ **What is still not deployed, and the doc says so:** no compose service starts a mesh node,
+`server/adapter_exchange.py` has no serving-path importer, and no code produces a chain graph
+for the graph experts. `INTENT.md` §7 carries the "correct but not in the serving path" table;
+an entry is deleted the moment the module reaches the serving path.
 
 Method that has worked: verify every finding against source; **prove the new test fails on
 the old code** (use a `git worktree` of HEAD) rather than only passing on the new; use
 `git stash` to prove a fix changed behaviour.
+
+**`nawal-ai` mesh serving path — 2026-10-22 (uncommitted at the time of writing).** The
+2026-10-19 work built the mesh primitives; this pass made them reachable from a deployed
+node. All of it is verified by tests locally and **none of it is deployed**.
+
+- **Adapter bytes now move over the mesh.** `blockchain/mesh_network.py` serves
+  `GET /adapters` and `GET /adapters/{id}`, and `fetch_adapter()` downloads and verifies a
+  payload against the id it was requested under. That is the production importer
+  `server/adapter_exchange.py` never had — before this, a peer announced a CID
+  (`send_model_delta`) that nothing could resolve.
+- **The mesh is a deployment unit.** `infra/docker-compose.ceiba.yml` gains a `nawal-mesh`
+  service (`ceiba-nawal-mesh`) running `python -m cli.commands mesh`. It binds `0.0.0.0`
+  inside the compose network and publishes no host port.
+- **Identity is file-backed.** `--key-file` writes `${DATA_ROOT}/nawal/mesh/ed25519.key` on
+  first run. A generated key would rotate per restart, and peers pin an id to the first key
+  they see — a rotating identity is refused by every peer that already knew it.
+- **Peer keys are pinned (TOFU).** `_remember_peer_key` refuses to rebind a peer id to a
+  different public key, and discovery drops peers with a malformed or contradictory key.
+  ⚠️ **Residual, not fixed:** first contact is unauthenticated. A peer that wins the race to
+  announce an id defines it, because peer exchange carries no proof that the announcer holds
+  the key. Closing that needs the peer id to become a fingerprint of the public key — a
+  wire-format change.
+- **The chain-graph producer exists.** `blockchain/chain_graph_producer.py` reads
+  `Balances.Transfer` and `Economy.BbzdTransferred` (both confirmed against
+  `pallet-balances` 33.0.0 and `pallets/economy/src/lib.rs:529`, not assumed) and returns
+  `ChainTransfer` records; `nawal chain-graph` runs it. Graph experts now have an input feed.
+  It does not yet feed training automatically — it produces a snapshot on request.
+
+**🔴 Found during this pass: 22 loguru calls were using `%s`.** Loguru interpolates
+**braces only**; `logger.warning("x %s", v)` prints a literal `%s` and **drops `v`**. The
+calls came from two different commits — the 2026-10-19 mesh work (9) and the "make failures
+honest" pass (5, in `payroll_connector`, `staking_interface`, `substrate_client`,
+`validator_manager`, `oracle_pipeline`) — plus 8 in new code. Fixed to `{}`, and
+`tests/test_logging_format_style.py` now guards **both directions**: loguru modules must use
+braces, stdlib modules must use `%`. The guard is non-vacuous — it reports 10 offenders on
+the pre-fix HEAD and none after. This is the same defect that made 49 lines in
+`pakit-storage` silently wrong in the opposite direction; the lesson generalises: **check
+which logging library a module imports before "fixing" a format convention.**
 
 ### 4.2 Code scanning / GHAS alerts — verified 2026-10-14
 
@@ -394,15 +437,25 @@ the old code** (use a `git worktree` of HEAD) rather than only passing on the ne
 > **Do not read "0 open" as "clean" on a repo whose Code Security is disabled** — that is
 > the state that hid 307 open alerts.
 
+Counts verified 2026-10-22:
+
+> ⚠️ **13 actionable alerts were fixed in the working trees on 2026-10-22 and are
+> uncommitted/unpushed**, so the counts below will not move until those commits land and
+> CodeQL re-scans. Two of the ten kinich alerts are **not** code defects: `py/ineffectual-
+> statement` on `await ticker_task` / `await task` flags an `await` whose value is discarded,
+> which has effects. Dismiss those with justification rather than restructuring a test to
+> satisfy the analyzer.
+
 | repo | open | note |
 |---|---|---|
-| `belizechain` · `ui` | **0** | public, so scanning always worked (`belizechain`: 132 dismissed / 35 fixed) |
+| `belizechain` | **0** | public, so scanning always worked (132 dismissed / 35 fixed historically) |
 | `infra` | **0** | 11 total, all fixed |
 | `gem` | **0** | 17 total, all fixed |
+| `nawal-ai` | **0** | was 256; the Trivy base-image noise was resolved |
+| `ui` | **3** | 2 `js/trivial-conditional` (`land/page.tsx:183,188`), 1 `js/unused-local-variable` (`documents/page.tsx:152`) |
 | `pakit-storage` | **1** | Trivy `CVE-2024-23342` (`ecdsa`) — **no fixed version exists** |
 | `belizechain.org` | **1** | `js/stored-xss` — see below |
-| `kinich-quantum` | **49** | 35 CodeQL + 14 Trivy; 25 are `py/undefined-export`, the known FP class |
-| `nawal-ai` | **256** | **all Trivy**; the bulk are no-fix base-image noise, not our code |
+| `kinich-quantum` | **35** | 25 `py/undefined-export` (known FP) + 10 actionable: 3 `unused-global-variable`, 3 `empty-except`, 2 `multiple-definition`, 2 `ineffectual-statement` |
 
 - **`infra` 11 → 0** and **`belizechain.org` 8 → 1**, fixed 2026-10-13/14 by the same two
   moves: workflow-level `permissions: contents: read`, and SHA-pinned third-party actions
@@ -544,6 +597,106 @@ checkout (with the exclusion → PASSED; reverted → the four failures reproduc
 resolves outside the repo root as `⏭️ SKIP … escapes this checkout`. Before that change any
 correct `../../belizechain/…` link failed single-repo CI — which is what allows the
 live-state pointer to sit in all 8 instruction files without turning CI red.
+
+### 4.5 Mesh as the training topology — WORKED 2026-10-22
+
+The mesh stopped being a library and became a deployment unit. All local; nothing below is
+deployed to Ceiba yet.
+
+| What | State |
+|---|---|
+| `nawal-mesh` compose service | **defined** (`ceiba-nawal-mesh`), `docker compose config` valid, not yet started |
+| `python -m cli mesh` entrypoint | **works** — `cli/__main__.py` added so the container command has no `RuntimeWarning` |
+| File-backed signing key | **works** — `--key-file`, mode 0600, reused across restarts |
+| Adapter exchange over HTTP | **works** — `GET /adapters`, `GET /adapters/{id}`, verified on arrival by `fetch_adapter` |
+| Peer identity pinning | **works** — `_remember_peer_key` refuses a rebind of an id to a new key |
+| Chain-graph producer | **works** — `nawal chain-graph`, reads the two real transfer events |
+
+**Verified against the live chain, not the source tree:** `Balances.Transfer { from, to,
+amount }` (`pallet_balances` 33.0.0, runtime index 4) and `Economy.BbzdTransferred { from,
+to, amount }` (`pallets/economy/src/lib.rs:529`). `Economy` has **no** `Transfer` event.
+
+**Tests:** 95 pass across the mesh suite; 11 are new adapter tests using real sockets, 10
+are new producer tests.
+
+⚠️ **Not deployed, and the doc says so:** no mesh node is running on Ceiba, `NAWAL_MESH_BOOTSTRAP`
+is empty by default so a lone node is isolated by construction, and the chain-graph producer
+is a CLI snapshot rather than a feed the training loop pulls. First contact with a peer is
+still unauthenticated — pinning protects a known peer id, not the first claim of one.
+
+### 4.6 UI-08 exports — VERIFIED against live metadata 2026-10-22
+
+All **28** chain calls behind the 25 "REAL" dead exports resolve against live runtime
+metadata. **None is fabricated, so none should be removed for that reason.** The
+wire-vs-build split is a product question, not a correctness one.
+
+Two corrections to `ui/docs/audits/AUDIT-UI-08-WIRING-PLAN.md`, both found by asking the
+chain:
+
+- **`registerBelizeID` is not a blocked product decision.** `Identity.register_identity(name)`
+  is documented "Register a new identity **for the caller**" — self-service, one parameter.
+  The plan called it "build — self-registration is a product decision". It is wireable; the
+  service's `(address, data)` signature is what does not match, not the pallet.
+- **`unstakeDalla` cannot be an amount-based unstake.** `Staking` has no partial unbond:
+  `leave_validators()` takes no amount, is validator-only, and is followed by
+  `withdraw_unbonded()`. The service already documents this and ignores its `amount`
+  argument — so the `/staking` page's 24-hour unbonding notice describes a chain capability
+  that does not exist for delegators.
+
+`reportTrainingContribution` **fails closed** and cannot pollute state: `submit_model_delta`
+requires an `ActiveFLTask` whose `task_id` matches and an `encrypted_delta` of ≥16 bytes, so
+the shipped placeholder (`taskId=0`, `'0x'`) always errors. It belongs to the Nawal client,
+as `nawal-ai/docs/architecture/INTENT.md` already states.
+
+⚠️ **Verifying this needed three corrections to the checker before it was trustworthy** —
+`storage` is `{prefix, entries: [...]}`, `calls` is `{ty}` resolving to `def.variant.variants`,
+and metadata names are **snake_case** while the polkadot-js surface is camelCase. The first
+two runs reported **0/28** and **8 missing**, both entirely false. A scan that reports
+"everything is missing" is a broken scan, not a broken system.
+
+**Wiring outcome 2026-10-22:** all 25 dead exports are resolved — **18 wired, 2 deleted, 5
+deferred**; see `ui/docs/audits/AUDIT-UI-08-WIRING-PLAN.md` §0.2–§0.6. Findings that belong
+here:
+
+- **Two surfaces were reporting actions that never happened.** `/governance`'s create tab
+  called `preventDefault()` and then reported *"Proposal submitted! Bonded 100 Ɗ"* — no
+  transaction, and `proposeTreasurySpend` charges **no deposit** at all. `/staking` explained
+  the unbonding rules but offered no button. Both now call the real extrinsics.
+- **`proposeTreasurySpend` emits `TreasurySpendProposed`, not `Proposed`.** The service read
+  the wrong event, so the returned proposal id was always `-1`.
+- **The SRS fee discount never existed on chain, and is now removed.** `FeeCalculator` was
+  implemented and `CommunityFeeCalculatorProvider` was defined, but **nothing consumed the
+  trait**, so `calculate_effective_fee` never affected a transfer. Two further breakages
+  confirmed it was never live: `FeeExemptionMonthlyLimit = ConstU32<100>` landed as **100
+  planck** (not the "100 dBZD" its comment claimed), and the `FeeExemptionApplied` /
+  `FeeExemptionLimitReached` events had already been deleted as never emitted, leaving
+  `FeeExemptionUsage` provably empty. Deleted from pallet + runtime + UI, with 11 tests.
+  Verified: `cargo test -p pallet-belize-community` 86 passed, runtime `cargo check` clean.
+  **Needs a runtime upgrade + `spec_version` bump to take effect; no storage migration is
+  required** (the only removed storage item was empty, and storage keys are per item name).
+- **Two `/governance` and `/bns` surfaces were rendering data that could never be true.**
+  The council tab hardcoded invented districts and councilors; the primary-handle card could
+  never leave `None` because `isPrimary` was hardcoded `false`. Both now read the chain.
+- **`/send` now accepts a BNS name.** Resolution happens once at review, the confirm modal
+  states the resolved SS58, and the send uses that captured address; an unresolved name is a
+  hard error and a recipient edited after review is rejected.
+- **`registerBelizeID` was publishing PII to a public map, and the KYC plan never needed it.**
+  The service joined 7 fields (name, DOB, nationality, address, district) into
+  `Identity.register_identity(name)` — a field the pallet documents as *"Display name (not
+  PII-critical but bounded)"*, stored plaintext in the public `Identities` map, and capped at
+  `MaxNameLen = ConstU32<64>` so most real Belizean names (measured 78–99 bytes) were rejected
+  outright. **The tiered KYC plan is real but unrelated**: `KycLevel` derives purely from
+  attestations (L1 = SSN, L2 = + Passport, L3 = + Biometrics), and an `Attestation` stores only
+  `blake2_256(salt ++ plaintext)` with the salt deliberately kept off chain. A grep for
+  `date_of_birth|nationality|residence|age_verify` across `pallets/` + `runtime/` returns zero
+  non-test hits. **The design was always: issuer holds the PII, chain holds a hash.** Fixed to
+  send a single display handle; `getDisplayName` returns only the first line so a legacy or
+  third-party record cannot surface extra fields. No cleanup needed — the 4 on-chain identities
+  at head 226,827 are validator names with no PII, so the bad path never carried citizen data.
+- **The live chain is nearly empty of the data several UIs read.** Measured at head 226,827:
+  `Oracle.MerchantCategories` 0, `Bns.DomainRegistry` 0, `Bns.PrimaryDomain` 0,
+  `Bns.HostedWebsites` 0, `Governance.DistrictRepresentation` 0, `Community.GreenProjects` 5.
+  The newly-wired council tab correctly renders six "Vacant" seats.
 
 ## 5. Standing traps (durable — these do not go stale)
 
