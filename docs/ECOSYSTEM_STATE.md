@@ -693,8 +693,8 @@ here:
   confirmed it was never live: `FeeExemptionMonthlyLimit = ConstU32<100>` landed as **100
   planck** (not the "100 dBZD" its comment claimed), and the `FeeExemptionApplied` /
   `FeeExemptionLimitReached` events had already been deleted as never emitted, leaving
-  `FeeExemptionUsage` provably empty. Deleted from pallet + runtime + UI, with 11 tests.
-  Verified: `cargo test -p pallet-belize-community` 86 passed, runtime `cargo check` clean.
+  `FeeExemptionUsage` provably empty. Deleted from pallet + runtime + UI, with 13 tests
+  (the pallet suite went 97 → 84). Verified: `cargo test -p pallet-belize-community` 86 passed, runtime `cargo check` clean.
   **Needs a runtime upgrade + `spec_version` bump to take effect; no storage migration is
   required** (the only removed storage item was empty, and storage keys are per item name).
 - **Two `/governance` and `/bns` surfaces were rendering data that could never be true.**
