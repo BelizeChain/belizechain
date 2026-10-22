@@ -195,10 +195,10 @@ this file now exists.
 | `kinich-quantum` | **DONE** — 5 rounds, `2cce5db`; tracker fabrication, XCM false success, ZNE/readout, CID/proofs |
 | `pakit-storage` | **SWEPT 2026-10-14** — 13 commits `3478c91`→`28b6ea7`; declared-but-unbound public API, README documented a facade that never existed, dual module identity, inert ML, fabricated quantum results, ZK proofs never generated, a logging regression introduced *and* reverted here, CI red since 2026-10-03 → green; see below |
 | `nawal-ai` | **DONE 2026-10-20** — audit findings **F-01 … F-15 all closed**; 3 extrinsics corrected, 12 impossible storage reads remapped or made honest, mesh comms fixed and a runner added; see below |
-| `gem` | not started |
+| `gem` | **SWEPT 2026-10-22** — SDK stopped reporting failed calls as success (5 findings, `dc8bb38`); `access_control` admin set capped at `MAX_ADMINS` and its storage keys pinned by test (`e14f39f`). **Not audit-clean beyond AUDIT-GEM-01** — 34 proptest harnesses not re-run, and Actions is dead for this repo (minutes exhausted), so all verification is local |
 | `infra` | **SWEPT 2026-10-14** — `api-gateway` + `indexer` (the only unaudited services) are **clean**; see below |
 | `ui` | partial — fabricated service fallbacks removed 2026-10-07; **page-level seed data remains** |
-| `belizechain.org` | not started |
+| `belizechain.org` | **SWEPT 2026-10-22** (`cb10306`) — four fabricated feature pages rewritten (jaguar-mode, zk-proof, bridges, radio), the 93–100% coverage claim replaced with the 1,343 tests that exist, 18→12 decimals, and every measured count re-derived from source. **Page coverage is partial** — ~20 product/community pages not yet read against their implementations |
 
 **`infra` sweep detail (2026-10-14).** `api-gateway` and `indexer` are the newest services
 (added 2026-10-11) and had never been audited. They came out **clean**, and unusually so —
