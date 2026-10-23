@@ -1,6 +1,17 @@
 # 🎉 BelizeChain Governance Pallet - Complete Implementation 🎉
 
 > ⚠️ Docs truthfulness audit 2026-09-10: undated claims below ("100% Complete, PRODUCTION-READY, 137/137 tests") could not be re-verified against code or a dated test-run artifact. Treat as an implementation-phase record, not a production-readiness assertion.
+>
+> **Measured 2026-10-23:** `cargo test -p pallet-belize-governance` → **164 passed,
+> 0 failed** (the "137" below is stale; the suite has grown). Zero-warning is also no
+> longer a safe claim — re-run clippy before repeating it.
+>
+> **Also 2026-10-23:** a real defect was found and fixed here. `cast_vote` and
+> `reveal_vote` took a raw `u8` conviction and used `(conviction as u32).max(1)`, so
+> `255` bought 255× weight with no lock. The 1×/2×/3×/6× ladder and 0/7/30/90-day locks
+> described further down **did not exist**; they do now, with a bond, a
+> `MAX_CONVICTION` ceiling, and `unlock_conviction`. Anything below that describes the
+> intent up to 2026-10-23 — read the pallet for what is enforced.
 
 ## Executive Summary
 
