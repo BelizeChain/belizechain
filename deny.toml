@@ -72,6 +72,25 @@ ignore = [
     "RUSTSEC-2024-0436",
     # proc-macro-error
     "RUSTSEC-2024-0370",
+
+    # ── Added 2026-10-23 ─────────────────────────────────────────────────────
+    # webpki-roots 0.25.4 — RUSTSEC-2026-0381, "Bundled root certificates allow
+    # trust in distrusted emSign intermediates".
+    #
+    # REACHABLE from the node build graph, so this one is a real accepted risk,
+    # not a lockfile artefact:
+    #   webpki-roots 0.25.4 <- libp2p-websocket 0.44.0 <- libp2p 0.54.1
+    #                      <- sc-network 0.60.0 <- belizechain-node
+    # The advisory's only fix is >= 1.0.10. libp2p-websocket requires ^0.25 — a
+    # major the 0.25 line cannot reach — and `cargo update --workspace` does not
+    # prune it. polkadot-sdk pins libp2p 0.54.1 in stable2606, stable2609 and
+    # master, so no released or unreleased rev clears it. A runtime upgrade
+    # cannot help either: libp2p is absent from the runtime graph entirely, so
+    # this needs a NODE rebuild whenever an SDK bump finally lands.
+    #
+    # This entry is self-cleaning: once a bump moves webpki-roots past the fix,
+    # cargo-deny reports advisory-not-detected and the ignore must be removed.
+    "RUSTSEC-2026-0381",
 ]
 
 # Present in the graph but NOT listed above, because cargo-deny does not report
@@ -83,6 +102,20 @@ ignore = [
 #                    advise_range/flush_range, reached via parity-db
 # Both are `informational = "unsound"` advisories rather than vulnerabilities, and
 # BelizeChain code calls neither affected API.
+
+# NOT in the graph at all — lockfile-only, so cargo-deny cannot see it and an
+# entry here would never fire (a suppression that cannot fire protects nothing):
+#   - rustls-webpki 0.101.7 (RUSTSEC-2026-0382) distrusted emSign roots.
+#     Reachable only through libp2p's OPTIONAL `quic` feature (libp2p 0.54.1:
+#     `quic = ["dep:libp2p-quic"]` -> libp2p-quic -> libp2p-tls 0.5.0 ->
+#     rustls-webpki 0.101.7). We take libp2p's `default` features via
+#     sc-network, which does not include `quic`, so Cargo records the crate in
+#     Cargo.lock but never compiles it. Measured: `cargo tree -i
+#     rustls-webpki@0.101.7 --target all` prints nothing, and the only resolved
+#     copy is 0.103.16 (patched). Cargo does not prune a disabled optional dep,
+#     so `cargo update --workspace` cannot clear it; the ignore in
+#     .github/workflows/security-audit.yml is the only lever, and that workflow
+#     asserts the crate stays out of the shipped node graph.
 
 # ── Licenses ────────────────────────────────────────────────────────────
 [licenses]

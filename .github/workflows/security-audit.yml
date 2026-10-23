@@ -69,6 +69,29 @@ jobs:
           # until subxt/smoldot move. Verified 2026-10-13 via the crates.io
           # dependency API. Intentionally NOT added to deny.toml's ignore list,
           # which is reserved for advisories cargo-deny actually detects.
+          #
+          # ── Added 2026-10-23: two libp2p-pinned advisories ────────────────
+          # Published 2026-10-19/20; neither can be cleared from this repo.
+          #
+          # RUSTSEC-2026-0381 — webpki-roots 0.25.4, required by
+          # libp2p-websocket 0.44.0 <- libp2p 0.54.1 <- sc-network 0.60.0.
+          # REACHABLE from the node build graph. Only fix is >= 1.0.10; the
+          # requirement is ^0.25, a major the 0.25 line cannot reach.
+          # cargo-deny reports this one too, so it is also in deny.toml.
+          #
+          # RUSTSEC-2026-0382 — rustls-webpki 0.101.7, distrusted emSign roots.
+          # Reachable ONLY through libp2p's OPTIONAL `quic` feature (libp2p
+          # 0.54.1: `quic = ["dep:libp2p-quic"]` -> libp2p-quic -> libp2p-tls
+          # 0.5.0 -> rustls-webpki 0.101.7). We take libp2p's `default`
+          # features via sc-network, which does not include `quic`, so Cargo
+          # records the crate in Cargo.lock but never compiles it. Measured:
+          # `cargo tree -i rustls-webpki@0.101.7 --target all` prints nothing,
+          # and the only resolved copy is 0.103.16 (patched). Cargo does not
+          # prune a disabled optional dep, so `cargo update --workspace` cannot
+          # clear this — an ignore is the only lever. cargo-deny's feature graph
+          # never sees it, so it is deliberately absent from deny.toml.
+          # That "never compiled" claim is load-bearing, so a later step checks
+          # it instead of trusting it.
           cargo audit \
             --ignore RUSTSEC-2025-0009 \
             --ignore RUSTSEC-2025-0010 \
@@ -111,8 +134,27 @@ jobs:
             --ignore RUSTSEC-2026-0269 \
             --ignore RUSTSEC-2026-0285 \
             --ignore RUSTSEC-2026-0344 \
+            --ignore RUSTSEC-2026-0381 \
+            --ignore RUSTSEC-2026-0382 \
             2>&1 | tee cargo_audit_output.txt
         continue-on-error: false
+
+      - name: Assert rustls-webpki 0.101.x is absent from the node build graph
+        # RUSTSEC-2026-0382 is ignored above on the grounds that its affected
+        # copy is a lockfile-only entry that the node never compiles. That is
+        # the whole justification for accepting it, so it is verified here: if
+        # the 0.101 line ever becomes reachable, this step fails and the ignore
+        # has to be re-triaged instead of silently covering a live path.
+        run: |
+          set -o pipefail
+          graph="$(cargo tree --locked -p belizechain-node -e normal --prefix none)"
+          found="$(printf '%s\n' "$graph" | grep -oE 'rustls-webpki v0\.101\.[0-9]+' | sort -u || true)"
+          if [[ -n "$found" ]]; then
+            echo "::error::RUSTSEC-2026-0382 is ignored, but rustls-webpki 0.101.x is now in the node build graph: $found"
+            exit 1
+          fi
+          echo "OK: node build graph has no rustls-webpki 0.101.x"
+          printf '%s\n' "$graph" | grep -oE 'rustls-webpki v[0-9.]+' | sort -u
 
       - name: Upload audit results
         if: always()
@@ -158,6 +200,29 @@ jobs:
           # and that job for the RUSTSEC-2026-0344 lockfile-only rationale).
           # Keep the two lists identical so one advisory cannot pass one job and
           # fail the other.
+          #
+          # ── Added 2026-10-23: two libp2p-pinned advisories ────────────────
+          # Published 2026-10-19/20; neither can be cleared from this repo.
+          #
+          # RUSTSEC-2026-0381 — webpki-roots 0.25.4, required by
+          # libp2p-websocket 0.44.0 <- libp2p 0.54.1 <- sc-network 0.60.0.
+          # REACHABLE from the node build graph. Only fix is >= 1.0.10; the
+          # requirement is ^0.25, a major the 0.25 line cannot reach.
+          # cargo-deny reports this one too, so it is also in deny.toml.
+          #
+          # RUSTSEC-2026-0382 — rustls-webpki 0.101.7, distrusted emSign roots.
+          # Reachable ONLY through libp2p's OPTIONAL `quic` feature (libp2p
+          # 0.54.1: `quic = ["dep:libp2p-quic"]` -> libp2p-quic -> libp2p-tls
+          # 0.5.0 -> rustls-webpki 0.101.7). We take libp2p's `default`
+          # features via sc-network, which does not include `quic`, so Cargo
+          # records the crate in Cargo.lock but never compiles it. Measured:
+          # `cargo tree -i rustls-webpki@0.101.7 --target all` prints nothing,
+          # and the only resolved copy is 0.103.16 (patched). Cargo does not
+          # prune a disabled optional dep, so `cargo update --workspace` cannot
+          # clear this — an ignore is the only lever. cargo-deny's feature graph
+          # never sees it, so it is deliberately absent from deny.toml.
+          # That "never compiled" claim is load-bearing, so a later step checks
+          # it instead of trusting it.
           cargo audit --deny yanked \
             --ignore RUSTSEC-2025-0009 \
             --ignore RUSTSEC-2025-0010 \
@@ -200,4 +265,6 @@ jobs:
             --ignore RUSTSEC-2026-0269 \
             --ignore RUSTSEC-2026-0285 \
             --ignore RUSTSEC-2026-0344 \
+            --ignore RUSTSEC-2026-0381 \
+            --ignore RUSTSEC-2026-0382 \
             2>&1
