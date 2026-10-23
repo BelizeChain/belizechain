@@ -284,18 +284,49 @@ jobs:
   dependabot:
     name: 🤖 Dependabot Alerts
     runs-on: ubuntu-latest
-    # Reading alerts needs this scope; without it the API returns 403 and the
-    # job would pass for the wrong reason.
+    # `GITHUB_TOKEN` CANNOT read this endpoint. The first version of this job
+    # used it and failed every run with
+    #   gh: Resource not accessible by integration (HTTP 403)
+    # `security-events` covers code scanning, not Dependabot alerts; the REST
+    # API docs say the endpoint needs the `security_events` scope on a PAT
+    # (or `public_repo` for public repos). An installation token is neither.
+    #
+    # So this job needs a fine-grained PAT with "Dependabot alerts: read",
+    # stored as the repository secret `DEPENDABOT_ALERTS_TOKEN`. Until that
+    # secret exists the job skips LOUDLY rather than passing silently or
+    # sitting permanently red -- both of those hide the gap instead of naming
+    # it. Create the secret and the guard turns itself on, no code change.
     permissions:
       contents: read
-      security-events: read
-      pull-requests: read
     steps:
+      - name: Check for DEPENDABOT_ALERTS_TOKEN
+        id: token
+        env:
+          TOKEN: ${{ secrets.DEPENDABOT_ALERTS_TOKEN }}
+        run: |
+          if [ -n "$TOKEN" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "::warning title=Dependabot alerts are NOT being checked::"
+              echo "No DEPENDABOT_ALERTS_TOKEN secret. GITHUB_TOKEN cannot read"
+              echo "the Dependabot alerts API (HTTP 403), and cargo audit cannot"
+              echo "either when ~/.cargo/advisory-db has no entry for a crate --"
+              echo "which is how GHSA-5j98-2g5x-46v6 (hickory-resolver) went"
+              echo "unreported. Add a fine-grained PAT with 'Dependabot alerts:"
+              echo "read' as DEPENDABOT_ALERTS_TOKEN to enable this gate."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::Dependabot alerts unchecked - see job summary"
+          fi
+
       - uses: actions/checkout@v7
+        if: steps.token.outputs.present == 'true'
 
       - name: Fail on unacknowledged high/critical Dependabot alerts
+        if: steps.token.outputs.present == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.DEPENDABOT_ALERTS_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
           set -o pipefail
