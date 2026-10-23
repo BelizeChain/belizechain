@@ -1751,6 +1751,9 @@ impl pallet_belize_belizex::Config for Runtime {
     type PairListingOrigin = TechnicalCouncilMajority;
     type Treasury = TreasuryAccount;
     type MaxOrdersPerAccount = ConstU32<100>; // 100 open limit orders per account
+                                              // Per-side cap on the pair index that a future matching pass walks.
+                                              // 256 x 2 sides keeps the worst-case match bounded at 512 order reads.
+    type MaxOrdersPerPair = ConstU32<256>;
     type WeightInfo = pallet_belize_belizex::weights::SubstrateWeight<Runtime>;
 }
 

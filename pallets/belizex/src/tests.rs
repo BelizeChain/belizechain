@@ -1536,3 +1536,135 @@ fn next_order_id_increments() {
         assert_eq!(BelizeX::next_order_id(), 2);
     });
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// P1-08 prerequisite: the per-pair order index
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn placing_an_order_indexes_it_by_pair_and_side() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            OrderType::Buy.as_u8(),
+            100,
+            50,
+            20,
+        ));
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            OrderType::Sell.as_u8(),
+            100,
+            60,
+            20,
+        ));
+
+        let index = BelizeX::pair_orders((0, 1));
+        assert_eq!(
+            index.bids.to_vec(),
+            vec![0],
+            "buy order must index as a bid"
+        );
+        assert_eq!(
+            index.asks.to_vec(),
+            vec![1],
+            "sell order must index as an ask"
+        );
+
+        // A different pair must not see either order.
+        let other = BelizeX::pair_orders((1, 0));
+        assert!(other.bids.is_empty() && other.asks.is_empty());
+    });
+}
+
+#[test]
+fn cancelling_an_order_removes_it_from_the_pair_index() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            OrderType::Buy.as_u8(),
+            100,
+            50,
+            20,
+        ));
+        assert_eq!(BelizeX::pair_orders((0, 1)).bids.to_vec(), vec![0]);
+
+        assert_ok!(BelizeX::cancel_order(RuntimeOrigin::signed(1), 0));
+
+        let index = BelizeX::pair_orders((0, 1));
+        assert!(
+            index.bids.is_empty(),
+            "cancelled order must leave the index"
+        );
+        assert!(BelizeX::open_orders((0, 1)).0.is_empty());
+    });
+}
+
+#[test]
+fn open_orders_returns_the_best_price_first_on_each_side() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        // Three bids at 40, 70, 55; two asks at 90, 80.
+        for price in [40u128, 70, 55] {
+            assert_ok!(BelizeX::place_limit_order(
+                RuntimeOrigin::signed(1),
+                0,
+                1,
+                OrderType::Buy.as_u8(),
+                10,
+                price,
+                20,
+            ));
+        }
+        for price in [90u128, 80] {
+            assert_ok!(BelizeX::place_limit_order(
+                RuntimeOrigin::signed(1),
+                0,
+                1,
+                OrderType::Sell.as_u8(),
+                10,
+                price,
+                20,
+            ));
+        }
+
+        let (bids, asks) = BelizeX::open_orders((0, 1));
+        let bid_prices: Vec<u128> = bids.iter().map(|(_, o)| o.price).collect();
+        let ask_prices: Vec<u128> = asks.iter().map(|(_, o)| o.price).collect();
+        assert_eq!(bid_prices, vec![70, 55, 40], "best bid (highest) first");
+        assert_eq!(ask_prices, vec![80, 90], "best ask (lowest) first");
+    });
+}
+
+#[test]
+fn open_orders_skips_ids_that_are_no_longer_in_the_order_book() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            OrderType::Buy.as_u8(),
+            10,
+            50,
+            20,
+        ));
+
+        // Simulate a bookkeeping inconsistency: an indexed ID with no book entry.
+        crate::PairOrders::<Test>::mutate((0, 1), |index| {
+            let _ = index.bids.try_push(4242);
+        });
+
+        let (bids, _) = BelizeX::open_orders((0, 1));
+        assert_eq!(bids.len(), 1, "the stale ID must be skipped, not returned");
+        assert_eq!(bids[0].0, 0);
+    });
+}

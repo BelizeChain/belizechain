@@ -165,6 +165,14 @@ pub mod pallet {
         #[pallet::constant]
         type MaxOrdersPerAccount: Get<u32>;
 
+        /// Maximum open orders of one side in a single pair.
+        ///
+        /// Bounds the per-pair order index so a future matching loop can iterate
+        /// a bounded list. Also the cap that makes the index's `BoundedVec`
+        /// infallible to size.
+        #[pallet::constant]
+        type MaxOrdersPerPair: Get<u32>;
+
         /// Pallet ID used to derive the DEX pool escrow account
         #[pallet::constant]
         type DexPalletId: Get<PalletId>;
@@ -269,6 +277,35 @@ pub mod pallet {
         pub is_tourism_order: bool,
     }
 
+    /// Open order IDs for one pair, split by side.
+    ///
+    /// Bounded by `T::MaxOrdersPerPair` per side — the bound is the config item,
+    /// not a copy of it. `ValueQuery` on the pallet storage means an absent pair
+    /// reads as two empty vectors, so no `Option` handling is needed at call
+    /// sites.
+    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+    // `MaxSize` only parameterises the `BoundedVec` bounds; deriving `TypeInfo`
+    // would otherwise demand `MaxSize: TypeInfo`, which `ConstU32` does not
+    // promise. Skipping it keeps the encoded shape identical.
+    #[scale_info(skip_type_params(MaxSize))]
+    pub struct PairOrderIndex<MaxSize: Get<u32>> {
+        /// Buy-side order IDs (`Buy`, `TourismBuy`)
+        pub bids: BoundedVec<u32, MaxSize>,
+        /// Sell-side order IDs (`Sell`, `TourismSell`)
+        pub asks: BoundedVec<u32, MaxSize>,
+    }
+
+    // Written out because `derive(Default)` would infer `MaxSize: Default`, which
+    // `ConstU32` does not implement. An absent pair must read as two empty books.
+    impl<MaxSize: Get<u32>> Default for PairOrderIndex<MaxSize> {
+        fn default() -> Self {
+            Self {
+                bids: BoundedVec::new(),
+                asks: BoundedVec::new(),
+            }
+        }
+    }
+
     /// Order types
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     #[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
@@ -332,6 +369,30 @@ pub mod pallet {
     #[pallet::getter(fn next_order_id)]
     /// Next available order ID
     pub type NextOrderId<T: Config> = StorageValue<_, u32, ValueQuery>;
+
+    #[pallet::storage]
+    #[pallet::getter(fn pair_orders)]
+    /// Open order IDs per pair, split by side (P1-08 prerequisite).
+    ///
+    /// `OrderBook` is keyed by `order_id` alone, so finding the orders for a pair
+    /// meant iterating every order on the chain — O(all orders) per lookup, a DoS
+    /// vector for anything that runs inside a block. This index makes it one
+    /// read per pair.
+    ///
+    /// Deliberately NOT sorted by price: maintaining price order on-chain means
+    /// shifting the `BoundedVec` on every insert, which is O(n) writes per
+    /// placement. Consumers sort the (bounded) list in memory instead.
+    ///
+    /// Stale entries are possible if an order is removed without touching the
+    /// index; readers MUST treat a missing `OrderBook` entry as "skip", which
+    /// `open_orders` below does.
+    pub type PairOrders<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        (u8, u8), // (base_asset, quote_asset)
+        PairOrderIndex<T::MaxOrdersPerPair>,
+        ValueQuery,
+    >;
 
     /// AUDIT FIX: Per-account open order counter to enforce MaxOrdersPerAccount.
     #[pallet::storage]
@@ -597,6 +658,8 @@ pub mod pallet {
         InvalidPath,
         /// This asset has no ledger in the runtime (e.g. WUSDC today)
         UnsupportedAsset,
+        /// The pair's open-order book for this side is full
+        TooManyOrdersForPair,
         /// Trading pair already exists
         PairAlreadyExists,
         /// Insufficient balance for trade
@@ -1039,6 +1102,21 @@ pub mod pallet {
             NextOrderId::<T>::put(order_id.saturating_add(1));
             AccountOrderCount::<T>::mutate(&who, |c| *c = c.saturating_add(1));
 
+            // P1-08 prerequisite: index the order by pair and side so a future
+            // matching pass reads one entry instead of scanning `OrderBook`.
+            // Fails closed at the per-pair cap rather than leaving an order in
+            // `OrderBook` that no index can reach.
+            let is_bid = matches!(order_type_enum, OrderType::Buy | OrderType::TourismBuy);
+            PairOrders::<T>::try_mutate(pair_key, |index| -> DispatchResult {
+                let side = if is_bid {
+                    &mut index.bids
+                } else {
+                    &mut index.asks
+                };
+                side.try_push(order_id)
+                    .map_err(|_| Error::<T>::TooManyOrdersForPair.into())
+            })?;
+
             Self::deposit_event(Event::OrderPlaced {
                 order_id,
                 creator: who,
@@ -1349,6 +1427,11 @@ pub mod pallet {
             OrderBook::<T>::remove(order_id);
             AccountOrderCount::<T>::mutate(&who, |c| *c = c.saturating_sub(1));
 
+            // P1-08 prerequisite: drop it from the pair index too so the index
+            // does not accumulate dead IDs. Best-effort by design - a leftover ID
+            // is skipped by `open_orders`, which re-reads `OrderBook`.
+            Self::deindex_order(&order);
+
             Self::deposit_event(Event::OrderCancelled {
                 order_id,
                 creator: who,
@@ -1362,6 +1445,58 @@ pub mod pallet {
         /// Derive the DEX pool escrow account from PalletId
         pub fn pool_account() -> T::AccountId {
             T::DexPalletId::get().into_account_truncating()
+        }
+
+        /// Remove `order` from the pair index (P1-08 prerequisite).
+        ///
+        /// Best-effort: callers may hold an `OrderBook` entry whose index entry
+        /// was already dropped, and `open_orders` re-reads `OrderBook` so a dead
+        /// ID is skipped rather than trusted. Not returning an error keeps
+        /// `cancel_order` from failing on a bookkeeping inconsistency.
+        fn deindex_order(order: &OrderEntry<T::AccountId, BlockNumberFor<T>>) {
+            let pair_key = (order.pair.0.as_u8(), order.pair.1.as_u8());
+            let is_bid = matches!(order.order_type, OrderType::Buy | OrderType::TourismBuy);
+            PairOrders::<T>::mutate(pair_key, |index| {
+                let side = if is_bid {
+                    &mut index.bids
+                } else {
+                    &mut index.asks
+                };
+                side.retain(|id| *id != order.order_id);
+            });
+        }
+
+        /// Open orders for a pair, cheapest-to-sell first on the ask side and
+        /// highest-price-first on the bid side.
+        ///
+        /// Reads ONE storage entry for the pair, then one per candidate — the
+        /// point of the index. The returned list is bounded by
+        /// `T::MaxOrdersPerPair x 2` before any per-order read happens.
+        ///
+        /// Stale IDs (an `OrderBook` entry removed without de-indexing) are
+        /// skipped. Expired orders are returned as-is: expiry handling belongs to
+        /// the caller, because a matching pass wants to skip them while a UI
+        /// query may want to show them.
+        pub fn open_orders(
+            pair: (u8, u8),
+        ) -> (
+            Vec<(u32, OrderEntry<T::AccountId, BlockNumberFor<T>>)>,
+            Vec<(u32, OrderEntry<T::AccountId, BlockNumberFor<T>>)>,
+        ) {
+            let index = PairOrders::<T>::get(pair);
+            let load = |ids: &BoundedVec<u32, T::MaxOrdersPerPair>| {
+                let out: Vec<(u32, OrderEntry<T::AccountId, BlockNumberFor<T>>)> = ids
+                    .iter()
+                    .filter_map(|id| OrderBook::<T>::get(id).map(|o| (*id, o)))
+                    .collect();
+                out
+            };
+            let mut bids = load(&index.bids);
+            let mut asks = load(&index.asks);
+            // Best bid first, best ask first. Consumers take the head and compare.
+            bids.sort_by(|a, b| b.1.price.cmp(&a.1.price).then(a.0.cmp(&b.0)));
+            asks.sort_by(|a, b| a.1.price.cmp(&b.1.price).then(a.0.cmp(&b.0)));
+            (bids, asks)
         }
 
         /// Calculate output amount for trade using constant product formula

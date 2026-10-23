@@ -1,0 +1,25 @@
+# Dependabot alerts that have been triaged and accepted.
+#
+# WHY THIS FILE EXISTS
+#   The `dependabot` job in .github/workflows/security-audit.yml fails the build
+#   on any open high/critical Dependabot alert. That is the point — it catches
+#   advisories that RustSec does not carry, which `cargo audit` and `cargo deny`
+#   therefore cannot see. But a permanent failure is not a control, it is noise
+#   that trains people to ignore the job. Accepted risks are recorded here
+#   instead, exactly as `deny.toml` records accepted advisories.
+#
+# FORMAT
+#   <GHSA-ID> TAB <date-acknowledged> TAB <justification>
+#
+# RULES
+#   1. Every entry needs a real justification naming the dependency chain and why
+#      the fix cannot be applied here. "Low risk" is not a justification.
+#   2. An entry is a SNAPSHOT. If the dependency situation changes (SDK bump,
+#      bootnodes added, feature enabled), re-triage — do not assume the old
+#      reasoning still holds.
+#   3. The job reports (and fails on) any acknowledged alert that is no longer
+#      open, so this file cannot silently rot. Same principle as cargo-deny's
+#      `advisory-not-detected`.
+
+# GHSA-5j98-2g5x-46v6	hickory-resolver: Resolver::lookup()/lookup_ip() obscure DNSSEC validation failures
+GHSA-5j98-2g5x-46v6	2026-10-23	hickory-resolver < 0.26.2 via libp2p-dns 0.42.0 <- libp2p 0.54.1 <- sc-network 0.60.0. libp2p-dns requires ^0.24.1, so this is a semver-incompatible major that cargo refuses to select (measured: `cargo update -p hickory-resolver@0.24.4 --precise 0.26.3` errors). polkadot-sdk pins libp2p 0.54.1 across stable2606/2609/master. NOT in the RustSec database, which is why cargo audit/deny are silent on it. Real exposure is nil today: BootstrapNodes::mainnet()/testnet() return empty by design (a test asserts it) and the live testnet-spec.json has bootNodes: [], so libp2p-dns never resolves a name. Re-triage if DNS bootnodes are ever added or the SDK bumps libp2p.

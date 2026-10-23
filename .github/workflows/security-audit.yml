@@ -272,15 +272,15 @@ jobs:
   # ── 4. Dependabot alerts — the advisories RustSec does not carry ──────────
   #
   # `cargo audit` and `cargo deny` both read the RustSec advisory database.
-  # Some GitHub-reviewed advisories never reach it, so a crate can be flagged by
+  # Some GitHub-reviewed advisories never reach it, so a crate can be reported by
   # Dependabot while both scanners report clean. That gap is real and was found
   # on 2026-10-23: GHSA-5j98-2g5x-46v6 (hickory-resolver — DNSSEC validation
-  # failures obscured) is reported by Dependabot and by neither of our scanners,
-  # because RustSec has no hickory-resolver entry at all.
+  # failures obscured) is reported by Dependabot and by neither scanner, because
+  # RustSec has no hickory-resolver entry at all.
   #
   # This job is the compensating control: it reads the alerts GitHub has already
-  # computed for this repo and fails on anything open at high or critical. It is
-  # advisory-database independent, so the same gap cannot blind it.
+  # computed for this repo, so the same database gap cannot blind it. Accepted
+  # risks live in scripts/dependabot_acknowledged.tsv, mirroring deny.toml.
   dependabot:
     name: 🤖 Dependabot Alerts
     runs-on: ubuntu-latest
@@ -291,7 +291,9 @@ jobs:
       security-events: read
       pull-requests: read
     steps:
-      - name: Fail on open high/critical Dependabot alerts
+      - uses: actions/checkout@v7
+
+      - name: Fail on unacknowledged high/critical Dependabot alerts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
@@ -302,30 +304,51 @@ jobs:
           gh api --paginate \
             -H "Accept: application/vnd.github+json" \
             "/repos/${REPO}/dependabot/alerts?state=open&per_page=100" \
-            > alerts.json
+            > "$RUNNER_TEMP/alerts.json"
 
-          count="$(jq '[.[] | select(.security_advisory.severity == "high"
-            or .security_advisory.severity == "critical")] | length' alerts.json)"
+          jq '[.[] | select(.security_advisory.severity == "high"
+            or .security_advisory.severity == "critical")]' \
+            "$RUNNER_TEMP/alerts.json" > "$RUNNER_TEMP/open_high.json"
 
-          if [ "$count" -eq 0 ]; then
-            echo "OK: no open high or critical Dependabot alerts"
-            exit 0
+          ack_file="scripts/dependabot_acknowledged.tsv"
+          acknowledged="$(awk -F'\t' '!/^#/ && NF >= 3 { print $1 }' "$ack_file" | sort -u)"
+          open_ids="$(jq -r '.[].security_advisory.ghsa_id' "$RUNNER_TEMP/open_high.json" | sort -u)"
+
+          # ── 1. Anything open and NOT acknowledged fails the build ──────────
+          unacked="$(comm -23 <(printf '%s\n' "$open_ids") <(printf '%s\n' "$acknowledged") \
+            | grep -v '^$' || true)"
+
+          if [ -n "$unacked" ]; then
+            jq -r --arg ids "$unacked" '
+              ($ids | split("\n")) as $list
+              | .[]
+              | select(.security_advisory.ghsa_id as $g | $list | index($g))
+              | .security_advisory.severity as $sev
+              | .security_advisory.ghsa_id as $ghsa
+              | .security_advisory.summary as $summary
+              | .dependency.package.name as $pkg
+              | .dependency.manifest_path as $manifest
+              | (.security_vulnerability.vulnerable_version_range // "?") as $range
+              | (.security_vulnerability.first_patched_version.identifier // "none") as $patched
+              | "::error::UNACKNOWLEDGED \($sev) \($ghsa) \($pkg) (\($manifest)): \($summary) | vulnerable: \($range) | patched: \($patched)"
+            ' "$RUNNER_TEMP/open_high.json"
+            echo "::error::Triage each alert above. If the fix needs a semver-incompatible"
+            echo "::error::bump, record it in ${ack_file} with a justification."
+            exit 1
           fi
 
-          jq -r '.[]
-            | select(.security_advisory.severity == "high"
-              or .security_advisory.severity == "critical")
-            | .security_advisory.severity as $sev
-            | .security_advisory.ghsa_id as $ghsa
-            | .security_advisory.summary as $summary
-            | .dependency.package.name as $pkg
-            | .dependency.manifest_path as $manifest
-            | (.security_vulnerability.vulnerable_version_range // "?") as $range
-            | (.security_vulnerability.first_patched_version.identifier // "none") as $patched
-            | "::error::\($sev) \($ghsa) \($pkg) (\($manifest)): \($summary) | vulnerable: \($range) | patched: \($patched)"' \
-            alerts.json
+          # ── 2. An acknowledgement that no longer matches anything is stale ─
+          stale="$(comm -13 <(printf '%s\n' "$open_ids") <(printf '%s\n' "$acknowledged") \
+            | grep -v '^$' || true)"
 
-          echo "::error::${count} open high/critical Dependabot alert(s)."
-          echo "::error::If the fix needs a semver-incompatible bump, record that"
-          echo "::error::decision in deny.toml rather than dismissing silently."
-          exit 1
+          if [ -n "$stale" ]; then
+            echo "::error::Stale acknowledgement(s) in ${ack_file} — these alerts are no"
+            echo "::error::longer open, so the entry is dead weight and hides the next issue:"
+            printf '%s\n' "$stale" | sed 's/^/::error::  /'
+            exit 1
+          fi
+
+          ack_count="$(printf '%s\n' "$acknowledged" | grep -cv '^$' || true)"
+          echo "OK: ${ack_count} acknowledged, no unacknowledged high/critical alerts"
+          jq -r '.[] | "  \(.security_advisory.severity) \(.security_advisory.ghsa_id) \(.dependency.package.name)"' \
+            "$RUNNER_TEMP/open_high.json"

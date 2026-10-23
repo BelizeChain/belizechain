@@ -19,6 +19,14 @@
 //!   remove_liquidity  reads  5 ->  9, writes 4 -> 8
 //! `execute_multihop_trade` reuses `execute_trade() * (path.len() - 1)` and so
 //! inherits the raise. Proof-size figures were NOT re-estimated.
+//! AMENDMENT 2 (2026-10-23, P1-08 prerequisite): the per-pair order index
+//! (`BelizeX::PairOrders`) is now maintained on both paths, adding one read and
+//! one write each:
+//!   place_order   reads 4 -> 5, writes 3 -> 4, proof 3538 -> 5800
+//!   cancel_order  reads 3 -> 4, writes 2 -> 3, proof 3577 -> 5800
+//! The proof figures are the pair-index entry itself (`(u8,u8)` key plus two
+//! bounded `u32` books, ~2.1 KiB at `MaxOrdersPerPair = 256`) added to the
+//! previously measured estimate. Rounded up, not measured.
 //!
 //! These are hand amendments, not measured — `scripts/bench_weights.sh` must be
 //! run before mainnet, on AC power.
@@ -132,14 +140,16 @@ impl<T: frame_system::Config> super::WeightInfo for SubstrateWeight<T> {
 	/// Proof: `BelizeX::NextOrderId` (`max_values`: Some(1), `max_size`: Some(4), added: 499, mode: `MaxEncodedLen`)
 	/// Storage: `BelizeX::OrderBook` (r:0 w:1)
 	/// Proof: `BelizeX::OrderBook` (`max_values`: None, `max_size`: Some(112), added: 2587, mode: `MaxEncodedLen`)
+	/// Storage: `BelizeX::PairOrders` (r:1 w:1)
+	/// Proof: `BelizeX::PairOrders` (`max_values`: None, `max_size`: Some(2057), added: 4532, mode: `MaxEncodedLen`)
 	fn place_order() -> Weight {
 		// Proof Size summary in bytes:
 		//  Measured:  `263`
-		//  Estimated: `3538`
+		//  Estimated: `5800`
 		// Minimum execution time: 21_361_000 picoseconds.
-		Weight::from_parts(34_183_750, 3538)
-			.saturating_add(T::DbWeight::get().reads(4_u64))
-			.saturating_add(T::DbWeight::get().writes(3_u64))
+		Weight::from_parts(34_183_750, 5800)
+			.saturating_add(T::DbWeight::get().reads(5_u64))
+			.saturating_add(T::DbWeight::get().writes(4_u64))
 	}
 	/// Storage: `BelizeX::GlobalPaused` (r:0 w:1)
 	/// Proof: `BelizeX::GlobalPaused` (`max_values`: Some(1), `max_size`: Some(1), added: 496, mode: `MaxEncodedLen`)
@@ -200,10 +210,10 @@ impl<T: frame_system::Config> super::WeightInfo for SubstrateWeight<T> {
 	fn cancel_order() -> Weight {
 		// Proof Size summary in bytes:
 		//  Measured:  `368`
-		//  Estimated: `3577`
+		//  Estimated: `5800`
 		// Minimum execution time: 19_553_000 picoseconds.
-		Weight::from_parts(27_623_750, 3577)
-			.saturating_add(T::DbWeight::get().reads(3_u64))
-			.saturating_add(T::DbWeight::get().writes(2_u64))
+		Weight::from_parts(27_623_750, 5800)
+			.saturating_add(T::DbWeight::get().reads(4_u64))
+			.saturating_add(T::DbWeight::get().writes(3_u64))
 	}
 }
