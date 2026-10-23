@@ -1,5 +1,14 @@
 # BelizeChain Incident Response Plan
 
+> ⚠️ **Scope correction (2026-10-23).** References below to "cross-chain bridges (Ethereum +
+> Polkadot XCM)" overstate the deployed surface. There is no XCM transport, no bridge relayer in
+> `infra/`, and no bridge contract on any foreign chain. The runbook step "halt cross-chain
+> transfers (XCM + Ethereum)" has no XCM half.
+>
+> What can be halted today is `pallet-belize-interoperability`: `update_bridge_config` disables a
+> chain, and the pallet's own `BridgeDisabled` check blocks further operations. See
+> `docs/bridges/README.md`.
+
 **Version:** 1.0  
 **Last Updated:** October 6, 2026  
 **Status:** Active testing and hardening  

@@ -92,7 +92,9 @@ Weekly PQW earnings: 500-2,000 DALLA
 Annual PQW bonus: ~78K DALLA
 ```
 
-### Nominator Rewards
+### Validator Rewards
+
+There is no nominator role to reward. The only way to earn staking rewards is to run a validator.
 
 **Join the validator set yourself:**
 

@@ -557,15 +557,16 @@ Using Polkadot.js Apps:
 
 3. Click **Validate** button
 
-4. Set commission:
+4. Set stake:
    ```
-   Reward commission percentage: 10%
-   (Tip: Lower commission attracts more nominators)
+   There is no commission to set. `ValidatorInfo` has no commission field and
+   there is no nominator to share rewards with — the full computed payout is
+   minted to your account.
    ```
 
-5. Optionally allow nomination (leave checked)
+5. Register the validator (no nomination step exists)
 
-6. Click **Validate**
+6. Confirm the transaction
 
 7. Sign transaction with controller account
 
@@ -591,9 +592,11 @@ curl -H "Content-Type: application/json" \
 
 ### 6.3 Wait for Active Set
 
-- **Era Length**: 24 hours (14,400 blocks)
-- **Selection**: Based on total stake (self + nominators)
-- **Waiting Period**: Up to 24 hours (next era)
+- **Era Length**: `BabeEpochDuration` — 300 slots on Ceiba (`testnet-fast-epoch` build),
+  14,400 slots (~24 h) on a default build
+- **Selection**: registration plus stake ≥ `MinValidatorStake`. No phragmén election and
+  no nominator backing to compete for.
+- **Waiting Period**: up to one era
 
 You'll start producing blocks once in the active set.
 
@@ -694,8 +697,8 @@ crontab -e
 
 ### 🎯 Month 1 Goals
 
-- [ ] Achieve perfect uptime (100%)
-- [ ] Attract nominators (if mainnet)
+- [ ] Submit PoUW work before every assigned deadline (timeliness is 20% of the payout)
+- [ ] Stay unslashed (each offence costs 20 points of honesty weight, permanently)
 - [ ] Participate in governance vote
 - [ ] Setup hot failover node (recommended)
 - [ ] Contribute to community (forum/Discord)

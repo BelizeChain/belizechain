@@ -366,8 +366,9 @@ Belize, Cayo, Corozal, OrangeWalk, StannCreek, Toledo
    - Anonymous ballot casting
    - Public vote verification
 
-4. **Cross-Chain Governance** (Integration)
-   - XCM integration for Polkadot
+4. **Cross-Chain Governance** (Integration) — **not built**
+   - XCM integration for Polkadot — requires becoming a parachain; `pallet_xcm` has never
+     existed in this runtime. See `docs/bridges/README.md`.
    - Cross-parachain proposals
    - Multi-chain treasury management
 

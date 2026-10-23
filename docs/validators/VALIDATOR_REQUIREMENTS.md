@@ -114,10 +114,16 @@ DNS (Recommended):
 
 ### Staking Requirements
 
+`pallet-staking` is validator-only: no `nominate` extrinsic, no `Nominators` storage,
+no commission field. There is nobody to nominate and nothing to share.
+
 | Network | Minimum Bond | Recommended Bond | Maximum Nominators |
-|---------|--------------|------------------|-------------------|
-| **Testnet** | 10,000 DALLA | 50,000 DALLA | 256 |
-| **Mainnet** | 100,000 DALLA | 500,000 DALLA | 256 |
+|---------|--------------|------------------|--------------------|
+| **Testnet** | `MinValidatorStake` (1,000 DALLA) | 10,000 DALLA — the stake term clamps here | **n/a — none exist** |
+| **Mainnet** | `MinValidatorStake` (set at genesis) | 10 × `MinValidatorStake` | **n/a — none exist** |
+
+Staking above 10× the minimum earns no additional reward weight
+(`calculate_validator_reward` clamps the ratio at 1.0).
 
 ### Tokenomics
 
@@ -151,18 +157,19 @@ Mainnet:
 
 #### Break-Even Analysis (Mainnet)
 
-```
-Scenario: 100,000 DALLA stake, 15% APY, 10% commission
+> ⚠️ **Illustrative arithmetic only.** There is no published APY, no commission,
+> and no market price for DALLA. This shows the shape of the calculation, not a
+> forecast.
 
-Annual Rewards: 100,000 × 0.15 = 15,000 DALLA
-Commission (10%): 1,500 DALLA
-Nominator Rewards: 13,500 DALLA
+```
+Scenario: 10,000 DALLA stake (the point where the stake term saturates)
+
+Annual reward depends entirely on timeliness and honesty scores:
+  reward = 20% x timeliness + 20% x honesty + 5% x stake_ratio  (of base)
 
 Monthly Costs: $1,000
-Required DALLA Price: $8 USD (to cover costs)
-
-Current Price: ~$12 USD (example)
-Monthly Profit: $500+ (after costs)
+Required DALLA Price: unknown — depends on the base reward, which depends on
+  total network stake, which today is a single authority on a testnet.
 ```
 
 ---

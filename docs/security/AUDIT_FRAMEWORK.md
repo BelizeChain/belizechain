@@ -1,5 +1,14 @@
 # BelizeChain Security Audit Framework
 
+> ⚠️ **Scope correction (2026-10-23).** This framework lists a "Polkadot XCM Bridge" as an
+> audit target. **There is no XCM bridge.** `pallet_xcm` and `XcmConfig` have never existed in
+> this runtime, there is no cumulus collator, and the `staging-xcm*` crates were removed from
+> `Cargo.toml`. Drop that row from any audit engagement.
+>
+> The real cross-chain surface is `pallet-belize-interoperability` (runtime index 27): 51 chain
+> identifiers, ML-DSA-87 signatures, DALLA/bBZD only, with no relayer deployed and no message
+> delivery path. See `docs/bridges/README.md`.
+
 **Version:** 1.0  
 **Last Updated:** October 6, 2026  
 **Status:** Request for Proposal (RFP) Ready  
@@ -126,7 +135,7 @@ This framework defines the comprehensive security audit requirements for BelizeC
   - Score manipulation prevention
   
 - **Reward Distribution:**
-  - Fair reward calculation (validator + nominator splits)
+  - Fair reward calculation (validator payout only — no nominator split exists)
   - Slashing conditions (double-signing, downtime)
   - Reward payment timing (block finality)
   - Unclaimed rewards handling

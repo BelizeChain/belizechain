@@ -1,5 +1,14 @@
 # BelizeChain Penetration Testing Program
 
+> ⚠️ **Scope correction (2026-10-23).** Scenarios that target an "XCM Message Spoofing" path or
+> a "Polkadot XCM Bridge Contract" describe a component that does not exist — there is no
+> `pallet_xcm`, no cumulus collator, and no bridge contract in `gem/`. Those scenarios cannot be
+> executed and should be struck from any engagement.
+>
+> Test `pallet-belize-interoperability` instead: `provide_pq_signature`, `submit_incoming_unlock`,
+> `process_unlock`, `acknowledge_message`, and the KYC/sanctions gates on each. See
+> `docs/bridges/README.md`.
+
 **Version:** 1.0  
 **Last Updated:** October 6, 2026  
 **Status:** Ready for Vendor Selection  
