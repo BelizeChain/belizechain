@@ -2,6 +2,13 @@
 
 **Comprehensive Performance Analysis of Pakit DAG Storage**
 
+> ⚠️ **Correction (2026-10-23).** Every **quantum** row and the entire "Quantum Compression"
+> section of this document are fabricated. There is no quantum codec: Pakit's
+> `CompressionEngine` raises for `CompressionAlgorithm.QUANTUM`. The `6.8x` and `7.8x` ratios
+> were never produced by any run, and a quantum codec cannot beat the classical entropy bound on
+> classical input. The **classical** rows (LZ4, Zstandard, Brotli, LZMA) are real measurements
+> and should be read on their own.
+
 Real-world benchmark results across storage, compression, deduplication, and retrieval operations.
 
 ---

@@ -4,7 +4,12 @@
 **Scope**: Full codebase audit of `/home/wicked/Projects/belizechain-belizechain` at snapshot time
 **Snapshot SDK**: Polkadot SDK `stable2512` (September 2025)
 **Snapshot Runtime**: `belizechain_runtime` — spec_version=100, impl_version=1, tx_version=1
-**Current Runtime Note**: The active branch has since moved to Polkadot SDK `stable2603` and runtime `spec_version=104`; use `Cargo.toml` and `runtime/src/lib.rs` as the live sources of truth.
+**Current Runtime Note**: **Do not cite this document for live state.** It records
+spec_version=100 on SDK `stable2512`; both numbers are long obsolete (the note that used to sit
+here said 104/`stable2603`, and that was already stale). Read `docs/ECOSYSTEM_STATE.md` §2.1 or
+`Cargo.toml` + `runtime/src/lib.rs` instead. Several claims in the body — quantum compression
+ratios, an 80% fee burn, nominators, XCM transport — describe features that do not exist in the
+current codebase.
 
 ---
 

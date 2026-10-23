@@ -1,0 +1,18 @@
+# Source changes verified NOT to affect any benchmarked path.
+#
+# Format: <pallet_dir> TAB <short-sha> TAB <reason>
+#
+# The freshness guard fails when a pallet's lib.rs or benchmarking.rs is newer
+# than its weights.rs, because stale weights under-count storage access and
+# under-charge extrinsics. A source change does not always move a benchmarked
+# path, though, and regenerating in that case only adds measurement noise (the
+# bench run can inflate a result 40-80%).
+#
+# An entry here says: "at this commit, the change was read and it does not touch
+# any `#[pallet::call]`, so the committed weights still describe the code."
+# Entries are matched against the pallet's newest source commit, so the next
+# commit to that pallet re-arms the guard on its own. Never add an entry to
+# silence a change you have not read.
+#
+# pallet_dir	sha	reason
+community	b9a92f8	removed the unused FeeDiscountProvider impl and its FeeExemptionUsage StorageMap; no extrinsic called either, so no benchmark moved

@@ -46,7 +46,7 @@ This is the master instruction file for AI coding agents working on BelizeChain.
 │  LAYER 2: NAWAL AI  │ │ LAYER 3: KINICH     │ │ LAYER 4: PAKIT      │
 │  Federated Learning │ │ Quantum Computing   │ │ Storage System      │
 │                     │ │                     │ │                     │
-│  • DP-SGD Privacy   │ │  • configured quantum backend    │ │  • Quantum Compress │
+│  • DP-SGD Privacy   │ │  • configured quantum backend    │ │  • Classical Compress │
 │  • Genome Evolution │ │  • Multi-Backend    │ │  • Deduplication    │
 │  • PoUW Integration │ │  • PQW Rewards      │ │  • IPFS/Arweave     │
 │  • Multilingual     │ │  • QKD Security     │ │  • Blockchain Proofs│

@@ -2,6 +2,11 @@
 
 **configured quantum backend Integration for Hybrid Classical-Quantum Workloads**
 
+> ⚠️ **Correction (2026-10-23).** The "Quantum Compression (60-80% savings)" section is
+> fabricated — there is no `kinich/compression/` package and no quantum codec. The `6.8x` figure
+> and the "2x better than classical" claim were never measured. On Ceiba, no cloud backend is
+> enabled either: jobs run on the in-process simulator.
+
 Kinich provides quantum computing capabilities to BelizeChain through configured quantum backend workspace integration.
 
 ---

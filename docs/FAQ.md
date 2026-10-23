@@ -1,5 +1,10 @@
 # Frequently Asked Questions (FAQ)
 
+> ⚠️ **Correction (2026-10-23).** The "6.8x quantum compression" figure quoted under General
+> Questions is fabricated — Pakit's `CompressionEngine` raises for
+> `CompressionAlgorithm.QUANTUM`. Pakit's real advantage is classical (ZSTD/LZ4/Brotli/LZMA) plus
+> SimHash+LSH deduplication, content addressing, and on-chain Merkle storage proofs.
+
 ## General Questions
 
 ### What is BelizeChain?
@@ -157,9 +162,6 @@ const pool = await api.query.staking.epochRewards(
 // See "Epoch reward pool" above — distribution is automatic, not claimed.
 ```
 
-await claim.signAndSend(account);
-```
-
 Rewards distributed every era (~24 hours).
 
 ## Governance
@@ -180,8 +182,6 @@ const vote = api.tx.governance.castVote(
   proposalId,
   0,  // Aye
   2   // conviction
-);
-  }
 );
 
 await vote.signAndSend(account);

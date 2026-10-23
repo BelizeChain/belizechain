@@ -2,6 +2,11 @@
 
 Comprehensive performance metrics for BelizeChain's blockchain, storage, AI, and quantum computing components.
 
+> ⚠️ **Correction (2026-10-23).** The `QAOA (Cloud Quantum Backend) | 6.8x` row and the
+> `6.8x / 7.8x` quantum-compression figures elsewhere in this file are fabricated. No quantum
+> codec exists and no cloud quantum backend is enabled on Ceiba. Classical storage, AI and
+> blockchain numbers are unaffected.
+
 ## Blockchain Core Performance
 
 ### Transaction Throughput (TPS)

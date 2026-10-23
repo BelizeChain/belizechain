@@ -2,6 +2,11 @@
 
 **Why BelizeChain Built Pakit Instead of Using IPFS**
 
+> ⚠️ **Correction (2026-10-23).** Where this document cites a "quantum compression" advantage
+> over IPFS (`5-8x`, `6.8x`), that is fabricated — Pakit's `CompressionEngine` raises for
+> `CompressionAlgorithm.QUANTUM`. The comparison still holds on classical compression,
+> content-addressing and on-chain Merkle proofs; only the quantum claim is false.
+
 Comprehensive comparison between Pakit's DAG architecture and the InterPlanetary File System (IPFS).
 
 ---

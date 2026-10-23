@@ -1,8 +1,17 @@
 # 💰 BelizeChain Validator Incentive Structure
 
 **Version**: Rolling (testnet)  
-**Updated**: November 4, 2025  
-**Effective Date**: Mainnet Launch  
+**Updated**: 2026-10-23  
+**Effective Date**: Mainnet Launch
+
+> ⚠️ **This document was rewritten on 2026-10-23.** It previously described a nominated
+> proof-of-stake model — validator commission, nominator pools, uptime multipliers, a 10%
+> annual inflation, an 80% fee burn, and 50–80% APYs. **None of that exists in the codebase.**
+> Every figure below is now traced to a named constant or function.
+>
+> The single largest structural error: **there are no nominators.** `pallet-staking` has no
+> `nominate` extrinsic, no `Nominators` storage map, and no commission field. Delegation
+> exists only in governance (voting power, not stake).
 
 ---
 
@@ -11,56 +20,83 @@
 1. [Overview](#overview)
 2. [Reward Components](#reward-components)
 3. [Inflation & Distribution](#inflation--distribution)
-4. [Commission Structure](#commission-structure)
+4. [Why There Is No Commission](#why-there-is-no-commission)
 5. [Slashing Penalties](#slashing-penalties)
-6. [Performance Bonuses](#performance-bonuses)
-7. [Nominator Mechanics](#nominator-mechanics)
+6. [Reward Calculation](#reward-calculation)
+7. [Governance Delegation](#governance-delegation)
 8. [Reward Calculation Examples](#reward-calculation-examples)
 
 ---
 
 ## Overview
 
-BelizeChain implements a sophisticated incentive system to reward validators and nominators while ensuring network security and performance.
+BelizeChain rewards validators from inflationary minting, weighted by Proof-of-Useful-Work
+signals that the validator cannot self-assert.
 
 ### Key Principles
 
-✅ **Inflationary Rewards**: New DALLA tokens minted annually  
-✅ **Transaction Fees**: Distributed to validators/nominators  
-✅ **Performance-Based**: Higher uptime = higher rewards  
-✅ **Slashing**: Penalties for misbehavior  
-✅ **Governance Rights**: Validators have privileged voting power  
+✅ **Inflationary Rewards**: New DALLA minted annually, declining on a fixed schedule  
+✅ **Transaction Fees**: **Not** distributed and **not** burned — see below  
+✅ **Performance-Based**: Payout weight comes from measured timeliness and adjudicated honesty  
+✅ **Slashing**: Penalties for misbehavior, burned rather than redirected  
+✅ **Governance Rights**: Validators vote directly; there is no stake-delegation layer  
 
 ---
 
 ## Reward Components
 
-### 1. Staking Rewards (Primary)
+### 1. Staking Rewards (Primary, and effectively only)
 
-**Source**: Inflationary DALLA minting  
-**Annual Rate**: 10% of total supply → validator pool  
-**Distribution**: Based on stake + performance  
+**Source**: Inflationary DALLA minting in `pallet-economy::update_inflation`  
+**Annual Rate**: `INITIAL_INFLATION_PPM = 50_000` → **5%**, decrementing by
+`ANNUAL_INFLATION_DECREMENT_PPM` per year to a `MINIMUM_INFLATION_PPM = 10_000` → **1%** floor  
+**Distribution**: `pallet-staking::distribute_rewards`, weighted as below
 
 ```
-Total Supply: 1,000,000,000 DALLA
-Annual Inflation: 100,000,000 DALLA
-Validator Pool: 100,000,000 DALLA/year
+Annual inflation: 5% of total supply, falling 0.1 percentage points per year
+to a 1% floor (year 41 at the current schedule)
 ```
+
+**Payout weights** — `calculate_validator_reward`, `pallets/staking/src/lib.rs`:
+
+| Term | Weight | Input | Can the validator fake it? |
+|---|---|---|---|
+| Timeliness | **20%** | Submission block vs. assigned deadline | No — block number is consensus state |
+| Honesty | **20%** | `honesty_score`, decayed by `slash_validator` | No — only adjudicated offences move it |
+| Stake | **5%** | Actual staked capital vs. `MinValidatorStake` | No — it is their bonded balance |
+| **Total** | **45%** | | |
+
+The remaining 55% of the reward weight is **deliberately unallocated**. It used to be a
+`quantum` term whose `accuracy_score` arrived as a call argument — authenticated by an oracle
+operator but never verified. Removing it took the unverified share of the payout from 40% to
+zero. Emissions per validator are correspondingly 40% lower. See
+`docs/technical-reference/concensus/POUW_REWARD_VERIFICATION_GAP.md`.
+
+**Minimum stake**: `MIN_VALIDATOR_STAKE = 1_000 DALLA` (12 decimals). The stake term scales
+linearly from zero up to 10× that minimum, then clamps — so staking more than 10,000 DALLA buys
+no additional weight.
+
+**Anti-spam gate**: `MIN_QUALITY_TO_ACCEPT = 40`. A submission scoring below this is rejected
+outright; quality is a threshold, not a reward term.
 
 ### 2. Transaction Fees
 
-**Source**: Network transaction fees  
-**Burn Rate**: 80% burned (deflationary pressure)  
-**Validator Share**: 20% distributed to validators  
+> ⚠️ **Correction (2026-10-23):** this section previously described an 80% fee burn and a 20%
+> validator share. Neither exists. `runtime/src/lib.rs` wires
+> `OnChargeTransaction = FungibleAdapter<Balances, ()>` — the unit second parameter means no fee
+> handler, so **no portion of a fee is burned or redistributed**. There is no `OnUnbalanced`
+> impl and no burn constant anywhere in `runtime/` or `pallets/`. The figures below are retained
+> only to show what the old model assumed; do not use them.
+
+**Source**: Network transaction fees
+**Burn Rate**: none — fees are charged and dropped
+**Validator Share**: none from fees; validators are paid from `distribute_rewards` minting
 
 ```
 Example:
 Daily Transactions: 1,000,000
 Avg Fee: 0.01 DALLA
-Daily Fees: 10,000 DALLA
-
-Burned: 8,000 DALLA (80%)
-Validator Pool: 2,000 DALLA (20%)
+Daily Fees: 10,000 DALLA  — none of this reaches validators or a burn address
 ```
 
 ### 3. Governance Rewards (Future)
@@ -75,61 +111,64 @@ Validator Pool: 2,000 DALLA (20%)
 
 ### Annual Inflation Schedule
 
-| Year | Inflation Rate | New DALLA | Validator Pool | Notes |
-|------|---------------|-----------|----------------|-------|
-| **1** | 10% | 100M | 100M | Genesis year |
-| **2** | 9% | 99M | 99M | -1% reduction |
-| **3** | 8% | 96.5M | 96.5M | -1% reduction |
-| **4** | 7% | 93.8M | 93.8M | -1% reduction |
-| **5+** | 5% | Variable | Variable | Stabilized |
+Source: `pallets/economy/src/lib.rs` — `INITIAL_INFLATION_PPM = 50_000`,
+`ANNUAL_INFLATION_DECREMENT_PPM`, `MINIMUM_INFLATION_PPM = 10_000`.
+
+| Year | Inflation Rate | Routed to | Notes |
+|------|---------------|-----------|-------|
+| **1** | 5.0% | 10% PublicGoods / 90% treasury | `INITIAL_INFLATION_PPM` |
+| **5** | 4.6% | same split | −0.1 pt per year |
+| **10** | 4.1% | same split | |
+| **20** | 3.1% | same split | |
+| **41+** | 1.0% | same split | `MINIMUM_INFLATION_PPM` floor |
+
+The previous version of this table said 10% / 9% / 8% / 7% / 5% and routed the whole mint to a
+"validator pool". Both were wrong: the schedule starts at 5%, and `pallet-economy` routes
+inflation to treasuries, not to validators.
 
 ### Distribution Model
 
 ```
-Validator Pool (100M DALLA/year)
+Annual inflation minted in `economy::update_inflation`
 │
-├─ Active Validators (21-100 slots)
-│  ├─ Validator Commission (0-100%)
-│  └─ Nominator Rewards (remaining)
-│
-└─ Era-based distribution (every 24 hours)
+├─ 10%  → PublicGoodsTreasury   (PublicGoodsRoutingPercent = 10)
+│         └─ 10% of that → WellbeingTreasury
+└─ 90%  → main treasury
 ```
+
+None of it is routed to validators by `pallet-economy`. Validator payouts are a separate mint
+inside `pallet-staking::distribute_rewards`, weighted per the table above. The `MaxSupply` cap
+(501M DALLA) is enforced on every mint, so inflation stops when the cap is reached regardless
+of the schedule.
 
 ### Validator Selection
 
-- **Active Set Size**: 21 validators initially, expanding to 100
-- **Selection Criteria**: Total stake (self + nominators)
-- **Waiting Pool**: Validators not in active set earn NO rewards
+- **Active set**: validators registered via `register_validator` with stake ≥ `MinValidatorStake`
+- **Selection criteria**: registration + minimum stake. There is no phragmén election and no
+  nominator backing to compete for.
+- **Not in the active set**: no rewards accrue
 
 ---
 
-## Commission Structure
+## Why There Is No Commission
 
-### How Commission Works
-
-Validators set a commission rate (0-100%) that determines their share of rewards BEFORE distribution to nominators.
+This section replaces the old "Commission Structure" chapter. `ValidatorInfo` has no commission
+field, `distribute_rewards` has no split, and there is no counterparty to split with.
 
 ```
-Example: 10% Commission
+Example: what the old model described, and what actually happens
 
-Total Era Rewards: 10,000 DALLA
-Validator Commission: 1,000 DALLA (10%)
-Nominator Pool: 9,000 DALLA (90%)
+Old: Total Era Rewards 10,000 DALLA
+     Validator Commission 1,000 DALLA (10%)
+     Nominator Pool       9,000 DALLA (90%)
+
+Actual: the whole computed reward is minted to the validator account.
+        There is no commission rate to set, no cooldown to wait for,
+        and no nominator event to emit.
 ```
 
-### Commission Limits
-
-| Validator Tier | Max Commission (Year 1) | Max Commission (Year 2+) |
-|----------------|------------------------|--------------------------|
-| **Genesis** | 5% | No limit |
-| **Early** | 10% | No limit |
-| **Community** | No limit | No limit |
-
-### Changing Commission
-
-- **Cooldown**: 24 hours (1 era) before new rate applies
-- **Notification**: Nominators alerted via on-chain event
-- **Unstaking**: Nominators can unstake if unhappy
+If a third party wants exposure to validator rewards, they cannot delegate stake. They can
+only delegate **governance votes** — see [Governance Delegation](#governance-delegation).
 
 ---
 
@@ -146,95 +185,62 @@ Nominator Pool: 9,000 DALLA (90%)
 
 ### Slash Distribution
 
-- **Validator**: 100% of slashed amount lost
-- **Nominators**: Slashed proportionally to stake
-- **Treasury**: Slashed funds sent to treasury
-- **Reporters**: 10% of slash as bounty (for reporting)
+**100% burned.** `slash_validator` calls `T::Currency::slash` and then drops the returned
+imbalance, which decrements `TotalIssuance`. Nothing reaches the treasury and nothing is paid to
+a reporter — there is no reporter-bounty path in the pallet.
+
+The same call decays `honesty_score` by `HONESTY_PENALTY_PER_OFFENCE = 20` points from
+`INITIAL_HONESTY_SCORE = 100`. That decay is the *real* penalty: honesty is 20% of the reward
+weight, so a validator that accumulates offences earns less permanently, not just once.
 
 ### Protection Mechanisms
 
-1. **Nominator Pools**: Max 256 nominators per validator
-2. **Chill**: Auto-disable validator after slash
-3. **Governance Override**: Council can reduce/waive slashes
-4. **Insurance**: Validators can offer nominator insurance (optional)
+1. **Auto-chill** after a slash — the validator leaves the active set
+2. **Governance override**: the council can reduce or waive a slash
+3. **Honesty floor**: a validator at zero honesty still receives the timeliness and stake terms
+   but cannot recover the 20% honesty weight without an adjudicated reset
 
 ---
 
-## Performance Bonuses
+## Reward Calculation
 
-### Uptime Bonuses (Monthly)
-
-| Uptime | Bonus Multiplier | Example (10K base reward) |
-|--------|------------------|---------------------------|
-| **100%** | 1.10x | 11,000 DALLA (+10%) |
-| **99.9%** | 1.05x | 10,500 DALLA (+5%) |
-| **99.5%** | 1.00x | 10,000 DALLA (base) |
-| **99.0%** | 0.95x | 9,500 DALLA (-5%) |
-| **<99%** | 0.90x | 9,000 DALLA (-10%) |
-
-### Governance Participation
-
-Validators earn bonus rewards for active governance:
-
-- **Vote on >90% proposals**: +500 DALLA/quarter
-- **Propose passed motions**: +1,000 DALLA per proposal
-- **Serve on council**: +2,000 DALLA/month
-
-### Community Contributions
-
-- **Forum moderation**: 500 DALLA/month
-- **Technical documentation**: 1,000-5,000 DALLA per guide
-- **Bug reports**: 500-50,000 DALLA (see bug bounty)
-- **Validator onboarding**: 5% of referred validator's Year 1 commission
-
----
-
-## Nominator Mechanics
-
-### How Nominating Works
-
-1. **Choose validators** (up to 16)
-2. **Bond DALLA** (minimum 100 DALLA)
-3. **Earn proportional rewards** after validator commission
-4. **Unbond with 28-day delay**
-
-### Nominator Rewards Formula
-
-```rust
-nominator_reward = (validator_era_reward - validator_commission) 
-                   × (nominator_stake / total_validator_stake)
-```
-
-### Example Calculation
+There is no uptime multiplier and no quarterly governance bonus. Both were removed because
+neither was implemented — `distribute_rewards` computes exactly three weighted terms and mints
+the sum.
 
 ```
-Validator Stats:
-- Self-stake: 100,000 DALLA
-- Nominator stakes: 400,000 DALLA (total)
-- Total stake: 500,000 DALLA
-- Commission: 10%
-
-Era Reward: 10,000 DALLA
-
-Step 1: Calculate commission
-Commission: 10,000 × 0.10 = 1,000 DALLA (to validator)
-Nominator Pool: 10,000 - 1,000 = 9,000 DALLA
-
-Step 2: Calculate nominator share
-Your stake: 50,000 DALLA
-Your share: (50,000 / 500,000) × 9,000 = 900 DALLA
-
-Step 3: Calculate validator self-stake reward
-Validator self-stake share: (100,000 / 500,000) × 9,000 = 1,800 DALLA
-Validator total: 1,000 (commission) + 1,800 (stake) = 2,800 DALLA
+reward = (20% × timeliness_score/100 × base)
+       + (20% × honesty_score/100   × base)
+       + ( 5% × min(stake, 10 × min_stake)/(10 × min_stake) × base)
 ```
+
+`timeliness_score` is derived from the gap between the submission block and the assigned
+deadline (`calculate_timeliness_score`). `honesty_score` starts at 100 and is only ever moved
+by `slash_validator`. The stake ratio clamps at 1.0 once the validator holds 10× the minimum
+stake.
+
+## Governance Delegation
+
+This replaces the old "Nominator Mechanics" chapter. Staking delegation does not exist, but
+**voting-power** delegation does, in `pallet-governance`:
+
+| Extrinsic | Effect |
+|---|---|
+| `nominate_for_delegate` | Puts an account forward as a delegate |
+| `vote_for_delegate` | Backs a delegate with the caller's voting weight |
+| `delegate_vote` | Hands a specific vote to a delegate |
+| `revoke_delegation` | Takes it back |
+
+Delegation moves votes, never stake. A delegate cannot be slashed, cannot earn staking rewards
+on your behalf, and cannot touch your balance.
 
 ### Risk Considerations
 
-⚠️ **Slashing Risk**: If validator misbehaves, nominators are slashed proportionally  
-⚠️ **Oversubscription**: Validators with >256 nominators reject new nominations  
-⚠️ **Waiting Pool**: Validators not in active set earn ZERO rewards  
-⚠️ **Unbonding Period**: 28 days to unlock funds (prevents chain attacks)  
+⚠️ **Slashing Risk**: 100% of the slashed amount is burned, and `honesty_score` decays by 20
+points per offence — the reward loss persists past the slash itself  
+⚠️ **Stake ceiling**: staking above 10× `MinValidatorStake` earns no extra weight  
+⚠️ **Not in the active set**: no rewards accrue at all  
+⚠️ **No insurance**: no insurance or nominator-protection mechanism exists  
 
 ---
 
@@ -244,79 +250,52 @@ Validator total: 1,000 (commission) + 1,800 (stake) = 2,800 DALLA
 
 ```yaml
 Validator Profile:
-  Self-stake: 50,000 DALLA
-  Nominator stakes: 150,000 DALLA
-  Total stake: 200,000 DALLA
-  Commission: 5%
-  Uptime: 100%
+  Self-stake: 5,000 DALLA          # below the 10x clamp (10,000 DALLA)
+  Timeliness score: 90
+  Honesty score: 100
 
-Network Stats:
-  Total staked: 200,000,000 DALLA (20% of supply)
-  Annual rewards: 100,000,000 DALLA
-  Daily rewards: 273,972 DALLA
-  Validator's share: 200,000 / 200,000,000 = 0.1%
+Calculation (base = 1,000 DALLA for illustration):
+  Timeliness: 20% × 0.90 × 1,000 = 180.0 DALLA
+  Honesty:    20% × 1.00 × 1,000 = 200.0 DALLA
+  Stake:       5% × (5,000/10,000) × 1,000 = 25.0 DALLA
 
-Daily Calculation:
-  Base reward: 273,972 × 0.001 = 273.97 DALLA
-  Uptime bonus: 273.97 × 1.10 = 301.37 DALLA
-  Commission: 301.37 × 0.05 = 15.07 DALLA
-  Nominator pool: 301.37 - 15.07 = 286.30 DALLA
-  
-  Validator total: 15.07 + (286.30 × 0.25) = 86.65 DALLA/day
-  Nominator (10K stake): 286.30 × (10,000/200,000) = 14.32 DALLA/day
-
-Annual Returns:
-  Validator: 31,627 DALLA (~63% APY on 50K stake)
-  Nominator: 5,227 DALLA (~52% APY on 10K stake)
+  Reward: 405.0 DALLA of a 1,000 DALLA base — 40.5% of it
 ```
 
 ### Scenario 2: Large Validator
 
 ```yaml
 Validator Profile:
-  Self-stake: 500,000 DALLA
-  Nominator stakes: 2,000,000 DALLA
-  Total stake: 2,500,000 DALLA
-  Commission: 15%
-  Uptime: 99.5%
+  Self-stake: 50,000 DALLA         # above the clamp, so the stake term saturates
+  Timeliness score: 100
+  Honesty score: 80                # one adjudicated offence already
 
-Network Stats:
-  Total staked: 200,000,000 DALLA
-  Daily rewards: 273,972 DALLA
-  Validator's share: 2,500,000 / 200,000,000 = 1.25%
+Calculation (base = 1,000 DALLA):
+  Timeliness: 20% × 1.00 × 1,000 = 200.0 DALLA
+  Honesty:    20% × 0.80 × 1,000 = 160.0 DALLA
+  Stake:       5% × 1.00 × 1,000 =  50.0 DALLA
 
-Daily Calculation:
-  Base reward: 273,972 × 0.0125 = 3,424.65 DALLA
-  Uptime bonus: 3,424.65 × 1.00 = 3,424.65 DALLA (no bonus)
-  Commission: 3,424.65 × 0.15 = 513.70 DALLA
-  Nominator pool: 3,424.65 - 513.70 = 2,910.95 DALLA
-  
-  Validator total: 513.70 + (2,910.95 × 0.20) = 1,095.89 DALLA/day
-  Nominator (50K stake): 2,910.95 × (50,000/2,500,000) = 58.22 DALLA/day
+  Reward: 410.0 DALLA
 
-Annual Returns:
-  Validator: 400,000 DALLA (~80% APY on 500K stake)
-  Nominator: 21,250 DALLA (~42.5% APY on 50K stake)
+Note: the 50,000 DALLA stake earns exactly the same stake term as a
+10,000 DALLA stake. Capital past the clamp buys no reward weight.
 ```
 
 ### Scenario 3: Slashing Event
 
 ```yaml
 Before Slash:
-  Validator stake: 100,000 DALLA
-  Nominator stake: 400,000 DALLA
-  Total: 500,000 DALLA
+  Validator stake: 500,000 DALLA
+  Honesty score: 100
 
-Slash Event: Double-signing (100% slash)
-  Validator lost: 100,000 DALLA (100%)
-  Nominator lost: 400,000 DALLA (100%)
-  Total slashed: 500,000 DALLA → Treasury
+Slash Event: 5% slash
+  Burned: 25,000 DALLA (TotalIssuance decreases; no recipient)
+  Stake after: 475,000 DALLA
+  Honesty after: 80 (HONESTY_PENALTY_PER_OFFENCE = 20)
 
 After Slash:
-  Validator stake: 0 DALLA
-  Nominator stake: 0 DALLA
-  Validator status: Chilled (removed from active set)
-  Nominators: Must rebond to new validator
+  Reward weight on the honesty term drops from 20% to 16% of base, permanently,
+  until governance adjudicates otherwise. The validator is chilled.
 ```
 
 ---
@@ -325,25 +304,24 @@ After Slash:
 
 ### For Validators
 
-1. **Maintain 100% uptime** (+10% bonus)
-2. **Keep commission competitive** (5-10% recommended)
-3. **Build reputation** (attracts more nominators)
-4. **Participate in governance** (bonus rewards)
-5. **Avoid oversubscription** (>256 nominators rejected)
-
-### For Nominators
-
-1. **Diversify across validators** (up to 16)
-2. **Choose low-commission validators** (more rewards)
-3. **Monitor validator performance** (uptime, slashes)
-4. **Avoid oversubscribed validators** (diluted rewards)
-5. **Stay informed** (Discord, forum updates)
+1. **Submit before the deadline** — timeliness is 20% of the weight and is measured from the
+   submission block, not from a self-reported uptime figure
+2. **Never get slashed** — each offence costs 20% of the honesty weight permanently, which is
+   worth far more over a year than any one-off slash
+3. **Stake to 10× the minimum, then stop** — 10,000 DALLA is the ceiling on the stake term
+4. **Do not compete on commission** — there is no commission to set
+5. **Participate in governance directly** — there is no bonus, but validator votes carry weight
+   in the Technical and Governance councils
 
 ---
 
 ## Economic Security
 
 ### Attack Cost Analysis
+
+> ⚠️ **Hypothetical.** This is a mainnet-shape model, not a description of the live chain. Ceiba
+> currently runs a **single authority**, and no DALLA has a market price. Treat the numbers
+> below as an argument about the design, not as a measurement.
 
 To control 51% of network:
 
@@ -379,24 +357,24 @@ Schedule: rate(year) = max(5.0% - 0.1% * (year - 1), 1.0%)
 
 Assumptions for the figures below:
   genesis supply      : 100,000,000 DALLA (mainnet distribution)
-  fee burn, Year 1    : 8,000 DALLA/day  = 2.92M/year
-  fee burn, Year 5    : 20,000 DALLA/day = 7.30M/year
+  fee burn            : NONE — fees are charged and dropped, never burned
 
 Year 1:
   Inflation rate      : 5.0%
   Minted              : 5.00M DALLA (5.0% of 100M)
-  Burned fees         : 2.92M DALLA
-  Net issuance        : ~+2.08M DALLA (~2.1% of supply)
+  Burned fees         : 0
+  Net issuance        : +5.00M DALLA (+5.0% of supply)
 
 Year 5:
   Inflation rate      : 4.6%
   Minted              : ~5.0M DALLA (4.6% of the accumulated supply)
-  Burned fees         : 7.30M DALLA
-  Net issuance        : net-negative under these burn assumptions — fee burn
-                        overtakes minting as the supply base grows
+  Burned fees         : 0
+  Net issuance        : +4.6% of supply, every year, until the 1% floor
 
-Goal: rate ratchets down to the 1% floor while fee burn grows, stabilising
-supply rather than inflating it indefinitely.
+Supply only falls if a holder calls `burn_dalla` or governance calls
+`governance_burn`. Neither is automatic and neither is driven by fee volume, so
+the "deflationary" curve this section used to draw cannot occur. Inflation alone
+is monotonically positive until the hard cap at 501M DALLA is reached.
 ```
 
 ---

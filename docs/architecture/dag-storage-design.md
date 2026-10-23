@@ -2,6 +2,11 @@
 
 **Sovereign Content-Addressable Storage for BelizeChain**
 
+> ⚠️ **Correction (2026-10-23).** The "With Quantum Compression (Kinich)" passages and the
+> "quantum compression at DAG level" bullet are fabricated. No quantum codec exists; Pakit's
+> `CompressionEngine` raises for `CompressionAlgorithm.QUANTUM`. The MerkleDAG, deduplication and
+> classical compression design is accurate.
+
 Pakit's DAG (Directed Acyclic Graph) storage system provides decentralized, content-addressable storage with Merkle proofs, multi-parent blocks, and complete data sovereignty.
 
 ---

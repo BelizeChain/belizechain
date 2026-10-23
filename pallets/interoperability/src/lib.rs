@@ -675,6 +675,12 @@ pub mod pallet {
             target_chain: u8,
             message_hash: [u8; 32],
         },
+        /// Cross-chain message delivery acknowledged by a bridge validator
+        CrossChainMessageDelivered {
+            message_id: u32,
+            target_chain: u8,
+            acknowledged_by: T::AccountId,
+        },
         /// Bridge configuration updated
         BridgeConfigUpdated { chain: u8, fee_rate: u32 },
         /// Bridge fee collected
@@ -753,6 +759,10 @@ pub mod pallet {
         NotBurnTransaction,
         /// P0-1: Insufficient oracle confirmations for burn proof
         BurnNotVerifiedByOracle,
+        /// Cross-chain message ID does not exist
+        MessageNotFound,
+        /// Cross-chain message was already acknowledged as delivered
+        MessageAlreadyDelivered,
     }
 
     // ===== HOOKS (§4.4b Challenge Period Finalization) =====
@@ -1419,6 +1429,44 @@ pub mod pallet {
             Ok(())
         }
 
+        /// Acknowledge that a previously sent cross-chain message reached its target chain.
+        ///
+        /// `send_cross_chain_message` records a message with `delivered: false`; without this
+        /// call that flag could never become `true`, which made outbound messaging an
+        /// append-only log rather than a transport. Only a registered bridge validator (KYC
+        /// Level 3, not sanctioned) may attest delivery, because the attestation is the
+        /// relayer's assertion that the payload was observed on the foreign chain.
+        #[pallet::call_index(12)]
+        #[pallet::weight(T::WeightInfo::acknowledge_message())]
+        pub fn acknowledge_message(origin: OriginFor<T>, message_id: u32) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            ensure!(
+                T::Identity::verify_bridge_operator(&who),
+                Error::<T>::BridgeOperatorKycInsufficient
+            );
+            ensure!(
+                !T::Identity::is_sanctioned(&who),
+                Error::<T>::AccountSanctioned
+            );
+            Self::bridge_validators(&who).ok_or(Error::<T>::ValidatorNotRegistered)?;
+
+            let mut message =
+                Self::cross_chain_messages(message_id).ok_or(Error::<T>::MessageNotFound)?;
+            ensure!(!message.delivered, Error::<T>::MessageAlreadyDelivered);
+
+            message.delivered = true;
+            CrossChainMessages::<T>::insert(message_id, message.clone());
+
+            Self::deposit_event(Event::CrossChainMessageDelivered {
+                message_id,
+                target_chain: Self::encode_chain(&message.target_chain),
+                acknowledged_by: who,
+            });
+
+            Ok(())
+        }
+
         /// Update bridge configuration (governance only)
         #[pallet::call_index(5)]
         #[pallet::weight(T::WeightInfo::update_config())]
@@ -1927,6 +1975,7 @@ pub trait WeightInfo {
     fn withdraw_liquidity() -> Weight;
     fn register_bridge_validator() -> Weight;
     fn submit_incoming_unlock() -> Weight;
+    fn acknowledge_message() -> Weight;
 }
 
 impl WeightInfo for () {
@@ -1962,6 +2011,9 @@ impl WeightInfo for () {
     }
     fn submit_incoming_unlock() -> Weight {
         Weight::from_parts(25_000_000, 512).saturating_add(Weight::from_parts(0, 3500))
+    }
+    fn acknowledge_message() -> Weight {
+        Weight::from_parts(12_000_000, 512).saturating_add(Weight::from_parts(0, 2000))
     }
 }
 

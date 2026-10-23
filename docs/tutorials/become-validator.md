@@ -543,13 +543,11 @@ scp validator@95.216.X.X:~/keystore_backup.tar.gz.gpg ~/
 ║  Session Keys: Set ✅                      ║
 ║                                            ║
 ║  Commission:                               ║
-║  [10              ] %                      ║
+║  [ —              ] not applicable         ║
 ║                                            ║
-║  Commission is what you keep from rewards  ║
-║  before sharing with nominators.           ║
-║                                            ║
-║  Recommended for new validators: 5-10%     ║
-║  Market average: 10%                       ║
+║  pallet-staking has no commission field    ║
+║  and no nominators. `distribute_rewards`   ║
+║  mints to the validator directly.          ║
 ║                                            ║
 ║  Block Authorship Rewards: Full to you     ║
 ║                                            ║
@@ -607,9 +605,9 @@ Your node will appear in validator list shortly.
 ║                                            ║
 ║  STAKING                                   ║
 ║  Own Stake: 10,000 DALLA                   ║
-║  Nominated: 45,000 DALLA (12 nominators)   ║
-║  Total Stake: 55,000 DALLA                 ║
-║  Commission: 10%                           ║
+║  Nominated: n/a — no nominators exist      ║
+║  Total Stake: 10,000 DALLA                 ║
+║  Commission: n/a — no commission field     ║
 ║                                            ║
 ║  PERFORMANCE                               ║
 ║  Blocks Produced: 1,247 (this era)         ║
@@ -617,9 +615,10 @@ Your node will appear in validator list shortly.
 ║  Slash Events: 0 ✅                        ║
 ║                                            ║
 ║  REWARDS (This Era)                        ║
-║  Block Rewards: 125.4 DALLA                ║
-║  Commission: 189.2 DALLA                   ║
-║  Total Earned: 314.6 DALLA                 ║
+║  Timeliness (20% weight): 115.4 DALLA      ║
+║  Honesty   (20% weight): 125.4 DALLA       ║
+║  Stake      (5% weight):  31.4 DALLA       ║
+║  Total Earned: 272.2 DALLA                 ║
 ║                                            ║
 ║  REWARDS (All Time)                        ║
 ║  Total Earned: 1,547 DALLA                 ║
@@ -712,18 +711,18 @@ Full guide: [Validator Monitoring Setup](../deployment/monitoring.md)
 
 **Every era (24 hours)**:
 
-1. **Block Rewards**: Earn DALLA for each block you produce
-   - ~0.1 DALLA per block
-   - Depends on total stake and performance
+1. **PoUW-weighted payout**: `distribute_rewards` mints to you directly
+   - Timeliness 20% — measured from your submission block against the assigned deadline
+   - Honesty 20% — starts at 100, decays 20 points per adjudicated offence
+   - Stake 5% — scales up to 10× `MinValidatorStake` (1,000 DALLA), then clamps
+   - The weights sum to 45%, not 100% — the remaining share is deliberately unallocated
+     (the unverified quantum term was removed; see `POUW_REWARD_VERIFICATION_GAP.md`)
 
-2. **Commission**: Earn commission on nominated stake
-   - If nominators stake 45K DALLA with you
-   - And earn 1,890 DALLA in era
-   - You earn 10% = 189 DALLA
+2. **There is no commission** — `ValidatorInfo` has no commission field, and there is no
+   nominator to share with. The whole computed reward is yours.
 
-3. **Total Rewards**: Block rewards + commission
-   - Example: 125 DALLA (blocks) + 189 DALLA (commission) = 314 DALLA
-   - Per era (24 hours)
+3. **Fees do not reach you** — `OnChargeTransaction = FungibleAdapter<Balances, ()>` means no
+   fee handler is installed. Fees are charged and dropped.
    - ~9,500 DALLA per month
    - ~15% APY on your 10K stake
 
@@ -895,27 +894,23 @@ journalctl -u belizechain -n 100 --no-pager
 ### Problem: Low Rewards
 
 **Causes**:
-- Low total stake (not competitive)
-- High commission (nominators choose others)
-- Missing blocks (performance issues)
-- Not in active set (top 100 only)
+- Stake below 10× `MinValidatorStake` — the stake term is not saturated yet
+- Repeated `slash_validator` calls — each costs 20 points of honesty weight, permanently
+- Late submissions — timeliness is measured from the block you submit in
+- Not registered in the active set — no rewards accrue at all
 
 **Solutions**:
-1. **Increase stake** (bond more DALLA)
-2. **Lower commission** (attract nominators)
-3. **Improve uptime** (99.9%+ goal)
-4. **Promote yourself**:
-   - Forum: https://forum.belizechain.org/validators — planned, not yet published
-   - Discord: #validators channel
-   - Social media
-   - Validator profile
+1. **Increase stake** up to 10,000 DALLA (past that the term clamps and buys nothing)
+2. **Never get slashed** (each offence is a permanent 20% of the honesty weight)
+3. **Submit before the deadline** (this is the largest term you actually control)
+4. **Stay registered** in the active set
 
 ---
 
 ## 📚 Resources
 
 **Documentation**:
-- [Staking Guide](../economics/staking-rewards.md) - For nominators
+- [Staking Guide](../economics/staking-rewards.md) — validator-only; there is no nominator path
 - [Consensus Technical Reference](../technical-reference/concensus/POUW_CONSENSUS_DESIGN.md)
 - [Validator Economics](../validators/INCENTIVES.md)
 - [Validator Monitoring](../deployment/monitoring.md)

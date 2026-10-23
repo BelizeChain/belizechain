@@ -198,18 +198,17 @@
 | Block Time | 6 seconds |
 | Block Size | 5 MB max |
 | Finality | 1 block (GRANDPA) |
-| TPS | ~1,000 (theoretical 10,000+) |
-| Validators | 100 active |
-| Nominators | Unlimited |
+| TPS | ~2,000 target — no verified public benchmark |
+| Validators | `MaxValidators`, bounded iteration |
+| Nominators | **None** — staking is validator-only, no `nominate` extrinsic |
 | Governance Period | 7 days |
 | Unbonding Period | 28 days |
 
 ### Runtime Specifications
-- **Runtime Version**: 42 (Substrate v42.x)
-- **Transaction Version**: 1
-- **State Version**: 0
-- **WASM Runtime**: ~2 MB compiled
-- **Storage**: RocksDB backend
+
+> The live `spec_version` is **not** restated here. It changes on every forkless upgrade and a
+> copy goes stale silently — this table said "42" while the chain was on 117. Read it from
+> `docs/ECOSYSTEM_STATE.md` §2.1 or query `state_getRuntimeVersion`.
 
 ### Network Specifications
 - **Protocol**: Substrate libp2p
@@ -255,10 +254,11 @@
    - Audit trails
 
 6. **Interoperability Pallet**
-   - Cross-chain messaging (XCM)
-   - Ethereum bridge
-   - Polkadot parachain
-   - Asset transfers
+   - Bridge state machine over 51 chain identifiers (runtime index 27)
+   - ML-DSA-87 post-quantum signatures; DALLA and bBZD only
+   - Ethereum bridge — state machine built, **no relayer deployed**
+   - Polkadot parachain — **not built**; XCM requires becoming a parachain
+   - Cross-chain messaging — messages are recorded but **never delivered**
 
 7. **BelizeX Pallet**
    - Decentralized exchange
@@ -405,7 +405,7 @@
 
 ### Standards Compliance
 - **Substrate**: FRAME v2
-- **Polkadot**: XCM v3
+- **Polkadot**: XCM v3 — **not implemented** (no `pallet_xcm`, no parachain)
 - **W3C**: DID Core 1.0
 - **ISO**: 27001 (InfoSec), 20022 (Finance)
 

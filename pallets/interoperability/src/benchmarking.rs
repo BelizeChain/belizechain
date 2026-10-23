@@ -420,5 +420,37 @@ mod benchmarks {
         );
     }
 
+    // ───────────────────────────────────────────
+    // 12. acknowledge_message → acknowledge_message
+    //     WeightInfo fn: acknowledge_message()
+    //     Extrinsic name: acknowledge_message
+    // ───────────────────────────────────────────
+    #[benchmark]
+    fn acknowledge_message() {
+        setup_chain_config::<T>();
+        let caller = setup_bridge_validator::<T>(0);
+        grant_bridge_operator::<T>(&caller);
+
+        // Seed a sent-but-undelivered message, the state the relayer acks.
+        let message_id: u32 = 0;
+        let payload: BoundedVec<u8, ConstU32<2048>> = vec![1u8; 64].try_into().unwrap_or_default();
+        CrossChainMessages::<T>::insert(
+            message_id,
+            CrossChainMessage {
+                message_id,
+                source_chain: BridgeChain::Polkadot,
+                target_chain: BridgeChain::Ethereum,
+                payload,
+                message_hash: [1u8; 32],
+                delivered: false,
+                timestamp: 0u64,
+            },
+        );
+        NextMessageId::<T>::put(message_id.saturating_add(1));
+
+        #[extrinsic_call]
+        acknowledge_message(RawOrigin::Signed(caller), message_id);
+    }
+
     impl_benchmark_test_suite!(Pallet, crate::mock::new_test_ext(), crate::mock::Test);
 }

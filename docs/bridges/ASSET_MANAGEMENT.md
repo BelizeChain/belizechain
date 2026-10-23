@@ -1,5 +1,14 @@
 # Cross-Chain Asset Management
 
+> ⚠️ **Correction (2026-10-23). Read `docs/bridges/README.md` first.**
+>
+> The wrapped-asset registry described here (wETH, wBTC, wDOT, wAUSD, wKSM) does not exist.
+> `BridgeAsset` on chain has exactly two variants: **DALLA** and **BBZD** — a deliberate
+> sovereignty constraint, not an oversight. The Polkadot/Acala/Kusama "via XCM" rows are
+> doubly false: there is no XCM transport on this chain at all.
+>
+> This is a design document. Nothing below is deployed.
+
 ## Overview
 
 Comprehensive asset registry and management system for bridged tokens between BelizeChain and external networks. Supports wrapped tokens, liquidity pools, atomic swaps, and NFT bridging.

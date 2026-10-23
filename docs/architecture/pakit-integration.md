@@ -2,6 +2,10 @@
 
 **Sovereign DAG-Based Decentralized Storage**
 
+> ⚠️ **Correction (2026-10-23).** The summary line below claims "quantum compression". It does
+> not exist — `CompressionEngine` raises for `CompressionAlgorithm.QUANTUM`. On-chain proof
+> verification **is** real (`pallet-storage-proof`, Merkle only).
+
 Pakit provides 100% sovereign content storage with quantum compression and on-chain proof verification.
 
 ---

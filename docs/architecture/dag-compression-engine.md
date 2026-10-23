@@ -2,6 +2,12 @@
 
 **Multi-Algorithm Compression with Automatic Selection**
 
+> ⚠️ **Correction (2026-10-23).** This document describes a `QUANTUM` algorithm with a `5-8x`
+> ratio backed by "Kinich quantum compression". **Neither exists.** `CompressionEngine` raises
+> for `CompressionAlgorithm.QUANTUM` and no Kinich codec is wired in. The classical algorithms
+> (ZSTD, LZ4, Brotli, LZMA, BZ2, ZLIB, and the `AUTO` selector) are accurate. See
+> `pakit-storage/docs/COMPRESSION_QUANTUM_PLAN.md` for the measure-first research scope.
+
 Pakit's compression engine maximizes storage efficiency by automatically selecting the best compression algorithm for each block.
 
 ---

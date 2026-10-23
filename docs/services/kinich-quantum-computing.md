@@ -1,6 +1,6 @@
 # Kinich Quantum Computing Layer
 
-Kinich (named after the Mayan sun god) is BelizeChain's quantum computing orchestration layer that enables validators to perform quantum workloads and earn Proof of Quantum Work (PQW) rewards. The system integrates with configured quantum backend (primary) and IBM Quantum (fallback) for hybrid quantum-classical computation.
+Kinich (named after the Mayan sun god) is BelizeChain's quantum computing orchestration layer that enables validators to perform quantum workloads and earn Proof of Quantum Work (PQW) rewards. On Ceiba no cloud provider is enabled — every job runs on the in-process simulator.
 
 ## Architecture Overview
 
@@ -285,6 +285,7 @@ print(f"Quantum job submitted: {tx_hash}")
 > The PQW **reward** is a separate on-chain step: an authorized Oracle operator
 > calls `Staking.record_quantum_contribution` with the job's `accuracy_score`.
 
+```python
 # Reward calculation (50-200 DALLA based on complexity)
 base_reward = 50
 max_reward = 200
@@ -304,86 +305,20 @@ print(f"Expected reward: {reward:.2f} DALLA")
 
 ## Quantum Compression Engine
 
-Kinich powers Pakit's quantum compression for 6.8x compression ratio:
-
-```python
-# kinich/compression/quantum_compressor.py
-from qiskit import QuantumCircuit
-from qiskit.circuit.library import RealAmplitudes
-from qiskit_optimization import QuadraticProgram
-
-class QuantumCompressor:
-    def __init__(self, backend='ionq', target_ratio=6.8):
-        self.backend = backend
-        self.target_ratio = target_ratio
-    
-    def compress(self, data_block):
-        """
-        Compress data block using quantum optimization.
-        
-        Approach:
-        1. Encode data block as QUBO (Quadratic Unconstrained Binary Optimization)
-        2. Solve QUBO using QAOA (Quantum Approximate Optimization Algorithm)
-        3. Extract optimal bit patterns for compression
-        """
-        # Convert data to QUBO
-        qubo = self.data_to_qubo(data_block)
-        
-        # Create QAOA circuit
-        qaoa = self.create_qaoa_circuit(qubo, p=3)  # 3 layers
-        
-        # Execute on quantum backend
-        backend = AzureQuantumBackend(self.backend)
-        job = backend.run(qaoa, shots=1024)
-        result = job.result()
-        
-        # Extract optimal solution
-        optimal_bitstring = max(result.get_counts(), key=result.get_counts().get)
-        
-        # Apply compression based on quantum solution
-        compressed = self.apply_compression(data_block, optimal_bitstring)
-        
-        # Calculate achieved ratio
-        ratio = len(data_block) / len(compressed)
-        
-        return compressed, ratio
-    
-    def create_qaoa_circuit(self, qubo, p=3):
-        """Create QAOA circuit for compression optimization."""
-        num_qubits = qubo.get_num_vars()
-        
-        # Initialize QAOA ansatz
-        qaoa = QuantumCircuit(num_qubits)
-        
-        # Initial superposition
-        qaoa.h(range(num_qubits))
-        
-        # QAOA layers
-        for layer in range(p):
-            # Problem Hamiltonian (encode QUBO)
-            for (i, j), coeff in qubo.objective.quadratic.items():
-                qaoa.rzz(2 * coeff, i, j)
-            
-            for i, coeff in qubo.objective.linear.items():
-                qaoa.rz(2 * coeff, i)
-            
-            # Mixer Hamiltonian
-            for i in range(num_qubits):
-                qaoa.rx(1.0, i)  # Parameterized
-        
-        # Measurement
-        qaoa.measure_all()
-        
-        return qaoa
-
-# Benchmark compression
-compressor = QuantumCompressor(backend='ionq', target_ratio=6.8)
-data_block = b'Lorem ipsum dolor sit amet...' * 100  # 2.8 KB
-
-compressed, ratio = compressor.compress(data_block)
-print(f"Compression ratio: {ratio:.2f}x ({len(data_block)} → {len(compressed)} bytes)")
-# Output: Compression ratio: 6.82x (2867 → 420 bytes)
-```
+> ⚠️ **Does not exist (verified 2026-10-23).** There is no `kinich/compression/` package, no
+> `QuantumCompressor` class, and no QAOA-based codec. Pakit's `CompressionEngine` explicitly
+> raises for `CompressionAlgorithm.QUANTUM`, and no quantum codec exists in Kinich, Nawal or
+> Pakit.
+>
+> The `6.8x` / `7.8x` ratios that used to be documented here were never produced by any run.
+> They are also physically implausible: **Schumacher coding compresses qubit states, not
+> classical bytes** — quantum mechanics gives no advantage over the classical entropy bound when
+> the input is ordinary data. A QAOA instance solving a QUBO is a combinatorial optimiser, not a
+> codec.
+>
+> The one defensible direction is using a quantum annealer to **search codec parameters or
+> cluster deduplication candidates**, with "equal ratio at lower CPU" as the success criterion.
+> See `pakit-storage/docs/COMPRESSION_QUANTUM_PLAN.md`, which scopes it as measure-first.
 
 ## Proof of Quantum Work (PQW) Algorithm
 
@@ -562,9 +497,9 @@ kinich-cli config \
 
 # Start quantum client
 kinich-cli start \
-  --min-complexity 20 \  # Only accept jobs with score > 20
-  --max-jobs 10 \        # Limit to 10 jobs per week
-  --error-mitigation zne  # Enable ZNE by default
+  --min-complexity 20 \
+  --max-jobs 10 \
+  --error-mitigation zne
 ```
 
 ## Performance Benchmarks
@@ -582,12 +517,15 @@ kinich-cli start \
 
 ### Compression Performance
 
-| Algorithm | Input Size | Compressed Size | Ratio | Quantum Advantage |
-|-----------|-----------|-----------------|-------|-------------------|
-| Classical LZ4 | 1 GB | 384 MB | 2.6x | Baseline |
-| Classical Zstandard | 1 GB | 256 MB | 3.9x | - |
-| Quantum QAOA | 1 GB | 147 MB | 6.8x | +74% vs Zstandard |
-| Quantum QAOA (optimized) | 1 GB | 128 MB | 7.8x | +100% vs Zstandard |
+> ⚠️ **No quantum compression exists.** This table previously listed QAOA at 6.8x/7.8x with a
+> "+74% vs Zstandard" advantage. Those rows were removed: there is no quantum codec, and a
+> quantum one could not beat the classical entropy bound on classical input. Only the classical
+> numbers below are real (measured, `pakit-storage` benchmarks).
+
+| Algorithm | Input Size | Compressed Size | Ratio |
+|-----------|-----------|-----------------|-------|
+| Classical LZ4 | 1 GB | 384 MB | 2.6x |
+| Classical Zstandard | 1 GB | 256 MB | 3.9x |
 
 ### Weekly Validator Earnings
 

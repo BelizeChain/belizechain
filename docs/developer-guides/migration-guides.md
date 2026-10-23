@@ -135,7 +135,7 @@ const BridgeContract = new web3.eth.Contract(BRIDGE_ABI, BRIDGE_ADDRESS);
 
 await BridgeContract.methods.lockTokens(
   ERC20_ADDRESS,
-  '1000000000000000000',  // 1 token (18 decimals)
+  '1000000000000000000',  // 1 token at 18 decimals (the EXTERNAL ERC-20's decimals)
   'BELIZECHAIN_ADDRESS'
 ).send({ from: ethereumAccount });
 
@@ -185,48 +185,15 @@ print(f"Use bridge to transfer assets from Ethereum")
 
 ## Polkadot/Kusama Parachain Migration
 
-### XCM Integration
-
-BelizeChain natively supports XCM v3 for seamless interoperability:
-
-```rust
-// Configure XCM in runtime
-impl pallet_xcm::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type SendXcmOrigin = EnsureXcmOrigin<RuntimeOrigin, LocalOriginToLocation>;
-    type XcmRouter = XcmRouter;
-    type ExecuteXcmOrigin = EnsureXcmOrigin<RuntimeOrigin, LocalOriginToLocation>;
-    type XcmExecutor = XcmExecutor<XcmConfig>;
-    // ...
-}
-
-// Transfer assets from Polkadot to BelizeChain
-let dest = MultiLocation {
-    parents: 1,
-    interior: X1(Parachain(2000))  // BelizeChain parachain ID
-};
-
-let beneficiary = MultiLocation {
-    parents: 0,
-    interior: X1(AccountId32 {
-        network: None,
-        id: beneficiary_account.into()
-    })
-};
-
-let assets = MultiAssets::from((
-    MultiLocation::here(),
-    1_000_000_000_000u128  // 1,000 DOT
-));
-
-pallet_xcm::Pallet::<Runtime>::reserve_transfer_assets(
-    origin,
-    Box::new(dest.into()),
-    Box::new(beneficiary.into()),
-    Box::new(assets.into()),
-    0  // Fee asset index
-)?;
-```
+> ⚠️ **Not available (verified 2026-10-23).** There is no `pallet_xcm`, no `XcmConfig`, and no
+> cumulus collator in this workspace — the `staging-xcm*` crates were removed from `Cargo.toml`
+> because nothing consumed them. The `impl pallet_xcm::Config` block that used to sit here was
+> documentation for code that does not exist and would not compile.
+>
+> Becoming a parachain is an architecture change, not a runtime upgrade: it needs a cumulus
+> collator binary, a relay-chain slot, and relay-governed upgrade cadence — which conflicts with
+> the sovereignty model. Cross-chain value transfer today is
+> `pallet-belize-interoperability`; see `docs/bridges/README.md`.
 
 ### Runtime Migration
 
@@ -283,10 +250,10 @@ def migrate_ipfs_to_pakit(cid):
     # Download from IPFS
     data = ipfs_client.cat(cid)
     
-    # Upload to Pakit with compression
+    # Upload to Pakit
     pakit_hash = pakit.store(
         data,
-        compression='hybrid',  # Quantum compression
+        compression='zstd',  # classical only; 'quantum' raises
         deduplication=True
     )
     

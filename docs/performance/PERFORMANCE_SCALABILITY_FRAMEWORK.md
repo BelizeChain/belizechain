@@ -1434,7 +1434,7 @@ plt.savefig('forecast.png')
 | 2. Network Infrastructure | ✅ COMPLETE | Testnet deployment ready, 7,000+ lines docs |
 | 3. Smart Contract Platform | ✅ COMPLETE | WASM runtime, PSP22/34, 3,500+ lines docs |
 | 4. DeFi Primitives | ✅ COMPLETE | AMM only (BelizeX `gem/dex`). Lending and standalone bridge contracts are **not implemented**; bridging is the `pallet-belize-interoperability` runtime pallet. |
-| 5. Cross-Chain Interoperability | ✅ COMPLETE | Ethereum + Polkadot XCM, 3,350 lines code |
+| 5. Cross-Chain Interoperability | 🟡 PARTIAL | `pallet-belize-interoperability` (index 27) only: 51 chain IDs, ML-DSA-87, DALLA/bBZD. **No XCM** — that needs a parachain. **No relayer deployed**, and `send_cross_chain_message` has no delivery path. See `docs/bridges/README.md`. |
 | 6. Performance & Scalability | ✅ COMPLETE | **Framework documented, testing roadmap defined** |
 | 7. Security & Auditing | ✅ COMPLETE | 7 documents (288KB), audit/pentest planned |
 | 8. Governance & Community | 🟡 PARTIAL | Infrastructure ready, activation pending |

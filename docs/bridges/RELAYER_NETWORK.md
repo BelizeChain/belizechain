@@ -1,5 +1,15 @@
 # Bridge Relayer Network
 
+> ⚠️ **DESIGN TARGET — NOT DEPLOYED (verified 2026-10-23).** No relayer process exists:
+> `infra/` defines no bridge or relayer service, and no worker appears in
+> `docker-compose.ceiba.yml`. The XCM/HRMP transport described below **does not exist** —
+> `pallet_xcm` and `XcmConfig` appear nowhere in the runtime, there is no Cumulus parachain
+> configuration, and the `xcm` crates in `Cargo.toml` are declared but consumed by nothing.
+> What *is* on chain is `pallet-belize-interoperability`: a bridge state machine over 51 chain
+> identifiers with ML-DSA-87 signature verification. `send_cross_chain_message` stores a
+> message; nothing ever delivers it. Read this document as a specification for work not yet
+> done.
+
 ## Overview
 
 The BelizeChain bridge relayer network securely facilitates cross-chain asset transfers between BelizeChain and external networks (Ethereum, Polkadot parachains). Relayers monitor source chains, validate transactions, and submit multi-signed proofs to destination chains.
@@ -309,8 +319,15 @@ ws.onmessage = (event) => {
 **Note**: Assumes 5 relayers split fees equally
 
 ### Slashing Distribution
-- 80% burned (deflationary)
-- 20% to treasury (bug bounties)
+- 100% burned — `slash_validator` calls `Currency::slash` and drops the imbalance, which
+  decrements `TotalIssuance`. Nothing is routed to the treasury.
+
+> ⚠️ **Correction (2026-10-23):** this document describes a relayer network with an XCM
+> transport. Neither exists. `pallet_xcm` and `XcmConfig` appear nowhere in the runtime, there
+> is no Cumulus parachain configuration, and `infra/` defines no relayer or bridge worker.
+> `pallet-belize-interoperability` is a bridge *state machine* over 51 chain identifiers with
+> ML-DSA-87 signatures; `send_cross_chain_message` stores messages that are never delivered.
+> Treat the relayer economics below as a design target, not as deployed behaviour.
 
 ## Governance Integration
 

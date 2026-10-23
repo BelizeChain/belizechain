@@ -2,18 +2,33 @@
 
 **Ethereum Bridge • Polkadot XCM • Asset Transfers • Security**
 
+> ⚠️ **Correction (2026-10-23). Read `docs/bridges/README.md` first.**
+>
+> The **Polkadot**, **Kusama** and **Moonbeam** rows below are **not implemented and cannot
+> be** without becoming a parachain. `pallet_xcm` and `XcmConfig` have never existed in this
+> runtime, there is no cumulus collator, and the `staging-xcm*` crates were removed from
+> `Cargo.toml` on 2026-10-23. The code samples further down that call
+> `api.tx.xcmPallet.limitedReserveTransferAssets` and the Moonbeam XCM precompile will fail —
+> that extrinsic does not exist on this chain.
+>
+> What does exist is `pallet-belize-interoperability` at runtime index 27: a bridge state
+> machine over 51 chain identifiers, ML-DSA-87 signatures, DALLA/bBZD only, with **no relayer
+> deployed** and **no message-delivery path**. Treat this whole document as a design target.
+
 Complete guide to cross-chain operations on BelizeChain.
 
 ---
 
 ## Supported Bridges
 
+> ⚠️ Design target. Only the runtime pallet exists; no bridge is live.
+
 | Chain | Type | Assets | Confirmation Time | Fee |
 |-------|------|--------|-------------------|-----|
 | **Ethereum** | Lock & Mint | wDALLA, wbBZD, ERC-20 → BelizeChain | ~150 seconds (10 ETH blocks) | 0.01 ETH + 10 DALLA |
-| **Polkadot** | XCM v3 | DOT, DALLA (relay chain) | ~12 seconds (2 blocks) | 5 DALLA |
-| **Kusama** | XCM v3 | KSM, DALLA | ~6 seconds (1 block) | 2 DALLA |
-| **Moonbeam** | XCM + EVM | GLMR, ERC-20 | ~18 seconds (3 blocks) | 3 DALLA |
+| **Polkadot** | ~~XCM v3~~ **not built** | — | — | — |
+| **Kusama** | ~~XCM v3~~ **not built** | — | — | — |
+| **Moonbeam** | ~~XCM + EVM~~ **not built** | — | — | — |
 
 ---
 

@@ -1,5 +1,12 @@
 # Bridge Security & Monitoring
 
+> ⚠️ **Correction (2026-10-23). Read `docs/bridges/README.md` first.**
+>
+> The monitoring described here is not deployed. There is no `bridge.polkadot.xcm` metric
+> because there is no XCM, and no bridge worker exists in `infra/` to emit any metric at all.
+> The on-chain security *controls* are real — ML-DSA-87 signatures, KYC L2 for messaging and L3
+> for operators, sanctions screening, escrow and dispute paths — but nothing observes them.
+
 ## Overview
 
 Comprehensive security monitoring system for BelizeChain cross-chain bridges. Provides real-time anomaly detection, automated incident response, and forensic analysis capabilities.

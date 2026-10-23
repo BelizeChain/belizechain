@@ -213,4 +213,15 @@ impl<T: frame_system::Config> super::WeightInfo for SubstrateWeight<T> {
 			.saturating_add(T::DbWeight::get().reads(4_u64))
 			.saturating_add(T::DbWeight::get().writes(2_u64))
 	}
+        // NOTE (2026-10-23): `acknowledge_message` is NEW and has not been through the
+        // benchmark CLI yet. The value below is derived from its storage footprint, not
+        // measured: 3 reads (`BridgeValidators`, `CrossChainMessages`) + 1 write, with the
+        // 1.25 ref_time multiplier the generator applies. A benchmark exists
+        // (`benchmarking.rs::acknowledge_message`), so `scripts/bench_weights.sh` will
+        // replace this. Regenerate before this extrinsic handles mainnet value.
+        fn acknowledge_message() -> Weight {
+                Weight::from_parts(15_000_000, 5_240)
+                        .saturating_add(T::DbWeight::get().reads(3_u64))
+                        .saturating_add(T::DbWeight::get().writes(1_u64))
+        }
 }

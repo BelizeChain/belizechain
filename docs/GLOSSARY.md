@@ -80,8 +80,10 @@ published; testnet values are simulated protocol parameters.
 → See [DAG Storage](architecture/dag-storage-design.md)
 
 **Compression**: Pakit supports:
-- **Classical**: zstd (2.6x), gzip (5.4x), lz4 (1.8x)
-- **Quantum**: 6.8-7.8x ratio (hybrid quantum-classical)
+- **Classical**: zstd, gzip, lz4, brotli, lzma, bz2, zlib, plus an `AUTO` mode
+- **Quantum**: **not available**. `CompressionEngine` raises
+  `QUANTUM_COMPRESSION_DISABLED_REASON` for `CompressionAlgorithm.QUANTUM`, and no
+  quantum codec exists. See `pakit-storage/docs/COMPRESSION_QUANTUM_PLAN.md`.
 
 → See [Compression Engine](architecture/dag-compression-engine.md)
 
@@ -108,7 +110,8 @@ published; testnet values are simulated protocol parameters.
 
 ## D
 
-**DAG (Directed Acyclic Graph)**: Pakit storage structure using IPLD. Content-addressed, deduplication, quantum compression.
+**DAG (Directed Acyclic Graph)**: Pakit storage structure using IPLD. Content-addressed,
+with deduplication and classical compression.
 
 → See [DAG Storage](architecture/dag-storage-design.md)
 
@@ -250,8 +253,8 @@ published; testnet values are simulated protocol parameters.
 **Keyring**: Account manager holding private keys. Supports sr25519, ed25519, ecdsa.
 
 **Kinich**: Quantum computing layer:
-- **Backends**: IonQ, Quantinuum, IBM, Rigetti
-- **Compression**: 6.8x quantum ratio
+- **Backends**: Azure Quantum (IonQ, Quantinuum, Rigetti), IBM, SpinQ adapter, local simulator
+- **On Ceiba**: no cloud provider enabled — every job runs on the in-process simulator
 - **PQW**: Proof of Quantum Work (50-200 DALLA/job)
 
 → See [Kinich Quantum](services/kinich-quantum-computing.md)
@@ -304,7 +307,10 @@ published; testnet values are simulated protocol parameters.
 
 **Nonce**: Transaction sequence number preventing replay attacks. Increments with each transaction from account.
 
-**Nominator**: DALLA holder delegating stake to validators. Shares rewards proportionally.
+**Nominator**: **Does not exist on this chain.** `pallet-staking` is validator-only — there is
+no `nominate` extrinsic, no `Nominators` storage and no commission field. Delegation exists
+only in governance, where a holder can delegate *voting power* to a seated delegate
+(`nominate_for_delegate` / `vote_for_delegate` / `revoke_delegation`).
 
 → See [Staking](economics/staking-rewards.md)
 
@@ -320,8 +326,8 @@ published; testnet values are simulated protocol parameters.
 
 **Pakit**: Sovereign DAG storage system:
 - **Structure**: Content-addressed IPLD
-- **Compression**: 6.8x quantum ratio
-- **Deduplication**: 2.3x storage savings
+- **Compression**: ZSTD, LZ4, Brotli, LZMA, BZ2, ZLIB with an `AUTO` predictor mode
+- **Deduplication**: SimHash + LSH near-duplicate detection
 - **Encryption**: AES-256 optional
 
 → See [DAG Storage](architecture/dag-storage-design.md)
@@ -369,9 +375,12 @@ published; testnet values are simulated protocol parameters.
 
 ## Q
 
-**Quantum Compression**: 6.8-7.8x ratio achieved through quantum-assisted algorithms. Integrated into Pakit storage.
+**Quantum Compression**: **Not implemented.** Pakit's `CompressionEngine` raises for
+`CompressionAlgorithm.QUANTUM`, and no quantum codec exists in Kinich, Nawal or Pakit. The
+`6.8-7.8x` figure this entry used to quote was never produced by any run. Quantum-assisted
+*codec-parameter search* is a research direction; it cannot beat the classical entropy bound.
 
-→ See [Kinich Quantum](services/kinich-quantum-computing.md#quantum-compression)
+→ See [Kinich Quantum](services/kinich-quantum-computing.md)
 
 **Quantum Computing**: Kinich layer supports:
 - **IonQ**: 25 qubits, 99.5% fidelity
@@ -480,13 +489,20 @@ published; testnet values are simulated protocol parameters.
 
 ## X
 
-**XCM (Cross-Consensus Messaging)**: Polkadot interoperability protocol. BelizeChain supports XCM v3 for asset transfers.
+**XCM (Cross-Consensus Messaging)**: Polkadot's interoperability protocol. **BelizeChain does not
+support it.** `pallet_xcm` and `XcmConfig` appear nowhere in the runtime and have zero commits in
+git history; the `xcm` crates in `Cargo.toml` are declared but consumed by nothing. What exists is
+`pallet-belize-interoperability`: a bridge state machine over 51 chain identifiers with ML-DSA-87
+signatures, whose `send_cross_chain_message` stores messages that nothing delivers.
 
-→ See [Bridges](operations/bridges-dex-landledger.md#polkadot-xcm)
+→ See [Bridges](operations/bridges-dex-landledger.md#polkadot-xcm) — read its correction banner
 
 ## Z
 
-**ZNE (Zero-Noise Extrapolation)**: Quantum error mitigation technique. Kinich achieves 72% error reduction.
+**ZNE (Zero-Noise Extrapolation)**: Quantum error mitigation technique implemented in Kinich
+(`apply_zero_noise_extrapolation`). The "72% error reduction" figure this entry used to quote was
+never measured. Related: `apply_dynamic_decoupling` **raises**
+`ErrorMitigationUnavailableError` by design — it is not implemented.
 
 → See [Kinich Quantum](services/kinich-quantum-computing.md#error-mitigation)
 

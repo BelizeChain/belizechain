@@ -110,18 +110,19 @@ await api.tx.staking.joinValidators(
 
 **Returns:**
 ```
-Validator commission: 5-20% (set by validator)
-Nominator share: 80-95% of rewards
+There is no validator commission and no nominator share.
+`distribute_rewards` mints the whole computed reward to the validator account:
+  timeliness 20% + honesty 20% + stake 5%  (= 45% of base; the rest is unallocated)
 
-Illustrative example (placeholder parameters):
-Stake: 10,000 DALLA
-Validator APY: 544%
-Commission: 10%
+Your reward for a given base:
+  reward = 0.20 × (timeliness/100) × base
+         + 0.20 × (honesty/100)    × base
+         + 0.05 × stake_ratio      × base
+  where stake_ratio = min(stake, 10 × 1,000 DALLA) / 10,000 DALLA
 
-Your rewards:
-= 10,000 × 544% × (1 - 0.10)
-= 48,960 DALLA/year
-= 489.6% APY
+A 10,000 DALLA stake at timeliness 100 and honesty 100 earns 45% of base.
+There is no APY figure here because no network-wide reward total has been
+measured — quoting one would be an invention.
 ```
 
 ---
@@ -371,33 +372,36 @@ Miss 25% of blocks: Kicked from validator set
 
 ## Total Earnings Potential
 
+> ⚠️ **No APY can be quoted.** Every reward figure below is derived from a base that has never
+> been measured on a real network. The old "10,920% APY on a 500K stake" was arithmetic on an
+> invented 54.6M/year pool split across an assumed 21 validators. It is not a projection; delete
+> it from your expectations.
+>
+> What is actually known: a validator's payout is the 45%-weighted formula in
+> [Reward Calculation](#reward-calculation), and annual inflation starts at 5% of supply and
+> falls to a 1% floor. Turning that into an APY requires knowing the total stake, which at
+> present is a single authority on a testnet.
+
 ### Full Node Operator (All Capabilities)
 
 ```
-Block production: 54.4M DALLA/year
-PoUW (Nawal): 127K DALLA/year
-PQW (Kinich): 78K DALLA/year
-Governance: 30 DALLA/year
-Total: ~54.6M DALLA/year
+Reward weight you can actually influence:
+  timeliness  20%  — submit before the deadline
+  honesty     20%  — do not get slashed (each offence costs 20 points permanently)
+  stake        5%  — saturates at 10 × MinValidatorStake = 10,000 DALLA
 
-ROI on 500K DALLA stake:
-= 54.6M / 500K
-= 10,920% APY
-
-Note: Shared among 21 validators, individual
-      earnings depend on total network stake
+PQW and Nawal bonuses exist as separate pallet paths, but neither is verified
+end-to-end, so no figure is quoted for them here.
 ```
 
-### Passive Nominator
+### Passive Delegator (governance only)
+
+> ⚠️ There is no passive **staking** role. You cannot bond DALLA to someone else's validator.
+> The only passive role is governance vote delegation, which pays nothing.
 
 ```
-Nominator stake: 10,000 DALLA
-Validator commission: 10%
-Base APY: 544% (illustrative example)
-
-Annual earnings: 48,960 DALLA
-+ Governance participation: ~30 DALLA
-Total: ~49K DALLA/year (490% APY)
+Delegate voting power: any amount
+Staking rewards: 0 — delegation moves votes, not stake
 ```
 
 ### Tourism Merchant

@@ -78,7 +78,9 @@ The identity system demonstrates genuine privacy engineering:
 
 The dual-token architecture is well-reasoned:
 
-- **DALLA**: Gas, governance, staking, DEX, AI/quantum payments — deflationary through NFT minting burns
+- **DALLA**: Gas, governance, staking, DEX, AI/quantum payments — supply can be reduced only
+  through the explicit `burn_dalla` (holder) and `governance_burn` (treasury) extrinsics.
+  Fees are **not** burned: `OnChargeTransaction = FungibleAdapter<Balances, ()>`.
 - **bBZD**: USDC-style fiat-backed stablecoin — Central Bank mint/burn, NOT collateralized by DALLA
 - **Hard cap**: 501B DALLA with supply invariant guard in `on_initialize`
 - **Annual inflation**: 5% initially, decreasing 0.1%/yr to a 1% floor, to treasury; gated by max supply

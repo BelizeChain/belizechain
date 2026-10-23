@@ -2859,3 +2859,129 @@ fn dispute_reserves_correct_bond_amount() {
         assert_eq!(Balances::free_balance(ALICE), free_before - expected_bond);
     });
 }
+
+// ============================================================================
+// Acknowledge Message Tests
+//
+// `send_cross_chain_message` writes `delivered: false`. Before
+// `acknowledge_message` existed there was no path that ever wrote `true`, so
+// outbound messaging was an append-only log rather than a transport.
+// ============================================================================
+
+/// Register `who` as a bridge validator. The mock already treats accounts 1-3 as
+/// KYC Level 3 bridge operators, so no KYC grant is needed here.
+fn register_validator_for_messaging(who: u64) {
+    let account: u64 = who;
+    BridgeValidators::<Test>::insert(
+        account,
+        BridgeValidator {
+            account,
+            pq_public_key: vec![0xAB; 64].try_into().unwrap(),
+            supported_chains: vec![BridgeChain::Ethereum].try_into().unwrap(),
+            stake: 1_000_000,
+            reliability_score: 100,
+            signatures_count: 0,
+            failed_signatures: 0,
+        },
+    );
+}
+
+/// Seed a sent-but-undelivered message and return its id.
+fn seed_undelivered_message() -> u32 {
+    let message_id = 0u32;
+    CrossChainMessages::<Test>::insert(
+        message_id,
+        crate::CrossChainMessage {
+            message_id,
+            source_chain: BridgeChain::Polkadot,
+            target_chain: BridgeChain::Ethereum,
+            payload: vec![1u8; 32].try_into().unwrap(),
+            message_hash: [1u8; 32],
+            delivered: false,
+            timestamp: 0,
+        },
+    );
+    message_id
+}
+
+#[test]
+fn acknowledge_message_marks_delivered() {
+    new_test_ext().execute_with(|| {
+        register_validator_for_messaging(ALICE);
+        let message_id = seed_undelivered_message();
+
+        assert_ok!(Interoperability::acknowledge_message(
+            RuntimeOrigin::signed(ALICE),
+            message_id,
+        ));
+
+        let message = Interoperability::cross_chain_messages(message_id).unwrap();
+        assert!(
+            message.delivered,
+            "acknowledgement must set delivered = true"
+        );
+    });
+}
+
+#[test]
+fn acknowledge_message_emits_event() {
+    new_test_ext().execute_with(|| {
+        register_validator_for_messaging(ALICE);
+        let message_id = seed_undelivered_message();
+
+        assert_ok!(Interoperability::acknowledge_message(
+            RuntimeOrigin::signed(ALICE),
+            message_id,
+        ));
+
+        System::assert_has_event(RuntimeEvent::Interoperability(
+            crate::Event::CrossChainMessageDelivered {
+                message_id,
+                target_chain: 1, // Ethereum
+                acknowledged_by: ALICE,
+            },
+        ));
+    });
+}
+
+#[test]
+fn acknowledge_message_rejects_second_acknowledgement() {
+    new_test_ext().execute_with(|| {
+        register_validator_for_messaging(ALICE);
+        let message_id = seed_undelivered_message();
+
+        assert_ok!(Interoperability::acknowledge_message(
+            RuntimeOrigin::signed(ALICE),
+            message_id,
+        ));
+        assert_noop!(
+            Interoperability::acknowledge_message(RuntimeOrigin::signed(ALICE), message_id),
+            crate::Error::<Test>::MessageAlreadyDelivered
+        );
+    });
+}
+
+#[test]
+fn acknowledge_message_requires_registered_validator() {
+    new_test_ext().execute_with(|| {
+        // BOB has KYC Level 3 in the mock but is not in BridgeValidators
+        let message_id = seed_undelivered_message();
+
+        assert_noop!(
+            Interoperability::acknowledge_message(RuntimeOrigin::signed(BOB), message_id),
+            crate::Error::<Test>::ValidatorNotRegistered
+        );
+    });
+}
+
+#[test]
+fn acknowledge_message_rejects_unknown_message() {
+    new_test_ext().execute_with(|| {
+        register_validator_for_messaging(ALICE);
+
+        assert_noop!(
+            Interoperability::acknowledge_message(RuntimeOrigin::signed(ALICE), 999u32),
+            crate::Error::<Test>::MessageNotFound
+        );
+    });
+}

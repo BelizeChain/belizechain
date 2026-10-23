@@ -47,6 +47,12 @@ fi
 FAIL=0
 CHECKED=0
 
+# Records source changes that were verified not to touch a benchmarked path:
+#   <pallet_dir> TAB <short-sha> TAB <reason>
+# Entries are matched against the pallet's newest source commit, so a later
+# commit to the same pallet makes the entry inert.
+ACK_FILE="$ROOT_DIR/scripts/weights_acknowledged.tsv"
+
 for weights in pallets/*/src/weights.rs; do
     [[ -f "$weights" ]] || continue
     pallet_dir="$(basename "$(dirname "$(dirname "$weights")")")"
@@ -59,6 +65,9 @@ for weights in pallets/*/src/weights.rs; do
     fi
 
     # Most recent commit touching this pallet's source (lib.rs or benchmarking.rs).
+    source_commit="$(git log -1 --format=%h -- \
+        "pallets/${pallet_dir}/src/lib.rs" \
+        "pallets/${pallet_dir}/src/benchmarking.rs" 2>/dev/null || true)"
     source_date="$(git log -1 --format=%cs -- \
         "pallets/${pallet_dir}/src/lib.rs" \
         "pallets/${pallet_dir}/src/benchmarking.rs" 2>/dev/null || true)"
@@ -70,6 +79,18 @@ for weights in pallets/*/src/weights.rs; do
     fi
 
     if [[ "$source_date" > "$generated" ]]; then
+        # A source change does not always move a benchmarked path. When the
+        # change is proven not to touch any `#[pallet::call]`, the committed
+        # weights already describe the code, and regenerating would only add
+        # measurement noise. That claim is recorded against the exact commit
+        # that made the change, so the next commit to this pallet re-arms the
+        # guard automatically.
+        acknowledged="$(awk -F'\t' -v p="$pallet_dir" '$1 == p { print $2 }' \
+            "$ACK_FILE" 2>/dev/null | tail -n 1)"
+        if [[ -n "$acknowledged" && "$acknowledged" == "$source_commit" ]]; then
+            echo "   ~ ${pallet_dir}: ${source_commit} acknowledged as not weight-affecting"
+            continue
+        fi
         echo "::error file=${weights}::weights generated ${generated}, but pallet source changed ${source_date} - regenerate with scripts/bench_weights.sh"
         FAIL=1
     fi

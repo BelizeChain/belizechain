@@ -501,9 +501,10 @@ Phase 4: 1,000,000 TPS (Quantum Enhancement)
 ### 11.1 Blockchain Interoperability
 
 **Polkadot Ecosystem:**
-- Parachain slot acquisition planning
-- Cross-chain message passing (XCM)
-- Shared security benefits
+- Parachain slot acquisition planning — **not pursued**; would require a cumulus collator and
+  relay-governed upgrades, which conflicts with the sovereignty model
+- Cross-chain message passing (XCM) — **not built**; see `docs/bridges/README.md`
+- Shared security benefits — only available as a parachain
 - Ecosystem collaboration opportunities
 
 **Ethereum Compatibility:**

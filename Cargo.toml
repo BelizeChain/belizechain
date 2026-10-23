@@ -117,12 +117,17 @@ pallet-proxy = { git = "https://github.com/paritytech/polkadot-sdk", rev = "7a8d
 # Smart Contracts (GEM Platform)
 pallet-contracts = { git = "https://github.com/paritytech/polkadot-sdk", rev = "7a8daa68e18718c18823c1109513fdc1c8aa71fe", default-features = false }
 
-# Polkadot SDK XCM (cross-chain messaging)
-polkadot-cli = { git = "https://github.com/paritytech/polkadot-sdk", rev = "7a8daa68e18718c18823c1109513fdc1c8aa71fe" }
-polkadot-primitives = { git = "https://github.com/paritytech/polkadot-sdk", rev = "7a8daa68e18718c18823c1109513fdc1c8aa71fe" }
-xcm = { package = "staging-xcm", git = "https://github.com/paritytech/polkadot-sdk", rev = "7a8daa68e18718c18823c1109513fdc1c8aa71fe", default-features = false }
-xcm-builder = { package = "staging-xcm-builder", git = "https://github.com/paritytech/polkadot-sdk", rev = "7a8daa68e18718c18823c1109513fdc1c8aa71fe", default-features = false }
-xcm-executor = { package = "staging-xcm-executor", git = "https://github.com/paritytech/polkadot-sdk", rev = "7a8daa68e18718c18823c1109513fdc1c8aa71fe", default-features = false }
+# NOTE: there is no XCM here, deliberately.
+#
+# BelizeChain is a sovereign L1, not a parachain, so there is no relay chain to
+# send XCM to. `pallet-xcm`/`XcmConfig` have never existed in this runtime and the
+# `staging-xcm*` crates were declared-but-unconsumed until 2026-10-23, when they
+# were removed. Cross-chain value transfer is `pallet-belize-interoperability`
+# (runtime index 27) over ML-DSA-87 signatures — see docs/bridges/README.md.
+#
+# If a parachain path is ever taken it is an architecture change, not a feature:
+# it needs a cumulus collator binary, a relay-chain slot, and relay-governed
+# upgrade cadence.
 
 # General dependencies  
 codec = { package = "parity-scale-codec", version = "3.6.12", default-features = false, features = ["derive", "max-encoded-len"] }
