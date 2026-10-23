@@ -268,3 +268,64 @@ jobs:
             --ignore RUSTSEC-2026-0381 \
             --ignore RUSTSEC-2026-0382 \
             2>&1
+
+  # ── 4. Dependabot alerts — the advisories RustSec does not carry ──────────
+  #
+  # `cargo audit` and `cargo deny` both read the RustSec advisory database.
+  # Some GitHub-reviewed advisories never reach it, so a crate can be flagged by
+  # Dependabot while both scanners report clean. That gap is real and was found
+  # on 2026-10-23: GHSA-5j98-2g5x-46v6 (hickory-resolver — DNSSEC validation
+  # failures obscured) is reported by Dependabot and by neither of our scanners,
+  # because RustSec has no hickory-resolver entry at all.
+  #
+  # This job is the compensating control: it reads the alerts GitHub has already
+  # computed for this repo and fails on anything open at high or critical. It is
+  # advisory-database independent, so the same gap cannot blind it.
+  dependabot:
+    name: 🤖 Dependabot Alerts
+    runs-on: ubuntu-latest
+    # Reading alerts needs this scope; without it the API returns 403 and the
+    # job would pass for the wrong reason.
+    permissions:
+      contents: read
+      security-events: read
+      pull-requests: read
+    steps:
+      - name: Fail on open high/critical Dependabot alerts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -o pipefail
+          # `state=open` only — dismissed and fixed alerts are decisions already
+          # made and should not re-fail the build.
+          gh api --paginate \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${REPO}/dependabot/alerts?state=open&per_page=100" \
+            > alerts.json
+
+          count="$(jq '[.[] | select(.security_advisory.severity == "high"
+            or .security_advisory.severity == "critical")] | length' alerts.json)"
+
+          if [ "$count" -eq 0 ]; then
+            echo "OK: no open high or critical Dependabot alerts"
+            exit 0
+          fi
+
+          jq -r '.[]
+            | select(.security_advisory.severity == "high"
+              or .security_advisory.severity == "critical")
+            | .security_advisory.severity as $sev
+            | .security_advisory.ghsa_id as $ghsa
+            | .security_advisory.summary as $summary
+            | .dependency.package.name as $pkg
+            | .dependency.manifest_path as $manifest
+            | (.security_vulnerability.vulnerable_version_range // "?") as $range
+            | (.security_vulnerability.first_patched_version.identifier // "none") as $patched
+            | "::error::\($sev) \($ghsa) \($pkg) (\($manifest)): \($summary) | vulnerable: \($range) | patched: \($patched)"' \
+            alerts.json
+
+          echo "::error::${count} open high/critical Dependabot alert(s)."
+          echo "::error::If the fix needs a semver-incompatible bump, record that"
+          echo "::error::decision in deny.toml rather than dismissing silently."
+          exit 1

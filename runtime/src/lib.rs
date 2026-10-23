@@ -1671,6 +1671,9 @@ impl pallet_belize_staking::Config for Runtime {
 
 impl pallet_belize_oracle::Config for Runtime {
     type OracleAdminOrigin = TechnicalCouncilMember;
+    // P1-06: merchant verification grants tourism-tax benefits, so it needs a
+    // council majority rather than the single-member `OracleAdminOrigin` above.
+    type MerchantVerificationOrigin = TechnicalCouncilMajority;
     // AR-7: wire token transfer capability so oracle rewards are actually disbursed
     type Currency = Balances;
     type TreasuryAccount = TreasuryAccount;
@@ -1732,6 +1735,9 @@ impl pallet_belize_interoperability::Config for Runtime {
 
 impl pallet_belize_belizex::Config for Runtime {
     type Currency = Balances;
+    // P1-08: DALLA settles against `Balances`, bBZD against the economy pallet's
+    // `BBZDBalances`. Before this the DEX moved DALLA for every asset label.
+    type Assets = BelizeXAssetLedger;
     type Randomness = pallet_babe::RandomnessFromOneEpochAgo<Runtime>;
     type TradingFeeRate = ConstU32<30>; // 0.3%
     type TourismDiscountRate = ConstU32<50>; // 0.5% discount
@@ -2481,9 +2487,80 @@ impl pallet_belize_belizex::KycCheck<AccountId> for BelizeXKycProvider {
     }
 }
 
+/// Routes BelizeX settlement to the ledger that actually holds each asset
+/// (P1-08).
+///
+/// Before this, `belizex` settled every `AssetId` through `Balances`, so a
+/// DALLA/bBZD trade moved DALLA twice and `remove_liquidity` paid the two sides
+/// as one native transfer. bBZD lives in `pallet-belize-economy`, which the DEX
+/// pallet cannot depend on directly, so the mapping belongs here.
+///
+/// `TourismDALLA` is a discount flag rather than a separate balance and shares
+/// the DALLA ledger. `WUSDC` has no ledger in this runtime, so it fails closed
+/// with `UnsupportedAsset` instead of inventing a balance.
+pub struct BelizeXAssetLedger;
+
+impl pallet_belize_belizex::AssetLedger<AccountId> for BelizeXAssetLedger {
+    fn balance_of(asset: pallet_belize_belizex::AssetId, who: &AccountId) -> u128 {
+        use pallet_belize_belizex::AssetId;
+        match asset {
+            AssetId::DALLA | AssetId::TourismDALLA => Balances::free_balance(who),
+            AssetId::BBZD => Economy::bbzd_balances(who),
+            AssetId::WUSDC => 0,
+        }
+    }
+
+    fn transfer(
+        asset: pallet_belize_belizex::AssetId,
+        from: &AccountId,
+        to: &AccountId,
+        amount: u128,
+    ) -> frame_support::dispatch::DispatchResult {
+        use pallet_belize_belizex::{AssetId, Error as BelizeXError};
+
+        if amount == 0 {
+            return Ok(());
+        }
+        match asset {
+            AssetId::DALLA | AssetId::TourismDALLA => {
+                // SAFETY(saturated_into): u128 -> Balance is lossless on this
+                // runtime (Balance is u128).
+                <Balances as frame_support::traits::Currency<AccountId>>::transfer(
+                    from,
+                    to,
+                    amount,
+                    frame_support::traits::ExistenceRequirement::AllowDeath,
+                )
+                .map(|_| ())
+                .map_err(|_| BelizeXError::<Runtime>::InsufficientBalance.into())
+            }
+            AssetId::BBZD => {
+                // The DEX already checked KYC and pause state on entry, but
+                // sanctions are re-checked here because bBZD transfers are
+                // regulated and this path bypasses `transfer_bbzd`'s origin
+                // check. Failing closed is the only safe default.
+                if providers::runtime_is_sanctioned(from) || providers::runtime_is_sanctioned(to) {
+                    return Err(BelizeXError::<Runtime>::Unauthorized.into());
+                }
+                let balance = Economy::bbzd_balances(from);
+                if balance < amount {
+                    return Err(BelizeXError::<Runtime>::InsufficientBalance.into());
+                }
+                pallet_belize_economy::BBZDBalances::<Runtime>::mutate(from, |b| {
+                    *b = b.saturating_sub(amount)
+                });
+                pallet_belize_economy::BBZDBalances::<Runtime>::mutate(to, |b| {
+                    *b = b.saturating_add(amount)
+                });
+                Ok(())
+            }
+            AssetId::WUSDC => Err(BelizeXError::<Runtime>::UnsupportedAsset.into()),
+        }
+    }
+}
+
 /// Identity provider for Interoperability bridges (Phase 3)
 pub struct InteroperabilityIdentityProvider;
-
 impl pallet_belize_interoperability::InteroperabilityIdentityProvider<AccountId>
     for InteroperabilityIdentityProvider
 {

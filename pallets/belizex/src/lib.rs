@@ -11,9 +11,7 @@
 
 use frame_support::{
     pallet_prelude::*,
-    traits::{
-        Currency, ExistenceRequirement, Get, LockableCurrency, Randomness, ReservableCurrency,
-    },
+    traits::{Currency, Get, LockableCurrency, Randomness, ReservableCurrency},
     weights::{constants::RocksDbWeight, Weight},
     PalletId,
 };
@@ -30,6 +28,33 @@ use sp_std::vec::Vec;
 // use sp_std::collections::btree_map::BTreeMap; // No per-pair LP token map stored currently
 
 pub use pallet::*;
+
+/// Per-asset ledger behind the `AssetId` labels (P1-08 root cause).
+///
+/// Before this trait, `belizex` settled **every** asset through `T::Currency`,
+/// i.e. the native DALLA balance. `AssetId` was a label with no ledger behind
+/// it, so a "DALLA/bBZD" trade moved DALLA twice and `remove_liquidity` paid
+/// `base_amount + quote_amount` as one native transfer. bBZD lives in
+/// `pallet-belize-economy`'s `BBZDBalances`, which this pallet had no dependency
+/// on and could not reach.
+///
+/// The runtime implements this by delegating DALLA to `Balances` and bBZD to the
+/// economy pallet, so each asset settles against its real ledger.
+///
+/// `TourismDALLA` is a fee/discount flag rather than a separate balance and maps
+/// to the DALLA ledger. `WUSDC` has no ledger in this runtime; implementations
+/// must reject it rather than inventing a balance.
+pub trait AssetLedger<AccountId> {
+    /// Spendable balance of `asset` held by `who`.
+    fn balance_of(asset: AssetId, who: &AccountId) -> u128;
+
+    /// Move `amount` of `asset` from `from` to `to`.
+    ///
+    /// Must fail rather than create value. Implementations are responsible for
+    /// whatever per-asset checks they need (sanctions, existence requirements);
+    /// the pallet has already checked KYC and pause state before calling.
+    fn transfer(asset: AssetId, from: &AccountId, to: &AccountId, amount: u128) -> DispatchResult;
+}
 
 pub mod weights;
 
@@ -83,6 +108,14 @@ pub mod pallet {
         type Currency: Currency<Self::AccountId>
             + ReservableCurrency<Self::AccountId>
             + LockableCurrency<Self::AccountId>;
+
+        /// Per-asset ledger used to settle trades and liquidity (P1-08).
+        ///
+        /// `Currency` above remains the DALLA ledger and is still used for
+        /// deposits and LP accounting. Settlement goes through this trait so
+        /// bBZD moves against its real balance instead of being simulated as
+        /// native currency.
+        type Assets: AssetLedger<Self::AccountId>;
 
         /// X-10 NOTE: Randomness source reserved for future LP token generation.
         /// Currently unused — required by Config trait for forward compatibility.
@@ -162,7 +195,7 @@ pub mod pallet {
 
     /// Asset identifiers in BelizeChain
     #[derive(
-        Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, Ord, PartialOrd,
+        Encode, Decode, Copy, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen, Ord, PartialOrd,
     )]
     #[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
     pub enum AssetId {
@@ -560,6 +593,10 @@ pub mod pallet {
     pub enum Error<T> {
         /// Trading pair not found
         PairNotFound,
+        /// Multi-hop path was empty, so no input or output asset is defined
+        InvalidPath,
+        /// This asset has no ledger in the runtime (e.g. WUSDC today)
+        UnsupportedAsset,
         /// Trading pair already exists
         PairAlreadyExists,
         /// Insufficient balance for trade
@@ -715,14 +752,16 @@ pub mod pallet {
                 Error::<T>::SlippageExceeded
             );
 
-            // Transfer funds to the DEX pool escrow account
+            // Transfer funds to the DEX pool escrow account.
+            //
+            // P1-08: these were previously summed into a single native transfer,
+            // which only balanced because every asset was DALLA. Each side now
+            // moves against its own ledger.
             let pool = Self::pool_account();
-            T::Currency::transfer(
-                &who,
-                &pool,
-                base_amount.saturating_add(quote_amount),
-                ExistenceRequirement::KeepAlive,
-            )?;
+            let base_id = AssetId::from(base_asset);
+            let quote_id = AssetId::from(quote_asset);
+            T::Assets::transfer(base_id, &who, &pool, base_amount.saturated_into())?;
+            T::Assets::transfer(quote_id, &who, &pool, quote_amount.saturated_into())?;
 
             // Update pair reserves
             pair.base_reserve = pair.base_reserve.saturating_add(base_amount_u128);
@@ -852,26 +891,14 @@ pub mod pallet {
 
             ensure!(amount_out >= min_amount_out, Error::<T>::SlippageExceeded);
 
-            // Transfer input amount from trader to DEX pool
+            // P1-08: settle each leg in its own asset. `amount_in` is the base
+            // asset (it is priced against `base_reserve`) and `amount_out` is the
+            // quote asset.
             let pool = Self::pool_account();
-            T::Currency::transfer(
-                &who,
-                &pool,
-                // SAFETY(saturated_into): Balance → Balance identity; saturation is a no-op.
-                amount_in.saturated_into(),
-                ExistenceRequirement::KeepAlive,
-            )?;
-
-            // Transfer output amount from DEX pool to trader
-            // SAFETY(saturated_into): u128 → Balance; output is bounded by pool reserve which fits in Balance.
-            let amount_out_balance: <T::Currency as Currency<T::AccountId>>::Balance =
-                amount_out.saturated_into();
-            T::Currency::transfer(
-                &pool,
-                &who,
-                amount_out_balance,
-                ExistenceRequirement::AllowDeath,
-            )?;
+            let base_id = AssetId::from(base_asset);
+            let quote_id = AssetId::from(quote_asset);
+            T::Assets::transfer(base_id, &who, &pool, amount_in_u128)?;
+            T::Assets::transfer(quote_id, &pool, &who, amount_out)?;
 
             // Update reserves: LP fee is retained in pool
             pair.base_reserve = pair
@@ -882,15 +909,10 @@ pub mod pallet {
 
             TradingPairs::<T>::insert(pair_key, pair);
 
-            // Transfer treasury portion of fee from pool to treasury
+            // Transfer treasury portion of fee from pool to treasury. The fee is
+            // a fraction of `amount_in`, so it is denominated in the base asset.
             let treasury = T::Treasury::get();
-            T::Currency::transfer(
-                &pool,
-                &treasury,
-                // SAFETY(saturated_into): u128 → Balance; treasury fee ≤ amount_in which originated as Balance.
-                treasury_fee.saturated_into(),
-                ExistenceRequirement::AllowDeath,
-            )?;
+            T::Assets::transfer(base_id, &pool, &treasury, treasury_fee)?;
 
             Self::deposit_event(Event::TradeExecuted {
                 trader: who,
@@ -1054,14 +1076,11 @@ pub mod pallet {
             let mut amount: u128 = amount_in.saturated_into();
             let mut total_treasury_fee: u128 = 0;
 
-            // X-2 FIX: Transfer input tokens from trader to DEX pool before executing hops
+            // X-2 FIX: Transfer input tokens from trader to DEX pool before
+            // executing hops. P1-08: denominated in the first asset of the path.
             let pool = Self::pool_account();
-            T::Currency::transfer(
-                &who,
-                &pool,
-                amount_in.saturated_into(),
-                ExistenceRequirement::KeepAlive,
-            )?;
+            let first_asset = AssetId::from(*path.first().ok_or(Error::<T>::InvalidPath)?);
+            T::Assets::transfer(first_asset, &who, &pool, amount_in.saturated_into())?;
 
             for w in path.windows(2) {
                 let a = w[0];
@@ -1137,25 +1156,15 @@ pub mod pallet {
             ensure!(amount >= min_amount_out, Error::<T>::SlippageExceeded);
 
             // X-2 FIX: Transfer final output tokens from DEX pool to trader
-            let amount_out_balance: <T::Currency as Currency<T::AccountId>>::Balance =
-                amount.saturated_into();
-            T::Currency::transfer(
-                &pool,
-                &who,
-                amount_out_balance,
-                ExistenceRequirement::AllowDeath,
-            )?;
+            // P1-08: output is denominated in the last asset of the path.
+            let last_asset = AssetId::from(*path.last().ok_or(Error::<T>::InvalidPath)?);
+            T::Assets::transfer(last_asset, &pool, &who, amount)?;
 
-            // Transfer aggregated treasury fee from pool to treasury
+            // Transfer aggregated treasury fee from pool to treasury. Fees were
+            // taken from the input leg, so they are in the first asset.
             if total_treasury_fee > 0 {
                 let treasury = T::Treasury::get();
-                T::Currency::transfer(
-                    &pool,
-                    &treasury,
-                    // SAFETY(saturated_into): u128 → Balance; total fee ≤ amount_in which originated as Balance.
-                    total_treasury_fee.saturated_into(),
-                    frame_support::traits::ExistenceRequirement::AllowDeath,
-                )?;
+                T::Assets::transfer(first_asset, &pool, &treasury, total_treasury_fee)?;
             }
 
             // Emit final event with last pair of path for reference
@@ -1274,11 +1283,16 @@ pub mod pallet {
                 Error::<T>::SlippageExceeded
             );
 
-            // Transfer funds from pool back to provider
+            // Transfer funds from pool back to provider.
+            //
+            // P1-08: this used to pay `base_amount + quote_amount` as a single
+            // native transfer, which was only meaningful when both sides were
+            // DALLA. Each side is now paid in its own asset.
             let pool = Self::pool_account();
-            let total_return: <T::Currency as Currency<T::AccountId>>::Balance =
-                base_amount.saturating_add(quote_amount).saturated_into();
-            T::Currency::transfer(&pool, &who, total_return, ExistenceRequirement::AllowDeath)?;
+            let base_id = AssetId::from(base_asset);
+            let quote_id = AssetId::from(quote_asset);
+            T::Assets::transfer(base_id, &pool, &who, base_amount)?;
+            T::Assets::transfer(quote_id, &pool, &who, quote_amount)?;
 
             // Update pair reserves and total LP tokens
             pair.base_reserve = pair.base_reserve.saturating_sub(base_amount);

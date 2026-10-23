@@ -89,6 +89,11 @@ parameter_types! {
 
 impl pallet_belize_oracle::Config for Test {
     type OracleAdminOrigin = frame_system::EnsureRoot<u64>;
+    // P1-06: Root in the mock so tests exercise the gate without standing up a
+    // collective. The real wiring (TechnicalCouncil majority) is asserted in
+    // the runtime, and `verify_merchant_requires_council_origin` proves a plain
+    // signed origin is refused.
+    type MerchantVerificationOrigin = frame_system::EnsureRoot<u64>;
     type MaxOperators = MaxOperators;
     type MaxDataStaleness = MaxDataStaleness;
     type MinConsensusOperators = MinConsensusOperators;

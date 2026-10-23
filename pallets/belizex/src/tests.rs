@@ -1,6 +1,53 @@
 //! Unit tests for BelizeX pallet
 
 use super::*;
+
+/// Test ledger: maps every asset onto the mock `Balances` so existing tests keep
+/// their single-currency semantics, while still exercising the real
+/// `AssetLedger` seam that production uses.
+pub struct MockAssetLedger;
+
+#[cfg(test)]
+thread_local! {
+    /// Asset of every transfer the mock ledger has performed, in order.
+    static TRANSFER_LOG: core::cell::RefCell<Vec<(AssetId, u64, u64)>> =
+        const { core::cell::RefCell::new(Vec::new()) };
+}
+
+impl MockAssetLedger {
+    fn clear() {
+        TRANSFER_LOG.with(|l| l.borrow_mut().clear());
+    }
+    fn transfers() -> Vec<(AssetId, u64, u64)> {
+        TRANSFER_LOG.with(|l| l.borrow().clone())
+    }
+}
+
+impl AssetLedger<u64> for MockAssetLedger {
+    fn balance_of(_asset: AssetId, who: &u64) -> u128 {
+        Balances::free_balance(who)
+    }
+
+    fn transfer(asset: AssetId, from: &u64, to: &u64, amount: u128) -> DispatchResult {
+        // WUSDC has no ledger in the runtime; mirror that here so the test
+        // double does not silently accept what production rejects.
+        if asset == AssetId::WUSDC {
+            return Err(Error::<Test>::UnsupportedAsset.into());
+        }
+        if amount == 0 {
+            return Ok(());
+        }
+        TRANSFER_LOG.with(|l| l.borrow_mut().push((asset, *from, *to)));
+        <Balances as frame_support::traits::Currency<u64>>::transfer(
+            from,
+            to,
+            amount,
+            frame_support::traits::ExistenceRequirement::AllowDeath,
+        )
+        .map(|_| ())
+        .map_err(|_| Error::<Test>::InsufficientBalance.into())
+    }
+}
 use crate::mock::*;
 use frame_support::{assert_noop, assert_ok};
 
@@ -351,6 +398,60 @@ fn execute_trade_tourism_works() {
             0,
             true,
         ));
+    });
+}
+
+#[test]
+fn settlement_debits_the_assets_the_pair_names() {
+    // P1-08 regression. Before the `AssetLedger` seam, `execute_trade` moved
+    // native DALLA for both legs, so this assertion could not be written: the
+    // bBZD side had no balance to observe. The mock ledger records the asset of
+    // every transfer so the test can assert the *pair's* assets are the ones
+    // debited, not just that some balance changed.
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        assert_ok!(BelizeX::add_liquidity(
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            100_000u128,
+            100_000u128,
+            1,
+        ));
+
+        MockAssetLedger::clear();
+
+        assert_ok!(BelizeX::execute_trade(
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            500u128,
+            0,
+            false,
+        ));
+
+        let log = MockAssetLedger::transfers();
+        assert!(
+            log.iter().any(|(a, _, _)| *a == AssetId::DALLA),
+            "the input leg must be denominated in the base asset: {log:?}"
+        );
+        assert!(
+            log.iter().any(|(a, _, _)| *a == AssetId::BBZD),
+            "the output leg must be denominated in the quote asset: {log:?}"
+        );
+    });
+}
+
+#[test]
+fn settlement_refuses_an_asset_with_no_ledger() {
+    // WUSDC has no ledger in this runtime. The mock mirrors production and
+    // rejects it rather than inventing a balance.
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        assert_noop!(
+            MockAssetLedger::transfer(AssetId::WUSDC, &1, &2, 1),
+            Error::<Test>::UnsupportedAsset
+        );
     });
 }
 

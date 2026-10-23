@@ -267,6 +267,32 @@ fn stale_price_emits_event() {
 // ================================
 
 #[test]
+fn verify_merchant_requires_council_origin() {
+    // P1-06 regression: a registered oracle operator used to be enough. That is
+    // one key granting tourism-tax benefits, which is exactly the finding.
+    new_test_ext().execute_with(|| {
+        let merchant = DAVE;
+        let cert: BoundedVec<u8, ConstU32<128>> = b"TB-12345".to_vec().try_into().unwrap();
+        let license: BoundedVec<u8, ConstU32<128>> = b"BL-67890".to_vec().try_into().unwrap();
+
+        assert_noop!(
+            Oracle::verify_merchant(
+                RuntimeOrigin::signed(ALICE),
+                merchant,
+                MerchantCategory::Accommodation.to_u8(),
+                cert,
+                license,
+                None,
+            ),
+            sp_runtime::DispatchError::BadOrigin
+        );
+
+        // Nothing was written.
+        assert!(Oracle::merchant_categories(merchant).is_none());
+    });
+}
+
+#[test]
 fn verify_merchant_works() {
     new_test_ext().execute_with(|| {
         let merchant = DAVE;
@@ -276,7 +302,7 @@ fn verify_merchant_works() {
         let location = Some((17_250_000, -88_750_000)); // Belize coordinates
 
         assert_ok!(Oracle::verify_merchant(
-            RuntimeOrigin::signed(ALICE),
+            RuntimeOrigin::root(),
             merchant,
             category.to_u8(),
             cert.clone(),
@@ -311,7 +337,7 @@ fn get_merchant_category_works() {
         let license: BoundedVec<u8, ConstU32<128>> = b"BL-67890".to_vec().try_into().unwrap();
 
         assert_ok!(Oracle::verify_merchant(
-            RuntimeOrigin::signed(ALICE),
+            RuntimeOrigin::root(),
             merchant,
             category.to_u8(),
             cert,
@@ -333,7 +359,7 @@ fn get_merchant_reward_rate_works() {
 
         // Verify hotel (8% reward)
         assert_ok!(Oracle::verify_merchant(
-            RuntimeOrigin::signed(ALICE),
+            RuntimeOrigin::root(),
             merchant,
             MerchantCategory::Accommodation.to_u8(),
             cert,
@@ -354,7 +380,7 @@ fn expired_merchant_returns_none() {
         let license: BoundedVec<u8, ConstU32<128>> = b"BL-67890".to_vec().try_into().unwrap();
 
         assert_ok!(Oracle::verify_merchant(
-            RuntimeOrigin::signed(ALICE),
+            RuntimeOrigin::root(),
             merchant,
             MerchantCategory::Retail.to_u8(),
             cert,
@@ -561,7 +587,7 @@ fn merchant_verification_and_reward_calculation() {
 
         // Verify hotel merchant (8% reward)
         assert_ok!(Oracle::verify_merchant(
-            RuntimeOrigin::signed(ALICE),
+            RuntimeOrigin::root(),
             hotel,
             MerchantCategory::Accommodation.to_u8(),
             cert,

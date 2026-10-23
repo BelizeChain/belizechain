@@ -141,6 +141,10 @@ impl BelizeXOracleProvider<AccountId> for MockOracle {
 // Runtime for normal tests with KYC allowed
 impl Config for Test {
     type Currency = Balances;
+    // Test ledger: every asset maps to the mock `Balances`, which preserves the
+    // pre-existing single-currency behaviour these tests were written against.
+    // `MockAssetLedger` lives in `tests.rs` so it can use the test externality.
+    type Assets = crate::tests::MockAssetLedger;
     type Randomness = DummyRandom;
     type TourismOrigin = system::EnsureRoot<AccountId>;
     type PairListingOrigin = system::EnsureRoot<AccountId>;

@@ -49,6 +49,19 @@ pub mod pallet {
         /// Origin that can add/remove oracle operators
         type OracleAdminOrigin: EnsureOrigin<Self::RuntimeOrigin>;
 
+        /// Origin that may verify (and therefore grant benefits to) a merchant.
+        ///
+        /// P1-06: this is deliberately separate from `OracleAdminOrigin` and
+        /// from the `OracleOperators` registry. `verify_merchant` previously
+        /// accepted any single registered operator, so one key could grant
+        /// tourism-tax benefits with no second opinion. The runtime wires this
+        /// to a TechnicalCouncil majority.
+        ///
+        /// It is separate from `OracleAdminOrigin` because that is a *single*
+        /// council member — sufficient for adding a price operator, not for a
+        /// value-bearing grant.
+        type MerchantVerificationOrigin: EnsureOrigin<Self::RuntimeOrigin>;
+
         // ── AR-7: Currency for oracle reward payouts ─────────────────────────
         /// The currency used to pay oracle operators.
         ///
@@ -622,12 +635,11 @@ pub mod pallet {
             license: BoundedVec<u8, ConstU32<MAX_CERT_LEN>>,
             location: Option<(i32, i32)>,
         ) -> DispatchResult {
-            let operator = ensure_signed(origin)?;
-
-            ensure!(
-                OracleOperators::<T>::get(&operator),
-                Error::<T>::NotAuthorizedOperator
-            );
+            // P1-06 FIX: merchant verification was gated on the `OracleOperators`
+            // registry, so any single registered operator could grant a merchant
+            // the tourism benefits that hang off `MerchantCategories` with no
+            // second opinion. It now requires the configured council origin.
+            T::MerchantVerificationOrigin::ensure_origin(origin)?;
 
             // Convert u8 to MerchantCategory
             let category = Self::u8_to_merchant_category(category)?;
