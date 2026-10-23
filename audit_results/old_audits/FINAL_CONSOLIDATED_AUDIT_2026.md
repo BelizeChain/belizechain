@@ -25,7 +25,7 @@ The BelizeChain codebase demonstrates strong Substrate fundamentals — no `unsa
 | Runtime Wiring | 2,420 | **62** | 3 | — | — | [CROSS_CRATE_WIRING](CROSS_CRATE_WIRING_AUDIT_2026.md) |
 | Mesh | 4,641 | **78** | 3 | 9 | 0 | [MESH_AUDIT](MESH_PALLET_SECURITY_AUDIT_2026.md) |
 | Justice | 1,585 | **78** | 0 | 2H | 3M | [JUSTICE_AUDIT](JUSTICE_PALLET_SECURITY_AUDIT_2026.md) |
-| Compliance | 2,531 | **74** | 2 | 7 | 5 | [COMPLIANCE_AUDIT](COMPREHENSIVE_AUDIT_2026.md) |
+| Compliance | 2,531 | **74** | 2 | 7 | 5 | [COMPREHENSIVE_AUDIT](COMPREHENSIVE_AUDIT_2026.md) |
 | Economy | 2,933 | **72** | 0 | 8 | 5 | [ECONOMY_AUDIT](GOVERNANCE_ECONOMY_COMMUNITY_AUDIT_2026.md) |
 | Interoperability | 5,071 | **72** | 3 | 10 | 7 | [INTEROP_AUDIT](INTEROPERABILITY_PALLET_SECURITY_AUDIT_2026.md) |
 | Identity | 4,466 | **72** | 3 | 10 | 8 | [IDENTITY_AUDIT](IDENTITY_PALLET_SECURITY_AUDIT_2026.md) |

@@ -52,7 +52,7 @@ A 14-phase internal security audit identified **697 findings**:
 - **30 P1 critical themes** — high-priority remediation
 - Remaining: P2/P3 improvements
 
-Detailed results: see `audit_results/COMPREHENSIVE_AUDIT_2026.md`
+Detailed results: see `audit_results/old_audits/COMPREHENSIVE_AUDIT_2026.md`
 
 ### External Professional Audit
 **Status**: 🔲 **NOT YET ENGAGED**

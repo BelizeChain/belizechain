@@ -28,11 +28,44 @@ A qualified external audit firm must be engaged before mainnet launch.
 
 **Overall Verdict**: NOT READY FOR MAINNET — Conditional NO-GO
 
-**Full Report**: See `audit_results/COMPREHENSIVE_AUDIT_2026.md`
+**Full Report**: See `audit_results/old_audits/COMPREHENSIVE_AUDIT_2026.md`
+(the path previously given here, `audit_results/COMPREHENSIVE_AUDIT_2026.md`, does
+not exist — the report was archived under `old_audits/` and the link was never
+updated).
 
 ### Remediation Progress
 - Consensus audit: 38/38 findings fixed
-- Sprint 1 P0 fixes: in progress (deploy security, supply cap, pallet indices, unbounded iteration)
+- Sprint 1 P0 fixes: **closed as of 2026-10-23**, with one correction — the audit's
+  P0-05 verdict ("FALSE FINDING — `distribute_rewards()` does not exist") was wrong;
+  the function existed since the initial commit. A real churn loop in it was found
+  and fixed on 2026-10-23 (`3151665`). See the note below.
+- **Sprint 2 P1 items: 0 of 30 closed.** The P0 checklist was self-assessed; the
+  P1 list has not been worked.
+
+### Corrections to the archived report (2026-10-23)
+
+- **P0-05 was a real finding, not a false one.** `distribute_rewards` has existed
+  since the initial commit (`6eafac8`). It was permissionless, ungated, and cleared
+  the `ModelSubmissions` guard, so `submit_model_delta` -> `distribute_rewards`
+  could be repeated inside one block, minting a reward round per iteration.
+  Fixed by enforcing the pre-existing but unread `EpochDuration`.
+- **P0-12 is genuinely closed** — `RealPqVerifier` / `MLDsaVerifier`
+  (`fips204::ml_dsa_87`) are wired in all non-benchmark runtime builds.
+- P0-19 and P0-21 verified closed (benchmark-generated weights; 40% coverage gate
+  over all pallet packages).
+
+### Findings that are obsolete, not fixed
+
+The P1 list was written against the AKS deployment that has since been removed.
+These can never be "fixed" in code and should be closed as no-longer-applicable:
+P1-04 (RPC behind a LoadBalancer), P1-20 (ACR admin credentials), P1-21 (K8s
+securityContext), P1-22 (emptyDir chain data), P1-23 (AKS NetworkPolicy).
+The live stack is Docker Compose on Ceiba with nginx and Tailscale-bound admin
+ports (`infra/docker-compose.ceiba.yml`).
+
+P1-11 (`LongestChain`) is a documented false positive — it is the standard
+Substrate pattern for BABE + GRANDPA, and `node/src/service.rs` records that as
+CONS-035.
 
 ---
 

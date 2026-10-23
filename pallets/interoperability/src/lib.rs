@@ -87,34 +87,25 @@ pub trait PQSignatureVerifier {
 ///
 /// TODO (AR-6): Replace with a host-function-backed Falcon or Dilithium verifier
 /// before mainnet deployment.
+///
+/// P1-05: gated to test/benchmark builds so it cannot be wired into a
+/// production runtime by mistake. `MLDsaVerifier` is the production verifier.
+/// Note that this alone would not have been sufficient — `verify` also fails
+/// closed outside those builds — but gating removes the type from the
+/// production build graph entirely, which is the stronger guarantee.
+#[cfg(any(test, feature = "runtime-benchmarks"))]
 pub struct PassthroughPQVerifier;
 
+#[cfg(any(test, feature = "runtime-benchmarks"))]
 impl PQSignatureVerifier for PassthroughPQVerifier {
     fn verify(_pubkey: &[u8], _message: &[u8], _signature: &[u8]) -> bool {
-        // AR-6 SECURITY GUARD: fail closed in production builds.
-        // This verifier is NOT cryptographically secure, so it must never
-        // accept a signature outside test/benchmark builds. It rejects every
-        // signature rather than panicking: a panic would halt block production
-        // if the verifier were ever mis-wired, while rejecting every signature
-        // keeps the bridge closed and the chain alive.
-        // Replace with a real Falcon/Dilithium implementation before mainnet.
-        //
-        // Each `cfg` block is the function's tail expression, so exactly one of
-        // them is compiled and supplies the `bool` return value.
-        #[cfg(not(any(test, feature = "runtime-benchmarks")))]
-        {
-            log::error!(
-                target: "runtime::interoperability",
-                "SECURITY: PassthroughPQVerifier rejected a signature — it is not a real \
-                 Falcon/Dilithium verifier and must not be wired in production (AR-6)."
-            );
-            false
-        }
-        // Structural length check only (test/benchmark builds).
-        #[cfg(any(test, feature = "runtime-benchmarks"))]
-        {
-            _signature.len() >= 64
-        }
+        // Structural length check only. The type is cfg-gated to test and
+        // benchmark builds, so this can never reach a production runtime —
+        // that gating is the guarantee, not this check. The previous
+        // fail-closed arm that logged and returned `false` for production
+        // builds is gone with it: it was unreachable once the struct itself
+        // stopped being compiled outside those builds.
+        _signature.len() >= 64
     }
 }
 
