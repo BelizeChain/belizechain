@@ -533,9 +533,28 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     //     practice. That assumption must be re-checked before this ships to a
     //     chain that has seen mesh traffic.
     //
-    //   No storage migration: `ConvictionLocks`, `LastRewardDistribution` and
-    //   `MeshSenderKeys` are all new and start empty, and no existing key is
-    //   re-derived. The first `distribute_rewards` call on a chain that has
+    //   - `pallet-belize-belizex`: settlement is now real. Every trade,
+    //     liquidity add/remove and order settlement used `T::Currency`, so it
+    //     moved native DALLA no matter which asset the pair named — a
+    //     DALLA/bBZD trade debited and credited DALLA on both legs and bBZD
+    //     never moved at all. `T::Assets: AssetLedger` replaces that: DALLA and
+    //     TourismDALLA route to `Balances`, bBZD to `Economy::bbzd_balances`
+    //     with the same sanction check the economy pallet applies, and WUSDC
+    //     reports `UnsupportedAsset` rather than silently moving the wrong
+    //     token. New storage `PairOrders` indexes open limit orders by pair and
+    //     side (`bids`/`asks`, bounded by new `MaxOrdersPerPair = 256`), with
+    //     `open_orders(pair)` as the reader. Limit orders still do not match —
+    //     the index is the prerequisite, not the engine.
+    //     Behaviour note: a pair whose quote asset is bBZD previously settled
+    //     in DALLA. Balances will differ after this upgrade for any such pair.
+    //     The testnet has no open limit orders and no bBZD pair liquidity, so
+    //     nothing is orphaned in practice; that must be re-checked before this
+    //     ships to a chain with bBZD activity.
+    //
+    //   No storage migration: `ConvictionLocks`, `LastRewardDistribution`,
+    //   `MeshSenderKeys` and `PairOrders` are all new and start empty, and no
+    //   existing key is re-derived. `PairOrders` uses `ValueQuery`, so an
+    //   unvisited pair reads as two empty books without an initialisation pass. The first `distribute_rewards` call on a chain that has
     //   never distributed is always allowed, so bootstrap is unaffected.
     //   `transaction_version` is unchanged because the new call indices were
     //   appended after the previous maximum and no call was removed or
