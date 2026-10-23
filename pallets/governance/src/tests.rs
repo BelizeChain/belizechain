@@ -8,8 +8,9 @@ use frame_support::{assert_noop, assert_ok};
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Shorthand: submit a standard Economic proposal from account `who`.
-/// Returns the proposal_id (always 0 for the first proposal).
+/// Returns the proposal's id — `0` for the first proposal in a fresh ext.
 fn submit_standard_proposal(who: u64) -> u32 {
+    let proposal_id = crate::NextProposalId::<Test>::get();
     assert_ok!(BelizeGovernance::submit_proposal(
         RuntimeOrigin::signed(who),
         b"Test Proposal".to_vec(),
@@ -19,7 +20,7 @@ fn submit_standard_proposal(who: u64) -> u32 {
         false,
         None,
     ));
-    0
+    proposal_id
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3888,5 +3889,232 @@ fn propose_treasury_spend_description_too_long_fails() {
             ),
             Error::<Test>::TreasuryDescriptionTooLong
         );
+    });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Conviction locks
+//
+// `conviction` is a caller-supplied u8. Before these checks existed,
+// `(conviction as u32).max(1)` turned `conviction = 255` into 255x weight for
+// free. The tests below pin the ceiling, the documented multiplier table, the
+// bond, and its release.
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn conviction_multiplier_table_matches_documented_values() {
+    assert_eq!(crate::conviction_multiplier(0), Some(1));
+    assert_eq!(crate::conviction_multiplier(1), Some(2));
+    assert_eq!(crate::conviction_multiplier(2), Some(3));
+    assert_eq!(crate::conviction_multiplier(3), Some(6));
+}
+
+#[test]
+fn conviction_multiplier_rejects_out_of_range_levels() {
+    // 4 is one past MAX_CONVICTION; 255 is the worst case a u8 allows.
+    assert_eq!(crate::conviction_multiplier(4), None);
+    assert_eq!(crate::conviction_multiplier(255), None);
+}
+
+#[test]
+fn cast_vote_rejects_conviction_above_max() {
+    new_test_ext().execute_with(|| {
+        let proposal_id = submit_standard_proposal(1);
+        System::set_block_number(28_801);
+
+        assert_noop!(
+            BelizeGovernance::cast_vote(RuntimeOrigin::signed(2), proposal_id, 0u8, 255u8),
+            Error::<Test>::InvalidConviction
+        );
+        assert!(!crate::Votes::<Test>::contains_key(proposal_id, 2u64));
+    });
+}
+
+#[test]
+fn cast_vote_reserves_bond_matching_conviction_level() {
+    new_test_ext().execute_with(|| {
+        let proposal_id = submit_standard_proposal(1);
+        System::set_block_number(28_801);
+
+        // Conviction 2 -> 5 x ConvictionBondBase (= 5 x MinimumDeposit in the mock).
+        let expected_bond = MinimumDeposit::get() * 5;
+        assert_ok!(BelizeGovernance::cast_vote(
+            RuntimeOrigin::signed(2),
+            proposal_id,
+            0u8,
+            2u8,
+        ));
+        assert_eq!(
+            pallet_balances::Pallet::<Test>::reserved_balance(2),
+            expected_bond
+        );
+
+        let (bond, unlock_at) = crate::ConvictionLocks::<Test>::get(2u64).expect("lock recorded");
+        assert_eq!(bond, expected_bond);
+        assert_eq!(unlock_at, 28_801 + 200); // ConvictionLockMedium
+    });
+}
+
+#[test]
+fn cast_vote_at_conviction_zero_reserves_nothing() {
+    new_test_ext().execute_with(|| {
+        let proposal_id = submit_standard_proposal(1);
+        System::set_block_number(28_801);
+
+        assert_ok!(BelizeGovernance::cast_vote(
+            RuntimeOrigin::signed(2),
+            proposal_id,
+            0u8,
+            0u8,
+        ));
+        assert_eq!(pallet_balances::Pallet::<Test>::reserved_balance(2), 0);
+        assert!(crate::ConvictionLocks::<Test>::get(2u64).is_none());
+    });
+}
+
+#[test]
+fn conviction_bond_is_not_additive_across_proposals() {
+    new_test_ext().execute_with(|| {
+        let first = submit_standard_proposal(1);
+        let second = submit_standard_proposal(3);
+        assert_ne!(first, second, "second proposal must get a new id");
+        System::set_block_number(28_801);
+
+        assert_ok!(BelizeGovernance::cast_vote(
+            RuntimeOrigin::signed(2),
+            first,
+            0u8,
+            1u8,
+        ));
+        assert_ok!(BelizeGovernance::cast_vote(
+            RuntimeOrigin::signed(2),
+            second,
+            0u8,
+            1u8,
+        ));
+
+        // Two votes at the same level cost one bond, not two.
+        assert_eq!(
+            pallet_balances::Pallet::<Test>::reserved_balance(2),
+            MinimumDeposit::get()
+        );
+    });
+}
+
+#[test]
+fn raising_conviction_tops_up_the_bond() {
+    new_test_ext().execute_with(|| {
+        let first = submit_standard_proposal(1);
+        let second = submit_standard_proposal(3);
+        assert_ne!(first, second, "second proposal must get a new id");
+        System::set_block_number(28_801);
+
+        assert_ok!(BelizeGovernance::cast_vote(
+            RuntimeOrigin::signed(2),
+            first,
+            0u8,
+            1u8,
+        ));
+        assert_ok!(BelizeGovernance::cast_vote(
+            RuntimeOrigin::signed(2),
+            second,
+            0u8,
+            3u8,
+        ));
+
+        // Level 3 is 20 x base; the level-1 bond already paid counts towards it.
+        let (bond, unlock_at) = crate::ConvictionLocks::<Test>::get(2u64).expect("lock recorded");
+        assert_eq!(bond, MinimumDeposit::get() * 20);
+        assert_eq!(
+            pallet_balances::Pallet::<Test>::reserved_balance(2),
+            MinimumDeposit::get() * 20
+        );
+        assert_eq!(unlock_at, 28_801 + 300); // ConvictionLockLong
+    });
+}
+
+#[test]
+fn unlock_conviction_before_expiry_fails() {
+    new_test_ext().execute_with(|| {
+        let proposal_id = submit_standard_proposal(1);
+        System::set_block_number(28_801);
+        assert_ok!(BelizeGovernance::cast_vote(
+            RuntimeOrigin::signed(2),
+            proposal_id,
+            0u8,
+            1u8,
+        ));
+
+        assert_noop!(
+            BelizeGovernance::unlock_conviction(RuntimeOrigin::signed(2)),
+            Error::<Test>::ConvictionStillLocked
+        );
+        assert_eq!(
+            pallet_balances::Pallet::<Test>::reserved_balance(2),
+            MinimumDeposit::get()
+        );
+    });
+}
+
+#[test]
+fn unlock_conviction_after_expiry_releases_the_bond() {
+    new_test_ext().execute_with(|| {
+        let proposal_id = submit_standard_proposal(1);
+        System::set_block_number(28_801);
+        assert_ok!(BelizeGovernance::cast_vote(
+            RuntimeOrigin::signed(2),
+            proposal_id,
+            0u8,
+            1u8,
+        ));
+
+        System::set_block_number(28_801 + 100); // ConvictionLockShort
+        assert_ok!(BelizeGovernance::unlock_conviction(RuntimeOrigin::signed(
+            2
+        )));
+
+        assert_eq!(pallet_balances::Pallet::<Test>::reserved_balance(2), 0);
+        assert!(crate::ConvictionLocks::<Test>::get(2u64).is_none());
+        System::assert_last_event(
+            Event::ConvictionBondReleased {
+                who: 2u64,
+                amount: MinimumDeposit::get(),
+            }
+            .into(),
+        );
+    });
+}
+
+#[test]
+fn unlock_conviction_without_a_lock_fails() {
+    new_test_ext().execute_with(|| {
+        assert_noop!(
+            BelizeGovernance::unlock_conviction(RuntimeOrigin::signed(2)),
+            Error::<Test>::NoConvictionLock
+        );
+    });
+}
+
+#[test]
+fn reveal_vote_rejects_conviction_above_max() {
+    new_test_ext().execute_with(|| {
+        let proposal_id = submit_standard_proposal(1);
+        System::set_block_number(28_801);
+
+        let salt = [7u8; 32];
+        let mut preimage = [0u8; 33];
+        preimage[1..].copy_from_slice(&salt);
+        let commitment = sp_io::hashing::blake2_256(&preimage);
+        assert_ok!(BelizeGovernance::commit_vote(
+            RuntimeOrigin::signed(2),
+            proposal_id,
+            commitment,
+        ));
+
+        assert_noop!(
+            BelizeGovernance::reveal_vote(RuntimeOrigin::signed(2), proposal_id, 0u8, salt, 200u8),
+            Error::<Test>::InvalidConviction
+        );
+        assert!(!crate::Votes::<Test>::contains_key(proposal_id, 2u64));
     });
 }

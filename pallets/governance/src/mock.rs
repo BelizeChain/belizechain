@@ -221,6 +221,14 @@ impl pallet_belize_governance::Config for Test {
     // H-3: any signed account may reach the origin check in tests; the
     // dual-house ratification gate is what those tests exercise.
     type RuntimeUpgradeOrigin = frame_system::EnsureSigned<u64>;
+
+    // Conviction locks. The bond base matches `MinimumDeposit` so a level-1
+    // vote costs one proposal deposit; periods are short so tests can advance
+    // past them without long block-number arithmetic.
+    type ConvictionBondBase = MinimumDeposit;
+    type ConvictionLockShort = ConstU64<100>;
+    type ConvictionLockMedium = ConstU64<200>;
+    type ConvictionLockLong = ConstU64<300>;
 }
 
 // Build genesis storage according to the mock runtime

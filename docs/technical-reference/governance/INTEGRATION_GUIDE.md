@@ -1,5 +1,12 @@
 # Governance Pallet Integration Guide
 
+> **SNAPSHOT — not current.** This guide predates several rounds of Config changes. The
+> `impl Config` example below names associated types that no longer exist (`RuntimeEvent`,
+> `PalletId`, `MinimumParticipationRate`, `CouncilSize`, `FSCOrigin`) and omits the ones
+> that were added since. The authority is `runtime/src/lib.rs`'s
+> `impl pallet_belize_governance::Config`; read that before copying anything from here.
+> The narrative sections on cross-pallet wiring are still broadly accurate.
+
 ## Table of Contents
 
 1. [Runtime Integration](#runtime-integration)
@@ -419,7 +426,12 @@ pub fn cast_vote(
     
     // Calculate weight including PoUW
     let base_weight = Self::calculate_voting_weight(&who);
-    let final_weight = base_weight.saturating_mul(conviction as u32);
+
+    // Conviction is bounded and looked up, not multiplied directly: a raw
+    // `conviction as u32` would let a caller pass 255 and claim 255x weight.
+    let conviction_multiplier =
+        conviction_multiplier(conviction).ok_or(Error::<T>::InvalidConviction)?;
+    let final_weight = base_weight.saturating_mul(conviction_multiplier);
     
     // Record vote with PoUW-enhanced weight
     Votes::<T>::insert(proposal_id, &who, Vote {

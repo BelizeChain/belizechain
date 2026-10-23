@@ -1503,3 +1503,47 @@ fn mint_bbzd_rate_limit_exact_boundary() {
         );
     });
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// transfer_bbzd (W-5 peer-to-peer stablecoin transfer)
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn transfer_bbzd_rejects_self_transfer() {
+    new_test_ext().execute_with(|| {
+        let user = 2u64;
+        crate::BBZDBalances::<Test>::insert(user, 50_000_000_000u128);
+
+        // Previously reported as InsufficientBbzdBalance, which described the
+        // wrong condition — the account had plenty of bBZD.
+        assert_noop!(
+            Economy::transfer_bbzd(RuntimeOrigin::signed(user), user, 1_000u128),
+            Error::<Test>::CannotTransferToSelf
+        );
+
+        // Balance untouched.
+        assert_eq!(crate::BBZDBalances::<Test>::get(user), 50_000_000_000u128);
+    });
+}
+
+#[test]
+fn transfer_bbzd_moves_balance_and_leaves_supply_unchanged() {
+    new_test_ext().execute_with(|| {
+        let from = 2u64;
+        let to = 3u64;
+        let amount = 10_000_000_000u128;
+        crate::BBZDBalances::<Test>::insert(from, 50_000_000_000u128);
+        crate::TotalBbzdSupply::<Test>::put(50_000_000_000u128);
+
+        assert_ok!(Economy::transfer_bbzd(
+            RuntimeOrigin::signed(from),
+            to,
+            amount
+        ));
+
+        assert_eq!(crate::BBZDBalances::<Test>::get(from), 40_000_000_000u128);
+        assert_eq!(crate::BBZDBalances::<Test>::get(to), amount);
+        // A transfer is not a mint or a burn.
+        assert_eq!(crate::TotalBbzdSupply::<Test>::get(), 50_000_000_000u128);
+    });
+}

@@ -1044,5 +1044,25 @@ mod benchmarks {
         _(RawOrigin::Signed(caller));
     }
 
+    // ══════════════════════════════════════════════════════════════════════════
+    // Conviction locks
+    // ══════════════════════════════════════════════════════════════════════════
+
+    #[benchmark]
+    fn unlock_conviction() {
+        let caller: T::AccountId = whitelisted_caller();
+        // Seed the worst case this call can see: a bond is held and its lock
+        // has already expired, so the call takes the release branch.
+        let bond = Pallet::<T>::conviction_bond(1);
+        let _ = T::Currency::make_free_balance_be(&caller, bond * 2u32.into());
+        let _ = T::Currency::reserve(&caller, bond);
+        ConvictionLocks::<T>::insert(&caller, (bond, BlockNumberFor::<T>::default()));
+
+        #[extrinsic_call]
+        _(RawOrigin::Signed(caller.clone()));
+
+        assert!(ConvictionLocks::<T>::get(&caller).is_none());
+    }
+
     impl_benchmark_test_suite!(Pallet, crate::mock::new_test_ext(), crate::mock::Test);
 }

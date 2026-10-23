@@ -251,6 +251,30 @@ const BLOCKS_PER_YEAR: u32 = 5_256_000;
 /// Maximum number of delegation receivers per delegate account.
 const MAX_DELEGATION_RECEIVERS: usize = 100;
 
+/// Highest accepted `conviction` argument. Values above this are rejected.
+///
+/// `conviction` arrives as a raw `u8` from the caller, so without a ceiling a
+/// voter could pass `255` and claim 255× weight for free.
+pub const MAX_CONVICTION: u8 = 3;
+
+/// Voting-weight multiplier for each accepted conviction level.
+///
+/// Index is the `conviction` argument; the value multiplies base weight.
+/// Level 0 costs nothing and grants nothing extra.
+pub const CONVICTION_MULTIPLIERS: [u32; (MAX_CONVICTION + 1) as usize] = [1, 2, 3, 6];
+
+/// Bond required per conviction level, in multiples of `ConvictionBondBase`.
+///
+/// Reserving the bond is what makes conviction cost something: it is held until
+/// the lock expires and, because stake weight is derived from free balance, it
+/// also reduces the voter's stake-derived weight while held.
+pub const CONVICTION_BOND_MULTIPLIERS: [u32; (MAX_CONVICTION + 1) as usize] = [0, 1, 5, 20];
+
+/// Voting-weight multiplier for `conviction`, or `None` if out of range.
+pub fn conviction_multiplier(conviction: u8) -> Option<u32> {
+    CONVICTION_MULTIPLIERS.get(conviction as usize).copied()
+}
+
 /// Participation tiers determine what governance actions an account can perform.
 ///
 /// Tiers are automatically assigned based on KYC/AML verification level from
@@ -996,6 +1020,25 @@ pub mod pallet {
         /// upgrade path no longer depends on `Root`/sudo existing. `Root` remains
         /// a bypass for testnet bootstrapping and emergencies.
         type RuntimeUpgradeOrigin: EnsureOrigin<Self::RuntimeOrigin>;
+
+        // ── Conviction locks ─────────────────────────────────────────────────
+
+        /// Base amount reserved per conviction level (see
+        /// [`CONVICTION_BOND_MULTIPLIERS`]). Level 0 reserves nothing.
+        #[pallet::constant]
+        type ConvictionBondBase: Get<BalanceOf<Self>>;
+
+        /// Lock period for conviction level 1. Default: ~7 days at 6s/block.
+        #[pallet::constant]
+        type ConvictionLockShort: Get<BlockNumberFor<Self>>;
+
+        /// Lock period for conviction level 2. Default: ~30 days at 6s/block.
+        #[pallet::constant]
+        type ConvictionLockMedium: Get<BlockNumberFor<Self>>;
+
+        /// Lock period for conviction level 3. Default: ~90 days at 6s/block.
+        #[pallet::constant]
+        type ConvictionLockLong: Get<BlockNumberFor<Self>>;
     }
 
     /// Type alias for balance amounts
@@ -2006,6 +2049,21 @@ pub mod pallet {
     /// Current delegate election round
     pub type CurrentElection<T: Config> = StorageValue<_, BlockNumberFor<T>, OptionQuery>;
 
+    /// Conviction bond held per account, and the block it may be released at.
+    ///
+    /// The bond is monotonic and non-additive: voting on ten proposals at the
+    /// same conviction level reserves the bond once, not ten times. Raising the
+    /// conviction level tops up the difference and pushes `unlock_at` further
+    /// out; it never pulls it in. Released by [`Pallet::unlock_conviction`].
+    #[pallet::storage]
+    pub type ConvictionLocks<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        (BalanceOf<T>, BlockNumberFor<T>),
+        OptionQuery,
+    >;
+
     // ===== PHASE 5: EXECUTION LAYER STORAGE =====
 
     #[pallet::storage]
@@ -2895,6 +2953,21 @@ pub mod pallet {
 
         /// A constitutional lock on a chain parameter was lifted.
         ParameterUnlocked { key: BoundedVec<u8, ConstU32<32>> },
+
+        // ===== CONVICTION LOCKS =====
+        /// A conviction bond was reserved or topped up.
+        ConvictionBondReserved {
+            who: T::AccountId,
+            conviction: u8,
+            total_bond: BalanceOf<T>,
+            unlock_at: BlockNumberFor<T>,
+        },
+
+        /// A conviction bond was released.
+        ConvictionBondReleased {
+            who: T::AccountId,
+            amount: BalanceOf<T>,
+        },
     }
 
     #[pallet::error]
@@ -3188,6 +3261,14 @@ pub mod pallet {
         ParameterAlreadyLocked,
         /// Parameter key is not currently locked; no-op unlock rejected.
         ParameterNotLocked,
+
+        // ===== CONVICTION LOCKS =====
+        /// Conviction level is above `MAX_CONVICTION`.
+        InvalidConviction,
+        /// The conviction bond is still locked; it cannot be released yet.
+        ConvictionStillLocked,
+        /// Account has no conviction bond to release.
+        NoConvictionLock,
     }
 
     #[pallet::call]
@@ -3440,24 +3521,37 @@ pub mod pallet {
         /// ## Voting Weight Formula
         ///
         /// ```text
-        /// final_weight = (community_rank + pouw_contribution) * conviction_multiplier
+        /// final_weight = (community_rank + pouw_contribution + stake_weight) * conviction_multiplier
         /// ```
         ///
         /// ## Conviction Locking Periods
         ///
-        /// | Conviction | Multiplier | Lock Period | Use Case |
-        /// |------------|-----------|-------------|-----------|
-        /// | 0 | 1x | None | Quick votes, uncertain |
-        /// | 1 | 2x | 7 days | Moderate confidence |
-        /// | 2 | 3x | 30 days | Strong support |
-        /// | 3 | 6x | 90 days | Maximum conviction |
+        /// `conviction` is a caller-supplied `u8` and must be ≤ `MAX_CONVICTION`;
+        /// anything higher is rejected with `InvalidConviction`. The multiplier
+        /// and bond come from [`CONVICTION_MULTIPLIERS`] and
+        /// [`CONVICTION_BOND_MULTIPLIERS`], and the lock length from the
+        /// `ConvictionLock*` config constants.
+        ///
+        /// | Conviction | Multiplier | Bond | Lock Period |
+        /// |------------|-----------|------|-------------|
+        /// | 0 | 1x | none | None |
+        /// | 1 | 2x | 1 × base | 7 days |
+        /// | 2 | 3x | 5 × base | 30 days |
+        /// | 3 | 6x | 20 × base | 90 days |
+        ///
+        /// The bond is reserved before weight is computed, so it leaves
+        /// `free_balance` and reduces the stake component while held. It is
+        /// non-additive across proposals and is returned by
+        /// [`Pallet::unlock_conviction`] once the lock expires.
         ///
         /// ## Emits
         ///
         /// - `VoteCast`: When vote is successfully recorded with weight information
+        /// - `ConvictionBondReserved`: When a bond is reserved or topped up
         ///
         /// ## Errors
         ///
+        /// - `InvalidConviction`: Conviction level above `MAX_CONVICTION`
         /// - `InsufficientCompliance`: Voter lacks required KYC verification
         /// - `ProposalNotFound`: Invalid proposal ID
         /// - `VotingPeriodNotStarted`: Proposal not yet open for voting
@@ -3508,6 +3602,11 @@ pub mod pallet {
                 _ => return Err(Error::<T>::InvalidThreshold.into()), // Reuse existing error
             };
 
+            // Conviction is a caller-supplied u8. Reject anything above the
+            // documented ceiling before it reaches the weight calculation.
+            let conviction_multiplier =
+                conviction_multiplier(conviction).ok_or(Error::<T>::InvalidConviction)?;
+
             let mut proposal = Self::proposals(proposal_id).ok_or(Error::<T>::ProposalNotFound)?;
             let current_block = frame_system::Pallet::<T>::block_number();
 
@@ -3526,6 +3625,10 @@ pub mod pallet {
                 !Votes::<T>::contains_key(proposal_id, &who),
                 Error::<T>::AlreadyVoted
             );
+
+            // Lock the bond before computing weight: the reserved amount leaves
+            // free_balance, so the stake component below already reflects it.
+            Self::apply_conviction_lock(&who, conviction)?;
 
             // Calculate voting weight (community rank + PoUW contribution + stake QV)
             let community_rank = Self::community_ranks(&who);
@@ -3552,8 +3655,7 @@ pub mod pallet {
             let delegation_bonus = Self::calculate_voting_power(&who).saturating_sub(1);
             let base_weight = base_weight.saturating_add(delegation_bonus);
 
-            // Apply conviction multiplier (minimum 1x to preserve vote weight)
-            let conviction_multiplier = (conviction as u32).max(1);
+            // Apply conviction multiplier from the documented table
             let conviction_weight = base_weight.saturating_mul(conviction_multiplier);
 
             // ── Phase 2B: Apply effective voting multiplier (wealth-responsibility) ──
@@ -6351,7 +6453,9 @@ pub mod pallet {
         /// - `proposal_id`: The proposal being voted on.
         /// - `vote_choice_index`: 0 = Aye, 1 = Nay, 2 = Abstain.
         /// - `salt`: The 32-byte secret used when committing.
-        /// - `conviction`: Conviction multiplier (≥ 1; clamped to 1 minimum).
+        /// - `conviction`: Conviction level 0–`MAX_CONVICTION`; see `cast_vote`
+        ///   for the multiplier, bond and lock table. Values above the ceiling
+        ///   are rejected with `InvalidConviction`.
         ///
         /// # Errors
         /// - `ProposalNotFound`, `VotingPeriodEnded`
@@ -6401,6 +6505,11 @@ pub mod pallet {
                 _ => return Err(Error::<T>::InvalidThreshold.into()),
             };
 
+            // Same ceiling as cast_vote — a reveal must not buy more weight than
+            // an open vote.
+            let conviction_multiplier =
+                conviction_multiplier(conviction).ok_or(Error::<T>::InvalidConviction)?;
+
             let mut proposal = Self::proposals(proposal_id).ok_or(Error::<T>::ProposalNotFound)?;
             let current_block = frame_system::Pallet::<T>::block_number();
 
@@ -6426,6 +6535,9 @@ pub mod pallet {
 
             // G-2 FIX: Use full weight calculation matching cast_vote
             // (QV, stake, MaxVotingUnits, EffectiveVotingMultiplier)
+            // Bond first, so the stake component sees the reduced free balance.
+            Self::apply_conviction_lock(&who, conviction)?;
+
             let community_rank = Self::community_ranks(&who);
             let pouw_contribution = Self::pouw_contributions(&who);
 
@@ -6443,7 +6555,6 @@ pub mod pallet {
                 .saturating_add(pouw_contribution)
                 .saturating_add(stake_weight);
 
-            let conviction_multiplier = (conviction as u32).max(1);
             let conviction_weight = base_weight.saturating_mul(conviction_multiplier);
 
             let multiplier = EffectiveVotingMultiplier::<T>::get(&who);
@@ -6816,6 +6927,42 @@ pub mod pallet {
             Self::deposit_event(Event::ParameterUnlocked { key: bounded_key });
             Ok(())
         }
+
+        // ── Conviction locks ─────────────────────────────────────────────────
+
+        /// Release a conviction bond whose lock period has elapsed.
+        ///
+        /// `cast_vote` and `reveal_vote` reserve the bond for the chosen
+        /// conviction level and record when it may be released. This returns it
+        /// to free balance once that block has passed. Until then the call is
+        /// rejected with `ConvictionStillLocked` — the lock is what makes a
+        /// higher conviction multiplier cost something.
+        ///
+        /// # Errors
+        /// - `NoConvictionLock` — nothing is reserved for this account.
+        /// - `ConvictionStillLocked` — the unlock block has not been reached.
+        ///
+        /// # Events
+        /// - `ConvictionBondReleased { who, amount }`
+        #[pallet::call_index(46)]
+        #[pallet::weight(T::WeightInfo::unlock_conviction())]
+        pub fn unlock_conviction(origin: OriginFor<T>) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            let (bond, unlock_at) =
+                ConvictionLocks::<T>::get(&who).ok_or(Error::<T>::NoConvictionLock)?;
+
+            ensure!(
+                frame_system::Pallet::<T>::block_number() >= unlock_at,
+                Error::<T>::ConvictionStillLocked
+            );
+
+            ConvictionLocks::<T>::remove(&who);
+            T::Currency::unreserve(&who, bond);
+
+            Self::deposit_event(Event::ConvictionBondReleased { who, amount: bond });
+            Ok(())
+        }
     }
 
     impl<T: Config> Pallet<T> {
@@ -6904,6 +7051,64 @@ pub mod pallet {
                 y = (x + n / x) / 2;
             }
             x
+        }
+
+        // ── Conviction locks ─────────────────────────────────────────────────
+
+        /// Bond that must be held to vote at `conviction`.
+        ///
+        /// Level 0 returns zero: no conviction, no bond, no lock.
+        pub fn conviction_bond(conviction: u8) -> BalanceOf<T> {
+            let multiple = CONVICTION_BOND_MULTIPLIERS
+                .get(conviction as usize)
+                .copied()
+                .unwrap_or(0);
+            T::ConvictionBondBase::get().saturating_mul(multiple.into())
+        }
+
+        /// How long a vote at `conviction` keeps its bond locked.
+        pub fn conviction_lock_period(conviction: u8) -> BlockNumberFor<T> {
+            match conviction {
+                1 => T::ConvictionLockShort::get(),
+                2 => T::ConvictionLockMedium::get(),
+                3 => T::ConvictionLockLong::get(),
+                _ => BlockNumberFor::<T>::default(),
+            }
+        }
+
+        /// Reserve (or top up) the bond for `conviction` and extend the lock.
+        ///
+        /// Called before weight is computed, so the reserved amount is already
+        /// out of `free_balance` and the stake component reflects it. The bond
+        /// is non-additive: a voter already holding enough for this level is not
+        /// charged again, and the unlock block only ever moves later.
+        fn apply_conviction_lock(who: &T::AccountId, conviction: u8) -> DispatchResult {
+            let required = Self::conviction_bond(conviction);
+            if required.is_zero() {
+                return Ok(());
+            }
+
+            let now = frame_system::Pallet::<T>::block_number();
+            let zero: BalanceOf<T> = 0u32.into();
+            let (held, previous_unlock) = ConvictionLocks::<T>::get(who).unwrap_or((zero, now));
+
+            if required > held {
+                T::Currency::reserve(who, required - held)?;
+            }
+
+            let total_bond = held.max(required);
+            let unlock_at = now
+                .saturating_add(Self::conviction_lock_period(conviction))
+                .max(previous_unlock);
+            ConvictionLocks::<T>::insert(who, (total_bond, unlock_at));
+
+            Self::deposit_event(Event::ConvictionBondReserved {
+                who: who.clone(),
+                conviction,
+                total_bond,
+                unlock_at,
+            });
+            Ok(())
         }
 
         /// Get council size
@@ -7494,6 +7699,7 @@ pub trait WeightInfo {
     fn lock_chain_parameter() -> Weight;
     fn unlock_chain_parameter() -> Weight;
     fn veto_emergency() -> Weight;
+    fn unlock_conviction() -> Weight;
 }
 
 /// Database-weight fallback for the [`WeightInfo for ()`] implementation.
@@ -7711,6 +7917,11 @@ impl WeightInfo for () {
         Weight::from_parts(25_000_000, 4096)
             .saturating_add(fallback_db().reads(204))
             .saturating_add(fallback_db().writes(202))
+    }
+    fn unlock_conviction() -> Weight {
+        Weight::from_parts(20_000_000, 3515)
+            .saturating_add(fallback_db().reads(1))
+            .saturating_add(fallback_db().writes(2))
     }
 }
 

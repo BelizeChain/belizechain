@@ -41,11 +41,19 @@ value inline, so the next agent can see what moved.
 |---|---|
 | Chain name | **Jade** (Chain D) |
 | Genesis | `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef` |
-| Runtime | **spec_version 117** · impl 1 · transaction 2 |
+| Runtime | **spec_version 117** live · impl 1 · transaction 2 |
 | Head (2026-10-22) | **227,401** (`0x37849`) |
 | Epoch | index **758** · **duration 300 slots** · start slot 298781245 |
 | Peers | 0 (`shouldHavePeers: false` — single node, expected) |
-| Repo agreement | `runtime/src/lib.rs:498` also reads `spec_version: 117` |
+| Repo agreement | **`runtime/src/lib.rs` reads `spec_version: 118`** — the repo is one version ahead of the chain; see below |
+
+**The repo is at 118 and the chain is at 117.** Three runtime changes are committed but
+**not deployed**: `acknowledge_message` (interop call 12), `unlock_conviction` (governance
+call 46) plus the conviction-bond enforcement, and a corrected `transfer_bbzd`
+self-transfer error. None requires a storage migration — `ConvictionLocks` is a new map that
+starts empty — but the conviction change is behavioural: a vote at level > 0 now needs the
+bond free (2,000 DALLA at level 3). Any upgrade bringing it forward must be built with
+`--features testnet-fast-epoch`.
 
 **117** was applied hot (`sudo.sudo(System::set_code)`, 2026-10-22) from 116, with no
 node restart. Blob 1,492,283 bytes, blake2b-256
@@ -224,7 +232,35 @@ real relayer is `docs/bridges/RELAYER_SCOPE.md`. Summary:
 - **Not built:** message delivery to a foreign chain. `send_cross_chain_message` records intent;
   no worker delivers it.
 
-**`infra` sweep detail (2026-10-14).** `api-gateway` and `indexer` are the newest services(added 2026-10-11) and had never been audited. They came out **clean**, and unusually so —
+**Governance conviction — unbounded vote weight, found and fixed 2026-10-23.** The most
+serious finding of the sweep, and it was live.
+
+`cast_vote` and `reveal_vote` computed `(conviction as u32).max(1)` from a caller-supplied
+`u8` with no ceiling, so `cast_vote(id, 0, 255)` bought **255× voting weight** and took no
+lock. Nothing constrained it: no `MaxConviction`, no clamp, no balance lock anywhere in the
+pallet. The pallet's own doc table described a 1×/2×/3×/6× ladder with 0/7/30/90-day locks
+that the code did not implement. Pre-existing since `e8aa532` (2026-03-06).
+
+Fixed by implementing the documented design rather than capping it down to what the code
+happened to do:
+
+- `MAX_CONVICTION = 3`, with `CONVICTION_MULTIPLIERS = [1, 2, 3, 6]` and
+  `CONVICTION_BOND_MULTIPLIERS = [0, 1, 5, 20]` as named tables, not literals.
+- Conviction above 3 returns `InvalidConviction` from both vote paths.
+- The bond is reserved **before** weight is computed, so it leaves `free_balance` and
+  already discounts the stake component. It is non-additive across proposals, tops up when a
+  voter raises their level, and the unlock block only ever moves later.
+- `unlock_conviction` (call 46) returns the bond after the lock expires, or fails with
+  `ConvictionStillLocked`. At runtime the base is 100 DALLA, so levels cost 100 / 500 /
+  2,000 DALLA for 7 / 30 / 90 days.
+
+10 tests pin it: the table, the ceiling from both entry points, the bond amount per level,
+non-additivity, top-up, early-reject, release, and no-lock. **The weight is derived, not
+measured** — see the AMENDMENT block in `pallets/governance/src/weights.rs`; regenerate with
+`scripts/bench_weights.sh pallet_belize_governance` before mainnet.
+
+**`infra` sweep detail (2026-10-14).** `api-gateway` and `indexer` are the newest services
+(added 2026-10-11) and had never been audited. They came out **clean**, and unusually so —
 the docs state what is *not* verified, which is the opposite of the failure mode this sweep
 looks for. Verified rather than trusted:
 

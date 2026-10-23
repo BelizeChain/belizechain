@@ -739,4 +739,20 @@ impl<T: frame_system::Config> super::WeightInfo for SubstrateWeight<T> {
 			.saturating_add(T::DbWeight::get().reads(271_u64))
 			.saturating_add(T::DbWeight::get().writes(69_u64))
 	}
+
+        // ── NOT BENCHMARKED: derived, not measured ────────────────────────
+        // `unlock_conviction` was added after the 2026-10-13 benchmark run.
+        // Its weight is derived from `unlock_chain_parameter` (the closest
+        // shape: one storage read, one storage write, one signed origin),
+        // raised by one extra write for the currency unreserve.
+        //
+        // AMENDMENT: regenerate this entry with
+        // `scripts/bench_weights.sh pallet_belize_governance` before mainnet.
+        // Over-charging is safe; under-charging is exploitable, so the bias
+        // here is deliberately upward.
+        fn unlock_conviction() -> Weight {
+                Weight::from_parts(19_800_000, 3515)
+                        .saturating_add(T::DbWeight::get().reads(1_u64))
+                        .saturating_add(T::DbWeight::get().writes(2_u64))
+        }
 }

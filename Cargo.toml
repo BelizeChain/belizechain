@@ -151,11 +151,14 @@ once_cell = "1.19"
 # ── Patches ──────────────────────────────────────────────
 # frame-benchmarking-cli pulls frame-storage-access-test-runtime,
 # whose build.rs panics outside the polkadot-sdk workspace.  Stub it out.
+#
+# `core2` was patched here to work around a yanked crates.io release on
+# polkadot-stable2603. Nothing in the current graph depends on it
+# (`cargo tree -i core2` matches no package), so the patch was dropped on
+# 2026-10-23 — it only left an orphan Cargo.lock entry and printed a warning
+# on every cargo invocation.
 [patch."https://github.com/paritytech/polkadot-sdk"]
 frame-storage-access-test-runtime = { path = "patches/frame-storage-access-test-runtime" }
-
-[patch.crates-io]
-core2 = { path = "patches/core2" }
 
 # Build profiles for different use cases
 [profile.release]

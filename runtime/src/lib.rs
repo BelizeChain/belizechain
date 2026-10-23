@@ -495,7 +495,27 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     //   storage key from the pallet prefix plus the item name, so removing an
     //   item shifts no other item's keys. `transaction_version` is unchanged
     //   because no call index was added, removed or reordered.
-    spec_version: 117,
+    //
+    // - 118 (NOT YET DEPLOYED — the chain runs 117):
+    //   - `pallet-belize-interoperability`: new call index 12
+    //     `acknowledge_message`, which finally sets
+    //     `CrossChainMessage.delivered = true`. Nothing wrote that field before,
+    //     so outbound messaging was an append-only log.
+    //   - `pallet-belize-governance`: new call index 46
+    //     `unlock_conviction`; `cast_vote` and `reveal_vote` now reject
+    //     `conviction > 3` (`InvalidConviction`) and use the documented
+    //     1x/2x/3x/6x table instead of `(conviction as u32).max(1)`, which
+    //     accepted 255 as a free 255x multiplier; a bond is reserved per level.
+    //   - `pallet-belize-economy`: `transfer_bbzd` self-transfer now reports
+    //     `CannotTransferToSelf` instead of `InsufficientBbzdBalance`.
+    //
+    //   No storage migration: `ConvictionLocks` is new and starts empty, and no
+    //   existing key is re-derived. `transaction_version` is unchanged because
+    //   the new call indices were appended after the previous maximum (44).
+    //   Behaviour does change for conviction > 0: those votes now require the
+    //   bond, so a caller who previously voted at level 3 needs 2,000 DALLA
+    //   free. Existing recorded votes are untouched.
+    spec_version: 118,
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,
     // Adding call indices to a live pallet is additive, but the version
@@ -1163,6 +1183,18 @@ parameter_types! {
     /// before a 50% voting-weight penalty is applied (Phase 2B).
     pub const LargeHolderMinParticipationRate: u8 = 30;
 
+    // ── Conviction locks ─────────────────────────────────────────────────────
+    /// Base bond reserved per conviction level. One `StakeUnitSize` (100 DALLA)
+    /// keeps the bond denominated in the same unit as stake-derived weight:
+    /// level 1 = 100, level 2 = 500, level 3 = 2,000 DALLA.
+    pub const ConvictionBondBase: Balance = 100 * DOLLARS;
+    /// Conviction level 1 lock: ~7 days at 6-second blocks.
+    pub const ConvictionLockShort: BlockNumber = 100_800;
+    /// Conviction level 2 lock: ~30 days at 6-second blocks.
+    pub const ConvictionLockMedium: BlockNumber = 432_000;
+    /// Conviction level 3 lock: ~90 days at 6-second blocks.
+    pub const ConvictionLockLong: BlockNumber = 1_296_000;
+
     // ── Phase 3 oracle plurality + SRS attestation constants ─────────────────────
     /// Minimum distinct oracle operators whose KYC submissions must agree
     /// before identity data is committed on-chain (Phase 3A).
@@ -1550,6 +1582,11 @@ impl pallet_belize_governance::Config for Runtime {
     // once both houses ratify the pending code hash. `Root` (sudo) remains a
     // bootstrap/emergency bypass on testnet.
     type RuntimeUpgradeOrigin = GovernanceCouncilSuperMajority;
+    // Conviction locks — bond + lock period per conviction level.
+    type ConvictionBondBase = ConvictionBondBase;
+    type ConvictionLockShort = ConvictionLockShort;
+    type ConvictionLockMedium = ConvictionLockMedium;
+    type ConvictionLockLong = ConvictionLockLong;
 }
 
 parameter_types! {

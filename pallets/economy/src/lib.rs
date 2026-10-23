@@ -473,6 +473,8 @@ pub mod pallet {
         RedemptionNotFound,
         /// COMP-CRIT-1: Travel rule requires Enhanced KYC (L2) for large transactions
         TravelRuleEnhancedKycRequired,
+        /// transfer_bbzd was called with sender == recipient.
+        CannotTransferToSelf,
     }
 
     #[pallet::event]
@@ -997,7 +999,7 @@ pub mod pallet {
         ) -> DispatchResult {
             let from = ensure_signed(origin)?;
             ensure!(amount > 0, Error::<T>::AmountMustBeNonZero);
-            ensure!(from != to, Error::<T>::InsufficientBbzdBalance); // no self-transfer
+            ensure!(from != to, Error::<T>::CannotTransferToSelf); // no self-transfer
 
             // KYC/sanctions checks on both parties
             ensure!(

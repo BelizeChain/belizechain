@@ -256,7 +256,7 @@ BelizeGovernance::cast_vote(
     origin,
     proposal_id,
     1, // Vote yes
-    3  // 3x conviction
+    3  // conviction level 3 = 6x weight, 2,000 DALLA bonded for 90 days
 );
 ```
 
