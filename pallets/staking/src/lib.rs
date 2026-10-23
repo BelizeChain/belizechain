@@ -341,6 +341,15 @@ pub mod pallet {
     pub type CurrentEpoch<T: Config> = StorageValue<_, u32, ValueQuery>;
 
     #[pallet::storage]
+    #[pallet::getter(fn last_reward_distribution)]
+    /// Block of the last successful `distribute_rewards` call.
+    ///
+    /// This is the epoch *timing* gate. `CurrentEpoch` cannot serve that role:
+    /// `distribute_rewards` increments it itself, so it is a caller-controlled
+    /// counter, not a clock. Absent on a chain that has never distributed.
+    pub type LastRewardDistribution<T: Config> = StorageValue<_, BlockNumberFor<T>, OptionQuery>;
+
+    #[pallet::storage]
     #[pallet::getter(fn active_fl_task)]
     /// Current active federated learning task
     pub type ActiveFLTask<T: Config> = StorageValue<_, FederatedLearningTask>;
@@ -587,6 +596,9 @@ pub mod pallet {
         InvalidSlashReason,
         /// S6-2: Operator exceeded per-epoch domain contribution cap
         DomainContributionCapExceeded,
+        /// `distribute_rewards` called before `EpochDuration` blocks elapsed
+        /// since the previous distribution.
+        EpochNotElapsed,
     }
 
     /// Reasons for slashing validators
@@ -1067,6 +1079,27 @@ pub mod pallet {
         /// CONS-020 FIX: Accept both Root origin (governance/sudo) and signed
         /// origin from any account, so epoch progression is not blocked if
         /// the privileged caller is unavailable.
+        ///
+        /// # Epoch gate (2026-10-23)
+        ///
+        /// Permissionless triggering is deliberate, but it must still be
+        /// *rate-limited by block number*. Two things made the original version
+        /// churnable at zero cost:
+        ///
+        /// 1. it advanced `CurrentEpoch` itself, so the epoch counter is a
+        ///    caller-controlled value and cannot gate anything; and
+        /// 2. it clears `ModelSubmissions`, which is the per-epoch "already
+        ///    submitted" guard inside `submit_model_delta` — so the call that
+        ///    closes an epoch also re-opened the submission slot.
+        ///
+        /// Together, `submit_model_delta` → `distribute_rewards` could be
+        /// repeated inside one block, minting a full reward round per
+        /// iteration. `T::EpochDuration` already existed for exactly this
+        /// purpose and was never read; it is now enforced against
+        /// [`LastRewardDistribution`], which no caller can influence.
+        ///
+        /// The first call on a fresh chain is always allowed, so bootstrap is
+        /// unaffected and no migration is needed.
         #[pallet::call_index(4)]
         // DOS-009 FIX: Operational dispatch — epoch progression must not be
         // blocked by transaction congestion.
@@ -1075,6 +1108,17 @@ pub mod pallet {
         pub fn distribute_rewards(origin: OriginFor<T>) -> DispatchResult {
             // CONS-020: Allow permissionless triggering — anyone can advance the epoch.
             let _ = ensure_signed_or_root(origin)?;
+
+            let current_block = frame_system::Pallet::<T>::block_number();
+
+            // The epoch must have genuinely elapsed. Without this, the epoch
+            // counter advances on every call and the caller sets the clock.
+            if let Some(last) = LastRewardDistribution::<T>::get() {
+                ensure!(
+                    current_block >= last.saturating_add(T::EpochDuration::get()),
+                    Error::<T>::EpochNotElapsed
+                );
+            }
 
             let current_epoch = Self::current_epoch();
             let base_reward = T::BaseReward::get();
@@ -1112,6 +1156,9 @@ pub mod pallet {
 
             // Record epoch rewards
             EpochRewards::<T>::insert(current_epoch, total_distributed);
+
+            // Stamp the timing gate before anything else can fail.
+            LastRewardDistribution::<T>::put(current_block);
 
             // Advance to next epoch
             CurrentEpoch::<T>::put(current_epoch.saturating_add(1));

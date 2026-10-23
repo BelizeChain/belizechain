@@ -508,10 +508,22 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     //     accepted 255 as a free 255x multiplier; a bond is reserved per level.
     //   - `pallet-belize-economy`: `transfer_bbzd` self-transfer now reports
     //     `CannotTransferToSelf` instead of `InsufficientBbzdBalance`.
+    //   - `pallet-belize-staking`: `distribute_rewards` now enforces
+    //     `EpochDuration` against a new `LastRewardDistribution` storage item.
+    //     It was permissionless AND ungated, and it clears `ModelSubmissions`
+    //     — the per-epoch "already submitted" guard — so
+    //     `submit_model_delta` → `distribute_rewards` could be repeated inside
+    //     one block, minting a full reward round per iteration. The counter
+    //     `CurrentEpoch` could not gate this because the call increments it
+    //     itself. `EpochDuration` already existed (14,400 blocks) and was never
+    //     read; it is now enforced.
     //
-    //   No storage migration: `ConvictionLocks` is new and starts empty, and no
-    //   existing key is re-derived. `transaction_version` is unchanged because
-    //   the new call indices were appended after the previous maximum (44).
+    //   No storage migration: `ConvictionLocks` and `LastRewardDistribution` are
+    //   both new and start empty, and no existing key is re-derived. The first
+    //   `distribute_rewards` call on a chain that has never distributed is
+    //   always allowed, so bootstrap is unaffected. `transaction_version` is
+    //   unchanged because the new call indices were appended after the previous
+    //   maximum (44) and no call was removed or reordered.
     //   Behaviour does change for conviction > 0: those votes now require the
     //   bond, so a caller who previously voted at level 3 needs 2,000 DALLA
     //   free. Existing recorded votes are untouched.

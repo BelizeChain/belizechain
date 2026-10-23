@@ -2076,3 +2076,128 @@ fn claim_pouw_with_agritech_bonus_higher_than_general() {
         );
     });
 }
+
+// ============================================================================
+// Epoch churn — reported externally 2026-10-23
+//
+// `distribute_rewards` is permissionless (CONS-020) and takes no epoch gate; it
+// advances the epoch itself. It also clears `ModelSubmissions`, which is the
+// per-epoch "already submitted" guard that `submit_model_delta` checks. So the
+// call that is supposed to CLOSE an epoch is what re-opens the submission slot:
+// submit -> distribute -> submit again in the same block is accepted.
+//
+// These tests assert the safe behaviour, so they fail on the code as reported.
+// ============================================================================
+
+/// One round of submit + distribute, from a non-privileged account.
+fn fl_round(account: u64, task_id: u32, delta: &[u8]) -> sp_runtime::DispatchResult {
+    let bounded = BoundedVec::try_from(delta.to_vec()).expect("delta fits");
+    let commitment = make_valid_commitment(delta, account, System::block_number() as u32);
+    // `computation_log` must be non-zero, or the call is refused before the
+    // commitment is even checked.
+    BelizeStaking::submit_model_delta(
+        RuntimeOrigin::signed(account),
+        task_id,
+        bounded,
+        commitment,
+        [1u8; 32],
+    )
+}
+
+#[test]
+fn distribute_rewards_cannot_be_churned_without_an_epoch_passing() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeStaking::join_validators(
+            RuntimeOrigin::signed(ALICE),
+            10_000_000_000u128,
+            100,
+            test_location("Belize City"),
+        ));
+        assert_ok!(BelizeStaking::assign_fl_task(
+            RuntimeOrigin::root(),
+            42,
+            [1u8; 32],
+            100,
+            Perbill::from_percent(100),
+            200u64,
+        ));
+
+        // 128 bytes clears MIN_QUALITY_TO_ACCEPT (64 bytes scores 30 and is refused).
+        let delta: Vec<u8> = (0u8..128).collect();
+        let start_block = System::block_number();
+
+        assert_ok!(fl_round(ALICE, 42, &delta));
+        let before = Balances::free_balance(ALICE);
+        assert_ok!(BelizeStaking::distribute_rewards(RuntimeOrigin::signed(
+            BOB
+        )));
+        let after_first = Balances::free_balance(ALICE);
+        assert!(after_first > before, "the first round must pay");
+
+        // Same block. Re-submission is allowed — `distribute_rewards` clears
+        // `ModelSubmissions`, and that is fine on its own. What must NOT be
+        // allowed is a second distribution: no time has passed, so the epoch
+        // has not elapsed and there is nothing new to pay for.
+        assert_ok!(fl_round(ALICE, 42, &delta));
+        assert_noop!(
+            BelizeStaking::distribute_rewards(RuntimeOrigin::signed(BOB)),
+            Error::<Test>::EpochNotElapsed
+        );
+
+        assert_eq!(System::block_number(), start_block);
+        assert_eq!(
+            Balances::free_balance(ALICE),
+            after_first,
+            "no further mint may occur without an epoch passing"
+        );
+    });
+}
+
+#[test]
+fn distribute_rewards_pays_again_once_the_epoch_has_elapsed() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeStaking::join_validators(
+            RuntimeOrigin::signed(ALICE),
+            10_000_000_000u128,
+            100,
+            test_location("Belize City"),
+        ));
+        assert_ok!(BelizeStaking::assign_fl_task(
+            RuntimeOrigin::root(),
+            42,
+            [1u8; 32],
+            100,
+            Perbill::from_percent(100),
+            10_000u64, // long deadline: outlives the epoch gate
+        ));
+
+        let delta: Vec<u8> = (0u8..128).collect();
+        let epoch = EpochDuration::get();
+
+        assert_ok!(fl_round(ALICE, 42, &delta));
+        assert_ok!(BelizeStaking::distribute_rewards(RuntimeOrigin::signed(
+            BOB
+        )));
+        let after_first = Balances::free_balance(ALICE);
+        let first_block = System::block_number();
+
+        // One block short of the epoch: still refused.
+        System::set_block_number(first_block + epoch - 1);
+        assert_ok!(fl_round(ALICE, 42, &delta));
+        assert_noop!(
+            BelizeStaking::distribute_rewards(RuntimeOrigin::signed(BOB)),
+            Error::<Test>::EpochNotElapsed
+        );
+
+        // The epoch has elapsed: distribution succeeds and pays again.
+        System::set_block_number(first_block + epoch);
+        assert_ok!(BelizeStaking::distribute_rewards(RuntimeOrigin::signed(
+            BOB
+        )));
+        assert!(
+            Balances::free_balance(ALICE) > after_first,
+            "a genuinely elapsed epoch must pay"
+        );
+        assert_eq!(BelizeStaking::current_epoch(), 2);
+    });
+}
