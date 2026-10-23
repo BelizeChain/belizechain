@@ -53,6 +53,21 @@ updated).
   (`fips204::ml_dsa_87`) are wired in all non-benchmark runtime builds.
 - P0-19 and P0-21 verified closed (benchmark-generated weights; 40% coverage gate
   over all pallet packages).
+- **P1-07 closed (2026-10-23).** `submit_mesh_transaction` only required
+  `signature_hash != H256::zero()`, so any non-zero value was accepted and a gateway
+  could bridge an arbitrary transfer attributed to any compact sender. The field was
+  a 32-byte `H256` documented as an "Ed25519 or post-quantum compressed signature",
+  which cannot hold either. It is now `signature: [u8; 64]`, verified with sr25519
+  against a key the sender's gateway registered via new call index 16
+  `register_mesh_sender_key`. New storage `MeshSenderKeys`; mesh `STORAGE_VERSION`
+  0 -> 1.
+- **P1-03 was already fixed and the checklist never said so.** nginx applies
+  `limit_req zone=rpc burst=20 nodelay` to `/ws` and `/rpc`, and
+  `limit_req zone=api burst=30 nodelay` to every `/api/*` path. The directives live
+  in `infra/nginx/snippets/stack-paths.conf`, not `nginx.conf`, which is why a grep
+  of the main file reports none. The `node/src/service.rs` header that lists RPC
+  rate limiting as a roadmap item is about in-node middleware and is accurate as
+  written — it is a "should be implemented" list, not a claim.
 
 ### Findings that are obsolete, not fixed
 

@@ -115,6 +115,10 @@ impl pallet_mesh::Config for Test {
     type Currency = Balances;
     type UnixTime = Timestamp;
     type Identity = MockMeshIdentityProvider;
+    // Accept-all so existing tests do not have to sign every call. Gated to
+    // test/benchmark builds, and the real verifier is covered by dedicated
+    // tests in `tests.rs`.
+    type SignatureVerifier = pallet_mesh::AcceptAllMeshVerifier;
     type GovernanceOrigin = frame_system::EnsureRoot<u64>;
     type EmergencyOrigin = frame_system::EnsureRoot<u64>;
     type MaxMeshNodes = ConstU32<1000>;
@@ -152,7 +156,15 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
     .unwrap();
 
     let mut ext = sp_io::TestExternalities::new(t);
-    ext.execute_with(|| System::set_block_number(1));
+    ext.execute_with(|| {
+        System::set_block_number(1);
+        // P1-07: `submit_mesh_transaction` now requires a registered sender
+        // key. Registered globally so tests that build their own gateways
+        // exercise the behaviour they actually target rather than tripping
+        // this precondition first.
+        crate::MeshSenderKeys::<Test>::insert([0x01; 4], [0u8; 32]);
+        crate::MeshSenderKeys::<Test>::insert([0x01, 0x02, 0x03, 0x04], [0u8; 32]);
+    });
     ext
 }
 

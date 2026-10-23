@@ -517,13 +517,29 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     //     `CurrentEpoch` could not gate this because the call increments it
     //     itself. `EpochDuration` already existed (14,400 blocks) and was never
     //     read; it is now enforced.
+    //   - `pallet-belize-mesh`: `submit_mesh_transaction` now verifies a real
+    //     sr25519 signature (P1-07). `signature_hash: H256` became
+    //     `signature: [u8; 64]` — a 32-byte field cannot hold an Ed25519 or
+    //     post-quantum signature, which is what its own doc comment claimed it
+    //     held. The previous check only required the hash to be non-zero, so
+    //     any value passed. The sender's key must now be registered by a
+    //     gateway owner via new call index 16 `register_mesh_sender_key`.
+    //     New storage `MeshSenderKeys`; mesh `STORAGE_VERSION` 0 -> 1.
+    //     `transaction_version` is unchanged: index 16 was appended after the
+    //     previous maximum (15) and no existing call was removed or reordered.
+    //     No migration needed — `MeshSenderKeys` starts empty and no mesh
+    //     transaction has ever been submitted on a live chain, so the
+    //     `PendingMeshTransactions` encoding change affects nothing in
+    //     practice. That assumption must be re-checked before this ships to a
+    //     chain that has seen mesh traffic.
     //
-    //   No storage migration: `ConvictionLocks` and `LastRewardDistribution` are
-    //   both new and start empty, and no existing key is re-derived. The first
-    //   `distribute_rewards` call on a chain that has never distributed is
-    //   always allowed, so bootstrap is unaffected. `transaction_version` is
-    //   unchanged because the new call indices were appended after the previous
-    //   maximum (44) and no call was removed or reordered.
+    //   No storage migration: `ConvictionLocks`, `LastRewardDistribution` and
+    //   `MeshSenderKeys` are all new and start empty, and no existing key is
+    //   re-derived. The first `distribute_rewards` call on a chain that has
+    //   never distributed is always allowed, so bootstrap is unaffected.
+    //   `transaction_version` is unchanged because the new call indices were
+    //   appended after the previous maximum and no call was removed or
+    //   reordered.
     //   Behaviour does change for conviction > 0: those votes now require the
     //   bond, so a caller who previously voted at level 3 needs 2,000 DALLA
     //   free. Existing recorded votes are untouched.
@@ -1842,6 +1858,7 @@ impl pallet_belize_mesh::Config for Runtime {
     type Currency = Balances;
     type UnixTime = Timestamp;
     type Identity = MeshIdentityProviderImpl;
+    type SignatureVerifier = pallet_belize_mesh::Sr25519MeshVerifier;
     type GovernanceOrigin = GovernanceCouncilMajority;
     type EmergencyOrigin = TechnicalCouncilThreeQuarters; // NEMO / government emergency authority
     type MaxMeshNodes = ConstU32<5_000>; // 5,000 Meshtastic nodes across Belize

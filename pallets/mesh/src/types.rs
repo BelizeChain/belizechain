@@ -194,8 +194,12 @@ pub struct MeshTransaction<BlockNumber> {
     pub amount: u64,
     /// Sender's mesh transaction nonce (prevents replay)
     pub nonce: u32,
-    /// Ed25519 or post-quantum compressed signature
-    pub signature_hash: H256,
+    /// Sender's sr25519 signature over the canonical mesh transaction digest
+    ///
+    /// 64 bytes, because that is what a signature actually occupies. The field
+    /// was previously a 32-byte `H256` documented as an "Ed25519 or
+    /// post-quantum compressed signature", which cannot hold either.
+    pub signature: [u8; 64],
     /// Transaction flags
     pub flags: MeshTxFlags,
     /// Block when this was received by a gateway

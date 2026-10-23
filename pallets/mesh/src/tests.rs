@@ -331,7 +331,7 @@ fn submit_mesh_transaction_works() {
             [0x05, 0x06, 0x07, 0x08], // recipient compact ID
             45_000_000_000,           // 45 bBZD
             1,                        // nonce
-            H256::from([0xAA; 32]),   // signature hash
+            [0xAA; 64],               // signature hash
             gateway_id,
             vec![[0x11, 0x22, 0x33, 0x44], [0x55, 0x66, 0x77, 0x88]], // relay path
             3,                                                        // 3 hops
@@ -368,7 +368,7 @@ fn pending_mesh_transaction_is_processed_on_initialize() {
             [0x05, 0x06, 0x07, 0x08],
             45_000_000_000,
             1,
-            H256::from([0xAA; 32]),
+            [0xAA; 64],
             gateway_id,
             vec![[0x11, 0x22, 0x33, 0x44], [0x55, 0x66, 0x77, 0x88]],
             3,
@@ -407,7 +407,7 @@ fn processed_mesh_transaction_cannot_be_resubmitted() {
             [0x05, 0x06, 0x07, 0x08],
             45_000_000_000,
             1,
-            H256::from([0xAA; 32]),
+            [0xAA; 64],
             gateway_id,
             vec![[0x11, 0x22, 0x33, 0x44]],
             1,
@@ -429,7 +429,7 @@ fn processed_mesh_transaction_cannot_be_resubmitted() {
                 [0x05, 0x06, 0x07, 0x08],
                 45_000_000_000,
                 2,
-                H256::from([0xBB; 32]),
+                [0xBB; 64],
                 gateway_id,
                 vec![[0x11, 0x22, 0x33, 0x44]],
                 1,
@@ -455,7 +455,7 @@ fn duplicate_mesh_transaction_rejected() {
             [0x05, 0x06, 0x07, 0x08],
             100_000_000_000,
             1,
-            H256::from([0xAA; 32]),
+            [0xAA; 64],
             gateway_id,
             vec![],
             1,
@@ -473,7 +473,7 @@ fn duplicate_mesh_transaction_rejected() {
                 [0x05, 0x06, 0x07, 0x08],
                 100_000_000_000,
                 1,
-                H256::from([0xAA; 32]),
+                [0xAA; 64],
                 gateway_id,
                 vec![],
                 1,
@@ -500,7 +500,7 @@ fn excessive_hops_rejected() {
                 [0x05, 0x06, 0x07, 0x08],
                 100_000_000_000,
                 1,
-                H256::from([0xAA; 32]),
+                [0xAA; 64],
                 gateway_id,
                 vec![],
                 15, // Exceeds default max_hops of 7
@@ -1345,7 +1345,11 @@ fn heartbeat_nonexistent_node_fails() {
 // --- Mesh Transaction error paths ---
 
 #[test]
-fn mesh_tx_invalid_signature_fails() {
+fn mesh_tx_unregistered_sender_key_fails() {
+    // P1-07: the previous version of this test asserted that a zero signature
+    // was rejected. That check compared a 32-byte hash against zero, which
+    // verified nothing — any non-zero value passed. The real precondition is
+    // now that the sender must have a registered key.
     new_test_ext().execute_with(|| {
         let gw_id = setup_gateway();
         assert_noop!(
@@ -1353,20 +1357,113 @@ fn mesh_tx_invalid_signature_fails() {
                 RuntimeOrigin::signed(2),
                 H256::from([0x42; 32]),
                 MeshTxType::TransferBbzd,
-                [0x01; 4],
+                [0xDE, 0xAD, 0xBE, 0xEF], // no key registered for this sender
                 [0x02; 4],
                 1_000_000,
                 1,
-                H256::zero(), // zero signature
+                [0xAA; 64],
                 gw_id,
                 vec![],
                 1,
                 -80,
                 100,
             ),
-            Error::<Test>::InvalidMeshSignature
+            Error::<Test>::MeshSenderKeyNotRegistered
         );
     });
+}
+
+#[test]
+fn register_mesh_sender_key_requires_node_ownership() {
+    new_test_ext().execute_with(|| {
+        assert_noop!(
+            Mesh::register_mesh_sender_key(RuntimeOrigin::signed(1), [0x0A; 4], [0x11; 32],),
+            Error::<Test>::NotNodeOwner
+        );
+
+        setup_gateway();
+        assert_ok!(Mesh::register_mesh_sender_key(
+            RuntimeOrigin::signed(2),
+            [0x0A; 4],
+            [0x11; 32],
+        ));
+        assert_eq!(Mesh::mesh_sender_keys([0x0A; 4]), Some([0x11; 32]));
+
+        // Rotation over an existing entry is allowed so a compromised device
+        // key can be replaced.
+        assert_ok!(Mesh::register_mesh_sender_key(
+            RuntimeOrigin::signed(2),
+            [0x0A; 4],
+            [0x22; 32],
+        ));
+        assert_eq!(Mesh::mesh_sender_keys([0x0A; 4]), Some([0x22; 32]));
+    });
+}
+
+#[test]
+fn sr25519_mesh_verifier_accepts_a_real_signature_and_rejects_a_forgery() {
+    use sp_core::{sr25519, Pair};
+    use sp_runtime::traits::Verify;
+
+    // The production verifier is wired by the runtime, not the mock, so it is
+    // exercised directly here rather than through `submit_mesh_transaction`.
+    let pair = sr25519::Pair::from_seed(&[7u8; 32]);
+    let public = pair.public();
+    let mut public_bytes = [0u8; 32];
+    public_bytes.copy_from_slice(public.as_ref());
+
+    let digest = crate::mesh_tx_digest(
+        &H256::from([0x42; 32]),
+        &MeshTxType::TransferBbzd,
+        &[0x01; 4],
+        &[0x02; 4],
+        1_000_000,
+        1,
+    );
+
+    let good = pair.sign(&digest);
+    let mut good_bytes = [0u8; 64];
+    good_bytes.copy_from_slice(good.as_ref());
+
+    assert!(
+        <crate::Sr25519MeshVerifier as crate::MeshSignatureVerifier>::verify(
+            &public_bytes,
+            &digest,
+            &good_bytes,
+        )
+    );
+
+    // A different message must not verify against the same signature.
+    let other_digest = crate::mesh_tx_digest(
+        &H256::from([0x42; 32]),
+        &MeshTxType::TransferBbzd,
+        &[0x01; 4],
+        &[0x02; 4],
+        1_000_001, // amount tampered with by a relaying gateway
+        1,
+    );
+    assert!(
+        !<crate::Sr25519MeshVerifier as crate::MeshSignatureVerifier>::verify(
+            &public_bytes,
+            &other_digest,
+            &good_bytes,
+        )
+    );
+
+    // A different key must not verify either.
+    let other_pair = sr25519::Pair::from_seed(&[9u8; 32]);
+    let mut other_public = [0u8; 32];
+    other_public.copy_from_slice(other_pair.public().as_ref());
+    assert!(
+        !<crate::Sr25519MeshVerifier as crate::MeshSignatureVerifier>::verify(
+            &other_public,
+            &digest,
+            &good_bytes,
+        )
+    );
+
+    // Sanity: the signature really is a signature over the digest.
+    assert!(good.verify(digest.as_ref(), &public));
 }
 
 #[test]
@@ -1388,7 +1485,7 @@ fn mesh_tx_inactive_gateway_fails() {
                 [0x02; 4],
                 1_000_000,
                 1,
-                H256::from([0xAA; 32]),
+                [0xAA; 64],
                 gw_id,
                 vec![],
                 1,
@@ -1413,7 +1510,7 @@ fn mesh_tx_not_gateway_owner_fails() {
                 [0x02; 4],
                 1_000_000,
                 1,
-                H256::from([0xAA; 32]),
+                [0xAA; 64],
                 gw_id,
                 vec![],
                 1,
@@ -1437,7 +1534,7 @@ fn mesh_tx_nonexistent_gateway_fails() {
                 [0x02; 4],
                 1_000_000,
                 1,
-                H256::from([0xAA; 32]),
+                [0xAA; 64],
                 [0xFF; 4],
                 vec![],
                 1,
@@ -1461,7 +1558,7 @@ fn mesh_tx_updates_gateway_transactions_relayed() {
             [0x02; 4],
             1_000_000,
             1,
-            H256::from([0xAA; 32]),
+            [0xAA; 64],
             gw_id,
             vec![],
             1,
@@ -1480,7 +1577,7 @@ fn mesh_tx_updates_gateway_transactions_relayed() {
             [0x02; 4],
             2_000_000,
             2,
-            H256::from([0xBB; 32]),
+            [0xBB; 64],
             gw_id,
             vec![],
             1,
@@ -2154,7 +2251,7 @@ fn config_change_affects_max_hops() {
                 [0x02; 4],
                 1_000_000,
                 1,
-                H256::from([0xAA; 32]),
+                [0xAA; 64],
                 gw_id,
                 vec![[0x11; 4], [0x22; 4], [0x33; 4]],
                 3,
@@ -2173,7 +2270,7 @@ fn config_change_affects_max_hops() {
             [0x02; 4],
             1_000_000,
             1,
-            H256::from([0xAA; 32]),
+            [0xAA; 64],
             gw_id,
             vec![[0x11; 4], [0x22; 4]],
             2,
@@ -2237,7 +2334,7 @@ fn network_stats_track_mesh_transactions() {
             [0x02; 4],
             1_000_000,
             1,
-            H256::from([0xAA; 32]),
+            [0xAA; 64],
             gw_id,
             vec![],
             1,

@@ -125,6 +125,73 @@ mod benchmarking;
 
 pub use pallet::*;
 
+/// Verifies a mesh transaction signature (P1-07).
+///
+/// Implementors MUST perform real cryptographic verification. A mesh transaction
+/// is submitted by a gateway on behalf of a LoRa device, so without this the
+/// gateway is the only thing standing between a forged transfer and the chain —
+/// and `signature_hash != H256::zero()` verified nothing at all.
+pub trait MeshSignatureVerifier {
+    /// Verify `signature` over `message` using `public_key`.
+    fn verify(public_key: &[u8; 32], message: &[u8; 32], signature: &[u8; 64]) -> bool;
+}
+
+/// Production verifier: sr25519 over the canonical mesh transaction digest.
+///
+/// sr25519 is used because it is the Substrate-native scheme and is already
+/// available in the runtime via `sp-io`, so no new dependency or host function
+/// is required.
+pub struct Sr25519MeshVerifier;
+
+impl MeshSignatureVerifier for Sr25519MeshVerifier {
+    fn verify(public_key: &[u8; 32], message: &[u8; 32], signature: &[u8; 64]) -> bool {
+        let sig = sp_core::sr25519::Signature::from_raw(*signature);
+        let key = sp_core::sr25519::Public::from_raw(*public_key);
+        sp_io::crypto::sr25519_verify(&sig, message, &key)
+    }
+}
+
+/// Accept-all verifier for tests and benchmarks only.
+///
+/// Gated like `PassthroughPQVerifier` so it cannot be wired into a production
+/// runtime: a permissive verifier reachable from production is a worse defect
+/// than the one it replaces.
+#[cfg(any(test, feature = "runtime-benchmarks"))]
+pub struct AcceptAllMeshVerifier;
+
+#[cfg(any(test, feature = "runtime-benchmarks"))]
+impl MeshSignatureVerifier for AcceptAllMeshVerifier {
+    fn verify(_public_key: &[u8; 32], _message: &[u8; 32], _signature: &[u8; 64]) -> bool {
+        true
+    }
+}
+
+/// Canonical digest a mesh sender signs for a transaction (P1-07).
+///
+/// Domain-separated and covers every field that determines the transfer, so a
+/// relaying gateway cannot alter amount, recipient or nonce while replaying a
+/// signature it observed.
+pub fn mesh_tx_digest(
+    tx_hash: &H256,
+    tx_type: &MeshTxType,
+    sender_compact: &[u8; 4],
+    recipient_compact: &[u8; 4],
+    amount: u64,
+    nonce: u32,
+) -> [u8; 32] {
+    use codec::Encode;
+    (
+        b"belizechain-mesh-v1",
+        tx_hash,
+        tx_type,
+        sender_compact,
+        recipient_compact,
+        amount,
+        nonce,
+    )
+        .using_encoded(sp_io::hashing::blake2_256)
+}
+
 /// Weight info trait for benchmarking
 pub trait WeightInfo {
     fn register_node() -> Weight;
@@ -132,6 +199,7 @@ pub trait WeightInfo {
     fn update_node_location() -> Weight;
     fn node_heartbeat() -> Weight;
     fn submit_mesh_transaction() -> Weight;
+    fn register_mesh_sender_key() -> Weight;
     fn submit_relay_proof() -> Weight;
     fn issue_emergency_alert() -> Weight;
     fn resolve_emergency_alert() -> Weight;
@@ -161,6 +229,9 @@ impl WeightInfo for () {
     }
     fn submit_mesh_transaction() -> Weight {
         Weight::from_parts(80_000_000, 512)
+    }
+    fn register_mesh_sender_key() -> Weight {
+        Weight::from_parts(20_000_000, 512)
     }
     fn submit_relay_proof() -> Weight {
         Weight::from_parts(40_000_000, 512)
@@ -242,7 +313,7 @@ pub mod pallet {
     /// Bump this and register a migration in the runtime's `Migrations` tuple
     /// whenever this pallet's storage layout changes.
     pub const STORAGE_VERSION: frame_support::traits::StorageVersion =
-        frame_support::traits::StorageVersion::new(0);
+        frame_support::traits::StorageVersion::new(1);
 
     #[pallet::pallet]
     #[pallet::storage_version(STORAGE_VERSION)]
@@ -258,6 +329,13 @@ pub mod pallet {
 
         /// Identity provider for KYC and authority checks
         type Identity: MeshIdentityProvider<Self::AccountId>;
+
+        /// Verifier for mesh transaction signatures (P1-07).
+        ///
+        /// Wire `Sr25519MeshVerifier` in production. `AcceptAllMeshVerifier`
+        /// exists for tests and benchmarks only and is compiled out of
+        /// production builds.
+        type SignatureVerifier: MeshSignatureVerifier;
 
         /// Governance origin for mesh network configuration
         type GovernanceOrigin: EnsureOrigin<Self::RuntimeOrigin>;
@@ -369,6 +447,19 @@ pub mod pallet {
         BoundedVec<MeshtasticNodeId, ConstU32<10>>,
         ValueQuery,
     >;
+
+    /// Compact mesh sender identifier → sr25519 public key (P1-07).
+    ///
+    /// `sender_compact` is only 4 bytes and is derived from an account, so the
+    /// public key cannot be recovered from it. A gateway must therefore register
+    /// the key of each device it provisions before that device's transactions
+    /// can be bridged. This keeps the existing trust model — gateways already
+    /// submit on behalf of devices — while removing the previous "any non-zero
+    /// hash is accepted" behaviour.
+    #[pallet::storage]
+    #[pallet::getter(fn mesh_sender_keys)]
+    pub type MeshSenderKeys<T: Config> =
+        StorageMap<_, Blake2_128Concat, [u8; 4], [u8; 32], OptionQuery>;
 
     /// Pending mesh transactions waiting to be bridged to blockchain
     #[pallet::storage]
@@ -592,6 +683,12 @@ pub mod pallet {
             node_id: MeshtasticNodeId,
             block: BlockNumberFor<T>,
         },
+        /// A gateway registered (or rotated) a mesh sender's signing key
+        MeshSenderKeyRegistered {
+            sender_compact: [u8; 4],
+            public_key: [u8; 32],
+            registrant: T::AccountId,
+        },
         /// Mesh transaction received by gateway and submitted
         MeshTransactionReceived {
             tx_hash: H256,
@@ -689,6 +786,8 @@ pub mod pallet {
         MaxPendingTransactionsExceeded,
         /// Invalid mesh transaction signature
         InvalidMeshSignature,
+        /// No sr25519 key registered for this compact sender identifier
+        MeshSenderKeyNotRegistered,
         /// Mesh transaction hop count exceeds maximum
         ExcessiveHopCount,
         /// Emergency alert not found
@@ -1001,6 +1100,41 @@ pub mod pallet {
             Ok(())
         }
 
+        /// Register the sr25519 public key of a mesh sender (P1-07).
+        ///
+        /// `sender_compact` is derived from an account and is only 4 bytes, so
+        /// a public key cannot be recovered from it. A gateway must register the
+        /// key of each device it provisions before that device's transactions
+        /// can be bridged.
+        ///
+        /// Callable only by an account that owns at least one registered node,
+        /// which preserves the existing trust model: gateways already submit on
+        /// behalf of the devices they provision. Registering over an existing
+        /// entry is allowed so a gateway can rotate a compromised device key.
+        #[pallet::call_index(16)]
+        #[pallet::weight(T::WeightInfo::register_mesh_sender_key())]
+        pub fn register_mesh_sender_key(
+            origin: OriginFor<T>,
+            sender_compact: [u8; 4],
+            public_key: [u8; 32],
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            ensure!(
+                !NodesByOwner::<T>::get(&who).is_empty(),
+                Error::<T>::NotNodeOwner
+            );
+
+            MeshSenderKeys::<T>::insert(sender_compact, public_key);
+
+            Self::deposit_event(Event::MeshSenderKeyRegistered {
+                sender_compact,
+                public_key,
+                registrant: who,
+            });
+            Ok(())
+        }
+
         /// Submit a mesh-relayed transaction from a gateway node.
         ///
         /// Called by gateway nodes when they receive a transaction through the LoRa mesh
@@ -1017,7 +1151,7 @@ pub mod pallet {
             recipient_compact: [u8; 4],
             amount: u64,
             nonce: u32,
-            signature_hash: H256,
+            signature: [u8; 64],
             gateway_node_id: MeshtasticNodeId,
             relay_path: Vec<MeshtasticNodeId>,
             hop_count: u8,
@@ -1026,10 +1160,22 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            // M57 FIX: Basic mesh transaction signature validation
-            // Signature hash must be non-zero (zero hash indicates unsigned/invalid tx)
+            // P1-07 FIX: verify the sender's signature instead of only checking
+            // that a hash was non-zero. The previous check accepted any non-zero
+            // H256, so a gateway could bridge an arbitrary transfer attributed
+            // to any compact sender ID.
+            let sender_key = MeshSenderKeys::<T>::get(sender_compact)
+                .ok_or(Error::<T>::MeshSenderKeyNotRegistered)?;
+            let digest = crate::mesh_tx_digest(
+                &tx_hash,
+                &tx_type,
+                &sender_compact,
+                &recipient_compact,
+                amount,
+                nonce,
+            );
             ensure!(
-                signature_hash != H256::zero(),
+                T::SignatureVerifier::verify(&sender_key, &digest, &signature),
                 Error::<T>::InvalidMeshSignature
             );
 
@@ -1077,7 +1223,7 @@ pub mod pallet {
                 recipient_compact,
                 amount,
                 nonce,
-                signature_hash,
+                signature,
                 flags: MeshTxFlags::default(),
                 received_at: Some(current_block),
                 gateway_node: Some(gateway_node_id),

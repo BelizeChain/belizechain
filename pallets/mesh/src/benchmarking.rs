@@ -186,11 +186,11 @@ mod benchmarks {
             RawOrigin::Signed(owner),
             tx_hash,
             MeshTxType::TransferDalla,
-            [1, 2, 3, 4],            // sender_compact
-            [5, 6, 7, 8],            // recipient_compact
-            1_000_000u64,            // amount
-            1u32,                    // nonce
-            H256::repeat_byte(0xBB), // signature_hash
+            [1, 2, 3, 4], // sender_compact
+            [5, 6, 7, 8], // recipient_compact
+            1_000_000u64, // amount
+            1u32,         // nonce
+            [0xBB; 64],   // signature
             gw_node_id,
             vec![], // relay_path (direct to gateway)
             0u8,    // hop_count
