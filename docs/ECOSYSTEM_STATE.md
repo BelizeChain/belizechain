@@ -195,13 +195,36 @@ this file now exists.
 | `kinich-quantum` | **DONE** — 5 rounds, `2cce5db`; tracker fabrication, XCM false success, ZNE/readout, CID/proofs |
 | `pakit-storage` | **SWEPT 2026-10-14** — 13 commits `3478c91`→`28b6ea7`; declared-but-unbound public API, README documented a facade that never existed, dual module identity, inert ML, fabricated quantum results, ZK proofs never generated, a logging regression introduced *and* reverted here, CI red since 2026-10-03 → green; see below |
 | `nawal-ai` | **DONE 2026-10-20** — audit findings **F-01 … F-15 all closed**; 3 extrinsics corrected, 12 impossible storage reads remapped or made honest, mesh comms fixed and a runner added; see below |
-| `gem` | **SWEPT 2026-10-22** — SDK stopped reporting failed calls as success (5 findings, `dc8bb38`); `access_control` admin set capped at `MAX_ADMINS` and its storage keys pinned by test (`e14f39f`). **Not audit-clean beyond AUDIT-GEM-01** — 34 proptest harnesses not re-run, and Actions is dead for this repo (minutes exhausted), so all verification is local |
-| `infra` | **SWEPT 2026-10-14** — `api-gateway` + `indexer` (the only unaudited services) are **clean**; see below |
+| `gem` | **SWEPT 2026-10-22** — SDK stopped reporting failed calls as success (5 findings, `dc8bb38`); `access_control` admin set capped at `MAX_ADMINS` and its storage keys pinned by test (`e14f39f`). **34 proptest harnesses re-run 2026-10-23: 34 passed, 0 failed, 4.65s.** Actions remains dead for this repo (minutes exhausted), so all verification is local. **Not audit-clean beyond AUDIT-GEM-01.** |
+| `infra` | **SWEPT 2026-10-14** — `api-gateway` + `indexer` (the only unaudited services) are **clean**. 2026-10-23: `relayer/` added, see below |
 | `ui` | partial — fabricated service fallbacks removed 2026-10-07; **page-level seed data remains** |
-| `belizechain.org` | **SWEPT 2026-10-22** (`cb10306`) — four fabricated feature pages rewritten (jaguar-mode, zk-proof, bridges, radio), the 93–100% coverage claim replaced with the 1,343 tests that exist, 18→12 decimals, and every measured count re-derived from source. **Page coverage is partial** — ~20 product/community pages not yet read against their implementations |
+| `belizechain.org` | **SWEPT 2026-10-22** (`cb10306`) then **again 2026-10-23** (`9529238`) — four fabricated feature pages rewritten (jaguar-mode, zk-proof, bridges, radio); the 93–100% coverage claim replaced with measured figures; 18→12 decimals; consensus pallet index corrected to 30; jaguar-mode's "one enforcement point" corrected to four; treasury corrected to 7-of-12 threshold multi-sig; the burn paths that DO exist documented (`burn_dalla`, `governance_burn`); Next.js upgraded 16.4.0→16.4.3. Spot-checked again 2026-10-23: **Nawal model sizes, Kinich backends (Cirq correctly marked planned), Pakit compression and Kinich sovereignty pages are all accurate.** Remaining: `tokenomics/*`, `community/*`, `gem/tutorials`, `technology` index and `portal` not yet read line-by-line |
 
-**`infra` sweep detail (2026-10-14).** `api-gateway` and `indexer` are the newest services
-(added 2026-10-11) and had never been audited. They came out **clean**, and unusually so —
+**Bridge state (2026-10-23).** The authoritative page is `docs/bridges/README.md`; scope for a
+real relayer is `docs/bridges/RELAYER_SCOPE.md`. Summary:
+
+- **XCM does not exist and will not be added.** `pallet_xcm` has zero commits in git history.
+  The `staging-xcm`, `xcm-builder`, `xcm-executor`, `polkadot-cli` and `polkadot-primitives`
+  workspace dependencies were removed from `Cargo.toml` on 2026-10-23 — all five were
+  declared-but-unconsumed. `staging-xcm` remains transitively via `pallet-contracts` and
+  `cumulus-primitives-core`; that is an SDK internal, unreachable from any runtime call.
+  XCM requires a cumulus collator and a parachain slot, which contradicts the sovereignty model.
+- **What exists:** `pallet-belize-interoperability` at runtime index 27 — 51 chain identifiers,
+  ML-DSA-87 signatures, `BridgeAsset` limited to DALLA/bBZD, KYC L2 for messaging and L3 for
+  operators, escrow, liquidity pools, disputes.
+- **Gap 1 closed 2026-10-23:** `acknowledge_message` (call_index 12) now flips
+  `CrossChainMessage.delivered` to `true`. Before it, nothing in the pallet ever wrote `true`,
+  so outbound messaging was an append-only log. **Its weight is derived, not measured** — see
+  the AMENDMENT block in `pallets/interoperability/src/weights.rs`. Regenerate before mainnet.
+- **Gap 2 staffed 2026-10-23:** `infra/relayer/` exists and runs, but acknowledges nothing by
+  design. The only shipped adapter is `null`; compose defaults to `RELAYER_ADAPTER=null` +
+  `RELAYER_MODE=observe`. There is no deployed bridge contract on any foreign chain, so a
+  relayer that acknowledged anything would be lying. A growing
+  `belizechain_relayer_pending_messages` backlog is the expected signal.
+- **Not built:** message delivery to a foreign chain. `send_cross_chain_message` records intent;
+  no worker delivers it.
+
+**`infra` sweep detail (2026-10-14).** `api-gateway` and `indexer` are the newest services(added 2026-10-11) and had never been audited. They came out **clean**, and unusually so —
 the docs state what is *not* verified, which is the opposite of the failure mode this sweep
 looks for. Verified rather than trusted:
 
