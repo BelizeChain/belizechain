@@ -1170,7 +1170,7 @@ parameter_types! {
     pub const BelizeXPalletId: PalletId = PalletId(*b"py/bzdex");
     pub const MaxDallaSupply: Balance = 501_000_000_000 * DOLLARS; // 501 billion DALLA (12 decimals)
     pub const MinValidatorStake: Balance = pallet_belize_staking::MIN_VALIDATOR_STAKE; // 1,000 DALLA (12 decimals)
-    pub const BaseReward: Balance = DOLLARS; // 1 DALLA per block
+    pub const BaseReward: Balance = DOLLARS; // 1 DALLA per PoUW epoch (not per block)
     pub const EpochDuration: BlockNumber = 14_400; // ~24 hours
     pub const MinimumDeposit: Balance = 10 * DOLLARS; // 10 DALLA
     pub const VotingPeriod: BlockNumber = 7_200; // ~12 hours

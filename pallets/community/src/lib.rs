@@ -1262,10 +1262,20 @@ pub mod pallet {
                         });
                     }
                     Err(_) => {
-                        // Treasury transfer failed - mark as rejected and forfeit
-                        // the deposit to the treasury.
+                        // P1-15 FIX: the community approved this proposal; the
+                        // treasury being unable to pay is not the proposer's
+                        // fault, so the deposit is returned rather than
+                        // forfeited. Forfeiting here punished a proposer for a
+                        // successful vote and made a funded treasury a
+                        // precondition for proposing at all.
                         proposal.status = ProposalStatus::Rejected;
-                        Self::forfeit_deposit_to_treasury(&proposal.proposer, proposal.deposit);
+                        T::Currency::unreserve(&proposal.proposer, proposal.deposit);
+
+                        Self::deposit_event(Event::DepositReturned {
+                            proposal_id,
+                            proposer: proposal.proposer.clone(),
+                            amount: proposal.deposit,
+                        });
 
                         let reason: BoundedVec<u8, ConstU32<64>> = b"Treasury transfer failed"
                             .to_vec()

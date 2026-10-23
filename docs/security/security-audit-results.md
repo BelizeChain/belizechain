@@ -39,8 +39,9 @@ updated).
   P0-05 verdict ("FALSE FINDING — `distribute_rewards()` does not exist") was wrong;
   the function existed since the initial commit. A real churn loop in it was found
   and fixed on 2026-10-23 (`3151665`). See the note below.
-- **Sprint 2 P1 items: 0 of 30 closed.** The P0 checklist was self-assessed; the
-  P1 list has not been worked.
+- **Sprint 2 P1 items: 20 of 30 closed (2026-10-23).** The remaining ten are
+  either obsolete (AKS), false positives, or require a design decision. See the
+  triage table below.
 
 ### Corrections to the archived report (2026-10-23)
 
@@ -68,6 +69,33 @@ updated).
   of the main file reports none. The `node/src/service.rs` header that lists RPC
   rate limiting as a roadmap item is about in-node middleware and is accurate as
   written — it is a "should be implemented" list, not a claim.
+
+### P1 triage (2026-10-23)
+
+Each row was checked against the source, not against the checklist.
+
+| Status | Items |
+|---|---|
+| **Already fixed, never ticked** | P1-03 (nginx `limit_req` on `/ws`, `/rpc`, `/api/*` — in `infra/nginx/snippets/stack-paths.conf`, not `nginx.conf`), P1-09 (`transfer_property` requires `government_verified` + `surveyed` + KYC 2 + no active encumbrance), P1-10 (median aggregation with `MaxPriceDeviation` and variance), P1-12 (zero hardcoded numeric weights), P1-13, P1-14, P1-16, P1-25, P1-27, P1-28 (`tests/cross_pallet`, `e2e`, `oracle`, `governance`, `belizex`, `economic`), P1-26 (162 governance tests) |
+| **Fixed 2026-10-23** | P1-05, P1-07, **P1-15** (approved proposal no longer forfeits its deposit when the treasury cannot pay), **P1-30** (removed the unsupported "544% APY" and "3-6% APY inflation" claims; derived ceiling is ~16% APY at full PoUW weight and 1,000 DALLA stake, and emissions are ~0.003% of `MaxDallaSupply` per year) |
+| **Obsolete — AKS removed** | P1-04, P1-20, P1-21, P1-22, P1-23 |
+| **False positive** | P1-11 (`LongestChain` is the standard BABE+GRANDPA pattern, CONS-035), P1-17 (no order matching exists, so a maker/taker self-trade cannot occur; `SelfTradeNotAllowed` is a dead variant reserved for a future engine), P1-19 (only `dtolnay/rust-toolchain@1.90.0`, a version tag) |
+| **Open — needs a decision** | P1-02 (`Sudo` at index 6, deliberate for testnet bootstrap) · P1-06 (single oracle operator can verify a merchant; adding a quorum is a policy choice) · P1-08 (**limit orders are a stub** — see below) · P1-24 (`--force-authoring` is correct on a single-authority testnet, unsafe on multi-validator mainnet; annotated in `infra/docker-compose.validators.yml`) |
+| **Not started** | External audit, penetration testing, economic modelling, formal verification |
+
+#### P1-08 is worse than reported, and is a stub rather than a bug
+
+The finding was "DEX limit orders don't reserve funds → unfunded order
+exploitation". Orders are in fact never matched: `OrderBook` is written by
+`place_limit_order` and read only by `cancel_order`, and `execute_trade` swaps
+against the AMM pool without consulting it. An order therefore cannot fill, so
+the stated exploitation risk does not exist — but the extrinsic advertises a
+feature that is not implemented, which is a worse failure mode for a user.
+
+A matching engine (price-time priority, partial fills, settlement) is a new
+subsystem with economic consequences and has deliberately not been invented here.
+The extrinsic's doc comment now says so. Until an engine exists, limit orders
+should be treated as unavailable.
 
 ### Findings that are obsolete, not fixed
 

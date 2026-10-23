@@ -926,7 +926,25 @@ pub mod pallet {
             Ok(())
         }
 
-        /// Place limit order
+        /// Place a limit order.
+        ///
+        /// **P1-08 — this is a stub.** Orders are written to `OrderBook` and can
+        /// be cancelled, but nothing matches them: `execute_trade` swaps against
+        /// the AMM pool and never consults the book, so an order that is placed
+        /// will never fill. No funds are reserved either, which is consistent
+        /// with that (nothing can be filled, so nothing is owed), but it also
+        /// means the stored order represents no commitment.
+        ///
+        /// The audit finding was recorded as "limit orders don't reserve funds →
+        /// unfunded order exploitation". That specific risk does not exist,
+        /// because an order cannot fill. The real defect is that the extrinsic
+        /// advertises a feature that is not implemented, which is a worse
+        /// failure mode for a user than an underfunded one.
+        ///
+        /// A matching engine (price-time priority, partial fills, settlement)
+        /// is a new subsystem with economic consequences and has deliberately
+        /// not been invented here. Until it exists, treat limit orders as
+        /// unavailable.
         #[pallet::call_index(4)]
         #[pallet::weight(T::WeightInfo::place_order())]
         pub fn place_limit_order(

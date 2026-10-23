@@ -866,6 +866,60 @@ fn test_finalize_approved_proposal() {
 }
 
 #[test]
+fn test_finalize_approved_but_empty_treasury_returns_deposit() {
+    // P1-15 regression: the community approved the proposal, so a treasury that
+    // cannot pay must not cost the proposer their deposit.
+    new_test_ext().execute_with(|| {
+        System::set_block_number(1);
+
+        let proposer = 1u64;
+        let voter1 = 2u64;
+        let voter2 = 3u64;
+        let voter3 = 4u64;
+
+        Balances::make_free_balance_be(&proposer, 100_000);
+        // Drain the treasury so the payout transfer must fail.
+        Balances::make_free_balance_be(&999, 0);
+
+        assert_ok!(Community::submit_community_proposal(
+            RuntimeOrigin::signed(proposer),
+            CommunityProposalType::LocalProject.as_u8(),
+            5u64,
+            20_000u64,
+            b"Community Center".to_vec().try_into().unwrap(),
+            b"Build a new community center".to_vec().try_into().unwrap(),
+        ));
+
+        let deposit = 2_000u64;
+        assert_eq!(Balances::reserved_balance(proposer), deposit);
+
+        for voter in [voter1, voter2, voter3] {
+            assert_ok!(Community::vote_community_proposal(
+                RuntimeOrigin::signed(voter),
+                0,
+                true
+            ));
+        }
+
+        System::set_block_number(100_802);
+
+        assert_ok!(Community::finalize_community_proposal(
+            RuntimeOrigin::signed(proposer),
+            0,
+        ));
+
+        let proposal = Community::proposals(0).unwrap();
+        assert_eq!(proposal.status, ProposalStatus::Rejected);
+
+        // The deposit comes back — the proposer did nothing wrong.
+        assert_eq!(Balances::reserved_balance(proposer), 0);
+        assert_eq!(Balances::free_balance(&proposer), 100_000);
+        // And it did not quietly end up in the treasury.
+        assert_eq!(Balances::free_balance(&999), 0);
+    });
+}
+
+#[test]
 fn test_finalize_rejected_proposal() {
     new_test_ext().execute_with(|| {
         System::set_block_number(1);

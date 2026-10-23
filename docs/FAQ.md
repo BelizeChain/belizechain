@@ -36,9 +36,9 @@ No. BelizeChain is built on **Substrate** (same framework as Polkadot) but is a 
 | Native blockchain token | Stablecoin pegged 1:1 to Belize Dollar (BZD) |
 | Variable value (market-driven) | Fixed value (1 bBZD = 1 BZD always) |
 | Used for fees, staking, governance | Used for stable payments, payroll, contracts |
-| 3-6% APY inflation | Central Bank backed, no inflation |
+| Fixed emissions per PoUW epoch | Central Bank backed, no inflation |
 | 12 decimals | 12 decimals |
-| Earn through PoUW (544% APY staking) | Mint only by Central Bank after BZD deposit |
+| Earn through PoUW staking (see below) | Mint only by Central Bank after BZD deposit |
 
 ### How do I get DALLA or bBZD?
 
@@ -127,7 +127,12 @@ await nominate.signAndSend(account);
 ```
 
 **Minimum stake**: 1,000 DALLA  
-**APY**: Up to 544% (varies by validator PoUW performance)  
+**Rewards**: paid per PoUW epoch (~24 h) at `BaseReward` × the validator's verified
+PoUW weights. The weights currently sum to 45%, so a validator at full weight earns
+at most ~0.45 DALLA per epoch (~164 DALLA/year). Against the 1,000 DALLA minimum
+stake that is a ceiling of roughly **16% APY**, before the `MaxSupply` cap. There is
+no published APY figure beyond this arithmetic — earlier drafts of this FAQ claimed
+"up to 544%", which no pallet parameter produces.  
 **Unbonding period**: 14 days
 
 ### What is Proof of Useful Work (PoUW)?
@@ -345,7 +350,8 @@ Check [Troubleshooting Guide](operations/troubleshooting.md).
 
 ### What is DALLA inflation?
 
-- **Current**: 3-6% APY (adjusts based on staking participation)
+- **Current**: defined by the staking pallet's `BaseReward` and PoUW weights, not a
+  published APY. See the staking section above for the derivation.
 - **Target staking rate**: 60% of total supply
 - **Distribution**:
   - Validators: 70% (block production + PoUW)
