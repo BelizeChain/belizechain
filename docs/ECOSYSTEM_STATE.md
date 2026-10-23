@@ -285,6 +285,21 @@ harness rather than Ceiba — the live chain is **single-authority** (verified 2
 `GrandpaApi_grandpa_authorities`: a 41-byte payload = 1 × 32-byte key + 8-byte weight). Its
 `ui` claims also conflict with `ui/UI_WIRING_STATUS_CURRENT.md`.
 
+**`pakit-storage` dependencies (2026-10-23).** Nine open Dependabot alerts, all cleared
+on patch-level pins: `aiohttp 3.14.3 -> 3.14.4` (eight alerts: 3 high, 3 medium, 2 low)
+and `black 26.3.1 -> 26.10.1` (one high). Verified, not assumed — both install and import
+in `.venv`, `pytest` gives **633 passed / 10 skipped**, `ruff` clean.
+
+Two things worth knowing before reading those numbers as "closed":
+
+- **The alerts will lag the fix.** Dependabot tracks `requirements.txt`, whose only
+  content is `-r pakit_requirements.txt`, so the pin lives in the included file and the
+  alert state only updates after GitHub's "Configured Graph Update: pip" job runs. It was
+  still `queued` when this was written. The fix is in the repo; the badge is not yet.
+- **`black --check` reports 41 files would be reformatted — on both versions.** The
+  identical 41 on the old 26.3.1 pin means this is pre-existing, not caused by the bump.
+  Reformatting them is a separate decision and was deliberately not bundled.
+
 **`pakit-storage` sweep detail (2026-10-14).** Security posture came out clean; the
 **public API surface and the README** did not. Verified rather than trusted:
 
