@@ -7,6 +7,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - BelizeX Order Matching Engine (October 2026) ⚠️ STORAGE BREAKING
+
+`pallet-belize-belizex` previously accepted limit orders and never filled them: the
+book was an append-only list and no bBZD ever moved. Orders now escrow at placement
+and fill against each other in price-time order.
+
+- **Escrow on placement.** `OrderEntry.escrow` holds the funds; bids escrow
+  `ceil(amount × price / PRICE_SCALE)`, asks escrow `amount`. `PRICE_SCALE` is
+  `1_000_000`, so prices are now scaled and a raw `1_000_000_000_000` is no longer
+  "1:1".
+- **Matching** runs inside `place_limit_order`, bounded by `T::MaxOrdersPerPair`
+  (256 in the runtime), walking `PairOrders` best-price-first. The fill price is the
+  **maker's**. Self-trade is **skipped**, so `SelfTradeNotAllowed` is now unraised by
+  design rather than by omission.
+- **Settlement order is plan → settle → apply.** Book state is written only after the
+  funds move. If the second leg is rejected, the first leg is reversed, so an order
+  can never claim a fill that did not happen.
+- **Rounding:** fills round their quote **down**, placement rounds the escrow **up**.
+  Per-slice ceilings summed over an order can exceed the single ceiling taken at
+  placement, which stranded a fractional-price bid permanently after ~7 fills.
+- **Storage migration required.** `OrderEntry`'s encoding changed, so `STORAGE_VERSION`
+  goes 0 → 1 and `pallets/belizex/src/migrations.rs` **purges** the book rather than
+  reinterpreting old bytes. `runtime/src/migrations.rs` `CURRENT_RUNTIME_VERSION`
+  goes 2 → 3.
+- **Weights measured** (`match_orders` 116.4 µs + 57.75 µs/order, reads `8 + n`,
+  writes `8 + n`). The benchmark measures the fill shape only, and a walk can consist
+  entirely of expired-order purges, so `place_limit_order` additionally charges
+  `cancel_order() × MaxOrdersPerPair` at the **call site** — the one place
+  `scripts/bench_weights.sh` does not overwrite. Composed at 256: ~25.9 ms.
+
+**Not deployed.** The live chain still runs the stub until this ships as a runtime
+upgrade.
+
+### Fixed - mesh: `submit_mesh_transaction` did not charge for signature verification (October 2026)
+
+P1-07 added sr25519 verification to this extrinsic and updated its weight by one
+storage **read** for the sender-key lookup — but added nothing for the verification
+itself, the most expensive thing the call does. It was charged as if it verified
+nothing, which is the exact state P1-07 existed to fix.
+
+Committed raw ref_time was 29.08 ms against a measured 68.84 ms, and that measurement
+was taken on a battery-powered host, so the true AC figure is higher still. The
+under-charge is real independent of power state. Now committed at 86.05 ms as a
+deliberate **upper bound**; tighten with `scripts/bench_weights.sh` on AC power.
+
+`register_mesh_sender_key` had **no benchmark at all**, which left the pallet at 17
+`WeightInfo` methods against 16 benchmarks. `bench_weights.sh` requires an exact match
+before it regenerates, so it skipped `mesh` entirely and the hand-estimated value could
+not be replaced by any number of script runs. The benchmark is added; coverage is now
+17/17.
+
+> **Rule:** adding a `#[pallet::call]` without adding its benchmark silently locks that
+> pallet out of weight regeneration. Nothing surfaces it until
+> `scripts/check_weights_freshness.sh` fires.
+
+### Changed - `bench_weights.sh` refuses to silently delete hand-written weights (October 2026)
+
+The benchmark CLI writes `--output` wholesale, so an `AMENDMENT` block a human added to
+a `weights.rs` — a derived weight, extra read/write terms — is deleted by a regeneration
+with no warning. This had already happened once, to `belizex`.
+
+The script now fails the pallet unless `ACCEPT_AMENDMENT_LOSS=1` is set. It is
+deliberately not a veto: replacing a derived value with a measured one is usually
+exactly right, and the guard exists to make that a decision rather than a surprise.
+
+Six pallets currently carry an amendment — `community`, `governance`,
+`interoperability`, `mesh`, `oracle`, `staking`. All are biased **upward**
+(over-charging), so none is currently exploitable; all six still want a measured run.
+
+> **Do not** "fix" an amendment by moving its derived term to the `#[pallet::weight]`
+> call site. The call site already reads `T::WeightInfo::<fn>()`, so an added term would
+> stack on the post-regeneration measured value and **double-charge**. The call site is
+> for terms the generated file cannot express — a loop bound, a variant count — not for
+> values awaiting measurement.
+
 ### Fixed - Deployment Tooling Targeted a Decommissioned Host (October 2026)
 
 Ten scripts under `scripts/` carried the pre-migration Ceiba address
