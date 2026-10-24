@@ -39,9 +39,11 @@ updated).
   P0-05 verdict ("FALSE FINDING — `distribute_rewards()` does not exist") was wrong;
   the function existed since the initial commit. A real churn loop in it was found
   and fixed on 2026-10-23 (`3151665`). See the note below.
-- **Sprint 2 P1 items: 20 of 30 closed (2026-10-23).** The remaining ten are
-  either obsolete (AKS), false positives, or require a design decision. See the
-  triage table below.
+- **Sprint 2 P1 items: 20 of 30 closed (2026-10-23).** Since then P1-08 (both halves) and
+  P1-24 have moved — P1-08 to fixed, P1-24 to mitigated. **The 20/30 figure has not been
+  recounted**, and this file's triage table groups findings by status category rather than
+  listing all 30, so it cannot be recounted from the table alone. Treat 20/30 as a
+  2026-10-23 snapshot, not a current total.
 
 ### Corrections to the archived report (2026-10-23)
 
@@ -84,7 +86,8 @@ Each row was checked against the source, not against the checklist.
 | **Fixed 2026-10-23 (second pass)** | P1-06 (`verify_merchant` now requires `T::MerchantVerificationOrigin` = `TechnicalCouncilMajority`; it was a single `OracleOperators` member), P1-08 **settlement half** (the DEX moved no bBZD at all — see below) |
 | **Fixed 2026-10-24** | P1-08 **matching half** — limit orders now escrow at placement and fill against each other in price-time order (see below) |
 | **Fixed 2026-10-24 (CI fallout)** | The five benchmark smoke-test failures that P1-06/P1-07/conviction-bonding left behind — `governance::cast_vote` (bond underfunded), `oracle::verify_merchant` (origin moved off `Signed`), `mesh::submit_mesh_transaction` (unsigned after P1-07), `belizex::{add_liquidity, execute_trade, remove_liquidity}` (quote leg unfunded). See *The benchmark smoke test* below |
-| **Open — needs a decision** | P1-02 (`Sudo` at index 6, deliberate for testnet bootstrap; owner has said do not remove) · **P1-24 is now observed, not hypothetical** — a four-node swarm has been running a `chainType: Live` spec with `--force-authoring` on every node since 2026-09-13; it is forked and stalled 38 days. See below |
+| **Open — needs a decision** | P1-02 (`Sudo` at index 6, deliberate for testnet bootstrap; owner has said do not remove) |
+| **Mitigated 2026-10-24 — no longer live** | P1-24 — the four-node swarm was running a `chainType: Live` spec with `--force-authoring` on every node since 2026-09-13, and it forked and stalled 38 days. **The swarm is stopped** (volumes preserved for forensics) and the flag is now gated on `${FORCE_AUTHORING:+--force-authoring}`, off by default. See below |
 | **Not started** | External audit, penetration testing, economic modelling, formal verification |
 
 #### P1-08 is worse than reported, and is a stub rather than a bug
@@ -355,21 +358,40 @@ and consuming ~250 MiB across the four containers.
 
 Not fixed by deleting the flag from the file: the running containers would keep
 their existing `command:`, so a file edit alone changes nothing on the host. The
-decisions are (a) stop the swarm and remove the volumes, (b) rebuild the compose
-file to gate the flag the way the live Ceiba stack already does —
-`${VALIDATOR:+--force-authoring}` — and (c) never launch a multi-validator
-network from a spec that does not first prove finality across all authorities.
+decisions were (a) stop the swarm and remove the volumes, (b) gate the flag the way
+the live Ceiba stack already does — `${VALIDATOR:+--force-authoring}` — and (c) never
+launch a multi-validator network from a spec that does not first prove finality
+across all authorities.
 
-As of 2026-10-24 the warning is stated once in the file header and pointed at
-from each of the four services, instead of sitting above `validator-ceiba` only
-while the other three carried the flag unannotated. Verified by parsing the file:
-all four commands contain the flag, and no `#` leaked into a `command: >` block
-scalar (YAML does not strip comments inside a block scalar — a comment placed
-there is passed to the node as arguments and the container fails to start).
+**RESOLVED 2026-10-24 — (a) and (b) both done.**
+
+The swarm was stopped with `docker compose -f docker-compose.validators.yml down`,
+deliberately **without `-v`**: all four `infra_val-*-data` volumes survive, so the
+forked chain data is still on disk for forensics. An evidence snapshot was captured
+*before* stopping (`/tmp/swarm-evidence-2026-10-24.txt`) because the fork state is
+only observable while the nodes are up.
+
+The flag is now gated on `${FORCE_AUTHORING:+--force-authoring}`, off by default, on
+all four services — the same shape as Ceiba's `${VALIDATOR:+--force-authoring}`. A
+four-authority swarm does not need it: each authority authors in its own slot once
+synced, which is precisely the precondition the flag bypasses.
+
+Verified in both directions rather than just parsing:
+
+| Invocation | `force-authoring` occurrences |
+|---|---|
+| `docker compose config` (default) | **0** |
+| `FORCE_AUTHORING=1 docker compose config` | **4** |
+
+Also verified by parsing that no `#` leaked into any `command: >` block scalar (YAML
+does not strip comments inside a block scalar — a comment placed there is passed to
+the node as arguments and the container fails to start).
 
 **Lesson.** The original text asserted host state from a configuration file. A
-compose file says what *would* run, not what *is* running; the two had diverged
-by six weeks. Check the host before writing a sentence about it.
+compose file says what *would* run, not what *is* running; the two had diverged by
+six weeks. Check the host before writing a sentence about it. The corollary bit
+twice here: stopping the swarm required checking the host *again*, because the
+compose file still described the unsafe configuration long after the chain died.
 
 ### Findings that are obsolete, not fixed
 

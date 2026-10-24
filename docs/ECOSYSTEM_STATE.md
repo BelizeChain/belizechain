@@ -266,6 +266,22 @@ hand-edited *numbers*; the rest are rationale. This is the verification list for
 | `oracle` | `verify_merchant` | rationale only — one read either way | ~unchanged |
 | `staking` | `distribute_rewards` | derived: **+1 read, +1 write** for the epoch gate | authoritative |
 
+**`mesh` was done on 2026-10-24, out of band, and is the one to learn from.** While
+investigating this table, two defects surfaced that the smoke test could not see:
+
+- `submit_mesh_transaction` had been charged **+1 read and no time at all** for the
+  sr25519 verification P1-07 added. Committed raw 29.08 ms vs measured 68.84 ms, and that
+  measurement was on *battery*, so the AC truth is higher still. Fixed to 86.05 ms (battery
+  measurement × 1.25) as a deliberate upper bound.
+- `register_mesh_sender_key` had **no benchmark**. That put the pallet at 17 `WeightInfo`
+  methods against 16 benchmarks, and `bench_weights.sh` requires an exact match — so it
+  **skipped mesh entirely**, and the hand-estimated value could not be regenerated at all.
+  Benchmark added; coverage is 17/17.
+
+**The general rule: adding a `#[pallet::call]` without adding its benchmark silently locks
+that pallet out of weight regeneration.** Nothing surfaces it until the freshness guard
+fires. The other five pallets in the table still need the AC run.
+
 All eight are biased upward, so none is currently exploitable. Treat any entry that comes
 out **higher** than the committed value as a signal the benchmark is measuring a hotter path
 than the source suggests — not as noise to average away.
@@ -331,14 +347,21 @@ swarm rather than Ceiba — the live chain is **single-authority** (verified 202
 `ui` claims also conflict with `ui/UI_WIRING_STATUS_CURRENT.md`.
 
 That swarm is not a throwaway harness, though, and "healthy" is only the container health
-check. Measured 2026-10-24: all four containers are running against
+check. Measured 2026-10-24: all four containers were running against
 `generated_specs/chainspec-mainnet-raw.json` (`chainType: "Live"`), genesis
-`0x8b66304f…` — **a fifth chain, not Jade** — and it is forked and dead. `#13753` carries
-two distinct best hashes across the four nodes, finality stopped at `#13751`, and the last
-block timestamp is `2026-09-15T13:34:42Z`, so it has been stalled **38 days**. Logs date
-from 2026-09-13; the 2026-10-18 restart only reset container uptime. All four publish
-9944/30333/9615 on `0.0.0.0`. See the P1-24 section in
-`docs/security/security-audit-results.md` for the evidence and the open decision.
+`0x8b66304f…` — **a fifth chain, not Jade** — and it was forked and dead. `#13753` carried
+two distinct best hashes across the four nodes (ceiba + cayo on `0x1b98…43e4`, maya + reef
+on `0xbbec…488d`), finality stopped at `#13751`, and the last block timestamp is
+`2026-09-15T13:34:42Z`, so it had been stalled **38 days**. Logs date from 2026-09-13; the
+2026-10-18 restart only reset container uptime. All four published 9944/30333/9615 on
+`0.0.0.0`.
+
+**Stopped 2026-10-24.** `docker compose -f docker-compose.validators.yml down`, run
+**without `-v`** so the four `infra_val-*-data` volumes survive for forensics; an evidence
+snapshot was taken before stopping. `--force-authoring` is now gated on
+`${FORCE_AUTHORING:+--force-authoring}` (0 occurrences by default, 4 with the opt-in
+set) — a four-authority swarm does not need it. See the P1-24 section in
+`docs/security/security-audit-results.md` for the evidence table.
 
 **`pakit-storage` dependencies (2026-10-23).** Nine open Dependabot alerts, all cleared
 on patch-level pins: `aiohttp 3.14.3 -> 3.14.4` (eight alerts: 3 high, 3 medium, 2 low)
