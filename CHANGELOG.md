@@ -96,26 +96,14 @@ verified at 4.6–4.8 GHz). Four pallets now carry measured values:
 | `mesh` | `submit_mesh_transaction` | 86.05 ms | **85.90 ms** |
 | `mesh` | `register_mesh_sender_key` | 15.00 ms | **18.11 ms** |
 | `staking` | `distribute_rewards` | 39.30 ms | **40.23 ms** |
+| `oracle` | `verify_merchant` | 19.49 ms / 1 read | **11.12 ms / 0 reads** |
 
-**Two were reverted, because the benchmark measures a cheaper path than production
-takes.** Committing the regenerated numbers would have *reduced* the charge on a path
-that never runs:
-
-- **`oracle::verify_merchant`.** The benchmark uses `RawOrigin::Root`, and the runtime
-  type is `EitherOfDiverse<EnsureRoot, EnsureProportionMoreThan<TechnicalCouncil, 1, 2>>`.
-  `EitherOfDiverse` tries `EnsureRoot` **first**, so Root short-circuits before the
-  collective is consulted. A real council motion takes the second branch and reads
-  `Members` / `ProposalOf` / `Voting`. Regeneration produced `Measured: 0`, proof `0`,
-  and **zero reads**.
-- **`interoperability::acknowledge_message`.** The extrinsic calls
-  `T::Identity::verify_bridge_operator` and `T::Identity::is_sanctioned`, and both
-  runtime adapters are bypassed under `runtime-benchmarks`
-  (`return true` / `return false`). The benchmark build does **2 reads fewer** than
-  production — measured 2, production does 4.
-
-Both keep their derived values, which are biased upward on the axis that matters.
-Fixing them properly is a code change — benchmark the council path, drop the
-benchmark-mode bypass from the identity adapter — not a regeneration.
+**One was reverted, because the benchmark measures a cheaper path than production
+takes.** `interoperability::acknowledge_message` calls `T::Identity::verify_bridge_operator`
+and `T::Identity::is_sanctioned`, and both runtime adapters are bypassed under
+`runtime-benchmarks` (`return true` / `return false`). The benchmark build does **2 reads
+fewer** than production — measured 2, and the derived 4 it keeps was itself only a partial
+count. It remains open.
 
 > **The earlier "all six are biased upward" claim was wrong**, and this run disproved it.
 > `unlock_conviction` was derived **44 % under**, `cast_vote` **25 % under**, and
@@ -123,13 +111,20 @@ benchmark-mode bypass from the identity adapter — not a regeneration.
 > derived weight can be conservative on one axis and optimistic on the other, so upward
 > bias has to be checked per axis, not asserted per entry.
 
-> **A benchmark is only as good as the code path it exercises.** Three ways it silently
-> diverges from production, all seen here or adjacent to it: `RawOrigin::Root` satisfying
-> an `EitherOfDiverse` via its cheap first branch; `#[cfg(feature = "runtime-benchmarks")]`
-> bypasses that remove real storage access; and mock verifiers that accept anything. In
-> each case the benchmark passes, the number looks measured, and it **under-charges** —
-> the unsafe direction. Treat a *drop* in regenerated read counts as a red flag to
-> explain, not an improvement to accept.
+> **A benchmark is only as good as the code path it exercises.** `#[cfg(feature =
+> "runtime-benchmarks")]` bypasses that remove real storage access, and mock verifiers that
+> accept anything, both produce a number that looks measured and **under-charges** — the
+> unsafe direction. Treat a *drop* in regenerated read counts as a red flag to explain, not
+> an improvement to accept.
+
+> **But an origin is not such a case, and assuming it was cost a wrong revert.**
+> `oracle::verify_merchant` benchmarks with `RawOrigin::Root` while the runtime gates it on
+> `EitherOfDiverse<EnsureRoot, EnsureProportionMoreThan<TechnicalCouncil, 1, 2>>`. That
+> looked like Root short-circuiting past the collective's storage reads. It is not:
+> `EnsureProportionMoreThan` matches the origin payload (`RawOrigin::Members(n, m)`) and
+> reads no storage at all. Both branches are O(1), so the measured 0 reads / 1 write is
+> correct and the derived 19.49 ms / 1 read was over-charging. Check the SDK source before
+> reverting a measurement on origin grounds.
 
 ### Fixed - Deployment Tooling Targeted a Decommissioned Host (October 2026)
 

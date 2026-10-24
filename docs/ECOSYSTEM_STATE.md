@@ -264,7 +264,7 @@ below, and note the two rows whose expectation was wrong.**
 | `governance` | `unlock_conviction` | **never measured**, hand-derived from scratch | first real measurement | ⚠️ 35.11 ms, **up 77 %** |
 | `interoperability` | `acknowledge_message` | derived from `submit_incoming_unlock` | first real measurement | ⛔ reverted — benchmark bypasses identity checks |
 | `mesh` | `register_mesh_sender_key` | **hand-estimated**, added after the file was generated | first real measurement | ⚠️ 18.11 ms, **up 21 %** |
-| `oracle` | `verify_merchant` | rationale only — one read either way | ~unchanged | ⛔ reverted — Root short-circuits the council check |
+| `oracle` | `verify_merchant` | rationale only — one read either way | ~unchanged | ✅ 11.12 ms, **0 reads** — the "one read" was also wrong |
 | `staking` | `distribute_rewards` | derived: **+1 read, +1 write** for the epoch gate | authoritative | ✅ 40.23 ms, flat |
 
 **`mesh` was done on 2026-10-24, out of band, and is the one to learn from.** While
@@ -283,10 +283,10 @@ investigating this table, two defects surfaced that the smoke test could not see
 that pallet out of weight regeneration.** Nothing surfaces it until the freshness guard
 fires.
 
-#### AC regeneration run, 2026-10-24 — four replaced, two deliberately reverted
+#### AC regeneration run, 2026-10-24 — five replaced, one deliberately reverted
 
 All six were regenerated on AC power (`ADP1/online = 1`, cores verified at 4.6–4.8 GHz).
-**Four replaced; two reverted because the benchmark measures a cheaper path than production
+**Five replaced; one reverted because the benchmark measures a cheaper path than production
 takes.** Measured before → after (committed values, 1.25× applied):
 
 | Pallet | Entry | Before | After | Verdict |
@@ -298,45 +298,53 @@ takes.** Measured before → after (committed values, 1.25× applied):
 | `mesh` | `submit_mesh_transaction` | 86.05 ms | **85.90 ms** | ✅ replaced — battery bound was within 0.2 % |
 | `mesh` | `register_mesh_sender_key` | 15.00 ms | **18.11 ms** | ✅ replaced — hand-estimate under by 21 % |
 | `staking` | `distribute_rewards` | 39.30 ms | **40.23 ms** | ✅ replaced |
-| `interoperability` | `acknowledge_message` | 31.24 ms / 4 reads | 23.10 ms / **2 reads** | ⛔ **reverted** |
-| `oracle` | `verify_merchant` | 19.49 ms / 1 read | 10.79 ms / **0 reads** | ⛔ **reverted** |
+| `oracle` | `verify_merchant` | 19.49 ms / 1 read | **11.12 ms / 0 reads** | ✅ replaced — derived value over-charged |
+| `interoperability` | `acknowledge_message` | 31.24 ms / 4 reads | 23.10 ms / **2 reads** | ⛔ **reverted — real under-charge** |
 
 **The "all six are biased upward" claim in the earlier table was wrong.** `unlock_conviction`
 was derived 44 % *below* its real cost and `cast_vote` 25 % below — while their read counts
 were overstated. A derived weight can be conservative on one axis and optimistic on the
 other; "biased upward" has to be verified per axis, not asserted per entry.
 
-**Why the two were reverted — both measure a path production never takes:**
+**`interoperability::acknowledge_message` is the one genuine under-charge.** The extrinsic
+calls `T::Identity::verify_bridge_operator` and `T::Identity::is_sanctioned`, and both
+runtime adapters are **bypassed under `runtime-benchmarks`**
+(`#[cfg(feature = "runtime-benchmarks")] return true;` / `return false;`). The benchmark
+build therefore performs 2 fewer reads than production — measured 2, and the derived 4 was
+itself only a partial count (see the open item below).
 
-- **`oracle::verify_merchant`.** The benchmark calls with `RawOrigin::Root`, and the runtime
-  type is `EitherOfDiverse<EnsureRoot, EnsureProportionMoreThan<TechnicalCouncil, 1, 2>>`.
-  `EitherOfDiverse` tries `EnsureRoot` **first**, so Root short-circuits before the
-  collective is consulted. A real council motion takes the second branch and reads
-  `Members` / `ProposalOf` / `Voting`. Regeneration therefore *reduced* the recorded cost of
-  the path that actually runs — `Measured: 0`, proof `0`, zero reads.
-- **`interoperability::acknowledge_message`.** The extrinsic calls
-  `T::Identity::verify_bridge_operator` and `T::Identity::is_sanctioned`, and both runtime
-  adapters are **bypassed under `runtime-benchmarks`**
-  (`#[cfg(feature = "runtime-benchmarks")] return true;` / `return false;`). The benchmark
-  build therefore performs 2 fewer reads than production. Measured 2 reads; production does 4.
+**`oracle::verify_merchant` was reverted in error and then re-measured — the corrected
+finding.** An earlier revision of this section claimed the council branch reads
+`Members`/`ProposalOf`/`Voting` and that Root short-circuited past them. **That was wrong.**
+`EnsureProportionMoreThan` does not read storage at all: it matches the origin payload
+(`o.caller().try_into()` against `RawOrigin::Members(n, m)`, then `n * D > N * m`). The
+collective's storage is read earlier, by `pallet_collective::close`, which carries its own
+weight. Both branches of `EitherOfDiverse<EnsureRoot, EnsureProportionMoreThan<..>>` are
+O(1) with **zero DB access**, so a Root-origin benchmark measures the same cost a council
+motion pays inside this extrinsic.
+
+The extrinsic's only counted DB access is one `MerchantCategories` write — the generated
+file's own annotation reads `Oracle::MerchantCategories (r:0 w:1)`. `block_number()` is
+not counted: `add_sanction` calls it too and also reports zero reads. Re-measured twice
+independently (10.79 ms, 11.12 ms), and corroborated by `add_sanction`'s identical
+`writes(1)`, no-reads shape. The derived 19.49 ms / 1 read was over-charging, and it has
+been replaced.
 
 **The trap, stated generally: a benchmark is only as good as the code path it exercises.**
-Three ways it silently diverges from production, all seen here or adjacent to it:
-`RawOrigin::Root` satisfying an `EitherOfDiverse` via its cheap first branch;
-`#[cfg(feature = "runtime-benchmarks")]` bypasses that remove real storage access; and mock
-verifiers that accept anything. In each case the benchmark **passes**, the generated number
-**looks measured**, and it **under-charges** — the unsafe direction.
+Two ways it silently diverges from production, both seen here:
+`#[cfg(feature = "runtime-benchmarks")]` bypasses that remove real storage access, and mock
+verifiers that accept anything (`AcceptAllMeshVerifier`). In each case the benchmark
+**passes**, the generated number **looks measured**, and it **under-charges** — the unsafe
+direction.
 
-`interoperability` and `oracle` keep their derived values, which are upward-biased on the
-axis that matters. Fixing them properly means either benchmarking the council path (a
-proposal that passes a motion) and removing the benchmark-mode bypass from the identity
-adapter, or keeping the derived bound and saying so. That is a code change, not a
-regeneration, and is not done here.
+> ⚠️ **Origin choice is *not* one of those ways — verify before assuming.** A privileged
+> origin that short-circuits an `EitherOfDiverse` looks like an under-charge but usually is
+> not: modern FRAME `EnsureProportion*` traits read the counts from the origin payload, not
+> from the collective's storage. Check the SDK source before writing either a revert or a
+> benchmark helper.
 
-**Only six of the eight are biased upward.** `register_mesh_sender_key` was 21 % under,
-`governance::unlock_conviction` 44 % under, and `governance::cast_vote` 25 % under until the
-AC run corrected them. Of the eight, the two reverted entries and the four now regenerated
-are bounded upward; nothing in the table is still under-charged. Treat any entry that comes
+**Only `interoperability` is still under-charged.** The other seven entries in the table are
+now either measured or bounded upward. Treat any entry that comes
 out **higher** than the committed value as a signal the benchmark is measuring a hotter path
 than the source suggests — not as noise to average away.
 - **Gap 2 staffed 2026-10-23:** `infra/relayer/` exists and runs, but acknowledges nothing by
