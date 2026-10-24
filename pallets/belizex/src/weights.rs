@@ -222,15 +222,28 @@ impl<T: frame_system::Config> super::WeightInfo for SubstrateWeight<T> {
 	/// cannot express, so `place_limit_order` multiplies this by
 	/// `T::MaxOrdersPerPair` and the loop is bounded by the same value.
 	///
-	/// Per fill: one `OrderBook` read and write for the maker, the same for the
-	/// taker (amortised across the loop), plus two ledger transfers. Numbers are a
-	/// generous upper bound on the measured `place_order` + `execute_trade` costs
-	/// divided per iteration. **Regenerate with `scripts/bench_weights.sh` before
-	/// mainnet** — the freshness guard will flag this file once `lib.rs` moves.
-	fn match_orders(fills: u32) -> Weight {
-		Weight::from_parts(25_000_000, 2560)
-			.saturating_mul(fills as u64)
-			.saturating_add(T::DbWeight::get().reads(2_u64))
-			.saturating_add(T::DbWeight::get().writes(2_u64))
+	/// An iteration is **either** a fill **or** the purge of an expired order, and
+	/// a walk can consist entirely of either — `open_orders` returns expired
+	/// orders as-is so the matcher can purge them. Charging both per iteration is
+	/// therefore a strict upper bound on either one:
+	///
+	/// * a purge is `remove_order` plus a refund, which is what `cancel_order`
+	///   measures;
+	/// * a fill writes one order and moves two ledger legs, which is what
+	///   `execute_trade` measures.
+	///
+	/// Written in terms of those two rather than as literals, so regenerating
+	/// either cannot silently leave this one under-charging. The benchmark of the
+	/// same name seeds live orders and so measures the *fill* shape only; that is
+	/// why the bound is not simply its measured value.
+	fn match_orders(orders: u32) -> Weight {
+		let per_order = Self::cancel_order().saturating_add(Self::execute_trade());
+		per_order
+			.saturating_mul(orders as u64)
+			// `open_orders` reads `PairOrders` once, then up to one `OrderBook`
+			// entry per id on each of the two sides.
+			.saturating_add(
+				T::DbWeight::get().reads(1_u64.saturating_add(2_u64.saturating_mul(orders as u64))),
+			)
 	}
 }

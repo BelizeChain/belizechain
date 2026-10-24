@@ -2040,7 +2040,7 @@ pub trait WeightInfo {
     /// matching loop's cost is data-dependent and `#[pallet::weight]` cannot
     /// express that. Each fill reads and writes two `OrderBook` entries plus the
     /// two ledger legs.
-    fn match_orders(fills: u32) -> Weight;
+    fn match_orders(orders: u32) -> Weight;
     fn cancel_order() -> Weight;
     fn pause() -> Weight;
     fn resume() -> Weight;
@@ -2072,13 +2072,14 @@ impl WeightInfo for () {
             .saturating_add(RocksDbWeight::get().reads(3))
             .saturating_add(RocksDbWeight::get().writes(2))
     }
-    fn match_orders(fills: u32) -> Weight {
-        // Per fill: 2 OrderBook reads + 2 writes, plus 2 ledger transfers.
-        // Deliberately generous until `scripts/bench_weights.sh` measures it.
-        Weight::from_parts(25_000_000, 2560)
-            .saturating_mul(fills as u64)
-            .saturating_add(RocksDbWeight::get().reads(2))
-            .saturating_add(RocksDbWeight::get().writes(2))
+    fn match_orders(orders: u32) -> Weight {
+        // An iteration is either a fill or a purge of an expired order, and a walk
+        // can be entirely one or the other. Charging both is a strict upper bound;
+        // see the note on the same function in `weights.rs`.
+        let per_order = Self::cancel_order().saturating_add(Self::execute_trade());
+        per_order.saturating_mul(orders as u64).saturating_add(
+            RocksDbWeight::get().reads(1_u64.saturating_add(2_u64.saturating_mul(orders as u64))),
+        )
     }
     fn cancel_order() -> Weight {
         Weight::from_parts(20_000_000, 1024)

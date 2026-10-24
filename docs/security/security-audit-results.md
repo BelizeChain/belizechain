@@ -211,11 +211,22 @@ which drives the case where the base leg has already moved. Against the old code
 that test fails on the first assertion after the fill, because the fully-filled
 bid had already been removed from the book.
 
-**Weight.** `WeightInfo` gained `match_orders(fills)`, and `place_limit_order`'s
-weight is now `place_order() + match_orders(T::MaxOrdersPerPair::get())`. The
-`weights.rs` figure is **derived, not measured** — it is marked as such in an
-AMENDMENT block and must be regenerated with `scripts/bench_weights.sh` before
-mainnet.
+**Weight.** `WeightInfo` gained `match_orders(orders)`, and `place_limit_order`'s
+weight is now `place_order() + match_orders(T::MaxOrdersPerPair::get())`.
+
+An iteration is **either** a fill **or** the purge of an expired order, and a walk
+can be entirely one or the other, so the per-iteration charge is
+`cancel_order() + execute_trade()` — a purge is `remove_order` plus a refund
+(what `cancel_order` measures) and a fill writes one order and moves two ledger
+legs (what `execute_trade` measures). Charging both is a strict upper bound on
+either. It is written in terms of those two functions rather than as literals, so
+regenerating either cannot silently leave this one under-charging.
+
+That bound is **derived, not measured**, and is marked as such in an AMENDMENT
+block. The benchmark of the same name seeds live orders, so it measures the fill
+shape only — measuring it alone would under-charge a walk of expired orders. The
+figure must be regenerated with `scripts/bench_weights.sh` before mainnet, and
+the derivation above is what that regeneration has to preserve.
 
 **Migration.** `OrderEntry`'s encoding changed, so `STORAGE_VERSION` went 0 → 1
 and `pallets/belizex/src/migrations.rs` purges `OrderBook`, `PairOrders` and
