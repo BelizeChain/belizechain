@@ -1724,7 +1724,9 @@ pub mod pallet {
                 if maker.remaining == 0 {
                     Self::remove_order(&maker);
                 } else {
-                    OrderBook::<T>::insert(maker_id, maker.clone());
+                    // Moved, not cloned: `maker` is rebound from storage at the
+                    // top of every iteration, so nothing reads it afterwards.
+                    OrderBook::<T>::insert(maker_id, maker);
                 }
             }
 
