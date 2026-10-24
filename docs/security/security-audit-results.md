@@ -81,7 +81,9 @@ Each row was checked against the source, not against the checklist.
 | **Obsolete — AKS removed** | P1-04, P1-20, P1-21, P1-22, P1-23 |
 | **False positive** | P1-11 (`LongestChain` is the standard BABE+GRANDPA pattern, CONS-035), P1-17 (no order matching exists, so a maker/taker self-trade cannot occur; `SelfTradeNotAllowed` is a dead variant reserved for a future engine), P1-19 (only `dtolnay/rust-toolchain@1.90.0`, a version tag) |
 | **Fixed 2026-10-23 (second pass)** | P1-06 (`verify_merchant` now requires `T::MerchantVerificationOrigin` = `TechnicalCouncilMajority`; it was a single `OracleOperators` member), P1-08 **settlement half** (the DEX moved no bBZD at all — see below) |
-| **Open — needs a decision** | P1-02 (`Sudo` at index 6, deliberate for testnet bootstrap; owner has said do not remove) · P1-08 **matching half** (index built, engine deliberately not; see below) · P1-24 (`--force-authoring` is correct on a single-authority testnet, unsafe on multi-validator mainnet; annotated in `infra/docker-compose.validators.yml`) |
+| **Fixed 2026-10-24** | P1-08 **matching half** — limit orders now escrow at placement and fill against each other in price-time order (see below) |
+| **Fixed 2026-10-24 (CI fallout)** | The five benchmark smoke-test failures that P1-06/P1-07/conviction-bonding left behind — `governance::cast_vote` (bond underfunded), `oracle::verify_merchant` (origin moved off `Signed`), `mesh::submit_mesh_transaction` (unsigned after P1-07), `belizex::{add_liquidity, execute_trade, remove_liquidity}` (quote leg unfunded). See *The benchmark smoke test* below |
+| **Open — needs a decision** | P1-02 (`Sudo` at index 6, deliberate for testnet bootstrap; owner has said do not remove) · P1-24 (`--force-authoring` is correct on a single-authority testnet, unsafe on multi-validator mainnet; annotated in `infra/docker-compose.validators.yml`) |
 | **Not started** | External audit, penetration testing, economic modelling, formal verification |
 
 #### P1-08 is worse than reported, and is a stub rather than a bug
@@ -93,10 +95,10 @@ against the AMM pool without consulting it. An order therefore cannot fill, so
 the stated exploitation risk does not exist — but the extrinsic advertises a
 feature that is not implemented, which is a worse failure mode for a user.
 
-A matching engine (price-time priority, partial fills, settlement) is a new
-subsystem with economic consequences and has deliberately not been invented here.
-The extrinsic's doc comment now says so. Until an engine exists, limit orders
-should be treated as unavailable.
+A matching engine (price-time priority, partial fills, settlement) was a new
+subsystem with economic consequences, so it was not invented on the first pass.
+It has since been built — see *The matching engine* below — and limit orders are
+now live rather than advertised-but-absent.
 
 ##### Worse still: the DEX moved no bBZD
 
@@ -133,7 +135,7 @@ every pair, which cannot be given a static weight. `PairOrders` now holds per-pa
 `place_limit_order` and `cancel_order`, and read by `open_orders(pair)` which
 returns best-price-first on each side and skips IDs no longer in `OrderBook`.
 
-This is deliberately only the prerequisite. The engine itself still needs:
+This was deliberately only the prerequisite. The engine itself still needs:
 
 - **fund reservation.** Orders reserve nothing today, so a fill would be
   attempted against a balance that may be gone. Reserving on placement changes
@@ -146,6 +148,86 @@ This is deliberately only the prerequisite. The engine itself still needs:
 - **price-time priority.** `open_orders` currently sorts by price only, with
   order id ascending as the tiebreak — a proxy for arrival, not a timestamped
   queue. That is adequate for a first engine but must be stated, not assumed.
+
+#### The matching engine (fixed 2026-10-24)
+
+All four prerequisites are now closed.
+
+**Escrow at placement.** `OrderEntry` gained an `escrow: u128` field and the
+pallet a dedicated `OrderEscrowPalletId` account. `place_limit_order` moves funds
+*before* inserting the order:
+
+- a **bid** escrows the quote asset, `ceil(amount * price / PRICE_SCALE)`, so a
+  rounding error can never leave the book promising more than it holds;
+- an **ask** escrows the base asset, `amount` — it already owns what it is selling.
+
+`cancel_order` refunds whatever remains in `escrow`, so a partially filled order
+returns only its remainder. A placement that cannot fund the escrow fails before
+touching the book, which is what removes the original unfunded-order finding
+rather than merely hiding it.
+
+**Price-time matching.** `place_limit_order` runs `match_order` against the
+opposite side after inserting, walking `PairOrders` best-price-first and bounded
+by `T::MaxOrdersPerPair`. A crossing pair settles both legs through
+`AssetLedger`, so the asset actually named by the pair moves. Fill price is the
+**resting (maker) order's** price, not the taker's — the standard
+price-improvement rule; the taker keeps the difference. Partial fills decrement
+`remaining` on both sides and leave the larger order resting.
+
+**Self-trade** is skipped rather than rejected: an account that crosses its own
+order leaves it on the book and continues to the next maker. Rejecting the whole
+placement would let a maker grief the book with a self-crossing order. The
+`SelfTradeNotAllowed` variant is therefore still unraised — it is now dead by
+design rather than by omission, and is annotated as such in the source.
+
+**Expiry** is purged lazily during matching — an expired resting order is removed
+and refunded instead of filling, so the book cannot hold a claim the owner has
+walked away from.
+
+**Weight.** `WeightInfo` gained `match_orders(fills)`, and `place_limit_order`'s
+weight is now `place_order() + match_orders(T::MaxOrdersPerPair::get())`. The
+`weights.rs` figure is **derived, not measured** — it is marked as such in an
+AMENDMENT block and must be regenerated with `scripts/bench_weights.sh` before
+mainnet.
+
+**Migration.** `OrderEntry`'s encoding changed, so `STORAGE_VERSION` went 0 → 1
+and `pallets/belizex/src/migrations.rs` purges `OrderBook`, `PairOrders` and
+`AccountOrderCount` rather than reinterpreting old bytes. `runtime/src/migrations.rs`
+runs it at `CURRENT_RUNTIME_VERSION` 3.
+
+**Weight caveat:** a `match_orders(n: Linear<1, MaxOrdersPerPair>)` benchmark now exists and
+passes in the mock, but `weights.rs` still holds the derived placeholder until
+`scripts/bench_weights.sh` regenerates it on AC power. There is also no time-priority
+*timestamp* — the tiebreak is still order id, which is a proxy for arrival.
+
+#### The benchmark smoke test was red, and it was not noise
+
+`scripts/bench_smoke.sh` runs the **real release node** against `--chain dev`, not the
+pallet mocks. That distinction is the whole story: every one of the five failures was a
+benchmark that passes under `cargo test --features runtime-benchmarks` and fails in the
+node, because a mock config collapses differences the runtime keeps.
+
+| Benchmark | Cause |
+|---|---|
+| `governance::cast_vote` | conviction bonding reserves `ConvictionBondBase × multiplier`. The mock sets the base to `MinimumDeposit`; the runtime sets it to **10× that**. The voter was funded for the mock. |
+| `oracle::verify_merchant` | P1-06 moved the gate to `T::MerchantVerificationOrigin` (`TechnicalCouncilMajority`); the benchmark still used `Signed(operator)`. |
+| `mesh::submit_mesh_transaction` | P1-07 added sender-key registration and sr25519 verification; the benchmark sent `[0xBB; 64]` and never reached the measured code. |
+| `belizex::{add_liquidity, execute_trade, remove_liquidity}` | Pair `(0,1)` is DALLA/bBZD, and those live in **different ledgers**. Only the native balance was funded. `MockAssetLedger` maps every asset to `Balances`, so the mock could not see it. |
+
+The belizex three needed a production seam, not just a benchmark edit: `AssetLedger` gained
+`set_balance(asset, who, amount)`, gated on `#[cfg(feature = "runtime-benchmarks")]`, so a
+benchmark can fund bBZD without the pallet taking a dependency on `pallet-belize-economy`
+(the reason the adapter lives in the runtime at all).
+
+Three traps worth recording:
+
+- **`sp-core/full_crypto` cannot be enabled from a pallet's `runtime-benchmarks` feature.**
+  It propagates into the runtime's WASM build and fails inside `app_crypto_pair_common`.
+- **`sp_io::crypto::{sr25519_generate, sr25519_sign}` need a keystore.** The node running
+  benchmarks has one; the `impl_benchmark_test_suite!` mock does not and panics. Sign for
+  real under `cfg(not(test))`, use a dummy under `cfg(test)` where the mock verifier is
+  `AcceptAll`.
+- **`KeyTypeId` is `[u8; 4]`.** A five-byte literal is a type error.
 
 ### Findings that are obsolete, not fixed
 

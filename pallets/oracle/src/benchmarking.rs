@@ -86,12 +86,16 @@ mod benchmarks {
 
     #[benchmark]
     fn verify_merchant() {
-        let operator = register_operator::<T>(0);
+        // P1-06: this call is gated on `T::MerchantVerificationOrigin`
+        // (`TechnicalCouncilMajority` in the runtime), not on a signed operator.
+        // A `Signed` origin here fails `BadOrigin` before reaching the code
+        // under test.
+        let _operator = register_operator::<T>(0);
         let merchant: T::AccountId = account("merchant", 0, 0);
 
         #[extrinsic_call]
         verify_merchant(
-            RawOrigin::Signed(operator),
+            RawOrigin::Root,
             merchant,
             0u8, // MerchantCategory::Accommodation
             BoundedVec::<u8, ConstU32<MAX_CERT_LEN>>::truncate_from(b"cert".to_vec()),

@@ -49,6 +49,7 @@ parameter_types! {
     pub const MinLiquidityAmount: u128 = 1;
     pub const MaxOracleDeviationBpsConst: u32 = 500; // 5%
     pub const DexPalletId: PalletId = PalletId(*b"belizexd");
+    pub const OrderEscrowPalletId: PalletId = PalletId(*b"belizexo");
 }
 
 // Runtime for tests
@@ -158,6 +159,7 @@ impl Config for Test {
     type Oracle = MockOracle;
     type MaxOracleDeviationBps = MaxOracleDeviationBpsConst;
     type DexPalletId = DexPalletId;
+    type OrderEscrowPalletId = OrderEscrowPalletId;
     type MaxOrdersPerAccount = ConstU32<50>;
     type MaxOrdersPerPair = ConstU32<20>;
 }

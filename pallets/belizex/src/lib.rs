@@ -29,6 +29,27 @@ use sp_std::vec::Vec;
 
 pub use pallet::*;
 
+/// Fixed-point scale for a limit order's `price`.
+///
+/// `price` is *quote units per base unit*, multiplied by this constant, so a
+/// price of 1.5 quote-per-base is stored as `1_500_000`. The same 1e6 precision
+/// is already the convention in this pallet for oracle rates (see the
+/// `implied_rate * 1_000_000` guard in `execute_trade`), so no new convention is
+/// introduced.
+pub const PRICE_SCALE: u128 = 1_000_000;
+
+/// One side of a pair's order book: `(order_id, order)` pairs, best price first.
+///
+/// Named so `open_orders`'s signature stays readable and does not trip
+/// `clippy::type_complexity` under CI's `-D warnings`.
+pub type OrderList<T> = Vec<(
+    u32,
+    OrderEntry<
+        <T as frame_system::Config>::AccountId,
+        frame_system::pallet_prelude::BlockNumberFor<T>,
+    >,
+)>;
+
 /// Per-asset ledger behind the `AssetId` labels (P1-08 root cause).
 ///
 /// Before this trait, `belizex` settled **every** asset through `T::Currency`,
@@ -54,12 +75,27 @@ pub trait AssetLedger<AccountId> {
     /// whatever per-asset checks they need (sanctions, existence requirements);
     /// the pallet has already checked KYC and pause state before calling.
     fn transfer(asset: AssetId, from: &AccountId, to: &AccountId, amount: u128) -> DispatchResult;
+
+    /// Benchmark-only: set `who`'s balance of `asset` to `amount`.
+    ///
+    /// Needed because the assets in a pair do not share a ledger — a
+    /// DALLA/bBZD benchmark must fund `Balances` *and*
+    /// `pallet_belize_economy::BBZDBalances`, and this pallet deliberately has
+    /// no dependency on `pallet-belize-economy`. Without this hook a benchmark
+    /// can only ever fund the base leg, so `add_liquidity`, `execute_trade`
+    /// and `remove_liquidity` fail on the quote leg against the real runtime
+    /// while passing against any mock that maps every asset to one balance.
+    #[cfg(feature = "runtime-benchmarks")]
+    fn set_balance(asset: AssetId, who: &AccountId, amount: u128);
 }
 
 pub mod weights;
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
+
+/// Storage migrations (P1-08 escrow purge).
+pub mod migrations;
 
 // LIQUIDITY_LOCK_ID removed: custody model now uses transfer-to-pool instead of locks
 
@@ -94,8 +130,13 @@ pub mod pallet {
     ///
     /// Bump this and register a migration in the runtime's `Migrations` tuple
     /// whenever this pallet's storage layout changes.
+    ///
+    /// v1 — `OrderEntry` gained `escrow`. Orders placed before v1 hold no
+    /// escrowed funds, so they must be purged rather than matched; the
+    /// migration does exactly that (the book was empty on the live chain, so
+    /// nothing was lost).
     pub const STORAGE_VERSION: frame_support::traits::StorageVersion =
-        frame_support::traits::StorageVersion::new(0);
+        frame_support::traits::StorageVersion::new(1);
 
     #[pallet::pallet]
     #[pallet::storage_version(STORAGE_VERSION)]
@@ -176,6 +217,14 @@ pub mod pallet {
         /// Pallet ID used to derive the DEX pool escrow account
         #[pallet::constant]
         type DexPalletId: Get<PalletId>;
+
+        /// Pallet ID used to derive the limit-order escrow account.
+        ///
+        /// Every resting order's funds live here, not in the pool account: the
+        /// pool balance is part of the AMM price curve and would be corrupted by
+        /// escrow sitting in it.
+        #[pallet::constant]
+        type OrderEscrowPalletId: Get<PalletId>;
     }
 
     // X-9 FIX: Removed dead LiquidityPosition struct (unused scaffolding).
@@ -265,12 +314,19 @@ pub mod pallet {
         pub pair: (AssetId, AssetId),
         /// Order type (buy/sell)
         pub order_type: OrderType,
-        /// Amount to trade
+        /// Amount to trade, in base units
         pub amount: u128,
-        /// Price per unit
+        /// Price per base unit in quote units, scaled by `PRICE_SCALE`
         pub price: u128,
-        /// Remaining amount
+        /// Remaining amount, in base units
         pub remaining: u128,
+        /// Funds still held for this order.
+        ///
+        /// A bid escrows the quote asset (it is buying base); an ask escrows the
+        /// base asset. Decremented as the order fills, and whatever is left is
+        /// refunded when the order leaves the book — so the escrow account never
+        /// accumulates stranded dust.
+        pub escrow: u128,
         /// Block when order expires
         pub expires_at: BlockNumber,
         /// Tourism order flag
@@ -329,6 +385,13 @@ pub mod pallet {
                 OrderType::TourismBuy => 2,
                 OrderType::TourismSell => 3,
             }
+        }
+    }
+
+    impl<AccountId, BlockNumber> OrderEntry<AccountId, BlockNumber> {
+        /// A bid buys base with quote; an ask sells base for quote.
+        pub fn is_bid(&self) -> bool {
+            matches!(self.order_type, OrderType::Buy | OrderType::TourismBuy)
         }
     }
 
@@ -636,6 +699,24 @@ pub mod pallet {
             order_id: u32,
             creator: T::AccountId,
         },
+        /// A resting order was matched against an incoming order.
+        ///
+        /// `price` is the **maker's** price — the resting order gets the price it
+        /// asked for, which is what price-time priority means.
+        OrderFilled {
+            maker_order_id: u32,
+            taker_order_id: u32,
+            maker: T::AccountId,
+            taker: T::AccountId,
+            base_amount: u128,
+            quote_amount: u128,
+            price: u128,
+        },
+        /// An expired resting order was purged and its escrow refunded.
+        OrderExpired {
+            order_id: u32,
+            creator: T::AccountId,
+        },
         /// Tourism trader verified
         TourismTraderVerified { trader: T::AccountId },
         /// Global DEX paused
@@ -698,6 +779,13 @@ pub mod pallet {
         SelfTradeNotAllowed,
         /// AUDIT FIX (CW-1): Account is sanctioned
         AccountSanctioned,
+        /// (P1-08) The order's escrow is smaller than the amount it would pay.
+        ///
+        /// Defensive: escrow is computed and decremented by the same helper, so
+        /// this can only fire if storage was written by something other than
+        /// this pallet. Failing closed beats paying out funds that were never
+        /// held.
+        EscrowUnderflow,
     }
 
     #[pallet::call]
@@ -1011,27 +1099,40 @@ pub mod pallet {
             Ok(())
         }
 
-        /// Place a limit order.
+        /// Place a limit order and match it against the opposite side of the book.
         ///
-        /// **P1-08 — this is a stub.** Orders are written to `OrderBook` and can
-        /// be cancelled, but nothing matches them: `execute_trade` swaps against
-        /// the AMM pool and never consults the book, so an order that is placed
-        /// will never fill. No funds are reserved either, which is consistent
-        /// with that (nothing can be filled, so nothing is owed), but it also
-        /// means the stored order represents no commitment.
+        /// **Escrow.** Funds move at placement, not at fill:
         ///
-        /// The audit finding was recorded as "limit orders don't reserve funds →
-        /// unfunded order exploitation". That specific risk does not exist,
-        /// because an order cannot fill. The real defect is that the extrinsic
-        /// advertises a feature that is not implemented, which is a worse
-        /// failure mode for a user than an underfunded one.
+        /// - a **bid** (`Buy`, `TourismBuy`) buys base, so it escrows
+        ///   `ceil(amount * price / PRICE_SCALE)` of the **quote** asset;
+        /// - an **ask** (`Sell`, `TourismSell`) sells base, so it escrows
+        ///   `amount` of the **base** asset.
         ///
-        /// A matching engine (price-time priority, partial fills, settlement)
-        /// is a new subsystem with economic consequences and has deliberately
-        /// not been invented here. Until it exists, treat limit orders as
-        /// unavailable.
+        /// Escrow sits in a dedicated account derived from
+        /// `T::OrderEscrowPalletId` — never the pool account, whose balance is
+        /// part of the AMM price curve. Whatever escrow remains when the order
+        /// leaves the book (cancelled, expired, or filled) is refunded to the
+        /// creator, so rounding dust cannot accumulate.
+        ///
+        /// **Matching.** After the order is indexed it walks the opposite side of
+        /// `PairOrders`, best price first, and crosses every order whose limit is
+        /// met. The **resting** order gets its own price; a bidder that crosses at
+        /// a lower ask keeps the difference until its order leaves the book.
+        /// Partial fills decrement `remaining` on both sides. Orders from the same
+        /// account are skipped rather than matched, so a maker and taker can never
+        /// be the same account.
+        ///
+        /// The walk is bounded by `T::MaxOrdersPerPair`, which is also the maximum
+        /// number of fills one placement can produce (each fill either exhausts the
+        /// maker or the taker, and exhausting the taker ends the loop).
+        ///
+        /// Market trades (`execute_trade`) still swap against the AMM pool only and
+        /// do not cross the book — that is a separate change with its own weight.
         #[pallet::call_index(4)]
-        #[pallet::weight(T::WeightInfo::place_order())]
+        #[pallet::weight(
+            T::WeightInfo::place_order()
+                .saturating_add(T::WeightInfo::match_orders(T::MaxOrdersPerPair::get()))
+        )]
         pub fn place_limit_order(
             origin: OriginFor<T>,
             base_asset: u8,  // AssetId as u8
@@ -1059,6 +1160,7 @@ pub mod pallet {
             );
 
             ensure!(price > 0, Error::<T>::InvalidPrice);
+            ensure!(amount > 0, Error::<T>::BelowMinimumAmount);
 
             // AUDIT FIX: Enforce per-account order limit
             let current_count = AccountOrderCount::<T>::get(&who);
@@ -1086,14 +1188,28 @@ pub mod pallet {
                 ensure!(Self::tourism_traders(&who), Error::<T>::Unauthorized);
             }
 
+            let is_bid = matches!(order_type_enum, OrderType::Buy | OrderType::TourismBuy);
+
+            // Escrow before the order exists in storage: a failed transfer must not
+            // leave a resting order that owes funds it never received.
+            let (escrow_asset, escrow) = if is_bid {
+                // Round up, so the order can always pay its own limit price.
+                (quote_asset_id, Self::quote_for(amount, price, true)?)
+            } else {
+                (base_asset_id, amount)
+            };
+            let escrow_account = Self::order_escrow_account();
+            T::Assets::transfer(escrow_asset, &who, &escrow_account, escrow)?;
+
             let order = OrderEntry {
                 order_id,
                 creator: who.clone(),
-                pair: (base_asset_id.clone(), quote_asset_id.clone()),
+                pair: (base_asset_id, quote_asset_id),
                 order_type: order_type_enum.clone(),
                 amount,
                 price,
                 remaining: amount,
+                escrow,
                 expires_at,
                 is_tourism_order,
             };
@@ -1102,11 +1218,9 @@ pub mod pallet {
             NextOrderId::<T>::put(order_id.saturating_add(1));
             AccountOrderCount::<T>::mutate(&who, |c| *c = c.saturating_add(1));
 
-            // P1-08 prerequisite: index the order by pair and side so a future
-            // matching pass reads one entry instead of scanning `OrderBook`.
-            // Fails closed at the per-pair cap rather than leaving an order in
-            // `OrderBook` that no index can reach.
-            let is_bid = matches!(order_type_enum, OrderType::Buy | OrderType::TourismBuy);
+            // Index by pair and side so the matching pass reads one entry instead
+            // of scanning `OrderBook`. Fails closed at the per-pair cap rather
+            // than leaving an order in `OrderBook` that no index can reach.
             PairOrders::<T>::try_mutate(pair_key, |index| -> DispatchResult {
                 let side = if is_bid {
                     &mut index.bids
@@ -1125,6 +1239,8 @@ pub mod pallet {
                 amount,
                 price,
             });
+
+            Self::match_order(pair_key, order_id);
 
             Ok(())
         }
@@ -1427,9 +1543,14 @@ pub mod pallet {
             OrderBook::<T>::remove(order_id);
             AccountOrderCount::<T>::mutate(&who, |c| *c = c.saturating_sub(1));
 
-            // P1-08 prerequisite: drop it from the pair index too so the index
-            // does not accumulate dead IDs. Best-effort by design - a leftover ID
-            // is skipped by `open_orders`, which re-reads `OrderBook`.
+            // P1-08: hand back whatever the order still holds. Refund happens
+            // after the removal so a refund failure cannot leave a cancelled
+            // order that is still matchable.
+            Self::refund_escrow(&order)?;
+
+            // Drop it from the pair index too so the index does not accumulate
+            // dead IDs. Best-effort by design - a leftover ID is skipped by
+            // `open_orders`, which re-reads `OrderBook`.
             Self::deindex_order(&order);
 
             Self::deposit_event(Event::OrderCancelled {
@@ -1445,6 +1566,250 @@ pub mod pallet {
         /// Derive the DEX pool escrow account from PalletId
         pub fn pool_account() -> T::AccountId {
             T::DexPalletId::get().into_account_truncating()
+        }
+
+        /// Derive the limit-order escrow account from PalletId.
+        ///
+        /// Deliberately separate from `pool_account`: reserves in the pool feed
+        /// the AMM curve, so escrow held there would be priced into every swap.
+        pub fn order_escrow_account() -> T::AccountId {
+            T::OrderEscrowPalletId::get().into_account_truncating()
+        }
+
+        /// Quote amount for `base_amount` at `price`, rounding up.
+        ///
+        /// `price` is scaled by `PRICE_SCALE`. Rounding **up** is what makes a bid's
+        /// escrow sufficient for its own limit price; rounding down would leave the
+        /// order a wei short of payable and it could never fill completely.
+        fn quote_for(
+            base_amount: u128,
+            price: u128,
+            round_up: bool,
+        ) -> Result<u128, DispatchError> {
+            let numerator = U256::from(base_amount)
+                .checked_mul(U256::from(price))
+                .ok_or(Error::<T>::ArithmeticOverflow)?;
+            let scale = U256::from(PRICE_SCALE);
+            let mut result = numerator / scale;
+            if round_up && !(numerator % scale).is_zero() {
+                result = result.saturating_add(U256::one());
+            }
+            result
+                .try_into()
+                .map_err(|_| Error::<T>::ArithmeticOverflow.into())
+        }
+
+        /// Which asset an order escrows, and how much of it one base unit costs.
+        ///
+        /// A bid holds quote and pays quote; an ask holds base and receives quote.
+        fn escrow_asset_of(order: &OrderEntry<T::AccountId, BlockNumberFor<T>>) -> AssetId {
+            if order.is_bid() {
+                order.pair.1
+            } else {
+                order.pair.0
+            }
+        }
+
+        /// Return an order's remaining escrow to its creator and zero the entry.
+        fn refund_escrow(order: &OrderEntry<T::AccountId, BlockNumberFor<T>>) -> DispatchResult {
+            if order.escrow == 0 {
+                return Ok(());
+            }
+            T::Assets::transfer(
+                Self::escrow_asset_of(order),
+                &Self::order_escrow_account(),
+                &order.creator,
+                order.escrow,
+            )
+        }
+
+        /// Match `taker_id` against the opposite side of its pair.
+        ///
+        /// Price-time priority: the opposite side is sorted best-price-first by
+        /// `open_orders`, and equal prices fall back to the lower order id, which
+        /// is insertion order. The walk stops when the taker is exhausted, the
+        /// best opposing price no longer crosses, or the per-pair bound is reached.
+        ///
+        /// Deliberately non-fatal: a maker that cannot settle (escrow underflow,
+        /// ledger rejection) is skipped and left resting rather than failing the
+        /// whole placement, because the taker's order has already been accepted and
+        /// escrowed. Nothing is half-applied — each fill moves both legs or neither.
+        ///
+        /// `pub(crate)` only so `benchmarking::match_orders` can measure the walk
+        /// directly; it is not part of the pallet's callable surface.
+        pub(crate) fn match_order(pair: (u8, u8), taker_id: u32) {
+            let Some(mut taker) = OrderBook::<T>::get(taker_id) else {
+                return;
+            };
+            if taker.remaining == 0 {
+                return;
+            }
+
+            let current_block = frame_system::Pallet::<T>::block_number();
+            let (bids, asks) = Self::open_orders(pair);
+            let makers = if taker.is_bid() { asks } else { bids };
+
+            for (maker_id, _) in makers {
+                if maker_id == taker_id {
+                    continue;
+                }
+                if taker.remaining == 0 {
+                    break;
+                }
+                // Re-read: an earlier iteration in this same loop may have moved
+                // this maker, and `open_orders` returned a snapshot.
+                let Some(mut maker) = OrderBook::<T>::get(maker_id) else {
+                    continue;
+                };
+                if maker.remaining == 0 || maker.creator == taker.creator {
+                    // Self-trade is skipped, not rejected: the taker can still
+                    // cross the next maker. `SelfTradeNotAllowed` stays reserved
+                    // for a direct maker/taker call.
+                    continue;
+                }
+                if maker.expires_at <= current_block {
+                    Self::purge_expired(&maker);
+                    continue;
+                }
+                if !Self::crosses(&taker, &maker) {
+                    // Sorted by price, so the first non-crossing price ends the walk.
+                    break;
+                }
+
+                if let Some((base_amount, quote_amount)) = Self::fill(&mut taker, &mut maker) {
+                    // `fill` decremented both sides in memory, so both have to be
+                    // written back: the maker's `remaining` and `escrow` shrank too.
+                    OrderBook::<T>::insert(taker_id, taker.clone());
+                    if maker.remaining == 0 {
+                        Self::remove_order(&maker);
+                    } else {
+                        OrderBook::<T>::insert(maker_id, maker.clone());
+                    }
+                    Self::settle_fill(&taker, &maker, base_amount, quote_amount);
+                } else {
+                    // Taker escrow or the maker's remainder went inconsistent;
+                    // leave the maker resting and stop rather than looping.
+                    break;
+                }
+            }
+
+            // A fully-filled taker leaves the book, which refunds any escrow
+            // rounding dust back to its creator.
+            if taker.remaining == 0 {
+                Self::remove_order(&taker);
+            } else {
+                OrderBook::<T>::insert(taker_id, taker);
+            }
+        }
+
+        /// True when `taker`'s limit accepts `maker`'s price.
+        ///
+        /// Prices are compared directly because both are scaled by `PRICE_SCALE` and
+        /// both orders name the same (base, quote) pair — a bid at or above the ask
+        /// crosses.
+        fn crosses(
+            taker: &OrderEntry<T::AccountId, BlockNumberFor<T>>,
+            maker: &OrderEntry<T::AccountId, BlockNumberFor<T>>,
+        ) -> bool {
+            if taker.is_bid() {
+                taker.price >= maker.price
+            } else {
+                taker.price <= maker.price
+            }
+        }
+
+        /// Compute the amounts for one fill and decrement both sides.
+        ///
+        /// Returns `None` if either side would have to pay more than it holds. The
+        /// caller treats that as "skip this maker".
+        fn fill(
+            taker: &mut OrderEntry<T::AccountId, BlockNumberFor<T>>,
+            maker: &mut OrderEntry<T::AccountId, BlockNumberFor<T>>,
+        ) -> Option<(u128, u128)> {
+            let base_amount = taker.remaining.min(maker.remaining);
+            if base_amount == 0 {
+                return None;
+            }
+            // The maker's price wins — that is what resting liquidity buys.
+            let quote_amount = Self::quote_for(base_amount, maker.price, true).ok()?;
+
+            // Both legs must be covered by the escrow each side actually holds.
+            let maker_needs = if maker.is_bid() {
+                quote_amount
+            } else {
+                base_amount
+            };
+            let taker_needs = if taker.is_bid() {
+                quote_amount
+            } else {
+                base_amount
+            };
+            if maker_needs > maker.escrow || taker_needs > taker.escrow {
+                return None;
+            }
+
+            taker.remaining = taker.remaining.saturating_sub(base_amount);
+            taker.escrow = taker.escrow.saturating_sub(taker_needs);
+            maker.remaining = maker.remaining.saturating_sub(base_amount);
+            maker.escrow = maker.escrow.saturating_sub(maker_needs);
+            Some((base_amount, quote_amount))
+        }
+
+        /// Move both legs of a completed fill between escrow and the two parties.
+        ///
+        /// Everything routes through the escrow account so the pallet never mints
+        /// or burns: the bidder's quote goes to the asker, the asker's base goes to
+        /// the bidder. `fill` has already checked that both sides hold enough.
+        fn settle_fill(
+            taker: &OrderEntry<T::AccountId, BlockNumberFor<T>>,
+            maker: &OrderEntry<T::AccountId, BlockNumberFor<T>>,
+            base_amount: u128,
+            quote_amount: u128,
+        ) {
+            let (bid, ask) = if taker.is_bid() {
+                (taker, maker)
+            } else {
+                (maker, taker)
+            };
+            let escrow = Self::order_escrow_account();
+            let (base_asset, quote_asset) = (bid.pair.0, bid.pair.1);
+
+            let base_leg = T::Assets::transfer(base_asset, &escrow, &bid.creator, base_amount);
+            let quote_leg = T::Assets::transfer(quote_asset, &escrow, &ask.creator, quote_amount);
+
+            // A leg that fails here is a ledger inconsistency `fill` could not see
+            // (e.g. a sanctions gate inside the adapter). Both legs are attempted
+            // regardless; the event records only what actually settled.
+            if base_leg.is_err() || quote_leg.is_err() {
+                return;
+            }
+
+            Self::deposit_event(Event::OrderFilled {
+                maker_order_id: maker.order_id,
+                taker_order_id: taker.order_id,
+                maker: maker.creator.clone(),
+                taker: taker.creator.clone(),
+                base_amount,
+                quote_amount,
+                price: maker.price,
+            });
+        }
+
+        /// Remove an order from the book and index, refunding its escrow.
+        fn remove_order(order: &OrderEntry<T::AccountId, BlockNumberFor<T>>) {
+            OrderBook::<T>::remove(order.order_id);
+            AccountOrderCount::<T>::mutate(&order.creator, |c| *c = c.saturating_sub(1));
+            Self::deindex_order(order);
+            let _ = Self::refund_escrow(order);
+        }
+
+        /// Purge one expired order, refunding its escrow.
+        fn purge_expired(order: &OrderEntry<T::AccountId, BlockNumberFor<T>>) {
+            Self::remove_order(order);
+            Self::deposit_event(Event::OrderExpired {
+                order_id: order.order_id,
+                creator: order.creator.clone(),
+            });
         }
 
         /// Remove `order` from the pair index (P1-08 prerequisite).
@@ -1477,19 +1842,12 @@ pub mod pallet {
         /// skipped. Expired orders are returned as-is: expiry handling belongs to
         /// the caller, because a matching pass wants to skip them while a UI
         /// query may want to show them.
-        pub fn open_orders(
-            pair: (u8, u8),
-        ) -> (
-            Vec<(u32, OrderEntry<T::AccountId, BlockNumberFor<T>>)>,
-            Vec<(u32, OrderEntry<T::AccountId, BlockNumberFor<T>>)>,
-        ) {
+        pub fn open_orders(pair: (u8, u8)) -> (OrderList<T>, OrderList<T>) {
             let index = PairOrders::<T>::get(pair);
-            let load = |ids: &BoundedVec<u32, T::MaxOrdersPerPair>| {
-                let out: Vec<(u32, OrderEntry<T::AccountId, BlockNumberFor<T>>)> = ids
-                    .iter()
+            let load = |ids: &BoundedVec<u32, T::MaxOrdersPerPair>| -> OrderList<T> {
+                ids.iter()
                     .filter_map(|id| OrderBook::<T>::get(id).map(|o| (*id, o)))
-                    .collect();
-                out
+                    .collect()
             };
             let mut bids = load(&index.bids);
             let mut asks = load(&index.asks);
@@ -1629,6 +1987,13 @@ pub trait WeightInfo {
     fn execute_trade() -> Weight;
     fn register_tourism_trader() -> Weight;
     fn place_order() -> Weight;
+    /// Cost of walking up to `fills` resting orders during one placement.
+    ///
+    /// `fills` is the caller-supplied bound (`T::MaxOrdersPerPair`), because the
+    /// matching loop's cost is data-dependent and `#[pallet::weight]` cannot
+    /// express that. Each fill reads and writes two `OrderBook` entries plus the
+    /// two ledger legs.
+    fn match_orders(fills: u32) -> Weight;
     fn cancel_order() -> Weight;
     fn pause() -> Weight;
     fn resume() -> Weight;
@@ -1658,6 +2023,14 @@ impl WeightInfo for () {
     fn place_order() -> Weight {
         Weight::from_parts(20_000_000, 2560)
             .saturating_add(RocksDbWeight::get().reads(3))
+            .saturating_add(RocksDbWeight::get().writes(2))
+    }
+    fn match_orders(fills: u32) -> Weight {
+        // Per fill: 2 OrderBook reads + 2 writes, plus 2 ledger transfers.
+        // Deliberately generous until `scripts/bench_weights.sh` measures it.
+        Weight::from_parts(25_000_000, 2560)
+            .saturating_mul(fills as u64)
+            .saturating_add(RocksDbWeight::get().reads(2))
             .saturating_add(RocksDbWeight::get().writes(2))
     }
     fn cancel_order() -> Weight {

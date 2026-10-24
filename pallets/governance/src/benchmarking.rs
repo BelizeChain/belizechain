@@ -58,12 +58,17 @@ mod benchmarks {
         frame_system::Pallet::<T>::set_block_number(proposal.voting_start);
 
         let voter: T::AccountId = account("voter", 0, 0);
-        let voter_balance = T::MinimumDeposit::get() * 10u32.into();
+        let conviction: u8 = 1;
+        // Conviction now reserves a bond of `ConvictionBondBase * multiplier`
+        // (level 1 = 1x). Funding only `MinimumDeposit * 10` is enough in the
+        // mock, where the base equals `MinimumDeposit`, but the runtime sets the
+        // base to 10x that, so the reserve fails and the vote never executes.
+        let voter_balance =
+            T::MinimumDeposit::get() * 10u32.into() + Pallet::<T>::conviction_bond(conviction);
         let _ = T::Currency::make_free_balance_be(&voter, voter_balance);
 
         let proposal_id: u32 = 0;
         let vote_choice_index: u8 = 0; // Approve
-        let conviction: u8 = 1;
 
         #[extrinsic_call]
         _(

@@ -913,9 +913,9 @@ fn test_finalize_approved_but_empty_treasury_returns_deposit() {
 
         // The deposit comes back — the proposer did nothing wrong.
         assert_eq!(Balances::reserved_balance(proposer), 0);
-        assert_eq!(Balances::free_balance(&proposer), 100_000);
+        assert_eq!(Balances::free_balance(proposer), 100_000);
         // And it did not quietly end up in the treasury.
-        assert_eq!(Balances::free_balance(&999), 0);
+        assert_eq!(Balances::free_balance(999), 0);
     });
 }
 

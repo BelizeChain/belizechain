@@ -8,7 +8,6 @@
 
 use super::*;
 use frame_benchmarking::v2::*;
-use frame_support::traits::Currency;
 use frame_system::{pallet_prelude::BlockNumberFor, RawOrigin};
 
 const SEED: u32 = 0;
@@ -41,6 +40,16 @@ fn setup_trading_pair_with_liquidity<T: Config>(base: u8, quote: u8) {
     TradingPairs::<T>::insert((base, quote), pair);
 }
 
+/// Helper: fund `who` with `amount` of `asset` through the ledger seam.
+///
+/// The two assets in a pair live in different ledgers in the real runtime
+/// (`Balances` vs `pallet_belize_economy::BBZDBalances`), so funding only the
+/// native balance leaves the quote leg empty and the extrinsic fails with
+/// `InsufficientBalance`.
+fn fund<T: Config>(asset: AssetId, who: &T::AccountId, amount: u128) {
+    T::Assets::set_balance(asset, who, amount);
+}
+
 #[benchmarks]
 mod benchmarks {
     use super::*;
@@ -66,7 +75,8 @@ mod benchmarks {
         setup_trading_pair::<T>(0, 1);
         let caller: T::AccountId = whitelisted_caller();
         let deposit = 100_000_000_000_000u128; // 100k
-        T::Currency::make_free_balance_be(&caller, (deposit * 10).saturated_into());
+        fund::<T>(AssetId::DALLA, &caller, deposit * 10);
+        fund::<T>(AssetId::BBZD, &caller, deposit * 10);
 
         #[extrinsic_call]
         add_liquidity(
@@ -87,7 +97,14 @@ mod benchmarks {
         setup_trading_pair_with_liquidity::<T>(0, 1);
         let caller: T::AccountId = whitelisted_caller();
         let trade_amount = 1_000_000_000_000u128; // 1k
-        T::Currency::make_free_balance_be(&caller, (trade_amount * 10).saturated_into());
+        fund::<T>(AssetId::DALLA, &caller, trade_amount * 10);
+        // The pool pays the trader out of its quote reserve, so it must hold
+        // bBZD — the reserves in `TradingPairs` are bookkeeping, not custody.
+        fund::<T>(
+            AssetId::BBZD,
+            &Pallet::<T>::pool_account(),
+            trade_amount * 10,
+        );
 
         #[extrinsic_call]
         execute_trade(
@@ -121,7 +138,10 @@ mod benchmarks {
         setup_trading_pair_with_liquidity::<T>(0, 1);
         let caller: T::AccountId = whitelisted_caller();
         let order_amount = 500_000_000_000u128;
-        T::Currency::make_free_balance_be(&caller, (order_amount * 10).saturated_into());
+        // A bid escrows the **quote** asset (bBZD), not the base, so funding
+        // only the native balance would leave the escrow short in the runtime
+        // even though a single-ledger mock would let it through.
+        fund::<T>(AssetId::BBZD, &caller, order_amount * 10);
 
         #[extrinsic_call]
         place_limit_order(
@@ -130,8 +150,11 @@ mod benchmarks {
             1u8, // quote: BBZD
             0u8, // order_type: 0 = Buy
             order_amount,
-            1_000_000_000_000u128, // price
-            1000u32.into(),        // expires_in_blocks
+            // Price is scaled by `PRICE_SCALE`, so 2 * PRICE_SCALE is "2 bBZD
+            // per DALLA". A raw 1e12 would mean 1e6 per unit and the escrow
+            // (1e17 quote) would dwarf any balance this benchmark can fund.
+            2 * PRICE_SCALE,
+            1000u32.into(), // expires_in_blocks
         );
     }
 
@@ -183,10 +206,13 @@ mod benchmarks {
         // Give the caller LP tokens
         LPBalances::<T>::insert(&caller, (0u8, 1u8), lp_amount);
 
-        // Fund the pool to cover the withdrawal
+        // Fund the pool to cover the withdrawal — both legs, since the pool
+        // refunds base *and* quote.
         let pool = Pallet::<T>::pool_account();
-        T::Currency::make_free_balance_be(&pool, (lp_amount * 100).saturated_into());
-        T::Currency::make_free_balance_be(&caller, (lp_amount * 10).saturated_into());
+        fund::<T>(AssetId::DALLA, &pool, lp_amount * 100);
+        fund::<T>(AssetId::BBZD, &pool, lp_amount * 100);
+        fund::<T>(AssetId::DALLA, &caller, lp_amount * 10);
+        fund::<T>(AssetId::BBZD, &caller, lp_amount * 10);
 
         #[extrinsic_call]
         remove_liquidity(
@@ -209,6 +235,15 @@ mod benchmarks {
     fn cancel_order() {
         let caller: T::AccountId = whitelisted_caller();
         let order_id: u32 = 0;
+        let escrowed: u128 = 500_000_000_000u128;
+        // The refund moves whichever asset the order escrowed — quote (bBZD)
+        // for a bid — so the escrow account must hold it in the real runtime's
+        // ledger, not just the native balance.
+        fund::<T>(
+            AssetId::BBZD,
+            &Pallet::<T>::order_escrow_account(),
+            escrowed,
+        );
         OrderBook::<T>::insert(
             order_id,
             OrderEntry::<T::AccountId, BlockNumberFor<T>> {
@@ -217,8 +252,9 @@ mod benchmarks {
                 pair: (AssetId::from(0u8), AssetId::from(1u8)),
                 order_type: OrderType::Buy,
                 amount: 500_000_000_000u128,
-                price: 1_000_000_000_000u128,
+                price: 2 * PRICE_SCALE,
                 remaining: 500_000_000_000u128,
+                escrow: escrowed,
                 expires_at: 1_000u32.into(),
                 is_tourism_order: false,
             },
@@ -227,6 +263,82 @@ mod benchmarks {
 
         #[extrinsic_call]
         _(RawOrigin::Signed(caller), order_id);
+    }
+
+    // ───────────────────────────────────────
+    // 11. match_orders → the fill loop inside `place_limit_order`
+    //     WeightInfo fn: match_orders(fills)
+    //     Not a dispatchable: this measures the bounded book walk directly, so
+    //     `place_limit_order`'s weight is `place_order() + match_orders(N)`.
+    // ───────────────────────────────────────
+    #[benchmark]
+    fn match_orders(n: Linear<1, { T::MaxOrdersPerPair::get() }>) {
+        setup_trading_pair_with_liquidity::<T>(0, 1);
+
+        let escrow_account = Pallet::<T>::order_escrow_account();
+        // Settlement pays the bidder base (DALLA) and the asker quote (bBZD)
+        // out of escrow, so both ledgers must be funded or `settle_fill` bails
+        // and the walk is measured without its settlement cost.
+        fund::<T>(
+            AssetId::DALLA,
+            &escrow_account,
+            n as u128 * 1_000_000_000u128,
+        );
+        fund::<T>(
+            AssetId::BBZD,
+            &escrow_account,
+            n as u128 * 2_000_000_000u128,
+        );
+
+        // `n` resting asks, all at the same price so the taker must consume the
+        // whole level — the worst case for the walk.
+        let maker: T::AccountId = account("maker", 0, SEED);
+        for i in 0..n {
+            let order_id = i;
+            OrderBook::<T>::insert(
+                order_id,
+                OrderEntry::<T::AccountId, BlockNumberFor<T>> {
+                    order_id,
+                    creator: maker.clone(),
+                    pair: (AssetId::from(0u8), AssetId::from(1u8)),
+                    order_type: OrderType::Sell,
+                    amount: 1_000_000_000u128,
+                    price: PRICE_SCALE,
+                    remaining: 1_000_000_000u128,
+                    escrow: 1_000_000_000u128,
+                    expires_at: 1_000_000u32.into(),
+                    is_tourism_order: false,
+                },
+            );
+            PairOrders::<T>::mutate((0u8, 1u8), |book| {
+                let _ = book.asks.try_push(order_id);
+            });
+        }
+
+        // One bid big enough to cross every ask, seeded directly so this
+        // benchmark measures the walk rather than the placement path.
+        let taker: T::AccountId = whitelisted_caller();
+        let taker_id: u32 = n;
+        OrderBook::<T>::insert(
+            taker_id,
+            OrderEntry::<T::AccountId, BlockNumberFor<T>> {
+                order_id: taker_id,
+                creator: taker.clone(),
+                pair: (AssetId::from(0u8), AssetId::from(1u8)),
+                order_type: OrderType::Buy,
+                amount: n as u128 * 1_000_000_000u128,
+                price: 2 * PRICE_SCALE,
+                remaining: n as u128 * 1_000_000_000u128,
+                escrow: n as u128 * 2_000_000_000u128,
+                expires_at: 1_000_000u32.into(),
+                is_tourism_order: false,
+            },
+        );
+
+        #[block]
+        {
+            Pallet::<T>::match_order((0u8, 1u8), taker_id);
+        }
     }
 
     impl_benchmark_test_suite!(Pallet, crate::mock::new_test_ext(), crate::mock::Test);

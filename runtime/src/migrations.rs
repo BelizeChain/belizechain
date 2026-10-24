@@ -27,7 +27,7 @@ use sp_std::prelude::*;
 
 /// Current runtime migration version.
 /// Bump this whenever a new migration is added.
-const CURRENT_RUNTIME_VERSION: u32 = 2;
+const CURRENT_RUNTIME_VERSION: u32 = 3;
 
 /// Migration tracker for coordinated multi-pallet upgrades
 #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug)]
@@ -108,8 +108,12 @@ pub struct CoordinatedUpgrade<T> {
     _phantom: PhantomData<T>,
 }
 
-impl<T: frame_system::Config + pallet_belize_interoperability::Config> OnRuntimeUpgrade
-    for CoordinatedUpgrade<T>
+impl<
+        T: frame_system::Config
+            + pallet_belize_interoperability::Config
+            + pallet_belize_belizex::Config
+            + pallet_belize_mesh::Config,
+    > OnRuntimeUpgrade for CoordinatedUpgrade<T>
 {
     fn on_runtime_upgrade() -> Weight {
         let on_chain = on_chain_version();
@@ -149,6 +153,32 @@ impl<T: frame_system::Config + pallet_belize_interoperability::Config> OnRuntime
             );
             set_on_chain_version(2);
         }
+
+        // ── V2 → V3: purge pre-escrow limit orders (P1-08) ───────────────
+        // `OrderEntry` gained an `escrow` field. An order written before that
+        // holds no funds, so matching one would pay out assets the pallet never
+        // received. The book was empty on Ceiba when this was written; the purge
+        // is what makes the invariant true everywhere else.
+        if on_chain < 3 {
+            log::info!("  ↳ Applying migration V2 → V3 (BelizeX order escrow)");
+            total_weight = total_weight.saturating_add(
+                pallet_belize_belizex::migrations::MigrateV0ToV1::<T>::on_runtime_upgrade(),
+            );
+            set_on_chain_version(3);
+        }
+
+        // ── V2 → V3 (concurrent): mesh pending queue ─────────────────────
+        // `MeshTransaction.signature` changed from `H256` to `[u8; 64]`, and the
+        // old code verified nothing. Entries written under that encoding are both
+        // undecodable and untrustworthy, so they are purged. The pallet's
+        // `STORAGE_VERSION` was bumped in `7c3a678` without this migration, which
+        // left the runtime invariant test red until now.
+        //
+        // Gated on the *pallet's* storage version rather than the runtime counter,
+        // because that version was already 1 while no migration had run.
+        total_weight = total_weight.saturating_add(
+            pallet_belize_mesh::migrations::MigrateV0ToV1::<T>::on_runtime_upgrade(),
+        );
 
         // ── Add new version gates above this line ──
         // if on_chain < 3 {

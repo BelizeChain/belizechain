@@ -47,6 +47,13 @@ impl AssetLedger<u64> for MockAssetLedger {
         .map(|_| ())
         .map_err(|_| Error::<Test>::InsufficientBalance.into())
     }
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn set_balance(_asset: AssetId, who: &u64, amount: u128) {
+        // Every asset collapses to `Balances` in this double, which is exactly
+        // why the mock cannot reproduce a runtime failure on the quote leg.
+        let _ = Balances::make_free_balance_be(who, amount);
+    }
 }
 use crate::mock::*;
 use frame_support::{assert_noop, assert_ok};
@@ -1666,5 +1673,518 @@ fn open_orders_skips_ids_that_are_no_longer_in_the_order_book() {
         let (bids, _) = BelizeX::open_orders((0, 1));
         assert_eq!(bids.len(), 1, "the stale ID must be skipped, not returned");
         assert_eq!(bids[0].0, 0);
+    });
+}
+
+// ================================================================
+// P1-08 — limit-order matching engine
+// ================================================================
+//
+// `price` is scaled by `PRICE_SCALE` (1e6), so `PRICE_SCALE` is 1:1 and
+// `2 * PRICE_SCALE` is 2:1. Using the constant instead of the literal keeps
+// these tests readable and keeps them honest if the scale ever changes.
+
+use crate::PRICE_SCALE;
+
+/// Escrow account address in the mock runtime.
+fn escrow() -> AccountId {
+    BelizeX::order_escrow_account()
+}
+
+#[test]
+fn placing_a_bid_escrows_the_quote_asset() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        let before = Balances::free_balance(1);
+        MockAssetLedger::clear();
+
+        // Buy 10 base at 2 quote each => 20 quote escrowed.
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            OrderType::Buy.as_u8(),
+            10,
+            2 * PRICE_SCALE,
+            20,
+        ));
+
+        let log = MockAssetLedger::transfers();
+        assert_eq!(log.len(), 1, "placement must move exactly one leg");
+        assert_eq!(log[0].0, AssetId::BBZD, "a bid pays quote");
+        assert_eq!(log[0].2, escrow(), "escrow goes to the escrow account");
+        assert_eq!(
+            before - Balances::free_balance(1),
+            20,
+            "the bidder must be down exactly the escrowed quote"
+        );
+    });
+}
+
+#[test]
+fn placing_an_ask_escrows_the_base_asset() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        let before = Balances::free_balance(2);
+        MockAssetLedger::clear();
+
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(2),
+            0,
+            1,
+            OrderType::Sell.as_u8(),
+            7,
+            3 * PRICE_SCALE,
+            20,
+        ));
+
+        let log = MockAssetLedger::transfers();
+        assert_eq!(log.len(), 1);
+        assert_eq!(log[0].0, AssetId::DALLA, "an ask pays base");
+        assert_eq!(before - Balances::free_balance(2), 7);
+    });
+}
+
+#[test]
+fn a_crossing_ask_fills_against_a_resting_bid_and_settles_both_legs() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        // Bid first: 10 base at 2 quote.
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            OrderType::Buy.as_u8(),
+            10,
+            2 * PRICE_SCALE,
+            20,
+        ));
+        MockAssetLedger::clear();
+
+        // Ask from another account at the same price — must cross immediately.
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(2),
+            0,
+            1,
+            OrderType::Sell.as_u8(),
+            10,
+            2 * PRICE_SCALE,
+            20,
+        ));
+
+        // Both orders are gone: fully filled orders leave the book.
+        assert!(BelizeX::order_book(0).is_none(), "the bid must be consumed");
+        assert!(BelizeX::order_book(1).is_none(), "the ask must be consumed");
+
+        // The maker (bidder) got base, the taker (asker) got quote.
+        let log = MockAssetLedger::transfers();
+        assert!(
+            log.iter()
+                .any(|(a, from, to)| *a == AssetId::DALLA && *from == escrow() && *to == 1),
+            "the bidder must receive the base asset from escrow: {log:?}"
+        );
+        assert!(
+            log.iter()
+                .any(|(a, from, to)| *a == AssetId::BBZD && *from == escrow() && *to == 2),
+            "the asker must receive the quote asset from escrow: {log:?}"
+        );
+
+        // Net: bidder spent 20 quote and gained 10 base; asker the reverse.
+        assert_eq!(Balances::free_balance(1), 1_000_000_000_000 - 20 + 10);
+        assert_eq!(Balances::free_balance(2), 1_000_000_000_000 - 10 + 20);
+        assert_eq!(
+            Balances::free_balance(escrow()),
+            0,
+            "escrow must not retain funds after a full fill"
+        );
+    });
+}
+
+#[test]
+fn a_partial_fill_leaves_the_remainder_resting() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        // Resting bid for 10 base at 2 quote.
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            OrderType::Buy.as_u8(),
+            10,
+            2 * PRICE_SCALE,
+            20,
+        ));
+
+        // Only 4 base offered — the bid should be 60% filled and stay resting.
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(2),
+            0,
+            1,
+            OrderType::Sell.as_u8(),
+            4,
+            2 * PRICE_SCALE,
+            20,
+        ));
+
+        let bid = BelizeX::order_book(0).expect("the bid must still be resting");
+        assert_eq!(bid.remaining, 6, "6 base left to buy");
+        assert_eq!(bid.escrow, 12, "escrow must shrink with the remainder");
+
+        assert!(
+            BelizeX::order_book(1).is_none(),
+            "the ask was fully consumed"
+        );
+    });
+}
+
+#[test]
+fn the_resting_order_gets_its_own_price_not_the_takers() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        // Resting bid at 2 quote per base.
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            OrderType::Buy.as_u8(),
+            10,
+            2 * PRICE_SCALE,
+            20,
+        ));
+
+        // A cheaper ask at 1 quote crosses a bid that is willing to pay 2.
+        // The maker keeps its price, so the bidder pays only 1 per base.
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(2),
+            0,
+            1,
+            OrderType::Sell.as_u8(),
+            10,
+            PRICE_SCALE,
+            20,
+        ));
+
+        // Bidder: escrowed 20, paid 10, and the 10 difference is refunded when
+        // the filled order leaves the book.
+        assert_eq!(
+            Balances::free_balance(1),
+            1_000_000_000_000 - 20 + 10,
+            "the bidder must be charged the maker's price, and refunded the rest"
+        );
+        assert_eq!(
+            Balances::free_balance(escrow()),
+            0,
+            "price improvement must not strand escrow"
+        );
+    });
+}
+
+#[test]
+fn cancelling_an_order_refunds_its_escrow() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        let before = Balances::free_balance(1);
+
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            OrderType::Buy.as_u8(),
+            10,
+            2 * PRICE_SCALE,
+            20,
+        ));
+        assert_eq!(Balances::free_balance(1), before - 20);
+
+        assert_ok!(BelizeX::cancel_order(RuntimeOrigin::signed(1), 0));
+
+        assert_eq!(
+            Balances::free_balance(1),
+            before,
+            "cancel must return the full escrow"
+        );
+        assert_eq!(Balances::free_balance(escrow()), 0);
+        assert_eq!(BelizeX::account_order_count(1), 0);
+    });
+}
+
+#[test]
+fn cancelling_a_partially_filled_order_refunds_only_the_remainder() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            OrderType::Buy.as_u8(),
+            10,
+            2 * PRICE_SCALE,
+            20,
+        ));
+        // Fill half of it.
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(2),
+            0,
+            1,
+            OrderType::Sell.as_u8(),
+            5,
+            2 * PRICE_SCALE,
+            20,
+        ));
+
+        let before_cancel = Balances::free_balance(1);
+        assert_ok!(BelizeX::cancel_order(RuntimeOrigin::signed(1), 0));
+
+        assert_eq!(
+            Balances::free_balance(1),
+            before_cancel + 10,
+            "only the unfilled half is still escrowed"
+        );
+    });
+}
+
+#[test]
+fn orders_that_do_not_cross_do_not_fill() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            OrderType::Buy.as_u8(),
+            10,
+            PRICE_SCALE,
+            20,
+        ));
+        // Asks above the bid must rest, not fill.
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(2),
+            0,
+            1,
+            OrderType::Sell.as_u8(),
+            10,
+            2 * PRICE_SCALE,
+            20,
+        ));
+
+        assert_eq!(
+            BelizeX::order_book(0).map(|o| o.remaining),
+            Some(10),
+            "the bid must be untouched"
+        );
+        assert_eq!(
+            BelizeX::order_book(1).map(|o| o.remaining),
+            Some(10),
+            "the ask must be untouched"
+        );
+    });
+}
+
+#[test]
+fn an_account_cannot_match_its_own_order() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            OrderType::Buy.as_u8(),
+            10,
+            2 * PRICE_SCALE,
+            20,
+        ));
+        // Same account, crossing price. It must be skipped, not matched.
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            OrderType::Sell.as_u8(),
+            10,
+            2 * PRICE_SCALE,
+            20,
+        ));
+
+        assert_eq!(
+            BelizeX::order_book(0).map(|o| o.remaining),
+            Some(10),
+            "the bid must not match against its own creator"
+        );
+        assert_eq!(
+            BelizeX::order_book(1).map(|o| o.remaining),
+            Some(10),
+            "the ask must not match against its own creator"
+        );
+    });
+}
+
+#[test]
+fn the_best_priced_maker_fills_first() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        // Two resting bids: 1 quote and 3 quote, placed worst-first.
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            OrderType::Buy.as_u8(),
+            10,
+            PRICE_SCALE,
+            20,
+        ));
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(2),
+            0,
+            1,
+            OrderType::Buy.as_u8(),
+            10,
+            3 * PRICE_SCALE,
+            20,
+        ));
+
+        // An ask for exactly one bid's size must hit the 3-quote bid, not the 1.
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(999),
+            0,
+            1,
+            OrderType::Sell.as_u8(),
+            10,
+            PRICE_SCALE,
+            20,
+        ));
+
+        assert!(
+            BelizeX::order_book(1).is_none(),
+            "the 3-quote bid is the best price and must be consumed first"
+        );
+        assert_eq!(
+            BelizeX::order_book(0).map(|o| o.remaining),
+            Some(10),
+            "the 1-quote bid must be untouched"
+        );
+    });
+}
+
+#[test]
+fn an_expired_resting_order_is_purged_and_refunded_during_matching() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            OrderType::Buy.as_u8(),
+            10,
+            2 * PRICE_SCALE,
+            1, // expires almost immediately
+        ));
+        let bidder_after_place = Balances::free_balance(1);
+
+        frame_system::Pallet::<Test>::set_block_number(100);
+
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(2),
+            0,
+            1,
+            OrderType::Sell.as_u8(),
+            10,
+            2 * PRICE_SCALE,
+            20,
+        ));
+
+        assert!(
+            BelizeX::order_book(0).is_none(),
+            "the expired bid must be purged"
+        );
+        assert_eq!(
+            Balances::free_balance(1),
+            bidder_after_place + 20,
+            "the expired order's escrow must come back"
+        );
+        assert_eq!(
+            BelizeX::order_book(1).map(|o| o.remaining),
+            Some(10),
+            "the ask must not fill against an expired order"
+        );
+    });
+}
+
+#[test]
+fn an_asker_without_the_base_asset_cannot_place_an_order() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        // Drain account 3 down to less than the order size.
+        let _ = Balances::make_free_balance_be(&3, 5);
+
+        assert_noop!(
+            BelizeX::place_limit_order(
+                RuntimeOrigin::signed(3),
+                0,
+                1,
+                OrderType::Sell.as_u8(),
+                10,
+                PRICE_SCALE,
+                20,
+            ),
+            Error::<Test>::InsufficientBalance
+        );
+
+        assert!(
+            BelizeX::order_book(0).is_none(),
+            "a failed escrow must not leave an order behind"
+        );
+        assert_eq!(BelizeX::account_order_count(3), 0);
+    });
+}
+
+#[test]
+fn zero_amount_orders_are_rejected() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        assert_noop!(
+            BelizeX::place_limit_order(
+                RuntimeOrigin::signed(1),
+                0,
+                1,
+                OrderType::Buy.as_u8(),
+                0,
+                PRICE_SCALE,
+                20,
+            ),
+            Error::<Test>::BelowMinimumAmount
+        );
+    });
+}
+
+#[test]
+fn a_full_fill_frees_the_account_order_slot() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            OrderType::Buy.as_u8(),
+            10,
+            2 * PRICE_SCALE,
+            20,
+        ));
+        assert_eq!(BelizeX::account_order_count(1), 1);
+
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(2),
+            0,
+            1,
+            OrderType::Sell.as_u8(),
+            10,
+            2 * PRICE_SCALE,
+            20,
+        ));
+
+        assert_eq!(
+            BelizeX::account_order_count(1),
+            0,
+            "a filled order must not keep counting against the per-account cap"
+        );
+        assert_eq!(BelizeX::account_order_count(2), 0);
     });
 }

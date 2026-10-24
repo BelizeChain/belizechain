@@ -123,6 +123,9 @@ pub mod weights;
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
 
+/// Storage migrations (P1-07 signature-type purge).
+pub mod migrations;
+
 pub use pallet::*;
 
 /// Verifies a mesh transaction signature (P1-07).

@@ -45,15 +45,22 @@ value inline, so the next agent can see what moved.
 | Head (2026-10-22) | **227,401** (`0x37849`) |
 | Epoch | index **758** · **duration 300 slots** · start slot 298781245 |
 | Peers | 0 (`shouldHavePeers: false` — single node, expected) |
-| Repo agreement | **`runtime/src/lib.rs` reads `spec_version: 118`** — the repo is one version ahead of the chain; see below |
+| Repo agreement | **`runtime/src/lib.rs` reads `spec_version: 119`** — the repo is two versions ahead of the chain; see below |
 
-**The repo is at 118 and the chain is at 117.** Three runtime changes are committed but
+**The repo is at 119 and the chain is at 117.** Four runtime changes are committed but
 **not deployed**: `acknowledge_message` (interop call 12), `unlock_conviction` (governance
-call 46) plus the conviction-bond enforcement, and a corrected `transfer_bbzd`
-self-transfer error. None requires a storage migration — `ConvictionLocks` is a new map that
-starts empty — but the conviction change is behavioural: a vote at level > 0 now needs the
-bond free (2,000 DALLA at level 3). Any upgrade bringing it forward must be built with
-`--features testnet-fast-epoch`.
+call 46) plus the conviction-bond enforcement, a corrected `transfer_bbzd`
+self-transfer error, and the P1-08 BelizeX matching engine (spec 119, §4.3).
+
+**119 is the first of these that needs a storage migration.** `OrderEntry` gained an
+`escrow` field, so `pallet-belize-belizex`'s `STORAGE_VERSION` went 0 → 1 and
+`runtime/src/migrations.rs` `CURRENT_RUNTIME_VERSION` went 2 → 3. The migration **purges**
+`OrderBook` / `PairOrders` / `AccountOrderCount` rather than reinterpreting old bytes —
+any limit orders resting on the live chain are dropped, which is correct because none can
+ever have filled. 118's changes did not require a migration (`ConvictionLocks` is a new map
+that starts empty) but the conviction change is behavioural: a vote at level > 0 now needs
+the bond free (2,000 DALLA at level 3). Any upgrade bringing either forward must be built
+with `--features testnet-fast-epoch`.
 
 **117** was applied hot (`sudo.sudo(System::set_code)`, 2026-10-22) from 116, with no
 node restart. Blob 1,492,283 bytes, blake2b-256
@@ -206,7 +213,7 @@ this file now exists.
 | `gem` | **SWEPT 2026-10-22** — SDK stopped reporting failed calls as success (5 findings, `dc8bb38`); `access_control` admin set capped at `MAX_ADMINS` and its storage keys pinned by test (`e14f39f`). **34 proptest harnesses re-run 2026-10-23: 34 passed, 0 failed, 4.65s.** Actions remains dead for this repo (minutes exhausted), so all verification is local. **Not audit-clean beyond AUDIT-GEM-01.** |
 | `infra` | **SWEPT 2026-10-14** — `api-gateway` + `indexer` (the only unaudited services) are **clean**. 2026-10-23: `relayer/` added, see below |
 | `ui` | partial — fabricated service fallbacks removed 2026-10-07; **page-level seed data remains** |
-| `belizechain.org` | **SWEPT 2026-10-22** (`cb10306`) then **again 2026-10-23** (`9529238`) — four fabricated feature pages rewritten (jaguar-mode, zk-proof, bridges, radio); the 93–100% coverage claim replaced with measured figures; 18→12 decimals; consensus pallet index corrected to 30; jaguar-mode's "one enforcement point" corrected to four; treasury corrected to 7-of-12 threshold multi-sig; the burn paths that DO exist documented (`burn_dalla`, `governance_burn`); Next.js upgraded 16.4.0→16.4.3. Spot-checked again 2026-10-23: **Nawal model sizes, Kinich backends (Cirq correctly marked planned), Pakit compression and Kinich sovereignty pages are all accurate.** Remaining: `tokenomics/*`, `community/*`, `gem/tutorials`, `technology` index and `portal` not yet read line-by-line |
+| `belizechain.org` | **SWEPT 2026-10-22** (`cb10306`) then **again 2026-10-23** (`9529238`) — four fabricated feature pages rewritten (jaguar-mode, zk-proof, bridges, radio); the 93–100% coverage claim replaced with measured figures; 18→12 decimals; consensus pallet index corrected to 30; jaguar-mode's "one enforcement point" corrected to four; treasury corrected to 7-of-12 threshold multi-sig; the burn paths that DO exist documented (`burn_dalla`, `governance_burn`); Next.js upgraded 16.4.0→16.4.3. **COMPLETED 2026-10-23** — every page and every MDX doc read line-by-line. This pass found the **GEM SDK is not on npm** (`npm view @belizechain/gem-sdk` → 404), so all six install snippets were wrong; **Ed25519 does not exist** in any pallet (attestations are `blake2_256` of an off-chain-salted attribute); the **cookies page claimed no browser storage** while the language switcher writes the `belizechain.locale` localStorage key; Kinich QML is **4,314 lines across 22 files**, not "8,245+ / 33"; the faucet drips **100 DALLA**, not 1,000; Tutorial 5's marketplace **contract does not exist**; Nawal's teacher is **`Qwen/Qwen3.8-27B`**, not DeepSeek-Coder-33B, and **Opacus is declared but never imported**; the genome is **~1.3 KB**, not 5 KB; Pakit's ">3x compression" was **withdrawn by its own README**; Kinich's "Falcon" schemes are **ML-DSA aliases**. Gates: tsc 0, eslint 0, build exit 0, doc-claims PASSED. |
 
 **Bridge state (2026-10-23).** The authoritative page is `docs/bridges/README.md`; scope for a
 real relayer is `docs/bridges/RELAYER_SCOPE.md`. Summary:
@@ -632,6 +639,47 @@ Counts verified 2026-10-22:
   Rollback: `.env.bak-pre-node-76dea3f-20261019` + the `ff74ee9-stable2609-20261012` image.
   ⚠️ Still open and **not** fixed by this: `hickory-resolver 0.24.4` (GHSA-5j98-2g5x-46v6)
   needs `libp2p-dns 0.45` upstream.
+
+#### P1-08 matching engine — built 2026-10-24, NOT yet deployed
+
+`pallet-belize-belizex` limit orders went from "written but never matched" to a real
+escrowed price-time book. This is uncommitted-at-time-of-writing source, **not live state**;
+the live chain still runs the stub.
+
+- Escrow at placement into `OrderEscrowPalletId` (`py/bzord`): bid → quote
+  `ceil(amount * price / PRICE_SCALE)`, ask → base `amount`. Refunded on cancel,
+  including the partial-fill remainder.
+- Matching runs inside `place_limit_order` against the opposite side of `PairOrders`,
+  bounded by `T::MaxOrdersPerPair`; fills settle both legs through `AssetLedger`.
+  Fill price is the **maker's**, so the taker keeps the improvement.
+- Self-trade is skipped, not rejected. `SelfTradeNotAllowed` remains unraised by design.
+- Expired makers are purged and refunded lazily during matching.
+- `STORAGE_VERSION` 0 → 1 with `pallets/belizex/src/migrations.rs` **purging** the book
+  (the `OrderEntry` encoding changed, so old bytes cannot be reinterpreted);
+  `runtime/src/migrations.rs` `CURRENT_RUNTIME_VERSION` 2 → 3 runs it.
+- ⚠️ `WeightInfo::match_orders` is **derived, not measured**. A
+  `match_orders(n: Linear<1, MaxOrdersPerPair>)` benchmark now exists and passes, but
+  `weights.rs` still holds the placeholder. Regenerate with `scripts/bench_weights.sh`
+  (AC power only) before mainnet, or the fill loop is mispriced.
+- ⚠️ Time priority is order-id ascending, not a stored timestamp.
+
+#### Benchmark smoke test — 5 failures fixed 2026-10-24
+
+`scripts/bench_smoke.sh` runs the **real release node** (`benchmark pallet --chain dev`),
+not the pallet mocks. Five benchmarks were red at `770b2a6` and none was caused by P1-08:
+`governance::cast_vote` (conviction bond underfunded — the mock's `ConvictionBondBase` is
+`MinimumDeposit`, the runtime's is 10× that), `oracle::verify_merchant` (P1-06 moved the
+gate to `TechnicalCouncilMajority`; the benchmark still used `Signed`),
+`mesh::submit_mesh_transaction` (P1-07 added sr25519 verification; it sent a dummy
+signature), and `belizex::{add_liquidity, execute_trade, remove_liquidity}` (pair `(0,1)` is
+DALLA/bBZD — different ledgers, only DALLA was funded; `MockAssetLedger` maps every asset
+to `Balances`, which is why the mock never saw it).
+
+The belizex fix added `AssetLedger::set_balance`, gated on
+`#[cfg(feature = "runtime-benchmarks")]`, implemented in the runtime adapter. Traps:
+`sp-core/full_crypto` **cannot** be enabled from a pallet's `runtime-benchmarks` feature
+(it propagates into the runtime WASM build and breaks `app_crypto`); `sp_io::crypto::*`
+needs a keystore that `impl_benchmark_test_suite!` mocks lack; `KeyTypeId` is `[u8; 4]`.
 
 ### 4.4 Documentation continuity — IN PROGRESS (opened 2026-10-14)
 

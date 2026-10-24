@@ -316,18 +316,37 @@ mod tests {
         assert_eq!(BabeEpochDuration::get(), expected);
     }
 
-    /// Every Belize pallet must declare a storage version, and on a fresh chain the
-    /// in-code version must equal the on-chain version.
+    /// Every Belize pallet must declare a storage version, and a version bump
+    /// must be closed by a migration.
     ///
     /// The `StorageVersion` type annotation fails to compile for any pallet missing
-    /// `#[pallet::storage_version(...)]`, and the equality check fails when a version
-    /// was bumped without registering a migration — the same invariant that
-    /// `try-runtime post_upgrade` enforces against live state.
+    /// `#[pallet::storage_version(...)]`. The remaining check is stronger than
+    /// "in-code equals on-chain": on a fresh chain the two differ precisely when a
+    /// migration is pending, so the test **runs** `CoordinatedUpgrade` and then
+    /// requires equality. A bump with no registered migration therefore fails here,
+    /// which is the invariant `try-runtime post_upgrade` enforces against live state.
     #[test]
     fn every_belize_pallet_declares_matching_storage_version() {
-        use frame_support::traits::{GetStorageVersion, StorageVersion};
+        use frame_support::traits::{GetStorageVersion, OnRuntimeUpgrade, StorageVersion};
 
         macro_rules! assert_storage_version {
+            ($pallet:ty) => {{
+                let in_code: StorageVersion =
+                    <$pallet as GetStorageVersion>::in_code_storage_version();
+                let on_chain: StorageVersion =
+                    <$pallet as GetStorageVersion>::on_chain_storage_version();
+                assert!(
+                    in_code >= on_chain,
+                    concat!(
+                        stringify!($pallet),
+                        ": on-chain storage version is AHEAD of the code. A downgrade ",
+                        "cannot be migrated — this needs a forward fix, not a version bump."
+                    )
+                );
+            }};
+        }
+
+        macro_rules! assert_migration_closed_the_gap {
             ($pallet:ty) => {{
                 let in_code: StorageVersion =
                     <$pallet as GetStorageVersion>::in_code_storage_version();
@@ -337,9 +356,9 @@ mod tests {
                     in_code, on_chain,
                     concat!(
                         stringify!($pallet),
-                        ": in-code and on-chain storage versions differ. Bump ",
-                        "`STORAGE_VERSION` only together with a migration registered ",
-                        "in runtime/src/migrations.rs"
+                        ": in-code and on-chain storage versions still differ after ",
+                        "`CoordinatedUpgrade` ran. Bump `STORAGE_VERSION` only together ",
+                        "with a migration registered in runtime/src/migrations.rs"
                     )
                 );
             }};
@@ -365,6 +384,30 @@ mod tests {
             assert_storage_version!(BelizeWhistleblower);
             assert_storage_version!(BelizeModeration);
             assert_storage_version!(StorageProof);
+
+            // A pending migration is the expected state on a fresh chain; running
+            // the coordinator must close every gap.
+            migrations::CoordinatedUpgrade::<Runtime>::on_runtime_upgrade();
+
+            assert_migration_closed_the_gap!(Economy);
+            assert_migration_closed_the_gap!(Identity);
+            assert_migration_closed_the_gap!(Governance);
+            assert_migration_closed_the_gap!(Compliance);
+            assert_migration_closed_the_gap!(Staking);
+            assert_migration_closed_the_gap!(Oracle);
+            assert_migration_closed_the_gap!(Payroll);
+            assert_migration_closed_the_gap!(Interoperability);
+            assert_migration_closed_the_gap!(BelizeX);
+            assert_migration_closed_the_gap!(LandLedger);
+            assert_migration_closed_the_gap!(Consensus);
+            assert_migration_closed_the_gap!(Quantum);
+            assert_migration_closed_the_gap!(Community);
+            assert_migration_closed_the_gap!(Bns);
+            assert_migration_closed_the_gap!(Mesh);
+            assert_migration_closed_the_gap!(BelizeJustice);
+            assert_migration_closed_the_gap!(BelizeWhistleblower);
+            assert_migration_closed_the_gap!(BelizeModeration);
+            assert_migration_closed_the_gap!(StorageProof);
         });
     }
 }
@@ -562,7 +605,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     //   Behaviour does change for conviction > 0: those votes now require the
     //   bond, so a caller who previously voted at level 3 needs 2,000 DALLA
     //   free. Existing recorded votes are untouched.
-    spec_version: 118,
+    spec_version: 119,
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,
     // Adding call indices to a live pallet is additive, but the version
@@ -1187,6 +1230,10 @@ parameter_types! {
     pub const IdentityPalletId: PalletId = PalletId(*b"py/ident");
     pub const PayrollPalletId: PalletId = PalletId(*b"py/payrl");
     pub const BelizeXPalletId: PalletId = PalletId(*b"py/bzdex");
+    /// P1-08: limit-order escrow. Separate from `BelizeXPalletId` on purpose —
+    /// the pool account's balance feeds the AMM curve, so escrow held there
+    /// would be priced into every swap.
+    pub const BelizeXOrderEscrowPalletId: PalletId = PalletId(*b"py/bzord");
     pub const MaxDallaSupply: Balance = 501_000_000_000 * DOLLARS; // 501 billion DALLA (12 decimals)
     pub const MinValidatorStake: Balance = pallet_belize_staking::MIN_VALIDATOR_STAKE; // 1,000 DALLA (12 decimals)
     pub const BaseReward: Balance = DOLLARS; // 1 DALLA per PoUW epoch (not per block)
@@ -1766,6 +1813,7 @@ impl pallet_belize_belizex::Config for Runtime {
     type Oracle = BelizeXOracleProvider;
     type MaxOracleDeviationBps = ConstU32<500>; // 5% max deviation from Oracle rate for bBZD trades
     type DexPalletId = BelizeXPalletId;
+    type OrderEscrowPalletId = BelizeXOrderEscrowPalletId;
     type TourismOrigin = GovernanceCouncilMajority;
     type PairListingOrigin = TechnicalCouncilMajority;
     type Treasury = TreasuryAccount;
@@ -2577,6 +2625,25 @@ impl pallet_belize_belizex::AssetLedger<AccountId> for BelizeXAssetLedger {
                 Ok(())
             }
             AssetId::WUSDC => Err(BelizeXError::<Runtime>::UnsupportedAsset.into()),
+        }
+    }
+
+    /// Benchmark-only funding hook. The pair's two assets live in different
+    /// ledgers, so a DALLA/bBZD benchmark has to be able to fund both.
+    #[cfg(feature = "runtime-benchmarks")]
+    fn set_balance(asset: pallet_belize_belizex::AssetId, who: &AccountId, amount: u128) {
+        use pallet_belize_belizex::AssetId;
+        match asset {
+            AssetId::DALLA | AssetId::TourismDALLA => {
+                let _ =
+                    <Balances as frame_support::traits::Currency<AccountId>>::make_free_balance_be(
+                        who, amount,
+                    );
+            }
+            AssetId::BBZD => {
+                pallet_belize_economy::BBZDBalances::<Runtime>::insert(who, amount);
+            }
+            AssetId::WUSDC => {}
         }
     }
 }
