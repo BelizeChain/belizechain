@@ -230,7 +230,15 @@ real relayer is `docs/bridges/RELAYER_SCOPE.md`. Summary:
 - **Gap 1 closed 2026-10-23:** `acknowledge_message` (call_index 12) now flips
   `CrossChainMessage.delivered` to `true`. Before it, nothing in the pallet ever wrote `true`,
   so outbound messaging was an append-only log. **Its weight is derived, not measured** — see
-  the AMENDMENT block in `pallets/interoperability/src/weights.rs`. Regenerate before mainnet.
+  the AMENDMENT block in `pallets/interoperability/src/weights.rs`.
+- ⚠️ **"Regenerate the weights" is not safe advice for that file.** `scripts/bench_weights.sh`
+  loops over every pallet and writes `--output` **wholesale**, so a regeneration deletes any
+  hand-written amendment without a word. Six pallets currently carry one —
+  `community`, `governance`, `interoperability`, `mesh`, `oracle`, `staking`. This is the bug
+  already hit on `belizex`: an AMENDMENT block added by hand was silently overwritten by the
+  next regeneration. The durable pattern, applied to `belizex`, is to keep hand-written terms
+  **out of `weights.rs`** — put them at the `#[pallet::weight]` call site, which no generator
+  touches. Do that for these six before the next full regeneration.
 - **Gap 2 staffed 2026-10-23:** `infra/relayer/` exists and runs, but acknowledges nothing by
   design. The only shipped adapter is `null`; compose defaults to `RELAYER_ADAPTER=null` +
   `RELAYER_MODE=observe`. There is no deployed bridge contract on any foreign chain, so a
@@ -673,13 +681,13 @@ live chain still runs the stub at spec 117.
 - `STORAGE_VERSION` 0 → 1 with `pallets/belizex/src/migrations.rs` **purging** the book
   (the `OrderEntry` encoding changed, so old bytes cannot be reinterpreted);
   `runtime/src/migrations.rs` `CURRENT_RUNTIME_VERSION` 2 → 3 runs it.
-- ⚠️ `WeightInfo::match_orders` is **derived, not measured**. A
-  `match_orders(n: Linear<1, MaxOrdersPerPair>)` benchmark now exists and passes, but it
-  measures the fill shape only — a walk can consist entirely of expired-order purges, so
-  the bound is `cancel_order() + execute_trade()` per iteration, written in terms of those
-  two so regenerating either cannot silently under-charge it. At `MaxOrdersPerPair = 20`
-  that is ~4.7 ms composed against a 2 s block. Regenerate with `scripts/bench_weights.sh`
-  (AC power only) before mainnet.
+- ✅ `WeightInfo::match_orders` is **measured** (`scripts/bench_weights.sh`, 2026-10-24):
+  116.4 µs base + 57.7 µs per order, reads `8 + n`, writes `8 + n`. It measures the
+  **fill** shape only, and a walk can consist entirely of expired-order purges, so
+  `place_limit_order` charges `match_orders(MaxOrdersPerPair) + cancel_order() ×
+  MaxOrdersPerPair` at the **call site** — not inside `weights.rs`, which
+  `bench_weights.sh` regenerates wholesale. At `MaxOrdersPerPair = 256` that composes to
+  ~25.9 ms, 1.3 % of a 2 s block.
 - ⚠️ Time priority is order-id ascending, not a stored timestamp.
 
 #### Benchmark smoke test — 5 failures fixed 2026-10-24
@@ -694,11 +702,28 @@ signature), and `belizex::{add_liquidity, execute_trade, remove_liquidity}` (pai
 DALLA/bBZD — different ledgers, only DALLA was funded; `MockAssetLedger` maps every asset
 to `Balances`, which is why the mock never saw it).
 
+**Four were fixed on the first pass and the fifth took a second round**, which is the
+useful part of the story. `mesh::submit_mesh_transaction` was changed to sign at benchmark
+time with `sp_io::crypto::sr25519_sign`, passed every mock test, and still panicked in the
+CLI with `unwrap_failed` inside `sr25519_generate_version_1`. The mock's verifier is
+`AcceptAllMeshVerifier`, so nothing in the test suite could observe the failure.
+
+**The `benchmark pallet` CLI has no keystore either.** An earlier revision of this section
+said only the mock lacked one. That was written from assumption, not measurement, and it
+cost the second round. The fix is to sign once, offline, over the benchmark's exact digest
+and **pin the public key and signature as literals**, plus assert the digest so changed
+inputs fail loudly. `sp_io::crypto::sr25519_verify` needs no keystore, so
+`the_pinned_benchmark_signature_is_valid` can prove the pinned pair against the production
+`Sr25519MeshVerifier`.
+
 The belizex fix added `AssetLedger::set_balance`, gated on
 `#[cfg(feature = "runtime-benchmarks")]`, implemented in the runtime adapter. Traps:
 `sp-core/full_crypto` **cannot** be enabled from a pallet's `runtime-benchmarks` feature
 (it propagates into the runtime WASM build and breaks `app_crypto`); `sp_io::crypto::*`
-needs a keystore that `impl_benchmark_test_suite!` mocks lack; `KeyTypeId` is `[u8; 4]`.
+needs a keystore, which neither the mock nor the CLI has; `KeyTypeId` is `[u8; 4]`.
+A benchmark with no `where` clause declares zero components, so the CLI legitimately
+prints `Lowest values: [], Highest values: []` — that is not a failure. `(overtime)` in
+the progress line is only the 5-second progress-timer label, also not a failure.
 
 ### 4.4 Documentation continuity — IN PROGRESS (opened 2026-10-14)
 

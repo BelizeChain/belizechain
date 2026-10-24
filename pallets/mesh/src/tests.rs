@@ -2669,3 +2669,63 @@ fn resolve_alert_non_authority_fails() {
         );
     });
 }
+
+// ========================
+// Benchmark signature validity
+// ========================
+
+/// The signature pinned in `benchmarking::submit_mesh_transaction` must be a real
+/// sr25519 signature over that benchmark's digest.
+///
+/// The benchmark itself runs against the production `Sr25519MeshVerifier`, but its
+/// `impl_benchmark_test_suite!` mock uses `AcceptAllMeshVerifier` — so a stale or
+/// mistyped pinned signature would pass every test here and fail only in the
+/// `benchmark pallet` CLI, which is how the previous key-generating version broke.
+/// This test closes that gap by verifying with the real verifier.
+///
+/// The inputs below mirror the benchmark exactly. If one changes, this test and the
+/// benchmark's own digest assertion both fail — that is intended.
+#[test]
+fn the_pinned_benchmark_signature_is_valid() {
+    new_test_ext().execute_with(|| {
+        let tx_hash = H256::repeat_byte(0xAA);
+        let tx_type = MeshTxType::TransferDalla;
+        let sender_compact = [1u8, 2, 3, 4];
+        let recipient_compact = [5u8, 6, 7, 8];
+        let amount = 1_000_000u64;
+        let nonce = 1u32;
+
+        let digest = crate::mesh_tx_digest(
+            &tx_hash,
+            &tx_type,
+            &sender_compact,
+            &recipient_compact,
+            amount,
+            nonce,
+        );
+
+        // Same values as `benchmarking::submit_mesh_transaction`.
+        let sender_key: [u8; 32] = [
+            0x7c, 0x0f, 0x46, 0x9d, 0x3b, 0xd3, 0x40, 0xba, 0xe7, 0x18, 0x20, 0x3f, 0xa3, 0x0c,
+            0xa0, 0x71, 0xa5, 0xe3, 0x7c, 0x75, 0x1e, 0x89, 0x1d, 0xbd, 0xed, 0x83, 0x7b, 0x21,
+            0x3d, 0x45, 0xd9, 0x1d,
+        ];
+        let signature: [u8; 64] = [
+            0xda, 0x5d, 0xea, 0x4b, 0x50, 0x8f, 0xa6, 0x54, 0xea, 0xa9, 0x51, 0x82, 0x8f, 0x5d,
+            0x33, 0xcc, 0x4e, 0xd7, 0x23, 0xa8, 0xe7, 0xc3, 0x6a, 0xd6, 0xb3, 0x87, 0x76, 0x31,
+            0x2d, 0x8f, 0x74, 0x09, 0xf4, 0x99, 0xe6, 0xf2, 0x0c, 0xeb, 0x87, 0x4c, 0x53, 0x67,
+            0x6a, 0x2f, 0x84, 0x86, 0x3e, 0x27, 0x5f, 0x44, 0x4d, 0xda, 0xc5, 0xdb, 0xe2, 0x8c,
+            0x9c, 0x6d, 0x34, 0xfd, 0xf9, 0x6b, 0x9f, 0x87,
+        ];
+
+        assert!(
+            <crate::Sr25519MeshVerifier as crate::MeshSignatureVerifier>::verify(
+                &sender_key,
+                &digest,
+                &signature
+            ),
+            "the signature pinned in the benchmark does not verify over the \
+             benchmark's digest - the benchmark would be rejected on chain"
+        );
+    });
+}

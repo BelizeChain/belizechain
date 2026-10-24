@@ -228,31 +228,35 @@ base fill a single 10-base bid priced at 1.5. Against round-up the bid strands
 after seven fills and the test fails on `the bid must be fully consumed`.
 
 **Weight.** `WeightInfo` gained `match_orders(orders)`, and `place_limit_order`'s
-weight is now `place_order() + match_orders(T::MaxOrdersPerPair::get())`.
+weight is now `place_order() + match_orders(N) + cancel_order() × N`, with
+`N = T::MaxOrdersPerPair::get()`.
 
-An iteration is **either** a fill **or** the purge of an expired order, and a walk
-can be entirely one or the other, so the per-iteration charge is
-`cancel_order() + execute_trade()` — a purge is `remove_order` plus a refund
-(what `cancel_order` measures) and a fill writes one order and moves two ledger
-legs (what `execute_trade` measures). Charging both is a strict upper bound on
-either. It is written in terms of those two functions rather than as literals, so
-regenerating either cannot silently leave this one under-charging.
+Both per-iteration terms are needed because an iteration is **either** a fill
+**or** the purge of an expired order, and a walk can be entirely one or the
+other. Measured, neither dominates: a fill costs 57.75 µs and 1 write, a purge
+costs 42.4 µs and 5 writes. Charging both is a strict upper bound on either.
 
-That bound is **derived, not measured**, and is marked as such in an AMENDMENT
-block. The benchmark of the same name seeds live orders, so it measures the fill
-shape only — measuring it alone would under-charge a walk of expired orders. The
-figure must be regenerated with `scripts/bench_weights.sh` before mainnet, and
-the derivation above is what that regeneration has to preserve.
+The purge term lives at the **call site**, not in `weights.rs`, because
+`scripts/bench_weights.sh` regenerates that file — a hand-added term there is
+silently lost on the next run. The first regeneration proved it by overwriting
+the whole AMENDMENT block.
+
+`match_orders` is measured (`116.4 µs + 57.75 µs/n`, reads `8 + n`, writes
+`8 + n`), but its benchmark seeds live orders, so it measures the fill shape
+only. That is why the purge term is separate rather than folded into it.
+Composed at `MaxOrdersPerPair = 256`: 56.2 µs + 14.9 ms + 10.9 ms ≈ **25.9 ms**,
+1.3% of a 2 s block.
 
 **Migration.** `OrderEntry`'s encoding changed, so `STORAGE_VERSION` went 0 → 1
 and `pallets/belizex/src/migrations.rs` purges `OrderBook`, `PairOrders` and
 `AccountOrderCount` rather than reinterpreting old bytes. `runtime/src/migrations.rs`
 runs it at `CURRENT_RUNTIME_VERSION` 3.
 
-**Weight caveat:** a `match_orders(n: Linear<1, MaxOrdersPerPair>)` benchmark now exists and
-passes in the mock, but `weights.rs` still holds the derived placeholder until
-`scripts/bench_weights.sh` regenerates it on AC power. There is also no time-priority
-*timestamp* — the tiebreak is still order id, which is a proxy for arrival.
+**Weight caveat:** `match_orders` is now measured and committed (`scripts/bench_weights.sh`,
+2026-10-24, `BENCH_MUL` 1.25). An earlier revision of this paragraph said `weights.rs` "still
+holds the derived placeholder until regeneration" — that was true when written and is not any
+more; the regeneration has happened. There is still no time-priority *timestamp*: the
+tiebreak is order id, which is a proxy for arrival.
 
 #### The benchmark smoke test was red, and it was not noise
 
@@ -277,11 +281,30 @@ Three traps worth recording:
 
 - **`sp-core/full_crypto` cannot be enabled from a pallet's `runtime-benchmarks` feature.**
   It propagates into the runtime's WASM build and fails inside `app_crypto_pair_common`.
-- **`sp_io::crypto::{sr25519_generate, sr25519_sign}` need a keystore.** The node running
-  benchmarks has one; the `impl_benchmark_test_suite!` mock does not and panics. Sign for
-  real under `cfg(not(test))`, use a dummy under `cfg(test)` where the mock verifier is
-  `AcceptAll`.
+- **`sp_io::crypto::{sr25519_generate, sr25519_sign}` need a keystore, and the
+  `benchmark pallet` CLI does not have one.** An earlier revision of this section said the
+  node running benchmarks *does* have one and only the mock lacks it. That was wrong, and
+  it cost a second round: signing at benchmark time panics with `unwrap_failed` inside
+  `sr25519_generate_version_1` when driven through the real node. Generate the signature
+  once, offline, over the benchmark's exact digest, and **pin both the public key and the
+  signature as literals**. `sp_io::crypto::sr25519_verify` needs no keystore, so a test can
+  still prove the pinned values are genuine.
+- **A benchmark that verifies a signature is invisible to `impl_benchmark_test_suite!`.**
+  The mock verifier there is `AcceptAllMeshVerifier`, so a wrong or stale pinned signature
+  passes every test and fails only in the CLI. `the_pinned_benchmark_signature_is_valid`
+  exists to close that gap by verifying with the production `Sr25519MeshVerifier`.
 - **`KeyTypeId` is `[u8; 4]`.** A five-byte literal is a type error.
+
+**Outcome, measured 2026-10-24.** `./scripts/bench_smoke.sh` against the real release node:
+**18 passed, 1 failed**. The four original failures — `governance::cast_vote`,
+`oracle::verify_merchant`, and the belizex trio — are green. The one that remained was
+`mesh::submit_mesh_transaction`, and it failed for a *different* reason than the original:
+the first fix replaced the dummy signature with a runtime-generated one, which panics
+because the CLI has no keystore (see the trap above). Now pinned, and the pallet's
+`the_pinned_benchmark_signature_is_valid` verifies it against the production verifier.
+
+This is the point the earlier note missed: "reasoned from the runtime config diff" was
+enough for four of the five, and wrong for the fifth. Only running the real node settles it.
 
 #### P1-24 — `--force-authoring` is live on a forked chain, not a hypothetical
 

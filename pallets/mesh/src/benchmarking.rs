@@ -16,17 +16,6 @@ use sp_core::H256;
 use sp_runtime::traits::Bounded;
 use sp_std::vec;
 
-/// Key type used only to mint a throwaway sr25519 key inside benchmarks.
-///
-/// Signing goes through the `sp_io` crypto host functions rather than
-/// `sp_core::sr25519::Pair`, because the latter needs `sp-core/full_crypto`,
-/// which is not `no_std`-safe and breaks the runtime's WASM build.
-///
-/// `cfg(not(test))` because the test build takes the dummy-signature branch
-/// below (its mock verifier is `AcceptAllMeshVerifier`), leaving this unused.
-#[cfg(not(test))]
-const MESH_BENCH_KEY_TYPE: sp_core::crypto::KeyTypeId = sp_core::crypto::KeyTypeId(*b"mes1");
-
 /// Helper: insert a mesh node directly into storage (bypasses KYC check).
 fn insert_node<T: Config>(
     owner: &T::AccountId,
@@ -218,19 +207,52 @@ mod benchmarks {
             nonce,
         );
 
-        #[cfg(not(test))]
-        let (sender_key, signature) = {
-            let key = sp_io::crypto::sr25519_generate(MESH_BENCH_KEY_TYPE, Some(vec![7u8; 32]));
-            let sig = sp_io::crypto::sr25519_sign(MESH_BENCH_KEY_TYPE, &key, &digest)
-                .expect("benchmark externalities provide sr25519_sign")
-                .0;
-            (key.0, sig)
-        };
-        #[cfg(test)]
-        let (sender_key, signature) = {
-            let _ = digest;
-            ([0u8; 32], [0u8; 64])
-        };
+        // A hardcoded keypair and signature, not a generated one.
+        //
+        // `sp_io::crypto::sr25519_generate`/`sr25519_sign` need a keystore in the
+        // externalities, and the `benchmark pallet` CLI has none — it panics with
+        // `unwrap_failed` inside `sr25519_generate_version_1`. Enabling
+        // `sp-core/full_crypto` to use `sr25519::Pair` instead is not an option:
+        // it propagates into the runtime's WASM build and breaks
+        // `app_crypto_pair_common`.
+        //
+        // So the signature is produced once, offline, over the exact digest above,
+        // and pinned here. Both values come from seed `[7u8; 32]`.
+        //
+        // To regenerate: temporarily add
+        // `sp-core = { workspace = true, features = ["full_crypto"] }` to this
+        // pallet's `[dev-dependencies]` (safe — the workspace uses resolver 2, so a
+        // dev-dependency feature does not reach the runtime WASM), print the values
+        // from a `#[test]`, then remove the dependency again. sr25519 signing is
+        // randomized, but one signature stays valid forever because every input to
+        // the digest above is a constant.
+        //
+        // The digest is asserted below: if any input above changes, the pinned
+        // signature stops being valid, and this fails loudly instead of silently
+        // benchmarking a rejected extrinsic. `the_pinned_benchmark_signature_is_valid`
+        // in `tests.rs` checks the same pair against the production verifier.
+        let sender_key: [u8; 32] = [
+            0x7c, 0x0f, 0x46, 0x9d, 0x3b, 0xd3, 0x40, 0xba, 0xe7, 0x18, 0x20, 0x3f, 0xa3, 0x0c,
+            0xa0, 0x71, 0xa5, 0xe3, 0x7c, 0x75, 0x1e, 0x89, 0x1d, 0xbd, 0xed, 0x83, 0x7b, 0x21,
+            0x3d, 0x45, 0xd9, 0x1d,
+        ];
+        let signature: [u8; 64] = [
+            0xda, 0x5d, 0xea, 0x4b, 0x50, 0x8f, 0xa6, 0x54, 0xea, 0xa9, 0x51, 0x82, 0x8f, 0x5d,
+            0x33, 0xcc, 0x4e, 0xd7, 0x23, 0xa8, 0xe7, 0xc3, 0x6a, 0xd6, 0xb3, 0x87, 0x76, 0x31,
+            0x2d, 0x8f, 0x74, 0x09, 0xf4, 0x99, 0xe6, 0xf2, 0x0c, 0xeb, 0x87, 0x4c, 0x53, 0x67,
+            0x6a, 0x2f, 0x84, 0x86, 0x3e, 0x27, 0x5f, 0x44, 0x4d, 0xda, 0xc5, 0xdb, 0xe2, 0x8c,
+            0x9c, 0x6d, 0x34, 0xfd, 0xf9, 0x6b, 0x9f, 0x87,
+        ];
+        let expected_digest: [u8; 32] = [
+            0x5b, 0xd1, 0xea, 0xcd, 0xde, 0x65, 0xe6, 0x3f, 0x63, 0x77, 0xd5, 0xb8, 0xc1, 0x8f,
+            0x84, 0x0a, 0x90, 0x3b, 0x01, 0x42, 0x6f, 0xa5, 0x35, 0xfc, 0x80, 0xca, 0x53, 0x58,
+            0xb9, 0x91, 0xcc, 0x5e,
+        ];
+        assert_eq!(
+            digest, expected_digest,
+            "the benchmark inputs changed, so the pinned signature no longer \
+             covers this digest - regenerate both and update this test"
+        );
 
         MeshSenderKeys::<T>::insert(sender_compact, sender_key);
 
