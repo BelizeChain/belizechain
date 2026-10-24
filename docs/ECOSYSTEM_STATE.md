@@ -725,6 +725,11 @@ A benchmark with no `where` clause declares zero components, so the CLI legitima
 prints `Lowest values: [], Highest values: []` — that is not a failure. `(overtime)` in
 the progress line is only the 5-second progress-timer label, also not a failure.
 
+**Outcome, measured 2026-10-24: `RESULTS: 19 passed, 0 failed`** — the full sweep against
+the real release node, after the mesh signature was pinned. Getting there took three
+measurements (18/19 → single-benchmark pass → 19/19); the middle failure is the reason the
+mock-only version was never enough.
+
 ### 4.4 Documentation continuity — IN PROGRESS (opened 2026-10-14)
 
 - ✅ This file created as the single state/doc anchor.

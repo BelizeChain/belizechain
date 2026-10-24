@@ -296,15 +296,19 @@ Three traps worth recording:
 - **`KeyTypeId` is `[u8; 4]`.** A five-byte literal is a type error.
 
 **Outcome, measured 2026-10-24.** `./scripts/bench_smoke.sh` against the real release node:
-**18 passed, 1 failed**. The four original failures — `governance::cast_vote`,
-`oracle::verify_merchant`, and the belizex trio — are green. The one that remained was
-`mesh::submit_mesh_transaction`, and it failed for a *different* reason than the original:
-the first fix replaced the dummy signature with a runtime-generated one, which panics
-because the CLI has no keystore (see the trap above). Now pinned, and the pallet's
-`the_pinned_benchmark_signature_is_valid` verifies it against the production verifier.
+**19 passed, 0 failed.**
+
+It took three measurements to get there, and the middle one is the instructive one:
+
+| Run | Result | What it showed |
+|---|---|---|
+| after the first fix | 18 passed, 1 failed | `mesh::submit_mesh_transaction` panicked — signing at benchmark time needs a keystore the CLI does not have |
+| single benchmark, rebuilt node | pass | the pinned signature works |
+| full sweep | **19 passed, 0 failed** | no other benchmark regressed |
 
 This is the point the earlier note missed: "reasoned from the runtime config diff" was
-enough for four of the five, and wrong for the fifth. Only running the real node settles it.
+enough for four of the five, and wrong for the fifth. Only running the real node settles it,
+and only the full sweep rules out a fix that traded one failure for another.
 
 #### P1-24 — `--force-authoring` is live on a forked chain, not a hypothetical
 
