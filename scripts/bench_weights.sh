@@ -37,6 +37,26 @@
 #     `pallets/<dir>/src/weights.rs`.
 #   * Pallets whose weights are hand-written (no generated file) are reported and
 #     skipped rather than silently creating a file nothing imports.
+#
+# Hand-written amendments (ACCEPT_AMENDMENT_LOSS):
+#   The CLI writes `--output` wholesale, so any `AMENDMENT` block a human added to
+#   `weights.rs` is deleted by a regeneration, with no warning. This script now
+#   refuses to touch such a file unless ACCEPT_AMENDMENT_LOSS=1 is set.
+#
+#   Usually replacing a derived value with a measured one is exactly what you
+#   want, so the guard is not a veto - it forces the decision to be made once,
+#   consciously, instead of discovering it in a diff afterwards. Before accepting,
+#   check the pallet source still matches what the benchmark measures: a
+#   regeneration of a tree whose extrinsic changed after the benchmark was written
+#   produces a measured-LOOKING number that under-charges, which is the unsafe
+#   direction. Re-read the amendment text and confirm each derived entry is now
+#   genuinely covered by a benchmark.
+#
+#   Do NOT "fix" an amendment by moving its derived term to the `#[pallet::weight]`
+#   call site. The call site already reads `T::WeightInfo::<fn>()`, so an added
+#   term would stack on top of the post-regeneration measured value and
+#   double-charge. The call site is for terms the generated file cannot express
+#   (e.g. a loop bound), not for values awaiting measurement.
 # ==============================================================================
 
 set -euo pipefail
@@ -249,6 +269,18 @@ for pallet in "${TARGETS[@]}"; do
     fi
     if [[ -n "$committed_mul" && -n "$MUL" && "$MUL" != "$committed_mul" ]]; then
         echo ">>> FAIL: ${pallet} - multiplier change ${committed_mul}x -> ${MUL}x needs a deliberate decision." >&2
+        FAIL=$((FAIL + 1))
+        continue
+    fi
+
+    # The CLI overwrites `--output` wholesale, so a hand-written AMENDMENT block
+    # disappears without a word. Refuse unless the operator opts in.
+    if grep -q 'AMENDMENT' "$output" 2>/dev/null && [[ "${ACCEPT_AMENDMENT_LOSS:-}" != "1" ]]; then
+        echo ">>> FAIL: ${pallet} - ${output#$ROOT_DIR/} contains an AMENDMENT block." >&2
+        echo "         Regenerating DELETES it and replaces derived values with measured ones." >&2
+        echo "         That is usually an improvement, but confirm the pallet source still" >&2
+        echo "         matches what the benchmark measures before accepting." >&2
+        echo "         Re-run with ACCEPT_AMENDMENT_LOSS=1 to proceed." >&2
         FAIL=$((FAIL + 1))
         continue
     fi
