@@ -241,6 +241,14 @@ The purge term lives at the **call site**, not in `weights.rs`, because
 silently lost on the next run. The first regeneration proved it by overwriting
 the whole AMENDMENT block.
 
+**That is the call site's one legitimate use: a term the generated file cannot
+express.** It is not a home for values awaiting measurement. The call site already
+reads `T::WeightInfo::<fn>()`, so relocating a *derived* weight there would stack
+it on top of the post-regeneration measured value and double-charge. Derived values
+belong in `weights.rs` until a real benchmark replaces them, which is why
+`bench_weights.sh` now refuses to overwrite a file carrying an `AMENDMENT` block
+without `ACCEPT_AMENDMENT_LOSS=1`.
+
 `match_orders` is measured (`116.4 µs + 57.75 µs/n`, reads `8 + n`, writes
 `8 + n`), but its benchmark seeds live orders, so it measures the fill shape
 only. That is why the purge term is separate rather than folded into it.

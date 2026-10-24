@@ -231,14 +231,44 @@ real relayer is `docs/bridges/RELAYER_SCOPE.md`. Summary:
   `CrossChainMessage.delivered` to `true`. Before it, nothing in the pallet ever wrote `true`,
   so outbound messaging was an append-only log. **Its weight is derived, not measured** — see
   the AMENDMENT block in `pallets/interoperability/src/weights.rs`.
-- ⚠️ **"Regenerate the weights" is not safe advice for that file.** `scripts/bench_weights.sh`
-  loops over every pallet and writes `--output` **wholesale**, so a regeneration deletes any
-  hand-written amendment without a word. Six pallets currently carry one —
-  `community`, `governance`, `interoperability`, `mesh`, `oracle`, `staking`. This is the bug
-  already hit on `belizex`: an AMENDMENT block added by hand was silently overwritten by the
-  next regeneration. The durable pattern, applied to `belizex`, is to keep hand-written terms
-  **out of `weights.rs`** — put them at the `#[pallet::weight]` call site, which no generator
-  touches. Do that for these six before the next full regeneration.
+- ⚠️ **A regeneration deletes a hand-written AMENDMENT block.** `scripts/bench_weights.sh`
+  writes `--output` **wholesale**, so anything a human added to `weights.rs` is gone with no
+  warning. Six pallets currently carry one — `community`, `governance`, `interoperability`,
+  `mesh`, `oracle`, `staking`. This is the bug already hit on `belizex`, whose block was
+  silently overwritten.
+  **All six are upward-biased** (derived by *adding* storage accesses to a measured value), so
+  none is an exploitable under-charge — they are inaccurate in the safe direction. The real
+  fix is therefore **regeneration, not relocation**: a measured value replaces a derived one.
+  `bench_weights.sh` now refuses to touch such a file unless `ACCEPT_AMENDMENT_LOSS=1` is set,
+  so the loss is a decision rather than a surprise. Before accepting, confirm the pallet source
+  still matches what the benchmark measures — regenerating a tree whose extrinsic changed after
+  the benchmark was written yields a measured-*looking* number that under-charges.
+- ⛔ **Do not "fix" an amendment by moving its derived term to the `#[pallet::weight]` call
+  site.** The call site already reads `T::WeightInfo::<fn>()`, so an added term would stack on
+  top of the post-regeneration measured value and **double-charge**. The call site is for terms
+  the generated file cannot express — a loop bound, a variant count — not for values awaiting
+  measurement. (`belizex`'s `place_limit_order` is the legitimate case: it adds
+  `cancel_order() × MaxOrdersPerPair` for a purge walk, which `match_orders` genuinely cannot
+  measure.)
+
+**The six amendments, itemised (read 2026-10-24).** Only three pallets actually carry
+hand-edited *numbers*; the rest are rationale. This is the verification list for the
+`ACCEPT_AMENDMENT_LOSS=1` regeneration run, which needs AC power:
+
+| Pallet | Entry | Kind | Expected after measurement |
+|---|---|---|---|
+| `community` | `finalize_community_proposal` | rationale only — storage access went **down** (`repatriate_reserved` → `unreserve`) | lower; committed value over-charges |
+| `governance` | `cast_vote` | derived: **+2 reads, +2 writes** for the conviction bond | authoritative |
+| `governance` | `reveal_vote` | derived, same cause | authoritative |
+| `governance` | `unlock_conviction` | **never measured**, hand-derived from scratch | first real measurement |
+| `interoperability` | `acknowledge_message` | derived from `submit_incoming_unlock` | first real measurement |
+| `mesh` | `register_mesh_sender_key` | **hand-estimated**, added after the file was generated | first real measurement |
+| `oracle` | `verify_merchant` | rationale only — one read either way | ~unchanged |
+| `staking` | `distribute_rewards` | derived: **+1 read, +1 write** for the epoch gate | authoritative |
+
+All eight are biased upward, so none is currently exploitable. Treat any entry that comes
+out **higher** than the committed value as a signal the benchmark is measuring a hotter path
+than the source suggests — not as noise to average away.
 - **Gap 2 staffed 2026-10-23:** `infra/relayer/` exists and runs, but acknowledges nothing by
   design. The only shipped adapter is `null`; compose defaults to `RELAYER_ADAPTER=null` +
   `RELAYER_MODE=observe`. There is no deployed bridge contract on any foreign chain, so a
