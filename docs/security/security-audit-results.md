@@ -79,11 +79,12 @@ Each row was checked against the source, not against the checklist.
 | **Already fixed, never ticked** | P1-03 (nginx `limit_req` on `/ws`, `/rpc`, `/api/*` — in `infra/nginx/snippets/stack-paths.conf`, not `nginx.conf`), P1-09 (`transfer_property` requires `government_verified` + `surveyed` + KYC 2 + no active encumbrance), P1-10 (median aggregation with `MaxPriceDeviation` and variance), P1-12 (zero hardcoded numeric weights), P1-13, P1-14, P1-16, P1-25, P1-27, P1-28 (`tests/cross_pallet`, `e2e`, `oracle`, `governance`, `belizex`, `economic`), P1-26 (162 governance tests) |
 | **Fixed 2026-10-23** | P1-05, P1-07, **P1-15** (approved proposal no longer forfeits its deposit when the treasury cannot pay), **P1-30** (removed the unsupported "544% APY" and "3-6% APY inflation" claims; derived ceiling is ~16% APY at full PoUW weight and 1,000 DALLA stake, and emissions are ~0.003% of `MaxDallaSupply` per year) |
 | **Obsolete — AKS removed** | P1-04, P1-20, P1-21, P1-22, P1-23 |
-| **False positive** | P1-11 (`LongestChain` is the standard BABE+GRANDPA pattern, CONS-035), P1-17 (no order matching exists, so a maker/taker self-trade cannot occur; `SelfTradeNotAllowed` is a dead variant reserved for a future engine), P1-19 (only `dtolnay/rust-toolchain@1.90.0`, a version tag) |
+| **False positive** | P1-11 (`LongestChain` is the standard BABE+GRANDPA pattern, CONS-035), P1-19 (only `dtolnay/rust-toolchain@1.90.0`, a version tag) |
+| **False positive, and its stated reason has since expired** | P1-17 — it was dismissed on the grounds that "no order matching exists, so a maker/taker self-trade cannot occur". That was true when it was written and is not true now: P1-08 added a matching engine. Self-trade is still not an exploit, but for a different reason — `match_order` **skips** an account's own orders instead of filling them, so a self-crossing order simply rests. `SelfTradeNotAllowed` therefore remains unraised, now deliberately rather than incidentally; the variant is annotated as such in `pallets/belizex/src/lib.rs`. Re-read that annotation before assuming the finding is still moot |
 | **Fixed 2026-10-23 (second pass)** | P1-06 (`verify_merchant` now requires `T::MerchantVerificationOrigin` = `TechnicalCouncilMajority`; it was a single `OracleOperators` member), P1-08 **settlement half** (the DEX moved no bBZD at all — see below) |
 | **Fixed 2026-10-24** | P1-08 **matching half** — limit orders now escrow at placement and fill against each other in price-time order (see below) |
 | **Fixed 2026-10-24 (CI fallout)** | The five benchmark smoke-test failures that P1-06/P1-07/conviction-bonding left behind — `governance::cast_vote` (bond underfunded), `oracle::verify_merchant` (origin moved off `Signed`), `mesh::submit_mesh_transaction` (unsigned after P1-07), `belizex::{add_liquidity, execute_trade, remove_liquidity}` (quote leg unfunded). See *The benchmark smoke test* below |
-| **Open — needs a decision** | P1-02 (`Sudo` at index 6, deliberate for testnet bootstrap; owner has said do not remove) · P1-24 (`--force-authoring` is correct on a single-authority testnet, unsafe on multi-validator mainnet; annotated in `infra/docker-compose.validators.yml`) |
+| **Open — needs a decision** | P1-02 (`Sudo` at index 6, deliberate for testnet bootstrap; owner has said do not remove) · P1-24 (`--force-authoring` is correct on a single-authority testnet, unsafe on multi-validator mainnet — see below) |
 | **Not started** | External audit, penetration testing, economic modelling, formal verification |
 
 #### P1-08 is worse than reported, and is a stub rather than a bug
@@ -228,6 +229,34 @@ Three traps worth recording:
   real under `cfg(not(test))`, use a dummy under `cfg(test)` where the mock verifier is
   `AcceptAll`.
 - **`KeyTypeId` is `[u8; 4]`.** A five-byte literal is a type error.
+
+#### P1-24 — `--force-authoring` (open, and it is a deployment decision, not a code bug)
+
+`infra/docker-compose.validators.yml` runs a four-node swarm, and **all four**
+services pass `--force-authoring`. The flag is correct on a single-authority
+testnet — it is what lets one node produce blocks with no peers — and dangerous
+on a multi-validator network, where a node that has not finished syncing will
+still author and fork the chain.
+
+That file targets `chainspec-mainnet-raw.json`, i.e. the multi-validator case, so
+the flag is wrong there as written. It has never been started against mainnet,
+which is the only reason it has not caused a fork.
+
+This is not fixed by deleting the flag: the swarm has never been exercised in its
+current shape, and removing it would leave the file untested for no operational
+gain. It is fixed by not launching that file against mainnet until the flag is
+gated.
+
+The live Ceiba stack already has the right pattern — it uses
+`${VALIDATOR:+--force-authoring}`, so a non-validator node there cannot author at
+all. Copy that when the swarm is actually used.
+
+As of 2026-10-24 the warning is stated once in the file header and pointed at
+from each of the four services, instead of sitting above `validator-ceiba` only
+while the other three carried the flag unannotated. Verified by parsing the file:
+all four commands contain the flag, and no `#` leaked into a `command: >` block
+scalar (YAML does not strip comments inside a block scalar — a comment placed
+there is passed to the node as arguments and the container fails to start).
 
 ### Findings that are obsolete, not fixed
 
