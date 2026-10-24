@@ -4,26 +4,6 @@
 //! THIS FILE WAS AUTO-GENERATED USING THE SUBSTRATE BENCHMARK CLI VERSION 61.0.0
 //! DATE: 2026-10-24, STEPS: `50`, REPEAT: `20`, LOW RANGE: `[]`, HIGH RANGE: `[]`
 //! WEIGHT MULTIPLIER: 1.25 (ref_time only; applied by scripts/bench_weights.sh)
-//!
-//! AMENDMENT 2026-10-24 — NOT a full regeneration. Read this before trusting the
-//! DATE above; it was bumped so `check_weights_freshness.sh` reflects that the
-//! pallet source was reviewed against these weights, not because every entry was
-//! re-measured. The other 15 entries are still the measured 2026-10-23 values.
-//!
-//! Why this file changed at all: P1-07 added sr25519 verification to
-//! `submit_mesh_transaction`, and that commit charged one extra storage read for
-//! the key lookup but **nothing for the signature check** — the most expensive
-//! operation the extrinsic performs. `check_weights_freshness.sh` caught it. The
-//! value is now a conservative upper bound; see the note on that function.
-//!
-//! `register_mesh_sender_key` gained a benchmark in the same pass. It had none,
-//! which left this pallet at 17 `WeightInfo` methods against 16 benchmarks — and
-//! `bench_weights.sh`'s coverage guard requires an exact match, so it skipped mesh
-//! entirely and the hand-estimated entry was unrepairable by regeneration.
-//!
-//! Both numbers were measured on a BATTERY-powered host, where this machine
-//! inflates weights 40-80%. They are therefore upper bounds, not the final values.
-//! Re-run `scripts/bench_weights.sh pallet_belize_mesh` on AC power to tighten.
 //! WORST CASE MAP SIZE: `1000000`
 //! HOSTNAME: `wicked`, CPU: `Intel(R) Core(TM) Ultra 7 155H`
 //! WASM-EXECUTION: `Compiled`, CHAIN: `Some("dev")`, DB CACHE: `1024`
@@ -72,8 +52,8 @@ impl<T: frame_system::Config> super::WeightInfo for SubstrateWeight<T> {
 		// Proof Size summary in bytes:
 		//  Measured:  `73`
 		//  Estimated: `3564`
-		// Minimum execution time: 31_175_000 picoseconds.
-		Weight::from_parts(42_161_250, 3564)
+		// Minimum execution time: 29_753_000 picoseconds.
+		Weight::from_parts(40_898_750, 3564)
 			.saturating_add(T::DbWeight::get().reads(4_u64))
 			.saturating_add(T::DbWeight::get().writes(3_u64))
 	}
@@ -89,8 +69,8 @@ impl<T: frame_system::Config> super::WeightInfo for SubstrateWeight<T> {
 		// Proof Size summary in bytes:
 		//  Measured:  `513`
 		//  Estimated: `3593`
-		// Minimum execution time: 34_701_000 picoseconds.
-		Weight::from_parts(46_355_000, 3593)
+		// Minimum execution time: 33_776_000 picoseconds.
+		Weight::from_parts(45_967_500, 3593)
 			.saturating_add(T::DbWeight::get().reads(4_u64))
 			.saturating_add(T::DbWeight::get().writes(4_u64))
 	}
@@ -100,8 +80,8 @@ impl<T: frame_system::Config> super::WeightInfo for SubstrateWeight<T> {
 		// Proof Size summary in bytes:
 		//  Measured:  `236`
 		//  Estimated: `3564`
-		// Minimum execution time: 12_389_000 picoseconds.
-		Weight::from_parts(17_046_250, 3564)
+		// Minimum execution time: 12_237_000 picoseconds.
+		Weight::from_parts(16_831_250, 3564)
 			.saturating_add(T::DbWeight::get().reads(1_u64))
 			.saturating_add(T::DbWeight::get().writes(1_u64))
 	}
@@ -111,11 +91,13 @@ impl<T: frame_system::Config> super::WeightInfo for SubstrateWeight<T> {
 		// Proof Size summary in bytes:
 		//  Measured:  `236`
 		//  Estimated: `3564`
-		// Minimum execution time: 11_915_000 picoseconds.
-		Weight::from_parts(16_686_250, 3564)
+		// Minimum execution time: 12_475_000 picoseconds.
+		Weight::from_parts(17_166_250, 3564)
 			.saturating_add(T::DbWeight::get().reads(1_u64))
 			.saturating_add(T::DbWeight::get().writes(1_u64))
 	}
+	/// Storage: `Mesh::MeshSenderKeys` (r:1 w:0)
+	/// Proof: `Mesh::MeshSenderKeys` (`max_values`: None, `max_size`: Some(52), added: 2527, mode: `MaxEncodedLen`)
 	/// Storage: `Mesh::MeshNodes` (r:1 w:1)
 	/// Proof: `Mesh::MeshNodes` (`max_values`: None, `max_size`: Some(99), added: 2574, mode: `MaxEncodedLen`)
 	/// Storage: `Mesh::MeshConfig` (r:1 w:0)
@@ -123,7 +105,7 @@ impl<T: frame_system::Config> super::WeightInfo for SubstrateWeight<T> {
 	/// Storage: `Mesh::MeshTxThisBlock` (r:1 w:1)
 	/// Proof: `Mesh::MeshTxThisBlock` (`max_values`: Some(1), `max_size`: Some(4), added: 499, mode: `MaxEncodedLen`)
 	/// Storage: `Mesh::PendingMeshTransactions` (r:1 w:1)
-	/// Proof: `Mesh::PendingMeshTransactions` (`max_values`: None, `max_size`: Some(154), added: 2629, mode: `MaxEncodedLen`)
+	/// Proof: `Mesh::PendingMeshTransactions` (`max_values`: None, `max_size`: Some(186), added: 2661, mode: `MaxEncodedLen`)
 	/// Storage: `Mesh::ProcessedMeshTransactions` (r:1 w:0)
 	/// Proof: `Mesh::ProcessedMeshTransactions` (`max_values`: None, `max_size`: Some(52), added: 2527, mode: `MaxEncodedLen`)
 	/// Storage: `Mesh::PendingMeshTxCount` (r:1 w:1)
@@ -134,44 +116,21 @@ impl<T: frame_system::Config> super::WeightInfo for SubstrateWeight<T> {
 		// Proof Size summary in bytes:
 		//  Measured:  `374`
 		//  Estimated: `3651`
-		//
-		// AMENDED 2026-10-24 — NOT a full regeneration. See the file header.
-		//
-		// The previous value (36_350_000 ref_time, 3619 proof) predated P1-07,
-		// which added sr25519 verification to this extrinsic. It charged for one
-		// extra storage read and NOTHING for the signature check, so it
-		// under-charged the most expensive thing the call does.
-		//
-		// Measured on a BATTERY-powered host: 68_843_000 raw. Battery inflates
-		// this host 40-80%, so the AC truth is roughly 38-49_000_000 — still
-		// above the old 29_080_000 raw (36_350_000 / 1.25). The under-charge is
-		// real independent of the power state.
-		//
-		// Committed value is the battery measurement with the 1.25 multiplier
-		// applied: a strict UPPER bound, deliberately over-charging because
-		// over-charging wastes block space and under-charging is exploitable.
-		// Tighten with `scripts/bench_weights.sh` on AC power.
-		Weight::from_parts(86_053_750, 3651)
+		// Minimum execution time: 64_698_000 picoseconds.
+		Weight::from_parts(85_895_000, 3651)
 			.saturating_add(T::DbWeight::get().reads(8_u64))
 			.saturating_add(T::DbWeight::get().writes(5_u64))
 	}
-
 	/// Storage: `Mesh::NodesByOwner` (r:1 w:0)
+	/// Proof: `Mesh::NodesByOwner` (`max_values`: None, `max_size`: Some(89), added: 2564, mode: `MaxEncodedLen`)
 	/// Storage: `Mesh::MeshSenderKeys` (r:0 w:1)
-	///
-	/// AMENDED 2026-10-24: a benchmark now exists (`benchmarking.rs::
-	/// register_mesh_sender_key`, added this date). Its absence had left the
-	/// pallet at 17 `WeightInfo` methods against 16 benchmarks, so
-	/// `bench_weights.sh` skipped mesh entirely and this value could never be
-	/// replaced by a measured one.
-	///
-	/// Measured on a BATTERY-powered host: 14_417_000 raw, 3554 proof. The
-	/// committed 15_000_000 (raw 12_000_000 before the 1.25 multiplier) is
-	/// therefore already conservative, and 3593 already exceeds the measured
-	/// 3554. Left unchanged rather than replaced with a battery-inflated
-	/// number; confirm on AC power.
+	/// Proof: `Mesh::MeshSenderKeys` (`max_values`: None, `max_size`: Some(52), added: 2527, mode: `MaxEncodedLen`)
 	fn register_mesh_sender_key() -> Weight {
-		Weight::from_parts(15_000_000, 3593)
+		// Proof Size summary in bytes:
+		//  Measured:  `188`
+		//  Estimated: `3554`
+		// Minimum execution time: 13_314_000 picoseconds.
+		Weight::from_parts(18_106_250, 3554)
 			.saturating_add(T::DbWeight::get().reads(1_u64))
 			.saturating_add(T::DbWeight::get().writes(1_u64))
 	}
@@ -187,8 +146,8 @@ impl<T: frame_system::Config> super::WeightInfo for SubstrateWeight<T> {
 		// Proof Size summary in bytes:
 		//  Measured:  `298`
 		//  Estimated: `8987`
-		// Minimum execution time: 18_778_000 picoseconds.
-		Weight::from_parts(26_581_250, 8987)
+		// Minimum execution time: 19_898_000 picoseconds.
+		Weight::from_parts(27_316_250, 8987)
 			.saturating_add(T::DbWeight::get().reads(4_u64))
 			.saturating_add(T::DbWeight::get().writes(3_u64))
 	}
@@ -206,8 +165,8 @@ impl<T: frame_system::Config> super::WeightInfo for SubstrateWeight<T> {
 		// Proof Size summary in bytes:
 		//  Measured:  `42`
 		//  Estimated: `3486`
-		// Minimum execution time: 13_355_000 picoseconds.
-		Weight::from_parts(18_311_250, 3486)
+		// Minimum execution time: 13_370_000 picoseconds.
+		Weight::from_parts(18_727_500, 3486)
 			.saturating_add(T::DbWeight::get().reads(4_u64))
 			.saturating_add(T::DbWeight::get().writes(4_u64))
 	}
@@ -219,8 +178,8 @@ impl<T: frame_system::Config> super::WeightInfo for SubstrateWeight<T> {
 		// Proof Size summary in bytes:
 		//  Measured:  `197`
 		//  Estimated: `3683`
-		// Minimum execution time: 14_032_000 picoseconds.
-		Weight::from_parts(19_397_500, 3683)
+		// Minimum execution time: 14_329_000 picoseconds.
+		Weight::from_parts(19_726_250, 3683)
 			.saturating_add(T::DbWeight::get().reads(2_u64))
 			.saturating_add(T::DbWeight::get().writes(2_u64))
 	}
@@ -234,8 +193,8 @@ impl<T: frame_system::Config> super::WeightInfo for SubstrateWeight<T> {
 		// Proof Size summary in bytes:
 		//  Measured:  `384`
 		//  Estimated: `3683`
-		// Minimum execution time: 18_843_000 picoseconds.
-		Weight::from_parts(25_908_750, 3683)
+		// Minimum execution time: 19_725_000 picoseconds.
+		Weight::from_parts(27_023_750, 3683)
 			.saturating_add(T::DbWeight::get().reads(3_u64))
 			.saturating_add(T::DbWeight::get().writes(2_u64))
 	}
@@ -251,8 +210,8 @@ impl<T: frame_system::Config> super::WeightInfo for SubstrateWeight<T> {
 		// Proof Size summary in bytes:
 		//  Measured:  `298`
 		//  Estimated: `3627`
-		// Minimum execution time: 18_634_000 picoseconds.
-		Weight::from_parts(25_130_000, 3627)
+		// Minimum execution time: 18_460_000 picoseconds.
+		Weight::from_parts(26_236_250, 3627)
 			.saturating_add(T::DbWeight::get().reads(4_u64))
 			.saturating_add(T::DbWeight::get().writes(2_u64))
 	}
@@ -270,8 +229,8 @@ impl<T: frame_system::Config> super::WeightInfo for SubstrateWeight<T> {
 		// Proof Size summary in bytes:
 		//  Measured:  `459`
 		//  Estimated: `3593`
-		// Minimum execution time: 52_266_000 picoseconds.
-		Weight::from_parts(69_007_500, 3593)
+		// Minimum execution time: 50_789_000 picoseconds.
+		Weight::from_parts(75_011_250, 3593)
 			.saturating_add(T::DbWeight::get().reads(4_u64))
 			.saturating_add(T::DbWeight::get().writes(4_u64))
 	}
@@ -281,8 +240,8 @@ impl<T: frame_system::Config> super::WeightInfo for SubstrateWeight<T> {
 		// Proof Size summary in bytes:
 		//  Measured:  `0`
 		//  Estimated: `0`
-		// Minimum execution time: 5_178_000 picoseconds.
-		Weight::from_parts(7_151_250, 0)
+		// Minimum execution time: 5_544_000 picoseconds.
+		Weight::from_parts(7_785_000, 0)
 			.saturating_add(T::DbWeight::get().writes(1_u64))
 	}
 	/// Storage: `System::Account` (r:1 w:1)
@@ -291,8 +250,8 @@ impl<T: frame_system::Config> super::WeightInfo for SubstrateWeight<T> {
 		// Proof Size summary in bytes:
 		//  Measured:  `39`
 		//  Estimated: `3593`
-		// Minimum execution time: 39_595_000 picoseconds.
-		Weight::from_parts(52_910_000, 3593)
+		// Minimum execution time: 43_640_000 picoseconds.
+		Weight::from_parts(57_730_000, 3593)
 			.saturating_add(T::DbWeight::get().reads(1_u64))
 			.saturating_add(T::DbWeight::get().writes(1_u64))
 	}
@@ -308,8 +267,8 @@ impl<T: frame_system::Config> super::WeightInfo for SubstrateWeight<T> {
 		// Proof Size summary in bytes:
 		//  Measured:  `446`
 		//  Estimated: `8987`
-		// Minimum execution time: 22_181_000 picoseconds.
-		Weight::from_parts(30_100_000, 8987)
+		// Minimum execution time: 24_064_000 picoseconds.
+		Weight::from_parts(32_540_000, 8987)
 			.saturating_add(T::DbWeight::get().reads(4_u64))
 			.saturating_add(T::DbWeight::get().writes(2_u64))
 	}
@@ -321,8 +280,8 @@ impl<T: frame_system::Config> super::WeightInfo for SubstrateWeight<T> {
 		// Proof Size summary in bytes:
 		//  Measured:  `42`
 		//  Estimated: `3514`
-		// Minimum execution time: 10_103_000 picoseconds.
-		Weight::from_parts(14_811_250, 3514)
+		// Minimum execution time: 11_115_000 picoseconds.
+		Weight::from_parts(15_290_000, 3514)
 			.saturating_add(T::DbWeight::get().reads(2_u64))
 			.saturating_add(T::DbWeight::get().writes(2_u64))
 	}
@@ -334,8 +293,8 @@ impl<T: frame_system::Config> super::WeightInfo for SubstrateWeight<T> {
 		// Proof Size summary in bytes:
 		//  Measured:  `140`
 		//  Estimated: `3514`
-		// Minimum execution time: 12_959_000 picoseconds.
-		Weight::from_parts(18_227_500, 3514)
+		// Minimum execution time: 14_525_000 picoseconds.
+		Weight::from_parts(19_716_250, 3514)
 			.saturating_add(T::DbWeight::get().reads(2_u64))
 			.saturating_add(T::DbWeight::get().writes(2_u64))
 	}
