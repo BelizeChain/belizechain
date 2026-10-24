@@ -1,6 +1,6 @@
 //! Benchmarking for pallet-belize-mesh
 //!
-//! Provides machine-profiled weight functions for all 16 extrinsics
+//! Provides machine-profiled weight functions for all 17 extrinsics
 //! exposed via the `WeightInfo` trait.
 //!
 //! NOTE: `register_node` depends on cross-pallet KYC via `T::Identity::get_kyc_level`.
@@ -272,6 +272,24 @@ mod benchmarks {
             -70i16, // rssi
             10i16,  // snr
         );
+    }
+
+    // ── 5b. register_mesh_sender_key ─────────────────────────────────
+    //
+    // Added 2026-10-24. `register_mesh_sender_key` was introduced by P1-07 with
+    // a hand-estimated weight and no benchmark, which left the pallet at 17
+    // `WeightInfo` methods against 16 benchmarks — so `bench_weights.sh` refused
+    // to regenerate it at all (its coverage guard requires an exact match), and
+    // the hand-estimated value could never be replaced by a measured one.
+    #[benchmark]
+    fn register_mesh_sender_key() {
+        // Must own a node: the extrinsic rejects anyone who does not.
+        let (owner, _) = setup_gateway_owner::<T>(0);
+        let sender_compact = [1u8, 2, 3, 4];
+        let public_key = [0x11u8; 32];
+
+        #[extrinsic_call]
+        register_mesh_sender_key(RawOrigin::Signed(owner), sender_compact, public_key);
     }
 
     // ── 6. submit_relay_proof ────────────────────────────────────────
