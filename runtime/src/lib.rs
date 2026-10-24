@@ -2286,6 +2286,13 @@ impl pallet_belize_governance::DualHouseProvider<AccountId> for DualHouseMembers
 //  - Audit surface for which pallet is the authoritative source at a glance.
 //  - Future-proof: swap the underlying pallet call in one place.
 pub mod providers {
+    // Every shim in this module short-circuits to a permissive answer under
+    // `runtime-benchmarks` so benchmarks measure the extrinsic rather than a
+    // rejected KYC or sanctions gate. That arm deliberately ignores its inputs,
+    // which is what the `unused_variables` allow covers — in a normal build the
+    // same parameters are all used. The impls below carry the same allow for the
+    // same reason.
+    #![allow(unused_variables)]
     use super::*;
 
     /// Canonical KYC level query for this runtime.
@@ -2338,6 +2345,7 @@ pub mod providers {
 
 /// Community KYC wrapper — bypasses identity checks in benchmark mode
 pub struct CommunityKycProvider;
+#[allow(unused_variables)] // bench arm ignores its inputs; see `providers`
 impl pallet_belize_identity::BelizeKyc<AccountId, BlockNumber> for CommunityKycProvider {
     fn is_kyc_verified(
         who: &AccountId,
@@ -2366,6 +2374,7 @@ impl pallet_belize_identity::BelizeKyc<AccountId, BlockNumber> for CommunityKycP
 /// bBZD peg is always 1:1 with BZD (USDC-style fiat-backed).
 /// Oracle is NOT used for exchange rates - only for merchant verification.
 pub struct EconomyOracleProvider;
+#[allow(unused_variables)] // bench arm ignores its inputs; see `providers`
 impl pallet_belize_economy::OracleProvider<AccountId> for EconomyOracleProvider {
     fn is_merchant_verified(merchant: &AccountId, category: u8) -> bool {
         #[cfg(feature = "runtime-benchmarks")]
@@ -2538,6 +2547,7 @@ impl pallet_belize_belizex::BelizeXOracleProvider<AccountId> for BelizeXOraclePr
 /// KYC provider for BelizeX (checks Identity pallet)
 pub struct BelizeXKycProvider;
 
+#[allow(unused_variables)] // bench arm ignores its inputs; see `providers`
 impl pallet_belize_belizex::KycCheck<AccountId> for BelizeXKycProvider {
     fn is_kyc_ok(account: &AccountId) -> bool {
         #[cfg(feature = "runtime-benchmarks")]
@@ -2650,6 +2660,7 @@ impl pallet_belize_belizex::AssetLedger<AccountId> for BelizeXAssetLedger {
 
 /// Identity provider for Interoperability bridges (Phase 3)
 pub struct InteroperabilityIdentityProvider;
+#[allow(unused_variables)] // bench arm ignores its inputs; see `providers`
 impl pallet_belize_interoperability::InteroperabilityIdentityProvider<AccountId>
     for InteroperabilityIdentityProvider
 {
@@ -2676,6 +2687,7 @@ impl pallet_belize_interoperability::InteroperabilityIdentityProvider<AccountId>
 /// Delegates to the Oracle pallet's `OracleOperators` storage.
 pub struct InteropOracleCheck;
 
+#[allow(unused_variables)] // bench arm ignores its inputs; see `providers`
 impl pallet_belize_interoperability::OracleOperatorCheck<AccountId> for InteropOracleCheck {
     fn is_oracle_operator(who: &AccountId) -> bool {
         #[cfg(feature = "runtime-benchmarks")]
@@ -2730,6 +2742,7 @@ impl pallet_belize_consensus::ConsensusStakingProvider<AccountId, Balance>
 /// Mesh network Identity provider - integrates KYC and authority checks for Meshtastic nodes
 pub struct MeshIdentityProviderImpl;
 
+#[allow(unused_variables)] // bench arm ignores its inputs; see `providers`
 impl pallet_belize_mesh::MeshIdentityProvider<AccountId> for MeshIdentityProviderImpl {
     fn get_kyc_level(account: &AccountId) -> u8 {
         #[cfg(feature = "runtime-benchmarks")]
@@ -2759,6 +2772,7 @@ impl pallet_belize_mesh::MeshIdentityProvider<AccountId> for MeshIdentityProvide
 /// BNS Identity provider - integrates KYC checks for domain registration
 pub struct BnsIdentityProvider;
 
+#[allow(unused_variables)] // bench arm ignores its inputs; see `providers`
 impl pallet_belize_bns::BnsIdentityProvider<AccountId> for BnsIdentityProvider {
     fn can_register_domain(account: &AccountId) -> bool {
         #[cfg(feature = "runtime-benchmarks")]
@@ -2773,8 +2787,14 @@ impl pallet_belize_bns::BnsIdentityProvider<AccountId> for BnsIdentityProvider {
     }
 
     fn can_register_verified(account: &AccountId) -> bool {
+        // Benchmarks bypass the KYC gate so the measured path is the extrinsic's
+        // own logic, not a rejected call. The parameter is unused only in that
+        // build, hence the underscore in the arm that ignores it.
         #[cfg(feature = "runtime-benchmarks")]
-        return true;
+        {
+            let _ = account;
+            true
+        }
         #[cfg(not(feature = "runtime-benchmarks"))]
         {
             let current_block = System::block_number();
