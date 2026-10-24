@@ -288,9 +288,19 @@ looks for. Verified rather than trusted:
 
 One real finding, annotated not rewritten: `infra/docs/NEXT3_ROADMAP_LANDED_2026-09-10.md`
 claims "all 4 validators healthy", which describes the local `docker-compose.validators.yml`
-harness rather than Ceiba — the live chain is **single-authority** (verified 2026-10-14 via
+swarm rather than Ceiba — the live chain is **single-authority** (verified 2026-10-14 via
 `GrandpaApi_grandpa_authorities`: a 41-byte payload = 1 × 32-byte key + 8-byte weight). Its
 `ui` claims also conflict with `ui/UI_WIRING_STATUS_CURRENT.md`.
+
+That swarm is not a throwaway harness, though, and "healthy" is only the container health
+check. Measured 2026-10-24: all four containers are running against
+`generated_specs/chainspec-mainnet-raw.json` (`chainType: "Live"`), genesis
+`0x8b66304f…` — **a fifth chain, not Jade** — and it is forked and dead. `#13753` carries
+two distinct best hashes across the four nodes, finality stopped at `#13751`, and the last
+block timestamp is `2026-09-15T13:34:42Z`, so it has been stalled **38 days**. Logs date
+from 2026-09-13; the 2026-10-18 restart only reset container uptime. All four publish
+9944/30333/9615 on `0.0.0.0`. See the P1-24 section in
+`docs/security/security-audit-results.md` for the evidence and the open decision.
 
 **`pakit-storage` dependencies (2026-10-23).** Nine open Dependabot alerts, all cleared
 on patch-level pins: `aiohttp 3.14.3 -> 3.14.4` (eight alerts: 3 high, 3 medium, 2 low)
