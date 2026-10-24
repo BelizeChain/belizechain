@@ -72,15 +72,64 @@ The script now fails the pallet unless `ACCEPT_AMENDMENT_LOSS=1` is set. It is
 deliberately not a veto: replacing a derived value with a measured one is usually
 exactly right, and the guard exists to make that a decision rather than a surprise.
 
-Six pallets currently carry an amendment — `community`, `governance`,
-`interoperability`, `mesh`, `oracle`, `staking`. All are biased **upward**
-(over-charging), so none is currently exploitable; all six still want a measured run.
+Six pallets carried an amendment — `community`, `governance`,
+`interoperability`, `mesh`, `oracle`, `staking`. **All six have since been regenerated on
+AC power; four are now measured, and two were reverted** (see below).
 
 > **Do not** "fix" an amendment by moving its derived term to the `#[pallet::weight]`
 > call site. The call site already reads `T::WeightInfo::<fn>()`, so an added term would
 > stack on the post-regeneration measured value and **double-charge**. The call site is
 > for terms the generated file cannot express — a loop bound, a variant count — not for
 > values awaiting measurement.
+
+### Changed - Six derived weights replaced with measurements; two rejected as under-charges (October 2026)
+
+The `ACCEPT_AMENDMENT_LOSS=1` regeneration ran on AC power (`ADP1/online = 1`, cores
+verified at 4.6–4.8 GHz). Four pallets now carry measured values:
+
+| Pallet | Entry | Before | After |
+|---|---|---|---|
+| `community` | `finalize_community_proposal` | 102.60 ms | **91.83 ms** |
+| `governance` | `cast_vote` | 62.36 ms | **82.81 ms** |
+| `governance` | `reveal_vote` | 57.69 ms | **58.46 ms** |
+| `governance` | `unlock_conviction` | 19.80 ms | **35.11 ms** |
+| `mesh` | `submit_mesh_transaction` | 86.05 ms | **85.90 ms** |
+| `mesh` | `register_mesh_sender_key` | 15.00 ms | **18.11 ms** |
+| `staking` | `distribute_rewards` | 39.30 ms | **40.23 ms** |
+
+**Two were reverted, because the benchmark measures a cheaper path than production
+takes.** Committing the regenerated numbers would have *reduced* the charge on a path
+that never runs:
+
+- **`oracle::verify_merchant`.** The benchmark uses `RawOrigin::Root`, and the runtime
+  type is `EitherOfDiverse<EnsureRoot, EnsureProportionMoreThan<TechnicalCouncil, 1, 2>>`.
+  `EitherOfDiverse` tries `EnsureRoot` **first**, so Root short-circuits before the
+  collective is consulted. A real council motion takes the second branch and reads
+  `Members` / `ProposalOf` / `Voting`. Regeneration produced `Measured: 0`, proof `0`,
+  and **zero reads**.
+- **`interoperability::acknowledge_message`.** The extrinsic calls
+  `T::Identity::verify_bridge_operator` and `T::Identity::is_sanctioned`, and both
+  runtime adapters are bypassed under `runtime-benchmarks`
+  (`return true` / `return false`). The benchmark build does **2 reads fewer** than
+  production — measured 2, production does 4.
+
+Both keep their derived values, which are biased upward on the axis that matters.
+Fixing them properly is a code change — benchmark the council path, drop the
+benchmark-mode bypass from the identity adapter — not a regeneration.
+
+> **The earlier "all six are biased upward" claim was wrong**, and this run disproved it.
+> `unlock_conviction` was derived **44 % under**, `cast_vote` **25 % under**, and
+> `register_mesh_sender_key` **21 % under**, while their read counts were overstated. A
+> derived weight can be conservative on one axis and optimistic on the other, so upward
+> bias has to be checked per axis, not asserted per entry.
+
+> **A benchmark is only as good as the code path it exercises.** Three ways it silently
+> diverges from production, all seen here or adjacent to it: `RawOrigin::Root` satisfying
+> an `EitherOfDiverse` via its cheap first branch; `#[cfg(feature = "runtime-benchmarks")]`
+> bypasses that remove real storage access; and mock verifiers that accept anything. In
+> each case the benchmark passes, the number looks measured, and it **under-charges** —
+> the unsafe direction. Treat a *drop* in regenerated read counts as a red flag to
+> explain, not an improvement to accept.
 
 ### Fixed - Deployment Tooling Targeted a Decommissioned Host (October 2026)
 
