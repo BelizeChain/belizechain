@@ -84,7 +84,7 @@ Each row was checked against the source, not against the checklist.
 | **Fixed 2026-10-23 (second pass)** | P1-06 (`verify_merchant` now requires `T::MerchantVerificationOrigin` = `TechnicalCouncilMajority`; it was a single `OracleOperators` member), P1-08 **settlement half** (the DEX moved no bBZD at all — see below) |
 | **Fixed 2026-10-24** | P1-08 **matching half** — limit orders now escrow at placement and fill against each other in price-time order (see below) |
 | **Fixed 2026-10-24 (CI fallout)** | The five benchmark smoke-test failures that P1-06/P1-07/conviction-bonding left behind — `governance::cast_vote` (bond underfunded), `oracle::verify_merchant` (origin moved off `Signed`), `mesh::submit_mesh_transaction` (unsigned after P1-07), `belizex::{add_liquidity, execute_trade, remove_liquidity}` (quote leg unfunded). See *The benchmark smoke test* below |
-| **Open — needs a decision** | P1-02 (`Sudo` at index 6, deliberate for testnet bootstrap; owner has said do not remove) · P1-24 (`--force-authoring` is correct on a single-authority testnet, unsafe on multi-validator mainnet — see below) |
+| **Open — needs a decision** | P1-02 (`Sudo` at index 6, deliberate for testnet bootstrap; owner has said do not remove) · **P1-24 is now observed, not hypothetical** — a four-node swarm has been running a `chainType: Live` spec with `--force-authoring` on every node since 2026-09-13; it is forked and stalled 38 days. See below |
 | **Not started** | External audit, penetration testing, economic modelling, formal verification |
 
 #### P1-08 is worse than reported, and is a stub rather than a bug
@@ -283,7 +283,7 @@ Three traps worth recording:
   `AcceptAll`.
 - **`KeyTypeId` is `[u8; 4]`.** A five-byte literal is a type error.
 
-#### P1-24 — `--force-authoring` (open, and it is a deployment decision, not a code bug)
+#### P1-24 — `--force-authoring` is live on a forked chain, not a hypothetical
 
 `infra/docker-compose.validators.yml` runs a four-node swarm, and **all four**
 services pass `--force-authoring`. The flag is correct on a single-authority
@@ -291,18 +291,39 @@ testnet — it is what lets one node produce blocks with no peers — and danger
 on a multi-validator network, where a node that has not finished syncing will
 still author and fork the chain.
 
-That file targets `chainspec-mainnet-raw.json`, i.e. the multi-validator case, so
-the flag is wrong there as written. It has never been started against mainnet,
-which is the only reason it has not caused a fork.
+**An earlier revision of this section said the swarm "has never been started
+against mainnet, which is the only reason it has not caused a fork". That was
+wrong.** It was written from the compose file alone, without checking the host.
+Measured 2026-10-24:
 
-This is not fixed by deleting the flag: the swarm has never been exercised in its
-current shape, and removing it would leave the file untested for no operational
-gain. It is fixed by not launching that file against mainnet until the flag is
-gated.
+| Observation | Value |
+|---|---|
+| Containers | `val-ceiba`, `val-maya`, `val-reef`, `val-cayo` — all running, all healthy |
+| Chain spec | `generated_specs/chainspec-mainnet-raw.json` (gitignored, dated 2026-08-27), `chainType: "Live"`, `id: belizechain` |
+| Genesis | `0x8b66304f267a91ed4af49cd5ccf2b32900de780f2355402d3f217b2057c9c59c` — **not** Jade's `0xb2664568…`, so this is a separate chain |
+| Last block | `2026-09-15T13:34:42Z` — stalled **38 days** |
+| Height | `#13753`, finalized `#13751` (finality 2 blocks behind) |
+| Best hash | `0x1b98…43e4` on ceiba/cayo vs `0xbbec…488d` on maya/reef — **two distinct tips at the same height** |
+| Logs | date from 2026-09-13; containers restarted 2026-10-18 but the chain data is older |
+| BABE | `No block for 554390 slots. Applying exponential lenience, total proposing duration: 516000ms` — retrying forever |
+| Exposure | every service publishes RPC/P2P/Prometheus on `0.0.0.0`, not loopback |
 
-The live Ceiba stack already has the right pattern — it uses
-`${VALIDATOR:+--force-authoring}`, so a non-validator node there cannot author at
-all. Copy that when the swarm is actually used.
+A fork at equal height with four authorities is the P1-24 signature, and the flag
+is present on all four. **Causation is not proven** — the logs carry no
+equivocation or import-failure line, so the divergence mechanism was not captured
+before it happened. What is proven is that the failure mode this finding
+describes is not theoretical: a `chainType: Live` spec has been running for weeks
+with the flag on every node, and the chain is dead and forked.
+
+It is also on a workstation, not a server, holding ports open on all interfaces
+and consuming ~250 MiB across the four containers.
+
+Not fixed by deleting the flag from the file: the running containers would keep
+their existing `command:`, so a file edit alone changes nothing on the host. The
+decisions are (a) stop the swarm and remove the volumes, (b) rebuild the compose
+file to gate the flag the way the live Ceiba stack already does —
+`${VALIDATOR:+--force-authoring}` — and (c) never launch a multi-validator
+network from a spec that does not first prove finality across all authorities.
 
 As of 2026-10-24 the warning is stated once in the file header and pointed at
 from each of the four services, instead of sitting above `validator-ceiba` only
@@ -310,6 +331,10 @@ while the other three carried the flag unannotated. Verified by parsing the file
 all four commands contain the flag, and no `#` leaked into a `command: >` block
 scalar (YAML does not strip comments inside a block scalar — a comment placed
 there is passed to the node as arguments and the container fails to start).
+
+**Lesson.** The original text asserted host state from a configuration file. A
+compose file says what *would* run, not what *is* running; the two had diverged
+by six weeks. Check the host before writing a sentence about it.
 
 ### Findings that are obsolete, not fixed
 
