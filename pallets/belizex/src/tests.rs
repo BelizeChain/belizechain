@@ -1823,6 +1823,58 @@ fn a_crossing_ask_fills_against_a_resting_bid_and_settles_both_legs() {
 }
 
 #[test]
+fn a_bid_at_a_fractional_price_can_still_fill_in_pieces() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        // 10 base at 1.5 quote each => the bid escrows ceil(15) = 15 quote.
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            OrderType::Buy.as_u8(),
+            10,
+            3 * PRICE_SCALE / 2,
+            20,
+        ));
+        assert_eq!(
+            BelizeX::order_book(0).expect("bid").escrow,
+            15,
+            "a bid escrows ceil(amount * price) so it can always pay its own limit"
+        );
+
+        // Ten asks of 1 base each, from ten different accounts so the walk is not
+        // cut short by the self-trade skip.
+        for i in 0..10u64 {
+            let who = 10 + i;
+            Balances::make_free_balance_be(&who, 1_000);
+            assert_ok!(BelizeX::place_limit_order(
+                RuntimeOrigin::signed(who),
+                0,
+                1,
+                OrderType::Sell.as_u8(),
+                1,
+                3 * PRICE_SCALE / 2,
+                20,
+            ));
+        }
+
+        // If each fill rounded its quote up, the bid would run out of escrow part
+        // way through and the rest of the asks would never fill.
+        assert!(
+            BelizeX::order_book(0).is_none(),
+            "the bid must be fully consumed, not stranded by rounding dust"
+        );
+        for i in 0..10u64 {
+            let id = 1 + i as u32;
+            assert!(
+                BelizeX::order_book(id).is_none(),
+                "ask {id} should have filled against the resting bid"
+            );
+        }
+    });
+}
+
+#[test]
 fn a_rejected_second_leg_puts_the_first_leg_back_and_leaves_the_book_untouched() {
     let mut ext = new_test_ext();
     ext.execute_with(|| {

@@ -211,6 +211,22 @@ which drives the case where the base leg has already moved. Against the old code
 that test fails on the first assertion after the fill, because the fully-filled
 bid had already been removed from the book.
 
+**Rounding.** A bid escrows `ceil(amount × price / PRICE_SCALE)` for its whole
+size, but a fill charges one slice at a time. Summing per-slice ceilings can
+exceed that single ceiling — ten 1-unit fills at price 1.5 need 20 quote against
+an escrow of 15 — after which the escrow check fails on every later walk and the
+order can never fill again. It stays cancellable, so this is a liveness bug rather
+than a loss of funds, but the order is silently un-matchable.
+
+Fills now round **down**: `sum(floor(aᵢ·p/S)) ≤ floor(A·p/S) ≤ ceil(A·p/S)`, so
+the escrow always covers the fill. The escrow at placement still rounds up, so an
+order can always pay its own limit price. Rounding down strands at most one base
+unit of dust per fill, refunded when the order leaves the book.
+
+`a_bid_at_a_fractional_price_can_still_fill_in_pieces` covers it: ten asks of 1
+base fill a single 10-base bid priced at 1.5. Against round-up the bid strands
+after seven fills and the test fails on `the bid must be fully consumed`.
+
 **Weight.** `WeightInfo` gained `match_orders(orders)`, and `place_limit_order`'s
 weight is now `place_order() + match_orders(T::MaxOrdersPerPair::get())`.
 

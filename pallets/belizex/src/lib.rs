@@ -1752,7 +1752,19 @@ pub mod pallet {
                 return None;
             }
             // The maker's price wins — that is what resting liquidity buys.
-            let quote_amount = Self::quote_for(base_amount, maker.price, true).ok()?;
+            //
+            // Rounded DOWN, unlike the escrow at placement. A bid escrows
+            // `ceil(amount * price / PRICE_SCALE)` for its whole size, but a fill
+            // charges for one slice at a time, and the sum of per-slice ceilings
+            // can exceed that single ceiling: ten 1-unit fills at price 1.5 need
+            // 20 quote against an escrow of 15. The order then fails the escrow
+            // check below on every later walk and can never fill again.
+            //
+            // `sum(floor(a_i * p / S)) <= floor(A * p / S) <= ceil(A * p / S)`,
+            // so rounding down is always covered by the escrow, and it strands at
+            // most one base unit of dust per fill, refunded when the order leaves
+            // the book.
+            let quote_amount = Self::quote_for(base_amount, maker.price, false).ok()?;
 
             // Both legs must be covered by the escrow each side actually holds.
             let taker_pays = if taker.is_bid() {
