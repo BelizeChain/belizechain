@@ -760,6 +760,27 @@ the real release node, after the mesh signature was pinned. Getting there took t
 measurements (18/19 → single-benchmark pass → 19/19); the middle failure is the reason the
 mock-only version was never enough.
 
+#### A green smoke test does not mean the weights are right
+
+The smoke test proves each benchmark *executes*. It says nothing about whether the recorded
+weight still matches what the code does — and on 2026-10-24 `check_weights_freshness.sh`
+caught exactly that gap in `mesh`:
+
+- P1-07 added sr25519 verification to `submit_mesh_transaction` and charged **+1 storage
+  read** for the sender-key lookup, but **nothing for the signature check** — the most
+  expensive operation the extrinsic performs. Committed raw ref_time was 29.08 ms against a
+  measured 68.84 ms, and that measurement was taken on a *battery-powered* host, so the true
+  AC figure is still well above the committed one. Over-charging wastes block space;
+  under-charging is exploitable, so this was the unsafe direction.
+- `register_mesh_sender_key` had **no benchmark at all**. That put the pallet at 17
+  `WeightInfo` methods against 16 benchmarks, and `bench_weights.sh` requires an exact match
+  before it regenerates — so it **skipped mesh entirely**, and the hand-estimated value was
+  unrepairable by any number of script runs.
+
+Both are fixed; coverage is now 17/17. **The general rule: adding a `#[pallet::call]`
+without adding its benchmark silently locks that pallet out of weight regeneration**, and
+nothing surfaces it until the freshness guard fires.
+
 ### 4.4 Documentation continuity — IN PROGRESS (opened 2026-10-14)
 
 - ✅ This file created as the single state/doc anchor.
