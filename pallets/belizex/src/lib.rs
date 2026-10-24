@@ -362,6 +362,23 @@ pub mod pallet {
         }
     }
 
+    /// The amounts for one fill, computed before any state is committed.
+    ///
+    /// Planning and applying are separate steps so a ledger rejection can abort a
+    /// fill with the book untouched. Decrementing `remaining`/`escrow` first and
+    /// moving funds second would leave both orders claiming a fill that never
+    /// happened, with the funds stranded in the escrow account.
+    struct FillAmounts {
+        /// Base moved from the asker to the bidder.
+        base_amount: u128,
+        /// Quote moved from the bidder to the asker.
+        quote_amount: u128,
+        /// What the taker gives up, in the asset it escrowed.
+        taker_pays: u128,
+        /// What the maker gives up, in the asset it escrowed.
+        maker_pays: u128,
+    }
+
     /// Order types
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
     #[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
@@ -1676,20 +1693,24 @@ pub mod pallet {
                     break;
                 }
 
-                if let Some((base_amount, quote_amount)) = Self::fill(&mut taker, &mut maker) {
-                    // `fill` decremented both sides in memory, so both have to be
-                    // written back: the maker's `remaining` and `escrow` shrank too.
-                    OrderBook::<T>::insert(taker_id, taker.clone());
-                    if maker.remaining == 0 {
-                        Self::remove_order(&maker);
-                    } else {
-                        OrderBook::<T>::insert(maker_id, maker.clone());
-                    }
-                    Self::settle_fill(&taker, &maker, base_amount, quote_amount);
-                } else {
+                let Some(plan) = Self::plan_fill(&taker, &maker) else {
                     // Taker escrow or the maker's remainder went inconsistent;
                     // leave the maker resting and stop rather than looping.
                     break;
+                };
+                if !Self::settle_fill(&taker, &maker, &plan) {
+                    // The ledger rejected a leg and `settle_fill` put the other
+                    // back, so both orders still hold their escrow. Leave the
+                    // maker resting and stop: retrying it would be rejected the
+                    // same way.
+                    break;
+                }
+                // Funds have moved, so it is now safe to record the fill.
+                Self::apply_fill(&mut taker, &mut maker, &plan);
+                if maker.remaining == 0 {
+                    Self::remove_order(&maker);
+                } else {
+                    OrderBook::<T>::insert(maker_id, maker.clone());
                 }
             }
 
@@ -1718,14 +1739,14 @@ pub mod pallet {
             }
         }
 
-        /// Compute the amounts for one fill and decrement both sides.
+        /// Work out the amounts for one fill without touching either order.
         ///
-        /// Returns `None` if either side would have to pay more than it holds. The
-        /// caller treats that as "skip this maker".
-        fn fill(
-            taker: &mut OrderEntry<T::AccountId, BlockNumberFor<T>>,
-            maker: &mut OrderEntry<T::AccountId, BlockNumberFor<T>>,
-        ) -> Option<(u128, u128)> {
+        /// Returns `None` if either side would have to pay more than it holds, or
+        /// if the quote cannot be computed. The caller treats that as "stop".
+        fn plan_fill(
+            taker: &OrderEntry<T::AccountId, BlockNumberFor<T>>,
+            maker: &OrderEntry<T::AccountId, BlockNumberFor<T>>,
+        ) -> Option<FillAmounts> {
             let base_amount = taker.remaining.min(maker.remaining);
             if base_amount == 0 {
                 return None;
@@ -1734,38 +1755,61 @@ pub mod pallet {
             let quote_amount = Self::quote_for(base_amount, maker.price, true).ok()?;
 
             // Both legs must be covered by the escrow each side actually holds.
-            let maker_needs = if maker.is_bid() {
+            let taker_pays = if taker.is_bid() {
                 quote_amount
             } else {
                 base_amount
             };
-            let taker_needs = if taker.is_bid() {
+            let maker_pays = if maker.is_bid() {
                 quote_amount
             } else {
                 base_amount
             };
-            if maker_needs > maker.escrow || taker_needs > taker.escrow {
+            if taker_pays > taker.escrow || maker_pays > maker.escrow {
                 return None;
             }
 
-            taker.remaining = taker.remaining.saturating_sub(base_amount);
-            taker.escrow = taker.escrow.saturating_sub(taker_needs);
-            maker.remaining = maker.remaining.saturating_sub(base_amount);
-            maker.escrow = maker.escrow.saturating_sub(maker_needs);
-            Some((base_amount, quote_amount))
+            Some(FillAmounts {
+                base_amount,
+                quote_amount,
+                taker_pays,
+                maker_pays,
+            })
         }
 
-        /// Move both legs of a completed fill between escrow and the two parties.
+        /// Record a settled fill against both orders.
+        ///
+        /// Only called once the transfers have moved, so `remaining` and `escrow`
+        /// can never claim a fill that did not happen.
+        fn apply_fill(
+            taker: &mut OrderEntry<T::AccountId, BlockNumberFor<T>>,
+            maker: &mut OrderEntry<T::AccountId, BlockNumberFor<T>>,
+            plan: &FillAmounts,
+        ) {
+            taker.remaining = taker.remaining.saturating_sub(plan.base_amount);
+            taker.escrow = taker.escrow.saturating_sub(plan.taker_pays);
+            maker.remaining = maker.remaining.saturating_sub(plan.base_amount);
+            maker.escrow = maker.escrow.saturating_sub(plan.maker_pays);
+        }
+
+        /// Move both legs of a planned fill between escrow and the two parties.
         ///
         /// Everything routes through the escrow account so the pallet never mints
         /// or burns: the bidder's quote goes to the asker, the asker's base goes to
-        /// the bidder. `fill` has already checked that both sides hold enough.
+        /// the bidder.
+        ///
+        /// Returns `false` if either leg was rejected, having first put back
+        /// whatever the other leg moved. `plan_fill` proves the escrow
+        /// *bookkeeping* covers the fill, but not that the ledger will accept it —
+        /// the adapter re-checks sanctions on bBZD, and a party can be sanctioned
+        /// between placement and fill. Callers must not apply the fill when this
+        /// returns `false`, and must stop rather than retry: the same maker would
+        /// be rejected identically.
         fn settle_fill(
             taker: &OrderEntry<T::AccountId, BlockNumberFor<T>>,
             maker: &OrderEntry<T::AccountId, BlockNumberFor<T>>,
-            base_amount: u128,
-            quote_amount: u128,
-        ) {
+            plan: &FillAmounts,
+        ) -> bool {
             let (bid, ask) = if taker.is_bid() {
                 (taker, maker)
             } else {
@@ -1774,14 +1818,16 @@ pub mod pallet {
             let escrow = Self::order_escrow_account();
             let (base_asset, quote_asset) = (bid.pair.0, bid.pair.1);
 
-            let base_leg = T::Assets::transfer(base_asset, &escrow, &bid.creator, base_amount);
-            let quote_leg = T::Assets::transfer(quote_asset, &escrow, &ask.creator, quote_amount);
-
-            // A leg that fails here is a ledger inconsistency `fill` could not see
-            // (e.g. a sanctions gate inside the adapter). Both legs are attempted
-            // regardless; the event records only what actually settled.
-            if base_leg.is_err() || quote_leg.is_err() {
-                return;
+            let base_leg = T::Assets::transfer(base_asset, &escrow, &bid.creator, plan.base_amount);
+            if base_leg.is_err() {
+                return false;
+            }
+            let quote_leg =
+                T::Assets::transfer(quote_asset, &escrow, &ask.creator, plan.quote_amount);
+            if quote_leg.is_err() {
+                // Undo the base leg so the escrow still backs both orders.
+                let _ = T::Assets::transfer(base_asset, &bid.creator, &escrow, plan.base_amount);
+                return false;
             }
 
             Self::deposit_event(Event::OrderFilled {
@@ -1789,10 +1835,11 @@ pub mod pallet {
                 taker_order_id: taker.order_id,
                 maker: maker.creator.clone(),
                 taker: taker.creator.clone(),
-                base_amount,
-                quote_amount,
+                base_amount: plan.base_amount,
+                quote_amount: plan.quote_amount,
                 price: maker.price,
             });
+            true
         }
 
         /// Remove an order from the book and index, refunding its escrow.

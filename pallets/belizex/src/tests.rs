@@ -14,12 +14,30 @@ thread_local! {
         const { core::cell::RefCell::new(Vec::new()) };
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Account whose incoming transfers the mock ledger rejects.
+    ///
+    /// `settle_fill` moves the base leg first and the quote leg second, so
+    /// rejecting transfers to the *asker* exercises the path where the first leg
+    /// has already moved and must be put back.
+    static REJECT_TRANSFERS_TO: core::cell::RefCell<Option<u64>> =
+        const { core::cell::RefCell::new(None) };
+}
+
 impl MockAssetLedger {
     fn clear() {
         TRANSFER_LOG.with(|l| l.borrow_mut().clear());
     }
     fn transfers() -> Vec<(AssetId, u64, u64)> {
         TRANSFER_LOG.with(|l| l.borrow().clone())
+    }
+    /// Reject every incoming transfer to `who` until `accept_transfers_to` is called.
+    fn reject_transfers_to(who: u64) {
+        REJECT_TRANSFERS_TO.with(|r| *r.borrow_mut() = Some(who));
+    }
+    fn accept_transfers_to_all() {
+        REJECT_TRANSFERS_TO.with(|r| *r.borrow_mut() = None);
     }
 }
 
@@ -36,6 +54,10 @@ impl AssetLedger<u64> for MockAssetLedger {
         }
         if amount == 0 {
             return Ok(());
+        }
+        // Failure injection: see `REJECT_TRANSFERS_TO`.
+        if REJECT_TRANSFERS_TO.with(|r| *r.borrow()) == Some(*to) {
+            return Err(Error::<Test>::InsufficientBalance.into());
         }
         TRANSFER_LOG.with(|l| l.borrow_mut().push((asset, *from, *to)));
         <Balances as frame_support::traits::Currency<u64>>::transfer(
@@ -1797,6 +1819,89 @@ fn a_crossing_ask_fills_against_a_resting_bid_and_settles_both_legs() {
             0,
             "escrow must not retain funds after a full fill"
         );
+    });
+}
+
+#[test]
+fn a_rejected_second_leg_puts_the_first_leg_back_and_leaves_the_book_untouched() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        // Bid rests: 10 base at 2 quote, so 20 quote escrowed.
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            OrderType::Buy.as_u8(),
+            10,
+            2 * PRICE_SCALE,
+            20,
+        ));
+        let escrow_after_bid = Balances::free_balance(escrow());
+        MockAssetLedger::clear();
+
+        // The asker's ledger entry is about to reject the quote leg — the second
+        // of the two transfers `settle_fill` performs.
+        MockAssetLedger::reject_transfers_to(2);
+
+        assert_ok!(BelizeX::place_limit_order(
+            RuntimeOrigin::signed(2),
+            0,
+            1,
+            OrderType::Sell.as_u8(),
+            10,
+            2 * PRICE_SCALE,
+            20,
+        ));
+        MockAssetLedger::accept_transfers_to_all();
+
+        // The base leg ran and was reversed; the quote leg never completed.
+        let log = MockAssetLedger::transfers();
+        assert!(
+            log.iter()
+                .any(|(a, from, to)| *a == AssetId::DALLA && *from == escrow() && *to == 1),
+            "the base leg should have been attempted: {log:?}"
+        );
+        assert!(
+            log.iter()
+                .any(|(a, from, to)| *a == AssetId::DALLA && *from == 1 && *to == escrow()),
+            "the base leg should have been put back: {log:?}"
+        );
+        assert!(
+            !log.iter().any(|(a, _, to)| *a == AssetId::BBZD && *to == 2),
+            "the rejected quote leg must not appear as settled: {log:?}"
+        );
+
+        // No fill was recorded.
+        assert!(
+            !System::events()
+                .iter()
+                .any(|r| matches!(r.event, RuntimeEvent::BelizeX(Event::OrderFilled { .. }))),
+            "a fill that moved nothing must not emit OrderFilled"
+        );
+
+        // The bidder kept its base, and the escrow holds exactly the two orders'
+        // escrow: the bidder's 20 quote plus the asker's 10 base, which the ask
+        // itself deposited on placement. The mock collapses every asset onto
+        // `Balances`, so both legs show up in one figure.
+        assert_eq!(
+            Balances::free_balance(1),
+            1_000_000_000_000 - 20,
+            "the bidder must not gain base from a fill that did not settle"
+        );
+        assert_eq!(
+            Balances::free_balance(escrow()),
+            escrow_after_bid + 10,
+            "escrow must hold the bid's 20 quote plus the ask's 10 base, and \
+             nothing from the failed fill"
+        );
+
+        let bid = BelizeX::order_book(0).expect("the bid must still rest");
+        assert_eq!(bid.remaining, 10, "the bid must not be partly filled");
+        assert_eq!(bid.escrow, 20, "the bid's escrow must be intact");
+
+        let ask = BelizeX::order_book(1).expect("the ask must still rest");
+        assert_eq!(ask.remaining, 10, "the ask must not be partly filled");
+        assert_eq!(ask.escrow, 10, "the ask's escrow must be intact");
     });
 }
 

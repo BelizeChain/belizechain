@@ -185,6 +185,32 @@ design rather than by omission, and is annotated as such in the source.
 and refunded instead of filling, so the book cannot hold a claim the owner has
 walked away from.
 
+**Settlement atomicity.** The first cut decremented both orders' `remaining` and
+`escrow`, wrote them, and only then moved funds. That ordering is wrong: a
+transfer can still be rejected after `plan_fill` has proved the *bookkeeping*
+covers it, because the ledger adapter re-checks sanctions on bBZD and a party can
+be sanctioned between placement and fill. On a rejected leg the two orders would
+have claimed a fill that never happened, with the funds left stranded in the
+escrow account and no owner.
+
+Split into three steps so the book cannot get ahead of the ledger:
+
+| Step | Effect |
+|---|---|
+| `plan_fill` | computes the amounts, mutates nothing, returns `None` if either side is short |
+| `settle_fill` | moves both legs, **reverses the first if the second is rejected**, returns `bool` |
+| `apply_fill` | decrements `remaining`/`escrow` — only after settlement succeeded |
+
+A rejected fill now leaves both orders resting with their escrow intact and emits
+no `OrderFilled`. Matching stops rather than skipping to the next maker, because
+the rejection is a property of that maker's counterparty, not of the price.
+
+`a_rejected_second_leg_puts_the_first_leg_back_and_leaves_the_book_untouched`
+covers it: the mock ledger can now reject incoming transfers to a chosen account,
+which drives the case where the base leg has already moved. Against the old code
+that test fails on the first assertion after the fill, because the fully-filled
+bid had already been removed from the book.
+
 **Weight.** `WeightInfo` gained `match_orders(fills)`, and `place_limit_order`'s
 weight is now `place_order() + match_orders(T::MaxOrdersPerPair::get())`. The
 `weights.rs` figure is **derived, not measured** — it is marked as such in an
