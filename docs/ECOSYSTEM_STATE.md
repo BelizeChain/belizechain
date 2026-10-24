@@ -640,11 +640,11 @@ Counts verified 2026-10-22:
   ⚠️ Still open and **not** fixed by this: `hickory-resolver 0.24.4` (GHSA-5j98-2g5x-46v6)
   needs `libp2p-dns 0.45` upstream.
 
-#### P1-08 matching engine — built 2026-10-24, NOT yet deployed
+#### P1-08 matching engine — built 2026-10-24, committed, NOT yet deployed
 
 `pallet-belize-belizex` limit orders went from "written but never matched" to a real
-escrowed price-time book. This is uncommitted-at-time-of-writing source, **not live state**;
-the live chain still runs the stub.
+escrowed price-time book. Committed on branch `belizechain` (spec 119), **not live**; the
+live chain still runs the stub at spec 117.
 
 - Escrow at placement into `OrderEscrowPalletId` (`py/bzord`): bid → quote
   `ceil(amount * price / PRICE_SCALE)`, ask → base `amount`. Refunded on cancel,
@@ -654,13 +654,22 @@ the live chain still runs the stub.
   Fill price is the **maker's**, so the taker keeps the improvement.
 - Self-trade is skipped, not rejected. `SelfTradeNotAllowed` remains unraised by design.
 - Expired makers are purged and refunded lazily during matching.
+- Settlement is ordered **plan → settle → apply**, so a rejected ledger leg leaves both
+  orders resting with their escrow intact instead of recording a fill that never moved
+  funds. The first leg is reversed if the second is rejected.
+- Fills round their quote **down**, placement rounds the escrow **up**. Per-slice ceilings
+  summed over a whole order can exceed the single ceiling taken at placement, which
+  stranded a fractional-price bid permanently after a few fills.
 - `STORAGE_VERSION` 0 → 1 with `pallets/belizex/src/migrations.rs` **purging** the book
   (the `OrderEntry` encoding changed, so old bytes cannot be reinterpreted);
   `runtime/src/migrations.rs` `CURRENT_RUNTIME_VERSION` 2 → 3 runs it.
 - ⚠️ `WeightInfo::match_orders` is **derived, not measured**. A
-  `match_orders(n: Linear<1, MaxOrdersPerPair>)` benchmark now exists and passes, but
-  `weights.rs` still holds the placeholder. Regenerate with `scripts/bench_weights.sh`
-  (AC power only) before mainnet, or the fill loop is mispriced.
+  `match_orders(n: Linear<1, MaxOrdersPerPair>)` benchmark now exists and passes, but it
+  measures the fill shape only — a walk can consist entirely of expired-order purges, so
+  the bound is `cancel_order() + execute_trade()` per iteration, written in terms of those
+  two so regenerating either cannot silently under-charge it. At `MaxOrdersPerPair = 20`
+  that is ~4.7 ms composed against a 2 s block. Regenerate with `scripts/bench_weights.sh`
+  (AC power only) before mainnet.
 - ⚠️ Time priority is order-id ascending, not a stored timestamp.
 
 #### Benchmark smoke test — 5 failures fixed 2026-10-24
