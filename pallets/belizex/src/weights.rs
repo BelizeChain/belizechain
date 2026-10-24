@@ -236,6 +236,11 @@ impl<T: frame_system::Config> super::WeightInfo for SubstrateWeight<T> {
 	/// either cannot silently leave this one under-charging. The benchmark of the
 	/// same name seeds live orders and so measures the *fill* shape only; that is
 	/// why the bound is not simply its measured value.
+	///
+	/// Magnitude, so a reader can sanity-check it against the block budget: at
+	/// `MaxOrdersPerPair = 20` the composed `place_limit_order` is about 4.7 ms,
+	/// against a 2 s block. Deliberately conservative — `execute_trade` reads 9
+	/// and writes 5, while a fill reads at most 3 and writes at most 3.
 	fn match_orders(orders: u32) -> Weight {
 		let per_order = Self::cancel_order().saturating_add(Self::execute_trade());
 		per_order
