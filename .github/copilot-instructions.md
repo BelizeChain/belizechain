@@ -30,7 +30,7 @@ rather than only passing on the new.
 
 ## Architecture
 - Core workspace: `node/`, `runtime/`, `pallets/`, `scripts/`, `tests/`, `docs/`
-- 19 Belize-specific pallets in `pallets/` plus shared `pallets/common`: belizex, bns, community, compliance, consensus, economy, governance, identity, interoperability, justice, landledger, mesh, moderation, oracle, payroll, quantum, staking, storage-proof, whistleblower
+- 20 Belize-specific pallets in `pallets/` plus shared `pallets/common`: belizex, bns, community, compliance, consensus, economy, governance, identity, interoperability, justice, landledger, mesh, moderation, oracle, payroll, quantum, staking, storage-proof, whistleblower, zk-attestation
 - Runtime topology source of truth: `Cargo.toml` workspace members plus `runtime/src/lib.rs` `construct_runtime!`
 - Substrate runtime in `runtime/src/lib.rs`
 - Node binary in `node/src/`

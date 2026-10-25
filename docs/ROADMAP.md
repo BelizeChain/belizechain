@@ -19,7 +19,7 @@ count) are not restated in this file — see [`ECOSYSTEM_STATE.md`](ECOSYSTEM_ST
 
 - Runtime deployed on the live testnet by hot upgrade with no node restart;
   current `spec_version` in [`ECOSYSTEM_STATE.md`](ECOSYSTEM_STATE.md) §2.1
-- **19 custom pallets** at runtime indexes 20–38, plus **17 standard Substrate
+- **20 custom pallets** at runtime indexes 20–39, plus **17 standard Substrate
   pallets** at indexes 0–16
 - 6-second block times, BABE block production with GRANDPA finality, SS58
   address prefix `1981`

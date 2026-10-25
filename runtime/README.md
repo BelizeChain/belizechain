@@ -7,7 +7,7 @@ Substrate FRAME v48 runtime implementation for BelizeChain sovereign blockchain.
 The BelizeChain runtime is the core state transition function that defines:
 - **Blockchain logic**: How transactions modify state
 - **Consensus rules**: Block validation and finality
-- **Pallets integration**: 19 custom pallets + 14 standard pallets
+- **Pallets integration**: 20 custom pallets + 14 standard pallets
 - **Governance mechanisms**: Democratic decision-making
 - **Economic model**: DALLA/bBZD dual-token system
 

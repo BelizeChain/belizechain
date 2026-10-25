@@ -12,9 +12,9 @@
 
 ---
 
-## Custom Pallet Roster (19 pallets, runtime indexes 20–38)
+## Custom Pallet Roster (20 pallets, runtime indexes 20–39)
 
-All 19 custom pallets are compiled into the runtime. The source of truth is
+All 20 custom pallets are compiled into the runtime. The source of truth is
 `runtime/src/lib.rs` `construct_runtime!` plus the `Cargo.toml` workspace
 members — not this table.
 
@@ -44,9 +44,10 @@ a dated record from 2026-09-03.
 | 36 | Whistleblower | Governance | **Phase 4B (Verified on live testnet)** |
 | 37 | Moderation | Governance | **Phase 5C (Verified on live testnet)** |
 | 38 | StorageProof | Infrastructure | In the runtime; present in live chain metadata |
+| 39 | ZkAttestation | Identity | In the source at spec 122; verify-only until a trusted setup exists |
 
 `pallet_contracts` lives at index 13 and is a Substrate-standard pallet; it is
-**not** counted in the 19 custom pallets.
+**not** counted in the 20 custom pallets.
 
 ---
 

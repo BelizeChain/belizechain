@@ -109,7 +109,7 @@ Check individual pallet compilation (fast validation).
 ./scripts/testing/check_pallets.sh
 ```
 
-Verifies all 19 custom pallets compile without errors.
+Verifies all 20 custom pallets compile without errors.
 
 ---
 

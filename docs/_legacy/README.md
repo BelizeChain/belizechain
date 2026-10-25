@@ -7,7 +7,7 @@ here for historical reference only.
 Do **not** use these as a source of truth for:
 
 - Runtime pallet counts, indexes, or names (see `runtime/src/lib.rs` and the
-  current `belizechain.org` Appendix B for the live list of 19 custom pallets
+  current `belizechain.org` Appendix B for the live list of 20 custom pallets
   at indexes 20–38).
 - Polkadot SDK / Substrate version (see `Cargo.toml` workspace dependencies
   for the current `stable2606` rev).

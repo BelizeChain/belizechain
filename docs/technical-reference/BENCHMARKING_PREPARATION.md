@@ -3,7 +3,7 @@
 > **Generated**: Research extraction of all 167 extrinsic signatures across 13 pallets  
 > **Purpose**: Pre-populate storage, write benchmark scaffolds, validate WeightInfo coverage  
 > **Status**: Complete — all pallets fully analysed  
-> **Snapshot**: reflects the 13-pallet era of generation; the live runtime has 19 custom pallets (indexes 20–38)
+> **Snapshot**: reflects the 13-pallet era of generation; the runtime now has 20 custom pallets (indexes 20–39)
 
 ---
 

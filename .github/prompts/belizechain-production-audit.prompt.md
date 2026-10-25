@@ -22,7 +22,7 @@ configuration and genesis, CI/CD, deployment, monitoring, and operational safegu
 **In scope:** only this repository.
 
 - `runtime/` — `src/lib.rs`, `src/migrations.rs`, construct_runtime, config traits, weights
-- `pallets/` — all 19 pallets, plus `pallets/common` and `pallets/weights.rs`
+- `pallets/` — all 20 pallets, plus `pallets/common` and `pallets/weights.rs`
 - `node/` — `service.rs`, `cli.rs`, `rpc.rs`, `chain_spec.rs`, `chain_spec_configs.rs`,
   `validator_config.rs`, `block_announce_validator.rs`, `main.rs`
 - Workspace-level `Cargo.toml`, `rust-toolchain.toml`, `deny.toml`, `patches/`
