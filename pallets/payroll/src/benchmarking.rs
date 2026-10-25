@@ -71,6 +71,9 @@ mod benchmarks {
         let employer = setup_employer::<T>();
         let employee: T::AccountId = account("new_employee", 0, 0);
         T::Currency::make_free_balance_be(&employee, BalanceOf::<T>::max_value() / 4u32.into());
+        // `add_employee` requires the employee to hold KYC L1. Seed real state
+        // so the Oracle gate is on the measured path.
+        T::seed_bench_kyc(&employee, 1);
         let salary: BalanceOf<T> = T::MinimumPayment::get().saturating_mul(10u32.into());
         let metadata_hash = [1u8; 32];
 

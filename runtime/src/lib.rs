@@ -1596,6 +1596,16 @@ impl pallet_belize_economy::Config for Runtime {
     type GovernanceOrigin = GovernanceCouncilMajority;
     type Oracle = EconomyOracleProvider;
     type MaxMintPerBlock = ConstU32<3>;
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn seed_bench_kyc(account: &AccountId, level: u8) {
+        bench_seed_kyc(account, level);
+    }
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn seed_bench_merchant(account: &AccountId, category: u8) {
+        bench_seed_merchant(account, category);
+    }
     // Phase 2C — progressive public-goods routing
     type PublicGoodsTreasury = PublicGoodsTreasuryAccount;
     type PublicGoodsRoutingPercent = PublicGoodsRoutingPercent;
@@ -1638,6 +1648,11 @@ impl pallet_belize_governance::Config for Runtime {
     type LaunchPeriod = LaunchPeriod;
     type WeightInfo = pallet_belize_governance::weights::SubstrateWeight<Runtime>;
     type MaxCandidatesPerElection = ConstU32<200>;
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn seed_bench_kyc(account: &AccountId, level: u8) {
+        bench_seed_kyc(account, level);
+    }
     // Phase 1 — governance structural fixes
     type MaxConsecutiveTerms = MaxConsecutiveTerms;
     type MaxPermanentTermExtensions = MaxPermanentTermExtensions;
@@ -1771,6 +1786,11 @@ impl pallet_belize_payroll::Config for Runtime {
     type VerifierOrigin = TechnicalCouncilMember;
     type Oracle = PayrollOracleProvider;
     type WeightInfo = pallet_belize_payroll::weights::SubstrateWeight<Runtime>;
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn seed_bench_kyc(account: &AccountId, level: u8) {
+        Identity::bench_seed_kyc(account, level);
+    }
 }
 
 impl pallet_belize_interoperability::Config for Runtime {
@@ -1788,6 +1808,15 @@ impl pallet_belize_interoperability::Config for Runtime {
     type ChallengePeriod = ConstU32<100>;
     type WeightInfo = pallet_belize_interoperability::weights::SubstrateWeight<Runtime>;
     type MaxBridgePerBlock = ConstU32<5>;
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn seed_bench_kyc(account: &AccountId, level: u8) {
+        bench_seed_kyc(account, level);
+    }
+    #[cfg(feature = "runtime-benchmarks")]
+    fn seed_bench_oracle_operator(account: &AccountId) {
+        pallet_belize_oracle::OracleOperators::<Runtime>::insert(account, true);
+    }
     // AR-6: ML-DSA-87 (NIST FIPS 204) post-quantum signature verifier.
     #[cfg(not(feature = "runtime-benchmarks"))]
     type PQVerifier = pallet_belize_interoperability::MLDsaVerifier;
@@ -1822,6 +1851,11 @@ impl pallet_belize_belizex::Config for Runtime {
                                               // 256 x 2 sides keeps the worst-case match bounded at 512 order reads.
     type MaxOrdersPerPair = ConstU32<256>;
     type WeightInfo = pallet_belize_belizex::weights::SubstrateWeight<Runtime>;
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn seed_bench_kyc(account: &AccountId, level: u8) {
+        bench_seed_kyc(account, level);
+    }
 }
 
 impl pallet_belize_landledger::Config for Runtime {
@@ -1837,6 +1871,11 @@ impl pallet_belize_landledger::Config for Runtime {
     type WeightInfo = pallet_belize_landledger::weights::SubstrateWeight<Runtime>;
     // 100 million DALLA — upper bound; governance can raise via runtime upgrade
     type MaxPropertyPrice = ConstU128<{ 100_000_000 * DOLLARS }>;
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn seed_bench_kyc(account: &AccountId, level: u8) {
+        bench_seed_kyc(account, level);
+    }
 }
 
 impl pallet_belize_consensus::Config for Runtime {
@@ -1875,6 +1914,11 @@ impl pallet_belize_quantum::Config for Runtime {
 impl pallet_belize_community::Config for Runtime {
     type WeightInfo = pallet_belize_community::weights::SubstrateWeight<Runtime>;
     type Currency = Balances;
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn seed_bench_kyc(account: &AccountId, level: u8) {
+        bench_seed_kyc(account, level);
+    }
     type BelizeKyc = CommunityKycProvider; // Use wrapper with benchmark bypass
     type ProposalDepositPercentage = ConstU32<10>; // 10% deposit for proposals
     type EducationRewardAmount = ConstU128<{ 50 * DOLLARS }>; // 50 DALLA per module
@@ -1928,6 +1972,11 @@ impl pallet_belize_bns::Config for Runtime {
     type Identity = BnsIdentityProvider; // KYC integration
     type GovernanceOrigin = GovernanceCouncilMajority; // Governance for external domain verification
     type MaxContentVersions = ConstU32<50>; // CRIT-1 FIX: Cap content history per domain
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn seed_bench_kyc(account: &AccountId, level: u8) {
+        bench_seed_kyc(account, level);
+    }
 }
 
 impl pallet_belize_mesh::Config for Runtime {
@@ -2285,26 +2334,99 @@ impl pallet_belize_governance::DualHouseProvider<AccountId> for DualHouseMembers
 //  - Single reading point for the benchmark short-circuit logic.
 //  - Audit surface for which pallet is the authoritative source at a glance.
 //  - Future-proof: swap the underlying pallet call in one place.
+
+/// Benchmark-only: seed real KYC state for `account` at `level`.
+///
+/// Every pallet that gates on KYC exposes `Config::seed_bench_kyc` and
+/// implements it with a one-line call to this helper. The point is that the
+/// benchmark writes the same storage production reads, so the gate stays on the
+/// measured path — unlike a shim that answers "verified" for free.
+///
+/// **Both KYC sources are seeded, because pallets consult different ones.**
+/// `Identity` reads its own attestation maps; `Economy` (and anything behind
+/// `EconomyOracleProvider`) reads `Oracle::IdentityVerifications`. Seeding only
+/// one leaves the other gate rejecting the call, and the failure mode is a
+/// benchmark that cannot run at all rather than one that under-charges.
+#[cfg(feature = "runtime-benchmarks")]
+fn bench_seed_kyc(account: &AccountId, level: u8) {
+    Identity::bench_seed_kyc(account, level);
+
+    // Oracle's KYC record: a single map keyed by account.
+    if level == 0 {
+        return;
+    }
+    use pallet_belize_oracle::types::KycLevel as OracleKycLevel;
+    let now = System::block_number();
+    let oracle_level = match level {
+        1 => OracleKycLevel::Basic,
+        2 => OracleKycLevel::Enhanced,
+        _ => OracleKycLevel::Full,
+    };
+    pallet_belize_oracle::IdentityVerifications::<Runtime>::insert(
+        account,
+        pallet_belize_oracle::types::IdentityInfo {
+            account: account.clone(),
+            kyc_level: oracle_level,
+            id_hash: [0u8; 32],
+            provider: frame_support::BoundedVec::truncate_from(b"bench".to_vec()),
+            verified_at: now,
+            expires_at: now.saturating_add(1_000_000u32.into()),
+            biometric_verified: level >= 3,
+            address_verified: level >= 2,
+        },
+    );
+}
+
+/// Benchmark-only: register `account` as a verified merchant in `category`.
+///
+/// `process_tourism_payment` checks `EconomyOracleProvider::is_merchant_verified`,
+/// which reads `Oracle::MerchantCategories`. Without this the benchmark cannot
+/// reach the code under test at all.
+#[cfg(feature = "runtime-benchmarks")]
+fn bench_seed_merchant(account: &AccountId, category: u8) {
+    use pallet_belize_oracle::types::{MerchantCategory, MerchantInfo, MAX_CERT_LEN};
+    let now = System::block_number();
+    let category = match category {
+        0 => MerchantCategory::Accommodation,
+        1 => MerchantCategory::FoodBeverage,
+        2 => MerchantCategory::TourOperator,
+        3 => MerchantCategory::Transportation,
+        4 => MerchantCategory::Retail,
+        _ => MerchantCategory::Other,
+    };
+    pallet_belize_oracle::MerchantCategories::<Runtime>::insert(
+        account,
+        MerchantInfo {
+            merchant: account.clone(),
+            category,
+            certification: frame_support::BoundedVec::truncate_from(b"BENCH-CERT".to_vec()),
+            license: frame_support::BoundedVec::truncate_from(b"BENCH-LIC".to_vec()),
+            location: None,
+            verified_at: now,
+            expires_at: now.saturating_add(1_000_000u32.into()),
+        },
+    );
+    let _ = MAX_CERT_LEN;
+}
 pub mod providers {
-    // Every shim in this module short-circuits to a permissive answer under
-    // `runtime-benchmarks` so benchmarks measure the extrinsic rather than a
-    // rejected KYC or sanctions gate. That arm deliberately ignores its inputs,
-    // which is what the `unused_variables` allow covers — in a normal build the
-    // same parameters are all used. The impls below carry the same allow for the
-    // same reason.
-    #![allow(unused_variables)]
+    //! Cross-pallet KYC and sanctions queries.
+    //!
+    //! **These must not short-circuit under `runtime-benchmarks`.** A shim that
+    //! returns a permissive answer without touching storage makes every
+    //! benchmark that passes through it measure a cheaper path than production
+    //! takes — the unsafe direction, because the generated weight under-charges.
+    //!
+    //! Benchmark reachability is handled by *seeding real state* in the
+    //! benchmark's setup instead (see [`Identity::bench_seed_kyc`]), which is
+    //! the same idiom already used for council seating via
+    //! `make_council_member` / `make_house_member` / `make_mediator`.
     use super::*;
 
     /// Canonical KYC level query for this runtime.
     ///
     /// Returns `None` if the account has never been verified.
-    /// In `runtime-benchmarks` mode always returns `Some(3)` (Enhanced) so that
-    /// benchmarks can call any extrinsic without KYC scaffolding.
     #[inline]
     pub fn runtime_kyc_level(account: &AccountId) -> Option<u8> {
-        #[cfg(feature = "runtime-benchmarks")]
-        return Some(3);
-        #[cfg(not(feature = "runtime-benchmarks"))]
         Identity::get_verified_kyc_level(account)
     }
 
@@ -2313,9 +2435,6 @@ pub mod providers {
     /// Used by providers that bridge to oracle-integrated external data.
     #[inline]
     pub fn oracle_kyc_level(account: &AccountId) -> Option<u8> {
-        #[cfg(feature = "runtime-benchmarks")]
-        return Some(3);
-        #[cfg(not(feature = "runtime-benchmarks"))]
         Oracle::get_kyc_level(account).map(|level| level as u8)
     }
 
@@ -2324,48 +2443,38 @@ pub mod providers {
     /// Defaults to `false` when the account has no KYC record.
     #[inline]
     pub fn meets_kyc_requirement(account: &AccountId, required: u8) -> bool {
-        #[cfg(feature = "runtime-benchmarks")]
-        return true;
-        #[cfg(not(feature = "runtime-benchmarks"))]
-        return Identity::meets_kyc_requirement_level(account, required);
+        Identity::meets_kyc_requirement_level(account, required)
     }
 
     /// Returns `true` when `account` appears on a sanctions list.
     ///
     /// Checks both the Identity pallet (primary) and Oracle pallet (secondary).
-    /// In `runtime-benchmarks` mode always returns `false`.
     #[inline]
     pub fn runtime_is_sanctioned(account: &AccountId) -> bool {
-        #[cfg(feature = "runtime-benchmarks")]
-        return false;
-        #[cfg(not(feature = "runtime-benchmarks"))]
-        return Identity::is_account_sanctioned(account) || Oracle::is_sanctioned(account);
+        Identity::is_account_sanctioned(account) || Oracle::is_sanctioned(account)
     }
 }
 
-/// Community KYC wrapper — bypasses identity checks in benchmark mode
+/// Community KYC wrapper — delegates to the identity pallet.
 pub struct CommunityKycProvider;
-#[allow(unused_variables)] // bench arm ignores its inputs; see `providers`
 impl pallet_belize_identity::BelizeKyc<AccountId, BlockNumber> for CommunityKycProvider {
     fn is_kyc_verified(
         who: &AccountId,
         level: pallet_belize_identity::KycLevel,
         now: BlockNumber,
     ) -> bool {
-        #[cfg(feature = "runtime-benchmarks")]
-        return true;
-        #[cfg(not(feature = "runtime-benchmarks"))]
-        return <Identity as pallet_belize_identity::BelizeKyc<AccountId, BlockNumber>>::is_kyc_verified(who, level, now);
+        <Identity as pallet_belize_identity::BelizeKyc<AccountId, BlockNumber>>::is_kyc_verified(
+            who, level, now,
+        )
     }
     fn is_kyc_verified_or_grace(
         who: &AccountId,
         level: pallet_belize_identity::KycLevel,
         now: BlockNumber,
     ) -> bool {
-        #[cfg(feature = "runtime-benchmarks")]
-        return true;
-        #[cfg(not(feature = "runtime-benchmarks"))]
-        return <Identity as pallet_belize_identity::BelizeKyc<AccountId, BlockNumber>>::is_kyc_verified_or_grace(who, level, now);
+        <Identity as pallet_belize_identity::BelizeKyc<AccountId, BlockNumber>>::is_kyc_verified_or_grace(
+            who, level, now,
+        )
     }
 }
 
@@ -2374,33 +2483,24 @@ impl pallet_belize_identity::BelizeKyc<AccountId, BlockNumber> for CommunityKycP
 /// bBZD peg is always 1:1 with BZD (USDC-style fiat-backed).
 /// Oracle is NOT used for exchange rates - only for merchant verification.
 pub struct EconomyOracleProvider;
-#[allow(unused_variables)] // bench arm ignores its inputs; see `providers`
 impl pallet_belize_economy::OracleProvider<AccountId> for EconomyOracleProvider {
     fn is_merchant_verified(merchant: &AccountId, category: u8) -> bool {
-        #[cfg(feature = "runtime-benchmarks")]
-        return true;
-        #[cfg(not(feature = "runtime-benchmarks"))]
-        {
-            if let Some(cat) = Oracle::get_merchant_category(merchant) {
-                let cat_u8 = match cat {
-                    pallet_belize_oracle::types::MerchantCategory::Accommodation => 0,
-                    pallet_belize_oracle::types::MerchantCategory::FoodBeverage => 1,
-                    pallet_belize_oracle::types::MerchantCategory::TourOperator => 2,
-                    pallet_belize_oracle::types::MerchantCategory::Transportation => 3,
-                    pallet_belize_oracle::types::MerchantCategory::Retail => 4,
-                    pallet_belize_oracle::types::MerchantCategory::Other => 5,
-                };
-                cat_u8 == category
-            } else {
-                false
-            }
+        if let Some(cat) = Oracle::get_merchant_category(merchant) {
+            let cat_u8 = match cat {
+                pallet_belize_oracle::types::MerchantCategory::Accommodation => 0,
+                pallet_belize_oracle::types::MerchantCategory::FoodBeverage => 1,
+                pallet_belize_oracle::types::MerchantCategory::TourOperator => 2,
+                pallet_belize_oracle::types::MerchantCategory::Transportation => 3,
+                pallet_belize_oracle::types::MerchantCategory::Retail => 4,
+                pallet_belize_oracle::types::MerchantCategory::Other => 5,
+            };
+            cat_u8 == category
+        } else {
+            false
         }
     }
     fn meets_kyc_requirement(account: &AccountId, required_level: u8) -> bool {
-        #[cfg(feature = "runtime-benchmarks")]
-        return true;
-        #[cfg(not(feature = "runtime-benchmarks"))]
-        return Oracle::meets_kyc_requirement(
+        Oracle::meets_kyc_requirement(
             account,
             match required_level {
                 0 => pallet_belize_oracle::types::KycLevel::None,
@@ -2408,7 +2508,7 @@ impl pallet_belize_economy::OracleProvider<AccountId> for EconomyOracleProvider 
                 2 => pallet_belize_oracle::types::KycLevel::Enhanced,
                 _ => pallet_belize_oracle::types::KycLevel::Full,
             },
-        );
+        )
     }
     fn is_sanctioned(account: &AccountId) -> bool {
         providers::runtime_is_sanctioned(account)
@@ -2547,22 +2647,13 @@ impl pallet_belize_belizex::BelizeXOracleProvider<AccountId> for BelizeXOraclePr
 /// KYC provider for BelizeX (checks Identity pallet)
 pub struct BelizeXKycProvider;
 
-#[allow(unused_variables)] // bench arm ignores its inputs; see `providers`
 impl pallet_belize_belizex::KycCheck<AccountId> for BelizeXKycProvider {
     fn is_kyc_ok(account: &AccountId) -> bool {
-        #[cfg(feature = "runtime-benchmarks")]
-        return true;
-        #[cfg(not(feature = "runtime-benchmarks"))]
-        {
-            Identity::get_verified_kyc_level(account).unwrap_or(0) >= 1
-                && !providers::runtime_is_sanctioned(account)
-        }
+        Identity::get_verified_kyc_level(account).unwrap_or(0) >= 1
+            && !providers::runtime_is_sanctioned(account)
     }
 
     fn is_sanctioned(account: &AccountId) -> bool {
-        #[cfg(feature = "runtime-benchmarks")]
-        return false;
-        #[cfg(not(feature = "runtime-benchmarks"))]
         providers::runtime_is_sanctioned(account)
     }
 }
@@ -2660,21 +2751,14 @@ impl pallet_belize_belizex::AssetLedger<AccountId> for BelizeXAssetLedger {
 
 /// Identity provider for Interoperability bridges (Phase 3)
 pub struct InteroperabilityIdentityProvider;
-#[allow(unused_variables)] // bench arm ignores its inputs; see `providers`
 impl pallet_belize_interoperability::InteroperabilityIdentityProvider<AccountId>
     for InteroperabilityIdentityProvider
 {
     fn get_kyc_level(account: &AccountId) -> Option<u8> {
-        #[cfg(feature = "runtime-benchmarks")]
-        return Some(3);
-        #[cfg(not(feature = "runtime-benchmarks"))]
         Identity::get_verified_kyc_level(account)
     }
 
     fn verify_bridge_operator(account: &AccountId) -> bool {
-        #[cfg(feature = "runtime-benchmarks")]
-        return true;
-        #[cfg(not(feature = "runtime-benchmarks"))]
         Identity::meets_kyc_requirement_level(account, 3)
     }
 
@@ -2687,12 +2771,8 @@ impl pallet_belize_interoperability::InteroperabilityIdentityProvider<AccountId>
 /// Delegates to the Oracle pallet's `OracleOperators` storage.
 pub struct InteropOracleCheck;
 
-#[allow(unused_variables)] // bench arm ignores its inputs; see `providers`
 impl pallet_belize_interoperability::OracleOperatorCheck<AccountId> for InteropOracleCheck {
     fn is_oracle_operator(who: &AccountId) -> bool {
-        #[cfg(feature = "runtime-benchmarks")]
-        return true;
-        #[cfg(not(feature = "runtime-benchmarks"))]
         pallet_belize_oracle::OracleOperators::<Runtime>::get(who)
     }
 }
@@ -2742,26 +2822,17 @@ impl pallet_belize_consensus::ConsensusStakingProvider<AccountId, Balance>
 /// Mesh network Identity provider - integrates KYC and authority checks for Meshtastic nodes
 pub struct MeshIdentityProviderImpl;
 
-#[allow(unused_variables)] // bench arm ignores its inputs; see `providers`
 impl pallet_belize_mesh::MeshIdentityProvider<AccountId> for MeshIdentityProviderImpl {
     fn get_kyc_level(account: &AccountId) -> u8 {
-        #[cfg(feature = "runtime-benchmarks")]
-        return 3;
-        #[cfg(not(feature = "runtime-benchmarks"))]
         Identity::get_verified_kyc_level(account).unwrap_or(0)
     }
 
     fn is_emergency_authority(account: &AccountId) -> bool {
-        #[cfg(feature = "runtime-benchmarks")]
-        return true;
-        #[cfg(not(feature = "runtime-benchmarks"))]
-        {
-            // Authoritative NEMO registry, populated by governance via
-            // `Mesh::add_emergency_authority`. Previously this was a KYC-level
-            // proxy, which let any L3-verified, non-sanctioned citizen issue
-            // emergency alerts because no authority registry existed.
-            pallet_belize_mesh::EmergencyAuthorities::<Runtime>::get(account)
-        }
+        // Authoritative NEMO registry, populated by governance via
+        // `Mesh::add_emergency_authority`. Previously this was a KYC-level
+        // proxy, which let any L3-verified, non-sanctioned citizen issue
+        // emergency alerts because no authority registry existed.
+        pallet_belize_mesh::EmergencyAuthorities::<Runtime>::get(account)
     }
 
     fn is_validator(account: &AccountId) -> bool {
@@ -2772,36 +2843,19 @@ impl pallet_belize_mesh::MeshIdentityProvider<AccountId> for MeshIdentityProvide
 /// BNS Identity provider - integrates KYC checks for domain registration
 pub struct BnsIdentityProvider;
 
-#[allow(unused_variables)] // bench arm ignores its inputs; see `providers`
 impl pallet_belize_bns::BnsIdentityProvider<AccountId> for BnsIdentityProvider {
     fn can_register_domain(account: &AccountId) -> bool {
-        #[cfg(feature = "runtime-benchmarks")]
-        return true;
-        #[cfg(not(feature = "runtime-benchmarks"))]
-        {
-            let current_block = System::block_number();
-            use pallet_belize_identity::{KycLevel, KycState};
-            Identity::kyc_state(account, KycLevel::L1, current_block) == KycState::Valid
-                && !providers::runtime_is_sanctioned(account)
-        }
+        let current_block = System::block_number();
+        use pallet_belize_identity::{KycLevel, KycState};
+        Identity::kyc_state(account, KycLevel::L1, current_block) == KycState::Valid
+            && !providers::runtime_is_sanctioned(account)
     }
 
     fn can_register_verified(account: &AccountId) -> bool {
-        // Benchmarks bypass the KYC gate so the measured path is the extrinsic's
-        // own logic, not a rejected call. The parameter is unused only in that
-        // build, hence the underscore in the arm that ignores it.
-        #[cfg(feature = "runtime-benchmarks")]
-        {
-            let _ = account;
-            true
-        }
-        #[cfg(not(feature = "runtime-benchmarks"))]
-        {
-            let current_block = System::block_number();
-            use pallet_belize_identity::{KycLevel, KycState};
-            Identity::kyc_state(account, KycLevel::L3, current_block) == KycState::Valid
-                && !providers::runtime_is_sanctioned(account)
-        }
+        let current_block = System::block_number();
+        use pallet_belize_identity::{KycLevel, KycState};
+        Identity::kyc_state(account, KycLevel::L3, current_block) == KycState::Valid
+            && !providers::runtime_is_sanctioned(account)
     }
 
     fn is_sanctioned(account: &AccountId) -> bool {

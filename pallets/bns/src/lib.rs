@@ -102,6 +102,12 @@ pub mod pallet {
         /// Weight information for extrinsics
         type WeightInfo: WeightInfo;
 
+        /// Benchmark-only: write real KYC state for `account` so the KYC gate
+        /// runs its production path instead of a shim that answers "verified"
+        /// without touching storage.
+        #[cfg(feature = "runtime-benchmarks")]
+        fn seed_bench_kyc(_account: &Self::AccountId, _level: u8) {}
+
         /// Identity provider for KYC verification
         type Identity: BnsIdentityProvider<Self::AccountId>;
 

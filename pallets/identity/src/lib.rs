@@ -1585,6 +1585,76 @@ pub mod pallet {
             bytes.extend_from_slice(&digits);
             BoundedVec::try_from(bytes).ok()
         }
+
+        /// Benchmark-only: write a real, fully-valid identity so that KYC gates
+        /// run their **production** path instead of being short-circuited.
+        ///
+        /// The runtime's provider shims used to answer "verified" without
+        /// touching storage, which meant a benchmark measured 1 read where
+        /// production pays 4 (`IdentityOf` + the attestation maps). Seeding
+        /// real state is the alternative: the gate stays on the measured path.
+        ///
+        /// `level` follows [`KycLevel`]'s numbering — 1 needs an SSN
+        /// attestation, 2 adds a passport, 3 adds biometrics. Level 0 writes
+        /// nothing, because `kyc_state` treats L0 as always valid.
+        #[cfg(feature = "runtime-benchmarks")]
+        pub fn bench_seed_kyc(who: &T::AccountId, level: u8) {
+            if level == 0 {
+                return;
+            }
+
+            // Allocate through the same counter production uses, so seeding two
+            // different accounts yields two identities. Re-seeding one account
+            // reuses its existing id rather than orphaning the previous record.
+            let id = match IdentityOf::<T>::get(who) {
+                Some(existing) => existing,
+                None => {
+                    let next = NextIdentityId::<T>::get();
+                    NextIdentityId::<T>::put(next.saturating_add(1));
+                    next
+                }
+            };
+
+            let now = frame_system::Pallet::<T>::block_number();
+            // Far enough out that no benchmark run can straddle expiry, and far
+            // enough that the grace window is never the branch under test.
+            use sp_runtime::Saturating;
+            let valid_until = now.saturating_add(1_000_000u32.into());
+            let grace_until = valid_until.saturating_add(1_000_000u32.into());
+
+            IdentityOf::<T>::insert(who, id);
+            Identities::<T>::insert(
+                id,
+                IdentityRecord {
+                    name: BoundedVec::truncate_from(b"bench".to_vec()),
+                    owner: who.clone(),
+                    accounts: BoundedVec::truncate_from(vec![who.clone()]),
+                    did_doc_cid: None,
+                },
+            );
+
+            let attestation = |attr_type: AttributeType| Attestation::<T> {
+                attr_type,
+                issuer: who.clone(),
+                standard_version: 1,
+                hash: H256::zero(),
+                salt: None,
+                format_ok: true,
+                issued_at: now,
+                valid_until,
+                grace_until,
+                anchor: BoundedVec::<u8, T::MaxAnchorLen>::truncate_from(Vec::new()),
+                status: AttestationStatus::Active,
+            };
+
+            SsnAttestations::<T>::insert(id, attestation(AttributeType::Ssn));
+            if level >= 2 {
+                PassportAttestations::<T>::insert(id, attestation(AttributeType::Passport));
+            }
+            if level >= 3 {
+                BiometricAttestations::<T>::insert(id, attestation(AttributeType::Biometrics));
+            }
+        }
     }
 }
 

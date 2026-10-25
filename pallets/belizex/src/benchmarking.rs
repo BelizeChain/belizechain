@@ -50,6 +50,16 @@ fn fund<T: Config>(asset: AssetId, who: &T::AccountId, amount: u128) {
     T::Assets::set_balance(asset, who, amount);
 }
 
+/// `whitelisted_caller()` with real KYC L1 state written.
+///
+/// Trading and liquidity provision are KYC-gated. Seeding the storage the gate
+/// actually reads keeps it on the measured path; a permissive shim would not.
+fn kyc_caller<T: Config>() -> T::AccountId {
+    let caller: T::AccountId = whitelisted_caller();
+    T::seed_bench_kyc(&caller, 1);
+    caller
+}
+
 #[benchmarks]
 mod benchmarks {
     use super::*;
@@ -73,7 +83,7 @@ mod benchmarks {
     #[benchmark]
     fn add_liquidity() {
         setup_trading_pair::<T>(0, 1);
-        let caller: T::AccountId = whitelisted_caller();
+        let caller = kyc_caller::<T>();
         let deposit = 100_000_000_000_000u128; // 100k
         fund::<T>(AssetId::DALLA, &caller, deposit * 10);
         fund::<T>(AssetId::BBZD, &caller, deposit * 10);
@@ -95,7 +105,7 @@ mod benchmarks {
     #[benchmark]
     fn execute_trade() {
         setup_trading_pair_with_liquidity::<T>(0, 1);
-        let caller: T::AccountId = whitelisted_caller();
+        let caller = kyc_caller::<T>();
         let trade_amount = 1_000_000_000_000u128; // 1k
         fund::<T>(AssetId::DALLA, &caller, trade_amount * 10);
         // The pool pays the trader out of its quote reserve, so it must hold
@@ -136,7 +146,7 @@ mod benchmarks {
     #[benchmark]
     fn place_order() {
         setup_trading_pair_with_liquidity::<T>(0, 1);
-        let caller: T::AccountId = whitelisted_caller();
+        let caller = kyc_caller::<T>();
         let order_amount = 500_000_000_000u128;
         // A bid escrows the **quote** asset (bBZD), not the base, so funding
         // only the native balance would leave the escrow short in the runtime
@@ -200,7 +210,7 @@ mod benchmarks {
     #[benchmark]
     fn remove_liquidity() {
         setup_trading_pair_with_liquidity::<T>(0, 1);
-        let caller: T::AccountId = whitelisted_caller();
+        let caller = kyc_caller::<T>();
         let lp_amount = 100_000_000_000u128;
 
         // Give the caller LP tokens
@@ -233,7 +243,7 @@ mod benchmarks {
     // ───────────────────────────────────────────
     #[benchmark]
     fn cancel_order() {
-        let caller: T::AccountId = whitelisted_caller();
+        let caller = kyc_caller::<T>();
         let order_id: u32 = 0;
         let escrowed: u128 = 500_000_000_000u128;
         // The refund moves whichever asset the order escrowed — quote (bBZD)

@@ -480,6 +480,15 @@ pub mod pallet {
         /// Oracle for KYC verification
         type Oracle: PayrollOracleProvider<Self::AccountId>;
 
+        /// Benchmark-only: write real KYC state for `account` so the
+        /// [`Self::Oracle`] KYC gate runs its production path.
+        ///
+        /// Without this, a benchmark that needs a KYC-verified account either
+        /// fails outright or — worse — measures a shim that answers "verified"
+        /// without touching storage, under-charging the extrinsic.
+        #[cfg(feature = "runtime-benchmarks")]
+        fn seed_bench_kyc(_account: &Self::AccountId, _level: u8) {}
+
         /// Weight information
         type WeightInfo: WeightInfo;
     }

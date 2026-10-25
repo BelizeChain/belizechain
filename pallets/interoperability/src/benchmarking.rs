@@ -78,15 +78,27 @@ fn setup_bridge_tx<T: Config>(initiator: &T::AccountId) -> u32 {
 mod benchmarks {
     use super::*;
 
-    /// The mock gates bridge operators on an account allowlist; benchmark
-    /// accounts are hash-derived, so opt them in. The runtime provider returns
-    /// `true` unconditionally under `runtime-benchmarks`, so this is a no-op
-    /// there.
+    /// Seed real KYC state for a bridge account so the KYC gate runs its
+    /// production path instead of a shim.
+    ///
+    /// `level` must be the **cheapest level the gate accepts**, not the maximum.
+    /// `get_verified_kyc_level` probes L3 → L2 → L1 and stops at the first
+    /// match, so an account that only just qualifies fails the higher probes and
+    /// therefore costs *more* storage reads than a fully-verified one. Seeding
+    /// above the requirement would short-circuit that probe and under-measure.
+    ///
+    /// - `initiate_bridge` / `send_message` gate on `get_kyc_level() >= 2` → pass `2`.
+    /// - Bridge-operator paths gate on `verify_bridge_operator` (L3) → pass `3`.
+    ///
+    /// The mock gates operators on an allowlist rather than KYC; benchmark
+    /// accounts are hash-derived, so it has to be told about them explicitly.
     #[cfg(not(test))]
-    fn grant_bridge_operator<T: Config>(_account: &T::AccountId) {}
+    fn grant_bridge_operator<T: Config>(account: &T::AccountId, level: u8) {
+        T::seed_bench_kyc(account, level);
+    }
 
     #[cfg(test)]
-    fn grant_bridge_operator<T: Config>(account: &T::AccountId) {
+    fn grant_bridge_operator<T: Config>(account: &T::AccountId, _level: u8) {
         crate::mock::grant_bridge_operator(account);
     }
 
@@ -103,7 +115,7 @@ mod benchmarks {
 
         // KYC level 2+ is required; benchmark accounts are hash-derived, so the
         // mock's allowlist has to be told about them explicitly.
-        grant_bridge_operator::<T>(&caller);
+        grant_bridge_operator::<T>(&caller, 2);
 
         // Pre-fund treasury so the fee transfer doesn't fail due to ExistentialDeposit
         let treasury = T::Treasury::get();
@@ -130,7 +142,7 @@ mod benchmarks {
         let validator = setup_bridge_validator::<T>(0);
         let initiator: T::AccountId = account("init", 0, SEED);
         let tx_id = setup_bridge_tx::<T>(&initiator);
-        grant_bridge_operator::<T>(&validator);
+        grant_bridge_operator::<T>(&validator, 3);
 
         #[extrinsic_call]
         provide_pq_signature(
@@ -231,7 +243,7 @@ mod benchmarks {
         let caller: T::AccountId = whitelisted_caller();
         let fee = T::MinBridgeAmount::get();
         T::Currency::make_free_balance_be(&caller, fee * 10u32.into());
-        grant_bridge_operator::<T>(&caller);
+        grant_bridge_operator::<T>(&caller, 2);
 
         // Pre-fund treasury so it stays above ExistentialDeposit
         let treasury = T::Treasury::get();
@@ -269,7 +281,7 @@ mod benchmarks {
     fn dispute_bridge_transaction() {
         setup_chain_config::<T>();
         let validator = setup_bridge_validator::<T>(0);
-        grant_bridge_operator::<T>(&validator);
+        grant_bridge_operator::<T>(&validator, 3);
         // The dispute bond is `max(tx_amount / 20, MinBridgeAmount)`, and
         // `tx_amount / 20` dominates wherever `MinBridgeAmount` is small.
         T::Currency::make_free_balance_be(&validator, 1_000_000_000_000_000u128.saturated_into());
@@ -367,7 +379,11 @@ mod benchmarks {
                 dispute_info: None,
             },
         );
-        grant_bridge_operator::<T>(&oracle);
+        grant_bridge_operator::<T>(&oracle, 1);
+        // `confirm_burn_proof` is gated on `OracleCheck::is_oracle_operator`,
+        // which reads storage owned by the oracle pallet. Register the account
+        // there for real so the gate performs its production lookup.
+        T::seed_bench_oracle_operator(&oracle);
 
         #[extrinsic_call]
         _(RawOrigin::Signed(oracle), tx_id);
@@ -382,7 +398,7 @@ mod benchmarks {
         let caller: T::AccountId = whitelisted_caller();
         // Must cover the 10× MinBridgeAmount stake lock applied by the extrinsic.
         T::Currency::make_free_balance_be(&caller, (1_000_000_000_000_000u128).saturated_into());
-        grant_bridge_operator::<T>(&caller);
+        grant_bridge_operator::<T>(&caller, 3);
 
         #[extrinsic_call]
         register_bridge_validator(
@@ -400,7 +416,7 @@ mod benchmarks {
     fn submit_incoming_unlock() {
         setup_chain_config::<T>();
         let validator = setup_bridge_validator::<T>(0);
-        grant_bridge_operator::<T>(&validator);
+        grant_bridge_operator::<T>(&validator, 3);
 
         // The unlock path asserts the bridge holds enough locked value to cover
         // the amount being released.
@@ -429,7 +445,7 @@ mod benchmarks {
     fn acknowledge_message() {
         setup_chain_config::<T>();
         let caller = setup_bridge_validator::<T>(0);
-        grant_bridge_operator::<T>(&caller);
+        grant_bridge_operator::<T>(&caller, 3);
 
         // Seed a sent-but-undelivered message, the state the relayer acks.
         let message_id: u32 = 0;

@@ -25,6 +25,8 @@ mod benchmarks {
         CentralBankReserves::<T>::put(1_000_000u128);
 
         let recipient: T::AccountId = account("recipient", 0, 0);
+        // The recipient must be KYC L1+ or the mint is rejected.
+        T::seed_bench_kyc(&recipient, 1);
         let amount: u128 = 1000;
         let deposit_reference: BoundedVec<u8, ConstU32<64>> =
             b"BENCH-DEP-001"[..].to_vec().try_into().expect("fits");
@@ -43,6 +45,7 @@ mod benchmarks {
         let caller: T::AccountId = whitelisted_caller();
         let balance = T::Currency::minimum_balance() * 1_000_000u32.into();
         let _ = T::Currency::make_free_balance_be(&caller, balance);
+        T::seed_bench_kyc(&caller, 1);
 
         // Pre-populate some bBZD issuance AND give caller bBZD balance
         TotalBbzdSupply::<T>::put(1_000_000u128);
@@ -68,6 +71,7 @@ mod benchmarks {
         // Create a pending redemption
         let redeemer: T::AccountId = account("redeemer", 0, 0);
         let _ = T::Currency::make_free_balance_be(&redeemer, balance);
+        T::seed_bench_kyc(&redeemer, 1);
         TotalBbzdSupply::<T>::put(1_000_000u128);
         BBZDBalances::<T>::insert(&redeemer, 1_000_000u128);
 
@@ -110,8 +114,12 @@ mod benchmarks {
         let _ = T::Currency::make_free_balance_be(&treasury, balance);
 
         let vendor: T::AccountId = account("vendor", 0, 0);
-        let amount: BalanceOf<T> = T::Currency::minimum_balance() * 100u32.into();
         let category_id: u8 = 0; // Accommodation
+                                 // `process_tourism_payment` checks the tourist's KYC...
+        T::seed_bench_kyc(&caller, 1);
+        // ...and that the vendor is a verified merchant in this category.
+        T::seed_bench_merchant(&vendor, category_id);
+        let amount: BalanceOf<T> = T::Currency::minimum_balance() * 100u32.into();
 
         #[extrinsic_call]
         process_tourism_payment(RawOrigin::Signed(caller), vendor, amount, category_id);
@@ -162,8 +170,13 @@ mod benchmarks {
         let caller: T::AccountId = whitelisted_caller();
         let balance = T::Currency::minimum_balance() * 1_000_000u32.into();
         let _ = T::Currency::make_free_balance_be(&caller, balance);
+        T::seed_bench_kyc(&caller, 1);
 
         let recipient: T::AccountId = account("recipient", 0, 0);
+        // `transfer_bbzd` requires KYC L1+ and a clean sanctions check on
+        // **both** parties.
+        T::seed_bench_kyc(&caller, 1);
+        T::seed_bench_kyc(&recipient, 1);
         // Give caller bBZD balance to transfer
         TotalBbzdSupply::<T>::put(1_000_000u128);
         BBZDBalances::<T>::insert(&caller, 1_000_000u128);

@@ -191,6 +191,17 @@ pub mod pallet {
         /// WeightInfo trait for operation weights
         type WeightInfo: WeightInfo;
 
+        /// Benchmark-only: write real KYC state for `account` so the KYC gate
+        /// runs its production path instead of a shim that answers "verified"
+        /// without touching storage.
+        #[cfg(feature = "runtime-benchmarks")]
+        fn seed_bench_kyc(_account: &Self::AccountId, _level: u8) {}
+
+        /// Benchmark-only: register `account` as a verified merchant in
+        /// `category`, so `process_tourism_payment` can reach its own logic.
+        #[cfg(feature = "runtime-benchmarks")]
+        fn seed_bench_merchant(_account: &Self::AccountId, _category: u8) {}
+
         /// Maximum DALLA supply (501B DALLA with 12 decimals = 501_000_000_000 * 10^12)
         #[pallet::constant]
         type MaxSupply: Get<<Self::Currency as Currency<Self::AccountId>>::Balance>;

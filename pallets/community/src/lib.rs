@@ -129,6 +129,12 @@ pub mod pallet {
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
 
+        /// Benchmark-only: write real KYC state for `account` so the KYC gate
+        /// runs its production path instead of a shim that answers "verified"
+        /// without touching storage.
+        #[cfg(feature = "runtime-benchmarks")]
+        fn seed_bench_kyc(_account: &Self::AccountId, _level: u8) {}
+
         /// Currency type for handling balances
         type Currency: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
 

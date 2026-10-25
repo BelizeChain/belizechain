@@ -12,7 +12,7 @@ mod benchmarks {
 
     #[benchmark]
     fn submit_proposal() {
-        let caller: T::AccountId = whitelisted_caller();
+        let caller = kyc_caller::<T>();
         let balance = T::MinimumDeposit::get() * 10u32.into();
         let _ = T::Currency::make_free_balance_be(&caller, balance);
 
@@ -38,7 +38,7 @@ mod benchmarks {
 
     #[benchmark]
     fn cast_vote() {
-        let proposer: T::AccountId = whitelisted_caller();
+        let proposer = kyc_caller::<T>();
         let balance = T::MinimumDeposit::get() * 10u32.into();
         let _ = T::Currency::make_free_balance_be(&proposer, balance);
 
@@ -57,7 +57,7 @@ mod benchmarks {
         let proposal = Proposals::<T>::get(0u32).expect("proposal exists");
         frame_system::Pallet::<T>::set_block_number(proposal.voting_start);
 
-        let voter: T::AccountId = account("voter", 0, 0);
+        let voter = kyc_account::<T>("voter", 0);
         let conviction: u8 = 1;
         // Conviction now reserves a bond of `ConvictionBondBase * multiplier`
         // (level 1 = 1x). Funding only `MinimumDeposit * 10` is enough in the
@@ -81,7 +81,7 @@ mod benchmarks {
 
     #[benchmark]
     fn finalize_proposal() {
-        let proposer: T::AccountId = whitelisted_caller();
+        let proposer = kyc_caller::<T>();
         let balance = T::MinimumDeposit::get() * 10u32.into();
         let _ = T::Currency::make_free_balance_be(&proposer, balance);
 
@@ -108,7 +108,7 @@ mod benchmarks {
 
     #[benchmark]
     fn update_community_rank() {
-        let target: T::AccountId = account("target", 0, 0);
+        let target = kyc_account::<T>("target", 0);
         let new_rank: u32 = 5;
 
         #[extrinsic_call]
@@ -117,7 +117,7 @@ mod benchmarks {
 
     #[benchmark]
     fn update_pouw_contribution() {
-        let target: T::AccountId = account("target", 0, 0);
+        let target = kyc_account::<T>("target", 0);
         let new_contribution: u32 = 100;
 
         #[extrinsic_call]
@@ -126,7 +126,7 @@ mod benchmarks {
 
     #[benchmark]
     fn council_override() {
-        let proposer: T::AccountId = whitelisted_caller();
+        let proposer = kyc_caller::<T>();
         let balance = T::MinimumDeposit::get() * 10u32.into();
         let _ = T::Currency::make_free_balance_be(&proposer, balance);
 
@@ -181,6 +181,35 @@ mod benchmarks {
     fn eligible_caller<T: Config>(name: &'static str, seed: u32) -> T::AccountId {
         let who: T::AccountId = account(name, seed, 0);
         let _ = T::Currency::make_free_balance_be(&who, T::MinimumDeposit::get() * 100u32.into());
+        // `can_participate_in_governance` requires KYC >= L1. Seed exactly L1,
+        // not the maximum: `get_verified_kyc_level` probes L3 then L2 then L1, so
+        // a bare L1 identity is the *most* expensive permitted caller (it fails
+        // the two higher probes before succeeding). Seeding L3 would short-circuit
+        // on the first probe and under-measure the gate.
+        T::seed_bench_kyc(&who, 1);
+        who
+    }
+
+    /// `whitelisted_caller()` with real KYC L1 state written.
+    ///
+    /// Governance participation is gated on `can_participate_in_governance`,
+    /// which requires KYC L1+ and a clean sanctions check. Seeding the storage
+    /// the gate reads keeps it on the measured path.
+    fn kyc_caller<T: Config>() -> T::AccountId {
+        let caller: T::AccountId = whitelisted_caller();
+        T::seed_bench_kyc(&caller, 1);
+        caller
+    }
+
+    /// `account(name, index, 0)` with real KYC L1 state written.
+    ///
+    /// Almost every governance account ends up behind
+    /// `can_participate_in_governance` — voters, delegates, candidates,
+    /// nominees, recipients — so seeding at creation keeps the gate measured
+    /// rather than bypassed.
+    fn kyc_account<T: Config>(name: &'static str, index: u32) -> T::AccountId {
+        let who: T::AccountId = account(name, index, 0);
+        T::seed_bench_kyc(&who, 1);
         who
     }
 
@@ -310,7 +339,7 @@ mod benchmarks {
     /// the measured unit is a single seat rather than the whole hook.
     #[benchmark]
     fn expire_council_member() {
-        let account: T::AccountId = account("expiring", 0, 0);
+        let account = kyc_account::<T>("expiring", 0);
         seat_council_member::<T>(&account);
 
         #[block]
@@ -325,7 +354,7 @@ mod benchmarks {
 
     #[benchmark]
     fn set_department_manager() {
-        let manager: T::AccountId = account("manager", 0, 0);
+        let manager = kyc_account::<T>("manager", 0);
 
         #[extrinsic_call]
         _(RawOrigin::Root, 2u8, manager);
@@ -379,7 +408,7 @@ mod benchmarks {
 
     #[benchmark]
     fn add_board_member() {
-        let member: T::AccountId = account("board-member", 0, 0);
+        let member = kyc_account::<T>("board-member", 0);
         let origin = T::CouncilOrigin::try_successful_origin()
             .expect("CouncilOrigin exposes a successful origin for benchmarks");
 
@@ -389,7 +418,7 @@ mod benchmarks {
 
     #[benchmark]
     fn remove_board_member() {
-        let member: T::AccountId = account("board-member", 0, 0);
+        let member = kyc_account::<T>("board-member", 0);
         let origin = T::CouncilOrigin::try_successful_origin()
             .expect("CouncilOrigin exposes a successful origin for benchmarks");
         Pallet::<T>::add_board_member(origin.clone(), member.clone(), 0u8, 1u8)
@@ -524,7 +553,7 @@ mod benchmarks {
 
     #[benchmark]
     fn set_proposal_priority() {
-        let proposer: T::AccountId = account("proposer", 0, 0);
+        let proposer = kyc_account::<T>("proposer", 0);
         let now = frame_system::Pallet::<T>::block_number();
         let proposal_id = seed_proposal::<T>(
             &proposer,
@@ -724,7 +753,7 @@ mod benchmarks {
     #[benchmark]
     fn propose_treasury_spend() {
         let proposer = eligible_caller::<T>("proposer", 0);
-        let recipient: T::AccountId = account("recipient", 0, 0);
+        let recipient = kyc_account::<T>("recipient", 0);
         let amount: BalanceOf<T> = T::MinimumDeposit::get();
         let description: Vec<u8> = b"Benchmark treasury spend".to_vec();
 
@@ -757,7 +786,7 @@ mod benchmarks {
         let proposer = eligible_caller::<T>("proposer", 0);
         let approver = eligible_caller::<T>("approver", 0);
         seat_council_member::<T>(&approver);
-        let recipient: T::AccountId = account("recipient", 0, 0);
+        let recipient = kyc_account::<T>("recipient", 0);
         Pallet::<T>::propose_treasury_spend(
             RawOrigin::Signed(proposer).into(),
             recipient,
@@ -776,7 +805,7 @@ mod benchmarks {
         let proposer = eligible_caller::<T>("proposer", 0);
         let approver = eligible_caller::<T>("approver", 0);
         seat_council_member::<T>(&approver);
-        let recipient: T::AccountId = account("recipient", 0, 0);
+        let recipient = kyc_account::<T>("recipient", 0);
         let amount = single_approval_amount::<T>();
         Pallet::<T>::propose_treasury_spend(
             RawOrigin::Signed(proposer.clone()).into(),
@@ -1035,12 +1064,12 @@ mod benchmarks {
         // this call takes the clearing branch.
         let council_count = T::MaxCandidatesPerElection::get();
         for index in 0..council_count {
-            let member: T::AccountId = account("council-member", index, 0);
+            let member = kyc_account::<T>("council-member", index);
             seat_council_member::<T>(&member);
         }
         seat_council_member::<T>(&caller);
         for index in 0..(council_count / 3) {
-            let early_veto: T::AccountId = account("early-veto", index, 0);
+            let early_veto = kyc_account::<T>("early-veto", index);
             let veto_block: BlockNumberFor<T> = 0u32.into();
             EmergencyVetoes::<T>::insert(&early_veto, veto_block);
         }
@@ -1055,7 +1084,7 @@ mod benchmarks {
 
     #[benchmark]
     fn unlock_conviction() {
-        let caller: T::AccountId = whitelisted_caller();
+        let caller = kyc_caller::<T>();
         // Seed the worst case this call can see: a bond is held and its lock
         // has already expired, so the call takes the release branch.
         let bond = Pallet::<T>::conviction_bond(1);

@@ -216,6 +216,18 @@ pub mod pallet {
         /// Weight information for extrinsics
         type WeightInfo: WeightInfo;
 
+        /// Benchmark-only: write real KYC state for `account` so the KYC gate
+        /// runs its production path instead of a shim that answers "verified"
+        /// without touching storage.
+        #[cfg(feature = "runtime-benchmarks")]
+        fn seed_bench_kyc(_account: &Self::AccountId, _level: u8) {}
+
+        /// Benchmark-only: mark `account` as a registered oracle operator in
+        /// whatever storage `OracleCheck` reads, so `confirm_burn_proof` passes
+        /// its operator gate on the real lookup path.
+        #[cfg(feature = "runtime-benchmarks")]
+        fn seed_bench_oracle_operator(_account: &Self::AccountId) {}
+
         /// Identity provider for cross-chain KYC verification
         type Identity: InteroperabilityIdentityProvider<Self::AccountId>;
 

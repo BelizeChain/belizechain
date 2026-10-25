@@ -154,7 +154,12 @@ mod benchmarks {
     /// allowlist. Opt them in so KYC-gated calls are reachable; the runtime
     /// build bypasses KYC entirely in benchmark mode, so this is a no-op there.
     #[cfg(not(test))]
-    fn grant_kyc<T: Config>(_account: &T::AccountId) {}
+    fn grant_kyc<T: Config>(account: &T::AccountId) {
+        // Write the real storage the pallet's KYC gate reads. A no-op here
+        // would leave the gate short-circuited (or failing) and the benchmark
+        // measuring a path production never takes.
+        T::seed_bench_kyc(account, 3);
+    }
 
     #[cfg(test)]
     fn grant_kyc<T: Config>(account: &T::AccountId) {

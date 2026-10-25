@@ -306,12 +306,33 @@ was derived 44 % *below* its real cost and `cast_vote` 25 % below — while thei
 were overstated. A derived weight can be conservative on one axis and optimistic on the
 other; "biased upward" has to be verified per axis, not asserted per entry.
 
-**`interoperability::acknowledge_message` is the one genuine under-charge.** The extrinsic
-calls `T::Identity::verify_bridge_operator` and `T::Identity::is_sanctioned`, and both
-runtime adapters are **bypassed under `runtime-benchmarks`**
-(`#[cfg(feature = "runtime-benchmarks")] return true;` / `return false;`). The benchmark
-build therefore performs 2 fewer reads than production — measured 2, and the derived 4 was
-itself only a partial count (see the open item below).
+**✅ RESOLVED 2026-10-25 — the bypasses are gone, and `acknowledge_message` is measured.**
+`interoperability::acknowledge_message` was the one genuine under-charge in this table: the
+extrinsic calls `T::Identity::verify_bridge_operator` and `T::Identity::is_sanctioned`, and
+both runtime adapters short-circuited under `runtime-benchmarks` (`return true` /
+`return false`). The benchmark build did 2 reads fewer than production, and the derived 4
+it carried was itself only a partial count.
+
+All 15 benchmark-mode early returns in `runtime/src/lib.rs`'s `pub mod providers` have been
+removed. Benchmarks now write the real state the gate reads, through a defaulted
+`Config::seed_bench_kyc` hook implemented in the runtime — the same idiom as the existing
+`make_council_member` / `make_mediator` / `make_house_member`. After regeneration,
+`acknowledge_message` measures **8 reads** (was 4, production-real) and its hand-written
+`AMENDMENT` block is gone.
+
+> 🔴 **The seeding rule that is easy to get backwards: seed the *cheapest* level the gate
+> accepts, not the maximum.** `Identity::get_verified_kyc_level` probes L3 → L2 → L1 and
+> stops at the first match, so an account that only just qualifies fails the higher probes
+> and costs **more** reads than a fully-verified one — L1 costs 8 `Identity` reads, L3 only
+> 4. Seeding L3 for a `>= 1` gate under-measures by four reads. `meets_kyc_requirement(who,
+> N)` is the opposite: it probes only level `N`, so cost is set by the argument.
+
+**Only `interoperability` was under-charged; it no longer is.** All eight affected pallets
+were regenerated on AC power and **no read count dropped** — every delta is upward, from
++17 % (`community::endorse_peer`, 8→10 reads) to +292 % (`governance::nominate_for_delegate`,
+3→9). Treat any entry that comes out **higher** than the committed value as a signal the
+benchmark is measuring a hotter path than the source suggests — not as noise to average
+away.
 
 **`oracle::verify_merchant` was reverted in error and then re-measured — the corrected
 finding.** An earlier revision of this section claimed the council branch reads

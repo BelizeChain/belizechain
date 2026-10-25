@@ -34,6 +34,16 @@ fn funded_account<T: Config>(name: &'static str, index: u32) -> T::AccountId {
     caller
 }
 
+/// Create a funded account that also holds KYC L3.
+///
+/// Domain registration and transfer are KYC-gated; seeding real state keeps the
+/// gate on the measured path instead of short-circuiting it.
+fn funded_kyc_account<T: Config>(name: &'static str, index: u32) -> T::AccountId {
+    let caller = funded_account::<T>(name, index);
+    T::seed_bench_kyc(&caller, 3);
+    caller
+}
+
 /// Build a valid .bz domain name as Vec<u8>, e.g. "bench0.bz"
 fn make_domain_name(seed: u8) -> Vec<u8> {
     let mut name = b"benchdomain".to_vec();
@@ -224,7 +234,7 @@ mod benchmarks {
     /// add the bypass or use the weight from the hand-estimated value.
     #[benchmark]
     fn register_domain() {
-        let caller = funded_account::<T>("registrant", 0);
+        let caller = funded_kyc_account::<T>("registrant", 0);
         let domain_name = make_domain_name(0);
 
         #[extrinsic_call]
@@ -255,8 +265,9 @@ mod benchmarks {
 
     #[benchmark]
     fn transfer_domain() {
-        let owner = funded_account::<T>("owner", 0);
+        let owner = funded_kyc_account::<T>("owner", 0);
         let new_owner: T::AccountId = account("newowner", 1, 0);
+        T::seed_bench_kyc(&new_owner, 3);
         let domain_name = make_domain_name(2);
         insert_domain::<T>(&owner, &domain_name);
 
@@ -285,8 +296,8 @@ mod benchmarks {
 
     #[benchmark]
     fn buy_domain() {
-        let seller = funded_account::<T>("seller", 0);
-        let buyer = funded_account::<T>("buyer", 1);
+        let seller = funded_kyc_account::<T>("seller", 0);
+        let buyer = funded_kyc_account::<T>("buyer", 1);
         let domain_name = make_domain_name(4);
         insert_domain::<T>(&seller, &domain_name);
 

@@ -7,6 +7,102 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Every KYC/sanctions weight was measured on a path production never takes (October 2026)
+
+`runtime/src/lib.rs` carried **15 `#[cfg(feature = "runtime-benchmarks")]` early
+returns** inside the provider adapters (`CommunityKycProvider`, `EconomyOracleProvider`,
+`BelizeXKycProvider`, `InteroperabilityIdentityProvider`, `InteropOracleCheck`,
+`MeshIdentityProviderImpl`, `BnsIdentityProvider`). Under a benchmark build every
+KYC, sanctions and oracle-operator gate answered permissively **without touching
+storage**, so the generated weights charged for a code path the chain never executes.
+That is an under-charge — the exploitable direction — across eight pallets.
+
+The bypasses are gone. Benchmarks now write the **real** state the gate reads, via a
+Config hook that follows the idiom already used by `make_council_member` /
+`make_mediator` / `make_house_member`:
+
+```rust
+#[cfg(feature = "runtime-benchmarks")]
+fn seed_bench_kyc(_account: &Self::AccountId, _level: u8) {}
+```
+
+Wired in `economy`, `governance`, `community`, `interoperability`, `belizex`,
+`landledger`, `bns`, `payroll`. `identity` gained `Identity::bench_seed_kyc`, which
+writes `IdentityOf`, `Identities` and the SSN/passport/biometric attestation maps.
+Interoperability additionally gained `seed_bench_oracle_operator` for
+`confirm_burn_proof`, which gates on `Oracle::OracleOperators`.
+
+**The seeding writes both KYC sources, because pallets consult different ones.**
+`Identity` reads its own attestation maps; `Economy` and anything behind
+`EconomyOracleProvider` read `Oracle::IdentityVerifications`. Seeding only one leaves the
+other gate rejecting the call.
+
+#### Seed the *cheapest* level a gate accepts — not the maximum
+
+This is counter-intuitive and gets it wrong in the unsafe direction.
+`Identity::get_verified_kyc_level` probes **L3 → L2 → L1** and stops at the first match,
+so read cost is *inversely* related to the account's level:
+
+| Seeded level | `kyc_state` calls | `Identity` reads |
+|---|---|---|
+| none | 1 (early `None`) | 1 |
+| **L1** (just passes `>= 1`) | 3 | **8** |
+| L2 | 2 | 7 |
+| L3 | 1 | 4 |
+
+A fully-verified L3 account is therefore the **cheapest** caller, not the worst case.
+Seeding L3 for a `>= 1` gate under-measures by four reads. `meets_kyc_requirement(who, N)`
+is the opposite: it probes only level `N`, so the cost is set by the argument.
+
+Per-gate levels now seeded: governance `can_participate_in_governance` → L1;
+interop `get_kyc_level() >= 2` (`initiate_bridge`, `send_message`) → L2; interop
+`verify_bridge_operator` → L3; `landledger` → L1; bns `can_register_domain` (L1) and
+`can_register_verified` (L3); belizex `is_kyc_ok` → L1; economy/payroll by the
+argument their gate passes.
+
+#### Also fixed while scoping
+
+- **`Identity::bench_seed_kyc` hardcoded `id = 1u128`**, so every seeded account
+  collided on IdentityId 1 and overwrote the previous record and attestation maps. It
+  now allocates through `NextIdentityId` (the counter production uses) and reuses an
+  existing id when an account is re-seeded.
+- **`governance`'s `eligible_caller` helper never seeded KYC** — 38 call sites, and the
+  single root cause of 16 failing benchmarks. It now seeds L1, the most expensive
+  *permitted* caller.
+
+#### Measured effect
+
+All eight pallets were regenerated on AC power (`ADP1/online = 1`, `BENCH_MUL=1.25`),
+and **no function's read count dropped** — every change is upward:
+
+| Pallet | Entry | Reads | ref_time |
+|---|---|---|---|
+| `economy` | `transfer_bbzd` | 3 → **11** | +168 % |
+| `economy` | `issue_bbzd` | 7 → **11** | +66 % |
+| `economy` | `pay_tourism_incentive` | 4 → **9** | +21 % |
+| `interoperability` | `acknowledge_message` | 4 → **8** | +106 % |
+| `interoperability` | `initiate_bridge` | 7 → **13** | +46 % |
+| `interoperability` | `confirm_burn_proof` | 3 → **7** | +122 % |
+| `governance` | `submit_proposal` | 3 → **9** | +110 % |
+| `governance` | `nominate_for_delegate` | 3 → **9** | +292 % |
+| `belizex` | `place_order` | 7 → **15** | +105 % |
+| `belizex` | `add_liquidity` | 8 → **16** | +55 % |
+| `landledger` | `transfer_property` | 7 → **16** | +68 % |
+| `bns` | `register_domain` | 5 → **9** | +54 % |
+| `payroll` | `add_employee` | 6 → **8** | +44 % |
+| `community` | `endorse_peer` | 8 → **10** | +17 % |
+
+`interoperability::acknowledge_message` was the one entry the previous AC run had to
+revert as a known under-charge. It is now **measured**, and its hand-written
+`AMENDMENT` block is gone.
+
+The regenerated files record storage the bypasses were hiding —
+`Oracle::SanctionedEntities`, `Oracle::IdentityVerifications`,
+`Identity::IdentityOf`, `Identity::Identities`, `Oracle::MerchantCategories`.
+
+**Benchmark smoke sweep: 19/19 pallets pass with zero bypasses** (was 11/19 before the
+fixes). Workspace suite unchanged at 1,528 passed / 0 failed.
+
 ### Added - BelizeX Order Matching Engine (October 2026) ⚠️ STORAGE BREAKING
 
 `pallet-belize-belizex` previously accepted limit orders and never filled them: the
