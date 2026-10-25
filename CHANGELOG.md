@@ -178,10 +178,10 @@ AC power; four are now measured, and two were reverted** (see below).
 > for terms the generated file cannot express — a loop bound, a variant count — not for
 > values awaiting measurement.
 
-### Changed - Six derived weights replaced with measurements; two rejected as under-charges (October 2026)
+### Changed - Six derived weights replaced with measurements; one rejected as an under-charge (October 2026)
 
 The `ACCEPT_AMENDMENT_LOSS=1` regeneration ran on AC power (`ADP1/online = 1`, cores
-verified at 4.6–4.8 GHz). Four pallets now carry measured values:
+verified at 4.6–4.8 GHz). Every entry in the table below except one is now measured:
 
 | Pallet | Entry | Before | After |
 |---|---|---|---|
@@ -199,7 +199,8 @@ takes.** `interoperability::acknowledge_message` calls `T::Identity::verify_brid
 and `T::Identity::is_sanctioned`, and both runtime adapters are bypassed under
 `runtime-benchmarks` (`return true` / `return false`). The benchmark build does **2 reads
 fewer** than production — measured 2, and the derived 4 it keeps was itself only a partial
-count. It remains open.
+count. **Since resolved:** the bypasses were removed on 2026-10-25 and it now measures
+8 reads (see the entry at the top of this file).
 
 > **The earlier "all six are biased upward" claim was wrong**, and this run disproved it.
 > `unlock_conviction` was derived **44 % under**, `cast_vote` **25 % under**, and

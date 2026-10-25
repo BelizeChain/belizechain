@@ -229,20 +229,22 @@ real relayer is `docs/bridges/RELAYER_SCOPE.md`. Summary:
   operators, escrow, liquidity pools, disputes.
 - **Gap 1 closed 2026-10-23:** `acknowledge_message` (call_index 12) now flips
   `CrossChainMessage.delivered` to `true`. Before it, nothing in the pallet ever wrote `true`,
-  so outbound messaging was an append-only log. **Its weight is derived, not measured** — see
-  the AMENDMENT block in `pallets/interoperability/src/weights.rs`.
+  so outbound messaging was an append-only log. **Its weight is now measured** (8 reads,
+  2026-10-25) — the derived AMENDMENT block it used to carry is gone.
 - ⚠️ **A regeneration deletes a hand-written AMENDMENT block.** `scripts/bench_weights.sh`
   writes `--output` **wholesale**, so anything a human added to `weights.rs` is gone with no
-  warning. Six pallets currently carry one — `community`, `governance`, `interoperability`,
-  `mesh`, `oracle`, `staking`. This is the bug already hit on `belizex`, whose block was
-  silently overwritten.
-  **All six are upward-biased** (derived by *adding* storage accesses to a measured value), so
-  none is an exploitable under-charge — they are inaccurate in the safe direction. The real
-  fix is therefore **regeneration, not relocation**: a measured value replaces a derived one.
+  warning. This is the bug already hit on `belizex`, whose block was silently overwritten.
   `bench_weights.sh` now refuses to touch such a file unless `ACCEPT_AMENDMENT_LOSS=1` is set,
   so the loss is a decision rather than a surprise. Before accepting, confirm the pallet source
   still matches what the benchmark measures — regenerating a tree whose extrinsic changed after
   the benchmark was written yields a measured-*looking* number that under-charges.
+  **As of 2026-10-25 no `weights.rs` carries an AMENDMENT block** — the six that did
+  (`community`, `governance`, `interoperability`, `mesh`, `oracle`, `staking`) were all
+  regenerated or re-measured. Verify with `grep -l AMENDMENT pallets/*/src/weights.rs` before
+  citing this paragraph.
+- ⚠️ **The earlier claim "all six are upward-biased" was wrong** — `unlock_conviction` was
+  derived 44 % *under* and `cast_vote` 25 % *under* while their read counts were overstated.
+  Bias must be verified per axis (ref_time vs reads/writes), never asserted per entry.
 - ⛔ **Do not "fix" an amendment by moving its derived term to the `#[pallet::weight]` call
   site.** The call site already reads `T::WeightInfo::<fn>()`, so an added term would stack on
   top of the post-regeneration measured value and **double-charge**. The call site is for terms
@@ -299,7 +301,7 @@ takes.** Measured before → after (committed values, 1.25× applied):
 | `mesh` | `register_mesh_sender_key` | 15.00 ms | **18.11 ms** | ✅ replaced — hand-estimate under by 21 % |
 | `staking` | `distribute_rewards` | 39.30 ms | **40.23 ms** | ✅ replaced |
 | `oracle` | `verify_merchant` | 19.49 ms / 1 read | **11.12 ms / 0 reads** | ✅ replaced — derived value over-charged |
-| `interoperability` | `acknowledge_message` | 31.24 ms / 4 reads | 23.10 ms / **2 reads** | ⛔ **reverted — real under-charge** |
+| `interoperability` | `acknowledge_message` | 31.24 ms / 4 reads | **8 reads** (2026-10-25) | ✅ resolved — bypasses removed, re-measured |
 
 **The "all six are biased upward" claim in the earlier table was wrong.** `unlock_conviction`
 was derived 44 % *below* its real cost and `cast_vote` 25 % below — while their read counts
@@ -364,8 +366,9 @@ direction.
 > from the collective's storage. Check the SDK source before writing either a revert or a
 > benchmark helper.
 
-**Only `interoperability` is still under-charged.** The other seven entries in the table are
-now either measured or bounded upward. Treat any entry that comes
+**Nothing in the table is under-charged as of 2026-10-25.** All entries are measured or
+bounded upward, and the benchmark-mode KYC bypasses that caused the one real under-charge are
+gone. Treat any entry that comes
 out **higher** than the committed value as a signal the benchmark is measuring a hotter path
 than the source suggests — not as noise to average away.
 - **Gap 2 staffed 2026-10-23:** `infra/relayer/` exists and runs, but acknowledges nothing by
