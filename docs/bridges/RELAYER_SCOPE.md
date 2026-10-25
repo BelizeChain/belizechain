@@ -1,116 +1,127 @@
 # Bridge Relayer — Scope
 
-**Status: NOT BUILT.** No relayer exists in any repository. This document scopes what would
-have to be built, and what has to change on chain first.
+**Status: BUILT, RUNNING IN `observe` MODE.** The relayer lives in `infra/relayer/` and is
+defined (commented out) in `infra/docker-compose.ceiba.yml`. It polls
+`Interoperability.bridgeTransactions`, asks a foreign-chain adapter whether each deliverable
+transaction has landed, and — in `confirm` mode — submits
+`interoperability.confirmExternalDelivery`.
 
-**Verified 2026-10-23** against `pallets/interoperability/src/lib.rs`, `infra/docker-compose.ceiba.yml`,
-and a search of every repo in the organisation.
+**Verified 2026-10-25** against `pallets/interoperability/src/lib.rs`,
+`infra/relayer/`, `infra/relayer/contracts/`, and `infra/docker-compose.ceiba.yml`.
 
----
-
-## What is missing
-
-Two independent gaps. They are not the same problem and do not ship together.
-
-### Gap 1 — messages can be sent but never delivered
-
-`send_cross_chain_message` (call index 4) writes:
-
-```rust
-let message = CrossChainMessage {
-    message_id,
-    source_chain: BridgeChain::Polkadot,
-    target_chain: target_chain.clone(),
-    payload: payload_bounded,
-    message_hash,
-    delivered: false,
-    timestamp,
-};
-CrossChainMessages::<T>::insert(message_id, message);
-```
-
-`delivered` is written `false` at line 1406 and **no code path in the pallet ever writes `true`.**
-There is no deliver, acknowledge, or fail extrinsic. `CrossChainMessages` is an append-only log
-with a boolean that is permanently false, and `NextMessageId` increments forever.
-
-This is a **runtime** gap. No relayer can fix it, because there is nothing to call.
-
-### Gap 2 — inbound unlocks have an extrinsic but no operator
-
-`process_unlock` and `submit_incoming_unlock` both exist, both are benchmarked with real measured
-weights, and both are exercised by `pallets/interoperability/src/tests.rs`. Nothing else calls
-them. There is no service in `infra/docker-compose.ceiba.yml` and no relayer code in any repo.
-
-This is an **infrastructure** gap. The chain side is complete.
+> This file previously said "NOT BUILT. No relayer exists in any repository" and described
+> `CrossChainMessage` / `CrossChainMessages` / `acknowledge_message`. All three were removed
+> in runtime spec 121 when the pallet's duplicate message path was collapsed into the
+> `BridgeTransaction` path it should have used from the start. A scope document that
+> describes a service as absent while it runs in the same repository is worse than no
+> document, so the obsolete text is gone rather than annotated.
 
 ---
 
-## Prerequisites before any relayer work
+## The two gaps, and where they stand
 
-| # | Item | Where | Why it blocks |
+### Gap 1 — outbound delivery: closed on chain, open off chain
+
+`send_cross_chain_message` (call index 4) queues a `BridgeTransaction` with
+`BridgeOperation::MessagePassing`, sharing `NextTxId`, `BridgeStatus` and `BridgeValidators`
+with value transfers. `confirm_external_delivery` (call index 12) is the **only** writer of
+`BridgeTransaction.external_confirmation`, and it requires the status to already be
+`ReadyForExecution` or `Finalized` — that is, the threshold of ML-DSA-87 signatures must have
+been met first.
+
+What remains is the counterparty: `BelizeBridgeReceiver.sol` exists and compiles, but is not
+deployed on any foreign chain. Until it is, `observe` mode is the only honest configuration
+and the pending backlog grows by design.
+
+### Gap 2 — the trust model is a permissioned set, not a light client
+
+`BridgeValidators` is an allowlist of ML-DSA-87 keys. The EVM receiver is an allowlist of
+`secp256k1` addresses. **Neither chain can read the other's set**, so the two are independent
+registries that can drift. `infra/relayer/scripts/check-validator-sets.mjs` compares them and
+exits non-zero on drift; nothing enforces agreement.
+
+Closing this properly needs `pallet_beefy` + `pallet_beefy_mmr` in the runtime, which is how
+Polkadot proves finality to a foreign chain. Neither pallet is present in `construct_runtime!`.
+That is the hard blocker, and it is a runtime change, not a relayer change.
+
+---
+
+## Prerequisites before the relayer may leave `observe`
+
+| # | Item | Where | State |
 |---|---|---|---|
-| 1 | Acknowledge/fail extrinsic writing `delivered = true` | `pallets/interoperability` | Outbound messages are undeliverable by construction |
-| 2 | `register_bridge_validator` must be reachable | runtime | Requires **KYC L3** via `Identity::verify_bridge_operator` — who holds that on Ceiba today? |
-| 3 | A second chain to relay to | external | Nothing to bridge to yet. Ethereum has no deployed contract; `gem/` has no bridge contract |
-| 4 | Decide the trust model | design | `BridgeValidators` is a permissioned set with ML-DSA-87 keys. It is not a light client. State that plainly or build one. |
+| 1 | `confirmExternalDelivery` on the live chain | runtime upgrade to spec 121 | Built, not deployed |
+| 2 | `BelizeBridgeReceiver` deployed on the target chain | external | **Not done** — nothing to bridge to |
+| 3 | Validators registered with both a PQ key and an EVM address | `register_bridge_validator` + `set_evm_address` | Mechanisms exist; nobody registered |
+| 4 | Validator sets reconciled | `scripts/check-validator-sets.mjs` → `ALIGNED` | Tool built; cannot pass until 2 and 3 |
+| 5 | Trust model documented as-is, not as trustless | this file | Done |
 
-Item 3 is the real blocker. **A relayer with no counterparty chain is a service that polls and
-does nothing.** Items 1 and 2 are cheap; item 3 is a whole other workstream.
+Item 2 is the real blocker. **A relayer with no counterparty contract polls and does nothing**,
+which is exactly what the current `null` adapter configuration is for.
 
 ---
 
-## What the service would look like, if items 1–4 are settled
+## The service as built
 
 ```
-infra/relayer/                  ← new service, new image
-  main.py                       ← poll loop
-  chains/<chain>.py             ← one adapter per foreign chain
-  submitter.py                  ← signs + submits to BelizeChain
-  state.py                      ← last-processed height, idempotency keys
+infra/relayer/
+  src/main.ts                 ← connect, migrate, poll loop, metrics server
+  src/relayer.ts              ← one pass: read → filter → observe → confirm
+  src/config.ts               ← fail-closed env parsing
+  src/state.ts                ← postgres: processed ids, idempotency
+  src/adapters/types.ts       ← ChainAdapter interface
+  src/adapters/null.ts        ← observes nothing, authorises nothing
+  src/adapters/evm.ts         ← eth_getLogs over the receiver's events
+  src/submit/                 ← RLP, ABI, EIP-1559 signing, delivery submission
+  contracts/                  ← BelizeBridgeReceiver.sol, BelizeWrappedToken.sol
+  scripts/compile-contracts.mjs
+  scripts/check-validator-sets.mjs
 ```
 
 | Concern | Shape |
 |---|---|
-| Runtime | Python, matching `pakit`/`nawal`/`kinich` conventions |
-| Compose | New service in `docker-compose.ceiba.yml`, internal only, no published port |
+| Runtime | Node 24 + TypeScript (ESM, `--experimental-strip-types`), no build step needed to run |
+| Compose | `relayer` service in `docker-compose.ceiba.yml`, internal only, no published port |
 | Chain access | `ws://ceiba-node:9944` (in-network) |
-| Signing | ML-DSA-87 key per relayer, from `/opt/belizechain/.env`, never baked into an image |
-| Idempotency | Persist last-processed height in postgres — the existing `indexer` DB is the natural home |
-| Failure mode | Must **stop**, not retry blindly. A relayer that double-submits an unlock drains escrow |
-| Monitoring | Prometheus metrics + an Alertmanager rule for "height gap > N blocks" |
+| Signing | SS58 seed from `/opt/belizechain/.env`, never baked into an image |
+| Foreign signing | `secp256k1` via `@noble/curves`; the signed bytes are re-decoded and the signer recovered in tests |
+| Idempotency | `relayer.message_acks` in postgres — a restart does not re-submit |
+| Failure mode | Refuses to confirm unless the adapter names the exact foreign transaction hash |
+| Monitoring | `belizechain_relayer_{pending_messages,confirmed_total,errors_total,...}` |
 
 Non-negotiables, given the pallet's design:
 
 - The relayer is a **permissioned bridge validator**, not an anonymous participant. It must pass
   KYC L3 and be registered before it can submit anything.
-- Every inbound submission carries an ML-DSA-87 signature (`provide_pq_signature`). Key handling
-  is the whole security model — compromise equals escrow drain.
-- `dispute_bridge_transaction` exists, so a wrong submission is contestable, not final. That is a
-  safety net, not a licence to be sloppy.
+- Every bridge transaction carries ML-DSA-87 signatures (`provide_pq_signature`) before it is
+  deliverable. Key handling is the whole security model — compromise equals escrow drain.
+- `dispute_bridge_transaction` exists, so a wrong submission is contestable, not final. That is
+  a safety net, not a licence to be sloppy.
 
 ---
 
 ## Effort, honestly
 
-| Piece | Size | Risk |
-|---|---|---|
-| `acknowledge_message` extrinsic + benchmark + weights + tests | Small — 1 extrinsic, ~1 day with bench | Low |
-| Relayer service skeleton + one chain adapter | Medium — needs the foreign chain's finality rules | Medium |
-| Ethereum adapter (contract, events, reorg handling) | **Large** — there is no deployed bridge contract in `gem/` | High |
-| Key management for ML-DSA-87 signers | Medium | **High** — this is the money |
-| Monitoring, alerting, runbook | Small, but mandatory before it holds value | Low |
+| Piece | Size | Risk | State |
+|---|---|---|---|
+| `confirm_external_delivery` extrinsic + benchmark + weights + tests | Small | Low | **Done** (spec 121) |
+| `set_evm_address` registry + reconciliation script | Small | Low | **Done** (spec 121) |
+| Relayer service + EVM adapter + contract | Medium–Large | Medium | **Done, undeployed** |
+| Deploying the receiver to a foreign testnet | Medium | Medium | **Not started** |
+| Key management for ML-DSA-87 signers | Medium | **High** — this is the money | Not started |
+| Light-client verification (BEEFY) | Large — runtime feature, not a service | **High** | **Blocked**: neither pallet is in the runtime |
 
-**Do not build the relayer before item 3 is answered.** Everything above the Ethereum adapter is
-a few days of work. The adapter plus a deployed, audited bridge contract is the actual project.
+**Do not enable `confirm` mode before items 1–4 in the table above hold.** Everything except
+the foreign deployment is built; the foreign deployment is the actual project.
 
 ---
 
 ## Recommendation
 
-1. **Now, cheap:** add the acknowledge extrinsic. It makes outbound messages a real transport
-   instead of a log, and it is testable without any counterparty chain.
-2. **Now, cheap:** answer who on Ceiba holds KYC L3 and would operate a bridge validator.
-3. **Later, expensive:** pick the first foreign chain. Ethereum needs a contract written, audited,
-   and deployed before a relayer has anything to do.
-
-Until 1–3 are done, `docs/bridges/README.md` remains the accurate statement of capability.
+1. **Now, cheap:** leave the relayer in `observe` and alert on backlog growth. That is a real
+   signal about the bridge's readiness, not noise.
+2. **Before any foreign deployment:** decide whether this bridge is permissioned-and-documented
+   or trustless-and-BEEFY. Both are legitimate; only the first is reachable today.
+3. **When a target chain is chosen:** deploy `BelizeBridgeReceiver` + `BelizeWrappedToken`,
+   register the validators on both sides, and require a green
+   `check-validator-sets.mjs` before flipping `RELAYER_MODE=confirm`.

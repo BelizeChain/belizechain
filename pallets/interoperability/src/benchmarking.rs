@@ -437,35 +437,64 @@ mod benchmarks {
     }
 
     // ───────────────────────────────────────────
-    // 12. acknowledge_message → acknowledge_message
-    //     WeightInfo fn: acknowledge_message()
-    //     Extrinsic name: acknowledge_message
+    // 12. confirm_external_delivery → confirm_external_delivery
+    //     WeightInfo fn: confirm_external_delivery()
+    //     Extrinsic name: confirm_external_delivery
     // ───────────────────────────────────────────
     #[benchmark]
-    fn acknowledge_message() {
+    fn confirm_external_delivery() {
         setup_chain_config::<T>();
         let caller = setup_bridge_validator::<T>(0);
         grant_bridge_operator::<T>(&caller, 3);
 
-        // Seed a sent-but-undelivered message, the state the relayer acks.
-        let message_id: u32 = 0;
+        // Seed a transaction that has cleared the signature threshold — the only state in
+        // which there is anything to confirm. `Initiated` would be rejected outright, which
+        // would benchmark the error path instead of the write.
+        let tx_id: u32 = 0;
         let payload: BoundedVec<u8, ConstU32<2048>> = vec![1u8; 64].try_into().unwrap_or_default();
-        CrossChainMessages::<T>::insert(
-            message_id,
-            CrossChainMessage {
-                message_id,
-                source_chain: BridgeChain::Polkadot,
-                target_chain: BridgeChain::Ethereum,
-                payload,
-                message_hash: [1u8; 32],
-                delivered: false,
-                timestamp: 0u64,
+        BridgeTransactions::<T>::insert(
+            tx_id,
+            BridgeTransaction {
+                tx_id,
+                initiator: caller.clone(),
+                operation: BridgeOperation::MessagePassing {
+                    target_chain: BridgeChain::Ethereum,
+                    message_hash: [1u8; 32],
+                    payload,
+                },
+                status: BridgeStatus::ReadyForExecution,
+                required_signatures: 1,
+                collected_signatures: 1,
+                pq_signatures: BoundedVec::default(),
+                fee: 0,
+                initiated_at: frame_system::Pallet::<T>::block_number(),
+                completed_at: None,
+                external_confirmation: None,
+                dispute_info: None,
             },
         );
-        NextMessageId::<T>::put(message_id.saturating_add(1));
+        NextTxId::<T>::put(tx_id.saturating_add(1));
 
         #[extrinsic_call]
-        acknowledge_message(RawOrigin::Signed(caller), message_id);
+        confirm_external_delivery(RawOrigin::Signed(caller), tx_id, vec![7u8; 32]);
+    }
+
+    // ───────────────────────────────────────────
+    // 13. set_evm_address
+    //     WeightInfo fn: set_evm_address()
+    //     Extrinsic name: set_evm_address
+    // ───────────────────────────────────────────
+    #[benchmark]
+    fn set_evm_address() {
+        let caller = setup_bridge_validator::<T>(0);
+        grant_bridge_operator::<T>(&caller, 3);
+
+        #[extrinsic_call]
+        set_evm_address(RawOrigin::Signed(caller.clone()), [7u8; 20]);
+
+        // Guard the write: a benchmark that measured a no-op would report the cost of
+        // the failure path as if it were the success path.
+        assert_eq!(EvmAddressOf::<T>::get(&caller), Some([7u8; 20]));
     }
 
     impl_benchmark_test_suite!(Pallet, crate::mock::new_test_ext(), crate::mock::Test);

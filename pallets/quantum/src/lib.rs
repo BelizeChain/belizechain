@@ -12,7 +12,7 @@
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::{
     pallet_prelude::*,
-    traits::{Currency, ExistenceRequirement, Get, ReservableCurrency, WithdrawReasons},
+    traits::{Currency, ExistenceRequirement, Get, ReservableCurrency},
     weights::{constants::RocksDbWeight, Weight},
     BoundedVec,
 };
@@ -1236,16 +1236,25 @@ pub mod pallet {
                 .map(|r| r.accuracy_score)
                 .unwrap_or(0);
 
-            // Charge minting fee (burned as deflationary mechanism)
-            // TODO: Route to treasury when Treasury config type is added
+            // Charge the minting fee and route it to the treasury.
+            //
+            // This used to burn the fee (the withdrawn imbalance was dropped),
+            // which contradicted `buy_nft`, where the marketplace fee is paid to
+            // `T::Treasury`. `Treasury` has existed since Q-1, so the old TODO
+            // here ("route to treasury when the config type is added") was stale.
+            // Both revenue paths now behave the same way, and the destination is
+            // the same account `pallet-belize-economy` pays, so fees accumulate in
+            // one place instead of half being destroyed.
             let mint_fee = T::NFTMintingFee::get();
-            let _imbalance = T::Currency::withdraw(
-                &owner,
-                mint_fee,
-                WithdrawReasons::FEE,
-                ExistenceRequirement::KeepAlive,
-            )
-            .map_err(|_| Error::<T>::InsufficientBalance)?;
+            if !mint_fee.is_zero() {
+                T::Currency::transfer(
+                    &owner,
+                    &T::Treasury::get(),
+                    mint_fee,
+                    ExistenceRequirement::KeepAlive,
+                )
+                .map_err(|_| Error::<T>::InsufficientBalance)?;
+            }
 
             // Check if job was verified (Phase 2.3.2)
             let verification_approved = true; // Already enforced via ensure! above

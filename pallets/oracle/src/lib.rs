@@ -167,6 +167,17 @@ pub mod pallet {
         OptionQuery,
     >;
 
+    /// Certification hash → the merchant it was granted to.
+    ///
+    /// Certification numbers are government-issued and identify one business, so
+    /// the same number must not be claimable by several merchants — a single
+    /// tourism licence reused across accounts would multiply the benefit it was
+    /// issued for. Keying by `blake2_256` keeps the index a fixed size regardless
+    /// of the credential's length, and means the raw document is not duplicated.
+    #[pallet::storage]
+    pub type CertificationOwners<T: Config> =
+        StorageMap<_, Blake2_128Concat, [u8; 32], T::AccountId, OptionQuery>;
+
     /// Sanctioned entities
     #[pallet::storage]
     #[pallet::getter(fn sanctioned_entities)]
@@ -452,6 +463,8 @@ pub mod pallet {
         PriceFeedNotFound,
         /// Invalid certification format
         InvalidCertification,
+        /// The certification number is already registered to a different merchant
+        CertificationAlreadyRegistered,
         /// Insufficient consensus (not enough operators)
         InsufficientConsensus,
         /// High price variance (suspicious data)
@@ -643,6 +656,34 @@ pub mod pallet {
 
             // Convert u8 to MerchantCategory
             let category = Self::u8_to_merchant_category(category)?;
+
+            // A certification is a licence for one business. An empty credential is
+            // not a licence at all, and one already held by another merchant cannot
+            // be granted again — otherwise the tourism benefit attached to it could
+            // be claimed by any number of accounts. This does not attempt to verify
+            // the issuer's signature; it enforces only the properties the chain can
+            // check on its own, so nothing here claims more assurance than it has.
+            ensure!(!certification.is_empty(), Error::<T>::InvalidCertification);
+            ensure!(!license.is_empty(), Error::<T>::InvalidCertification);
+
+            let certification_hash = sp_io::hashing::blake2_256(&certification);
+            if let Some(holder) = CertificationOwners::<T>::get(certification_hash) {
+                ensure!(
+                    holder == merchant,
+                    Error::<T>::CertificationAlreadyRegistered
+                );
+            }
+
+            // Re-verifying with a different credential releases the old index entry,
+            // so a corrected licence number does not leave the previous hash
+            // permanently claimed.
+            if let Some(previous) = MerchantCategories::<T>::get(&merchant) {
+                let previous_hash = sp_io::hashing::blake2_256(&previous.certification);
+                if previous_hash != certification_hash {
+                    CertificationOwners::<T>::remove(previous_hash);
+                }
+            }
+            CertificationOwners::<T>::insert(certification_hash, merchant.clone());
 
             let current_block = frame_system::Pallet::<T>::block_number();
             let expiry_block = current_block.saturating_add(T::ExpiryDurationBlocks::get());

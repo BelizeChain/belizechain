@@ -87,12 +87,12 @@ Multi-tier fee structure with three discount layers:
 | Metric | Value | Constraint |
 |--------|-------|-----------|
 | Block time | 6 seconds | Substrate BABE consensus |
-| Max TPS | ~2,000 | Runtime weight budget |
+| Max TPS | Unmeasured | No load test has ever been run against this chain |
 | Multi-hop max | 5 legs | Hardcoded path limit |
 | LP balance query | O(n) per user pair count | Off-chain only, acceptable |
 | Trading pair count | Unbounded | Governance-gated creation |
 | Oracle dependency | Hard requirement for WUSDC/bBZD | Rejects if Oracle unavailable |
-| Ceiba host resources | 2 vCPU, 8GB RAM (shared) | $75/month budget ceiling |
+| Ceiba host resources | Ryzen 9 5900X (24 threads), 30 GiB RAM | Owned hardware — no hosting cost |
 
 ### 1.6 Audit Status
 

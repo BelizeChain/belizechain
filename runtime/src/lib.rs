@@ -605,7 +605,70 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     //   Behaviour does change for conviction > 0: those votes now require the
     //   bond, so a caller who previously voted at level 3 needs 2,000 DALLA
     //   free. Existing recorded votes are untouched.
-    spec_version: 119,
+    // - 120: three changes that ship together and have not been deployed.
+    //   1. `pallet-storage-proof` gains a content-metadata registry —
+    //      `register_content` (7), `update_content_metadata` (8),
+    //      `deregister_content` (9), plus the `ContentMetadata` map.
+    //   2. `pallet-belize-quantum` routes `mint_achievement_nft`'s fee to
+    //      `Treasury` instead of burning it, matching `buy_nft` and the account
+    //      `pallet-belize-economy` pays. Behavioural only — the destination of
+    //      an existing charge changed; total issuance now falls by the fee only
+    //      through fees, not through this path.
+    //   3. `pallet-belize-oracle` validates merchant credentials: empty
+    //      `certification`/`license` are rejected and one certification number
+    //      cannot be held by two merchants (`CertificationOwners` index).
+    //   All three are additive in storage terms: the two new maps start empty,
+    //   so no storage migration is needed and both pallets' `STORAGE_VERSION`
+    //   stays 0 (same reasoning as `ConvictionLocks` in 118).
+    //   `transaction_version` is unchanged because every new call index was
+    //   appended after the previous maximum.
+    //   ⚠️ Oracle's `verify_merchant` and Quantum's `mint_achievement_nft` gained
+    //   storage access, so their committed weights under-charge until they are
+    //   regenerated — see `scripts/bench_weights.sh`.
+    // - 121: `pallet-belize-interoperability` collapses two bridges into one.
+    //   The pallet held a value path (`initiate_bridge` → `BridgeTransactions`)
+    //   and a parallel message path (`send_cross_chain_message` →
+    //   `CrossChainMessages`) with its own id counter, its own status and its own
+    //   `delivered` flag. `BridgeOperation::MessagePassing` was already declared
+    //   in the operation enum but never constructed, so the message path was a
+    //   duplicate bolted on beside the design it should have used.
+    //   1. `send_cross_chain_message` (index 4) now queues a `BridgeTransaction`
+    //      with `MessagePassing`, sharing `NextTxId`, `BridgeTransaction`,
+    //      `BridgeStatus` and `BridgeValidators` with value transfers.
+    //   2. Call index 12 changes from `acknowledge_message(message_id)` to
+    //      `confirm_external_delivery(tx_id, external_tx_hash)`, which is the
+    //      only writer of `BridgeTransaction::external_confirmation`. That field
+    //      was declared but never set, so `Finalized` described this chain's
+    //      bookkeeping and nothing about the far side.
+    //   Storage removal: `CrossChainMessages` and `NextMessageId` are gone.
+    //   Substrate derives each key from the pallet prefix plus the item name, so
+    //   removing an item shifts no other item's keys; the orphaned prefix is
+    //   inert, and `on_runtime_upgrade` has no cross-item work to do. Rows under
+    //   it are stale records of the retired path and are cleared by
+    //   `system.killStorage` if anyone wants the deposit back.
+    //   ⚠️ Call index 12 keeps its index but changes meaning, so an in-flight
+    //   `acknowledge_message` from before the upgrade would be interpreted as
+    //   `confirm_external_delivery`. Nothing calls it yet; do not ship this
+    //   upgrade while a relayer is in `acknowledge` mode.
+    //   3. Call index 13 is new: `set_evm_address(evm_address)`, backed by the
+    //      additive `EvmAddressOf` map. The EVM receiver verifies `secp256k1`
+    //      signatures from EVM addresses while this pallet verifies ML-DSA-87
+    //      signatures from accounts, and neither key derives from the other — so
+    //      the contract's validator set and this pallet's were two unrelated
+    //      lists. Recording the address does not enforce agreement (that needs
+    //      the far chain to read this registry, i.e. BEEFY); it makes the sets
+    //      comparable, which is what `infra/relayer/scripts/check-validator-sets.mjs`
+    //      reconciles. `EvmAddressOf` starts empty, so no migration.
+    //   `transaction_version` is unchanged: no index was added or reordered.
+    //   ✅ WEIGHTS REGENERATED 2026-10-25 on AC power with
+    //   `BENCH_MUL=1.25 ./scripts/bench_weights.sh pallet_belize_interoperability`.
+    //   `send_message` measures 9 reads / 3 writes / 110.6 ms;
+    //   `confirm_external_delivery` 8 reads / 1 write / 66.6 ms but a **155 KB**
+    //   proof estimate — a `BridgeTransactions` row carries up to 32 ML-DSA-87
+    //   signatures (~149 KB), so this is the real worst case, not a mistake.
+    //   `set_evm_address` 7 reads / 1 write / 57.2 ms. No AMENDMENT blocks were
+    //   present, so the regeneration lost nothing.
+    spec_version: 121,
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,
     // Adding call indices to a live pallet is additive, but the version

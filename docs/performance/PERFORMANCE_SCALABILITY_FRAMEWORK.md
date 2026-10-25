@@ -1,15 +1,20 @@
 # Step 6: Performance & Scalability Framework
 
 **Creation Date**: November 4, 2025  
-**Status**: ✅ COMPLETE  
+**Status**: 📋 FRAMEWORK WRITTEN — **NO MEASUREMENT PERFORMED**  
 **Priority**: 🟢 LOW (Adequate for national use case)  
 **Component**: BelizeChain Performance Engineering & Capacity Planning  
+
+> **Read this before quoting any number in this document.**  
+> Everything below is a *target* and a *test plan*, not a result. No load test has ever
+> been run against this chain, so no throughput, latency, finality or uptime figure here
+> is a measurement. See `../ECOSYSTEM_STATE.md` for what is actually verified live.
 
 ---
 
 ## 📊 Executive Summary
 
-This document establishes a comprehensive performance and scalability framework for BelizeChain, targeting **600-1,000 TPS** throughput to support Belize's national infrastructure (400,000+ citizens). While classified as **LOW PRIORITY** for initial mainnet launch, this framework ensures BelizeChain can validate performance targets, identify bottlenecks, and scale infrastructure as adoption grows.
+This document establishes a comprehensive performance and scalability framework for BelizeChain, targeting **600-1,000 TPS** throughput to support Belize's national infrastructure (400,000+ citizens). It is a **test plan**, not a report: the targets let BelizeChain validate throughput, identify bottlenecks, and scale infrastructure as adoption grows — once someone actually runs the tests. No mainnet is planned for this network, so treat the "mainnet" phases below as "the day the load tests finally run".
 
 ### Performance Targets
 
@@ -1251,30 +1256,29 @@ plt.savefig('forecast.png')
 - Updated performance baselines
 - Production readiness assessment
 
-### Phase 5: Mainnet Validation (Week 9-10)
+### Phase 5: Production-Scale Validation (Week 9-10)
 
 **Objectives**:
-- Validate performance on mainnet-equivalent infrastructure
+- Validate performance on production-equivalent infrastructure
 - Finalize capacity planning
-- Prepare for mainnet launch
 
 **Tasks**:
-1. Deploy mainnet-equivalent testnet (15 validators)
+1. Deploy a production-equivalent testnet (15 validators)
 2. Run full test suite (baseline, load, stress)
 3. Validate performance targets (600 TPS sustained)
 4. Document final capacity plan
-5. Sign off on mainnet readiness
 
 **Deliverables**:
-- Mainnet performance validation report
+- Performance validation report
 - Final capacity planning document
-- Mainnet readiness certification
 
 ---
 
 ## 🎯 Performance Targets & Success Criteria
 
-### Primary Targets (Mainnet Launch)
+### Primary Targets (Production-Scale)
+
+> Targets only — nothing in this table has been measured.
 
 | Metric | Target | Minimum Acceptable | Stretch Goal |
 |--------|--------|-------------------|--------------|
@@ -1290,17 +1294,20 @@ plt.savefig('forecast.png')
 
 ✅ **PASS**: All primary targets met for 24-hour sustained test  
 🟡 **CONDITIONAL PASS**: Minimum acceptable targets met, optimization required  
-❌ **FAIL**: Below minimum acceptable, mainnet launch delayed  
+❌ **FAIL**: Below minimum acceptable — optimization work required before quoting any figure
 
 ### Performance Validation Checklist
 
-- [ ] **Throughput**: 600 TPS sustained for 24 hours ✅
-- [ ] **Latency**: P95 RPC latency <100ms ✅
-- [ ] **Finality**: P95 finality time <20s ✅
-- [ ] **Stability**: No crashes or restarts during 24h test ✅
-- [ ] **Resource Usage**: CPU <80%, memory <12 GB ✅
-- [ ] **Error Rate**: <1% transaction failures ✅
-- [ ] **Recovery**: Recovers from 2,000 TPS spike within 60s ✅
+Nothing below has been run. An unchecked box means exactly that; do not read a box as
+"done" because the row reads confidently.
+
+- [ ] **Throughput**: 600 TPS sustained for 24 hours
+- [ ] **Latency**: P95 RPC latency <100ms
+- [ ] **Finality**: P95 finality time <20s
+- [ ] **Stability**: No crashes or restarts during 24h test
+- [ ] **Resource Usage**: CPU <80%, memory <12 GB
+- [ ] **Error Rate**: <1% transaction failures
+- [ ] **Recovery**: Recovers from 2,000 TPS spike within 60s
 
 ---
 
@@ -1413,14 +1420,16 @@ plt.savefig('forecast.png')
 - Ensure 99.9% uptime
 - Validate capacity planning
 
-### Impact on Mainnet Launch
+### Impact on Readiness
 
-✅ **Performance framework documentation**: COMPLETE  
-⏳ **Performance validation testing**: REQUIRED before mainnet launch (10-week timeline)  
+✅ **Performance framework documentation**: WRITTEN  
+⏳ **Performance validation testing**: NEVER RUN — no figure in this document is a measurement  
 ✅ **Monitoring infrastructure**: Ready (Prometheus + Grafana from Step 7)  
 ✅ **Load testing tools**: Integrated (Distributed Locust)  
 
-**Recommendation**: Proceed with testnet deployment and performance validation in parallel with security audits (Step 7).
+**Recommendation**: Until the load tests run, describe throughput as unknown. The
+long-quoted ~2,000 TPS figure was never produced by any benchmark and should not be
+repeated as if it were.
 
 ---
 

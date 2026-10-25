@@ -46,6 +46,226 @@ fn build_valid_proof() -> ([u8; 32], MerkleProof) {
     (root, proof)
 }
 
+/// Deposit reserved by `register_content`, in mock balance units.
+fn content_deposit() -> u128 {
+    <<Runtime as crate::Config>::StorageDeposit as Get<u128>>::get()
+}
+
+/// Shorthand for the bounded CID parameter the extrinsics expect.
+fn cid(bytes: &[u8]) -> BoundedVec<u8, crate::pallet::MaxIpfsCidLen> {
+    BoundedVec::truncate_from(bytes.to_vec())
+}
+
+/// Shorthand for the bounded metadata parameter the extrinsics expect.
+fn meta(bytes: &[u8]) -> BoundedVec<u8, crate::pallet::MaxContentMetadataLen> {
+    BoundedVec::truncate_from(bytes.to_vec())
+}
+
+#[test]
+fn register_content_stores_record_and_reserves_deposit() {
+    new_test_ext().execute_with(|| {
+        let content_id = [9u8; 32];
+
+        assert_ok!(crate::pallet::Pallet::<Runtime>::register_content(
+            RuntimeOrigin::signed(1),
+            content_id,
+            cid(b"bafybeigdyrzt"),
+            meta(br#"{"size":1024,"mime":"text/plain"}"#),
+        ));
+
+        let record =
+            crate::ContentMetadata::<Runtime>::get(content_id).expect("record must exist");
+        assert_eq!(record.owner, 1u64);
+        assert_eq!(record.ipfs_cid.as_slice(), b"bafybeigdyrzt");
+        assert_eq!(
+            record.metadata.as_slice(),
+            br#"{"size":1024,"mime":"text/plain"}"#
+        );
+        assert_eq!(record.updated_at, record.registered_at);
+        assert_eq!(
+            pallet_balances::Pallet::<Runtime>::reserved_balance(1),
+            content_deposit()
+        );
+    });
+}
+
+/// Registering metadata must not be an upsert: overwriting another account's
+/// row would let anyone rewrite data they neither own nor paid for.
+#[test]
+fn register_content_rejects_an_existing_record() {
+    new_test_ext().execute_with(|| {
+        let content_id = [9u8; 32];
+        assert_ok!(crate::pallet::Pallet::<Runtime>::register_content(
+            RuntimeOrigin::signed(1),
+            content_id,
+            cid(b"cid-one"),
+            meta(b"one"),
+        ));
+
+        assert_err!(
+            crate::pallet::Pallet::<Runtime>::register_content(
+                RuntimeOrigin::signed(2),
+                content_id,
+                cid(b"cid-two"),
+                meta(b"two"),
+            ),
+            Error::<Runtime>::ContentAlreadyRegistered
+        );
+
+        // The original owner's row is untouched by the rejected attempt.
+        let record =
+            crate::ContentMetadata::<Runtime>::get(content_id).expect("record must exist");
+        assert_eq!(record.owner, 1u64);
+        assert_eq!(record.ipfs_cid.as_slice(), b"cid-one");
+    });
+}
+
+#[test]
+fn update_content_metadata_is_owner_only() {
+    new_test_ext().execute_with(|| {
+        let content_id = [9u8; 32];
+        assert_ok!(crate::pallet::Pallet::<Runtime>::register_content(
+            RuntimeOrigin::signed(1),
+            content_id,
+            cid(b"cid-one"),
+            meta(b"one"),
+        ));
+
+        assert_err!(
+            crate::pallet::Pallet::<Runtime>::update_content_metadata(
+                RuntimeOrigin::signed(2),
+                content_id,
+                cid(b"cid-hijack"),
+                meta(b"hijack"),
+            ),
+            Error::<Runtime>::NotContentOwner
+        );
+
+        let record =
+            crate::ContentMetadata::<Runtime>::get(content_id).expect("record must exist");
+        assert_eq!(record.ipfs_cid.as_slice(), b"cid-one");
+
+        advance(5);
+        assert_ok!(crate::pallet::Pallet::<Runtime>::update_content_metadata(
+            RuntimeOrigin::signed(1),
+            content_id,
+            cid(b"cid-updated"),
+            meta(b"updated"),
+        ));
+
+        let record =
+            crate::ContentMetadata::<Runtime>::get(content_id).expect("record must exist");
+        assert_eq!(record.ipfs_cid.as_slice(), b"cid-updated");
+        assert_eq!(record.metadata.as_slice(), b"updated");
+        assert!(record.updated_at > record.registered_at);
+    });
+}
+
+#[test]
+fn deregister_content_returns_the_deposit() {
+    new_test_ext().execute_with(|| {
+        let content_id = [9u8; 32];
+        assert_ok!(crate::pallet::Pallet::<Runtime>::register_content(
+            RuntimeOrigin::signed(1),
+            content_id,
+            cid(b"cid-one"),
+            meta(b"one"),
+        ));
+        assert_eq!(
+            pallet_balances::Pallet::<Runtime>::reserved_balance(1),
+            content_deposit()
+        );
+
+        assert_err!(
+            crate::pallet::Pallet::<Runtime>::deregister_content(
+                RuntimeOrigin::signed(2),
+                content_id
+            ),
+            Error::<Runtime>::NotContentOwner
+        );
+
+        assert_ok!(crate::pallet::Pallet::<Runtime>::deregister_content(
+            RuntimeOrigin::signed(1),
+            content_id
+        ));
+        assert!(!crate::ContentMetadata::<Runtime>::contains_key(content_id));
+        assert_eq!(
+            pallet_balances::Pallet::<Runtime>::reserved_balance(1),
+            0
+        );
+    });
+}
+
+#[test]
+fn content_metadata_calls_reject_unknown_content() {
+    new_test_ext().execute_with(|| {
+        let content_id = [9u8; 32];
+        assert_err!(
+            crate::pallet::Pallet::<Runtime>::update_content_metadata(
+                RuntimeOrigin::signed(1),
+                content_id,
+                cid(b"cid"),
+                meta(b"m"),
+            ),
+            Error::<Runtime>::ContentNotFound
+        );
+        assert_err!(
+            crate::pallet::Pallet::<Runtime>::deregister_content(
+                RuntimeOrigin::signed(1),
+                content_id
+            ),
+            Error::<Runtime>::ContentNotFound
+        );
+    });
+}
+
+/// An account with no free balance cannot pay the deposit, so it cannot register.
+#[test]
+fn register_content_requires_the_deposit() {
+    new_test_ext().execute_with(|| {
+        assert_err!(
+            crate::pallet::Pallet::<Runtime>::register_content(
+                RuntimeOrigin::signed(3),
+                [9u8; 32],
+                cid(b"cid"),
+                meta(b"m"),
+            ),
+            Error::<Runtime>::InsufficientDeposit
+        );
+    });
+}
+
+/// The registry describes content; it must not imply the bytes were proven or
+/// that any escrow exists. Otherwise a free `register_content` would be a
+/// payout claim, which is exactly what `submit_storage_proof` refuses.
+#[test]
+fn content_registration_creates_no_commitment() {
+    new_test_ext().execute_with(|| {
+        let content_id = [9u8; 32];
+        assert_ok!(crate::pallet::Pallet::<Runtime>::register_content(
+            RuntimeOrigin::signed(1),
+            content_id,
+            cid(b"cid-one"),
+            meta(b"one"),
+        ));
+
+        assert!(!crate::Commitments::<Runtime>::contains_key(content_id));
+        assert!(!crate::StorageProofs::<Runtime>::contains_key(content_id));
+
+        // The anchor rule is unchanged: a registered record still cannot be paid.
+        let (root, proof) = build_valid_proof();
+        assert_err!(
+            crate::pallet::Pallet::<Runtime>::submit_storage_proof(
+                RuntimeOrigin::signed(1),
+                root,
+                proof,
+                ProofType::Merkle,
+            ),
+            Error::<Runtime>::NoCommitment
+        );
+    });
+}
+
 #[test]
 fn accept_valid_merkle_proof() {
     new_test_ext().execute_with(|| {

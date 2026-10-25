@@ -14,6 +14,32 @@
 # In CI only this repo is checked out, so cross-repo checks skip. Run it from a
 # full workspace checkout for those.
 # ──────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────
+# Docs Claims Check — do the repo's docs and configs agree with reality?
+#
+# This repo hosts the canonical checker (`scripts/doc-claims/`), so it runs the
+# local copy. Every other BelizeChain repo fetches this same script from here
+# rather than keeping a copy that could drift.
+#
+# It verifies that markdown links resolve, that cross-repo `compose_call`
+# targets exist (including upstream pallets, resolved from cargo-registry
+# source), that compose ${VAR:?} requirements are supplied by the CI job that
+# validates them, that Node versions align, and that image pins are documented.
+# It covers the MECHANICAL class of doc drift; the semantic class ("is X
+# actually live?") is handled by the docs-alignment prompt during a live agent
+# sweep.
+#
+# TWO JOBS, DELIBERATELY:
+#   doc-claims      — this repo only. Always runs, no secrets needed.
+#   workspace       — all sibling repos. Needs a cross-repo read token, because
+#                     the sibling repos are private. This is the job that
+#                     catches a call to an extrinsic another repo invented.
+#
+# Why the split matters: the cross-repo checks used to be unreachable in CI
+# (only this repo was checked out), so `Contracts.store_contract_data` — an
+# extrinsic that never existed — passed CI for months and was only caught by a
+# hand sweep. A check that cannot run is not a check.
+# ──────────────────────────────────────────────────────────
 name: Docs Claims Check
 
 on:
@@ -21,6 +47,9 @@ on:
     branches: [belizechain]
   pull_request:
     branches: [belizechain]
+  schedule:
+    # Nightly, so a missing cross-repo token cannot rot silently for months.
+    - cron: '17 4 * * *'
   workflow_dispatch:
 
 permissions:
@@ -28,10 +57,105 @@ permissions:
 
 jobs:
   doc-claims:
-    name: 📄 Docs claims vs reality
+    name: 📄 Docs claims vs reality (this repo)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
       - name: Run doc-claims checker
         run: ./scripts/doc-claims/check-doc-claims.sh .
+
+  workspace:
+    name: 📄 Docs claims vs reality (all repos)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for the cross-repo token
+        id: token
+        env:
+          TOKEN: ${{ secrets.BELIECHAIN_CI_TOKEN }}
+        run: |
+          if [ -n "$TOKEN" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "present=false" >> "$GITHUB_OUTPUT"
+          message="BELIECHAIN_CI_TOKEN is not set, so the sibling repos could not"
+          message="$message be checked out. The cross-repo half of this check — the"
+          message="$message half that catches a call to an extrinsic that does not"
+          message="$message exist — is NOT gating this commit."
+          echo "::warning title=Cross-repo checks did not run::$message"
+
+      # All repos land as siblings under $GITHUB_WORKSPACE, which is exactly the
+      # layout the checker's workspace-mode detection expects.
+      - name: Check out this repo
+        uses: actions/checkout@v7
+        with:
+          path: belizechain
+
+      - name: Check out sibling repos
+        if: steps.token.outputs.present == 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.repository_owner }}/ui
+          token: ${{ secrets.BELIECHAIN_CI_TOKEN }}
+          path: ui
+
+      - name: Check out infrastructure
+        if: steps.token.outputs.present == 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.repository_owner }}/infra
+          token: ${{ secrets.BELIECHAIN_CI_TOKEN }}
+          path: infra
+
+      - name: Check out kinich-quantum
+        if: steps.token.outputs.present == 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.repository_owner }}/kinich-quantum
+          token: ${{ secrets.BELIECHAIN_CI_TOKEN }}
+          path: kinich-quantum
+
+      - name: Check out nawal-ai
+        if: steps.token.outputs.present == 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.repository_owner }}/nawal-ai
+          token: ${{ secrets.BELIECHAIN_CI_TOKEN }}
+          path: nawal-ai
+
+      - name: Check out pakit-storage
+        if: steps.token.outputs.present == 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.repository_owner }}/pakit-storage
+          token: ${{ secrets.BELIECHAIN_CI_TOKEN }}
+          path: pakit-storage
+
+      - name: Check out gem
+        if: steps.token.outputs.present == 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.repository_owner }}/gem
+          token: ${{ secrets.BELIECHAIN_CI_TOKEN }}
+          path: gem
+
+      - name: Check out belizechain.org
+        if: steps.token.outputs.present == 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.repository_owner }}/belizechain.org
+          token: ${{ secrets.BELIECHAIN_CI_TOKEN }}
+          path: belizechain.org
+
+      - name: Run doc-claims checker across the workspace
+        run: ./belizechain/scripts/doc-claims/check-doc-claims.sh belizechain
+
+      # Without the token the previous step ran in local-only mode, where six
+      # cross-repo checks report SKIP. On the nightly run that is a failure, not
+      # a warning: an unmonitored gap is how the last one survived.
+      - name: Fail the nightly run when cross-repo checks could not run
+        if: steps.token.outputs.present != 'true' && github.event_name == 'schedule'
+        run: |
+          echo "::error title=Cross-repo doc-claims never ran::Add a BELIECHAIN_CI_TOKEN secret with read access to the BelizeChain repos."
+          exit 1

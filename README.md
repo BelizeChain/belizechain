@@ -13,9 +13,8 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-stable2609-orange.svg?logo=rust)](https://www.rust-lang.org/)
-[![Substrate](https://img.shields.io/badge/substrate-3.0-purple.svg)](https://substrate.io/)
 [![Polkadot SDK](https://img.shields.io/badge/polkadot_sdk-stable2609-E6007A.svg)](https://github.com/paritytech/polkadot-sdk)
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/)
+[![CI](https://img.shields.io/badge/CI-deploy.yml-informational.svg)](.github/workflows/deploy.yml)
 [![Coverage](https://img.shields.io/badge/coverage-gated-informational.svg)](.tarpaulin.toml)
 [![Testnet](https://img.shields.io/badge/testnet-ready-blue.svg)](https://testnet.belizechain.org)
 
@@ -48,9 +47,9 @@ BelizeChain is a **Substrate blockchain in active development** for Belize's nat
 
 ### Technical Stack
 - 🦀 **Rust**: Substrate framework (Polkadot SDK stable2609)
-- 🌐 **Consensus**: Proof of Useful Work (PoUW)
-- 🔗 **Interoperability**: Ethereum & Polkadot bridges
-- 📊 **Performance**: ~2,000 TPS, 6-second block time
+- 🌐 **Consensus**: BABE block production + GRANDPA finality; PoUW quality scores drive rewards, not slot selection
+- 🔗 **Interoperability**: Signed cross-chain messaging, ML-DSA-87 (no XCM; no delivery worker yet)
+- 📊 **Performance**: 6-second block time; throughput unmeasured (the ~2,000 TPS figure was never benchmarked)
 - 🛡️ **Security**: Council-majority treasury approval, time-locked governance
 - 📈 **Scalability**: Horizontal validator scaling
 
@@ -104,8 +103,8 @@ BelizeChain implements **19 Belize-specific pallets** covering the complete nati
 <summary><b>🔗 Infrastructure & Interoperability (6 pallets)</b></summary>
 
 - **Staking** (`pallets/staking/`) - PoUW validator staking, rewards distribution, federated learning integration
-- **Consensus** (`pallets/consensus/`) - Proof of Useful Work, block production, quality scoring
-- **Interoperability** (`pallets/interoperability/`) - Ethereum & Polkadot bridges, cross-chain messaging
+- **Consensus** (`pallets/consensus/`) - PoUW work scoring and AI metrics; BABE/GRANDPA produce blocks
+- **Interoperability** (`pallets/interoperability/`) - Signed cross-chain messaging (ML-DSA-87); records intent only — no XCM, no delivery worker
 - **Quantum** (`pallets/quantum/`) - Quantum workload orchestration, PQW rewards
 - **Mesh** (`pallets/mesh/`) - Meshtastic LoRa mesh networking, off-grid P2P payments, emergency broadcast
 - **StorageProof** (`pallets/storage-proof/`) - On-chain verification of Pakit storage proofs (Merkle proofs fully verified)

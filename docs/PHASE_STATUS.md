@@ -1,18 +1,27 @@
 # BelizeChain Phase Status
 
-> **Last Updated**: 2026-10-08
-> **Runtime**: `spec_version = 111` in source, `impl_version = 1`, `tx_version = 1`.
-> The **live** Ceiba testnet still runs **110** — 111 carries regenerated
-> `pallet-belize-bns` weights and has **not** been deployed yet.
+> **Last Updated**: 2026-10-25
+>
+> **This file is a structural summary, not live state.** Volatile values —
+> `spec_version`, head height, validator count, endpoints, deployed contract
+> addresses — are deliberately **not** restated here, because a second copy
+> drifts. Read [`ECOSYSTEM_STATE.md`](ECOSYSTEM_STATE.md) §2 for the current
+> values and the date each was verified.
+>
 > **SDK**: Polkadot SDK `stable2609` (rev `7a8daa68e18718c18823c1109513fdc1c8aa71fe`)
-> **Network**: Ceiba testnet (`chain_id = belizechain_testnet`, SS58 prefix `1981`)
 
 ---
 
 ## Custom Pallet Roster (19 pallets, runtime indexes 20–38)
 
-All 19 custom pallets are implemented in the runtime. Phases 4A, 4B, and 5C
-have been exercised with live extrinsics on the Ceiba testnet.
+All 19 custom pallets are compiled into the runtime. The source of truth is
+`runtime/src/lib.rs` `construct_runtime!` plus the `Cargo.toml` workspace
+members — not this table.
+
+The "Phase" column is development history. "Verified" there means the pallet was
+exercised on a testnet at that phase; it is **not** a statement about current
+live behaviour. The "Live Testnet Extrinsics" section at the end of this file is
+a dated record from 2026-09-03.
 
 | Index | Pallet | Category | Status / Phase |
 |---|---|---|---|
@@ -43,8 +52,13 @@ have been exercised with live extrinsics on the Ceiba testnet.
 
 ## Pre-Mainnet Removal Checklist
 
+> **No mainnet is planned.** These items stay for as long as the network is a
+> testnet — removing them is a mainnet-launch task, not general cleanup. Do not
+> "fix" them opportunistically; doing so would remove the bootstrap path the
+> testnet still depends on.
+
 The following are scaffolded for testnet bootstrapping and **must be removed
-before mainnet launch**:
+before a mainnet launch**:
 
 - `pallet_sudo` at runtime index 6 (see `runtime/src/lib.rs:600` and
   AR-3 note at line 221).
@@ -59,6 +73,10 @@ before mainnet launch**:
 
 ## Service Activation Status (Ceiba testnet)
 
+Ports and routes below mirror `infra/docker-compose.ceiba.yml` and
+`infra/nginx/nginx.conf`; if they disagree, the compose/nginx files win. Live health
+belongs in `ECOSYSTEM_STATE.md` §2, not here.
+
 | Service | Container Port | Public Route | Status |
 |---|---|---|---|
 | `ceiba-node` (Substrate) | 9944 (internal) | `wss://testnet.belizechain.org/ws`, `/rpc` | Live |
@@ -66,7 +84,7 @@ before mainnet launch**:
 | Kinich Quantum | 8888 | `/api/kinich/` | Live; activation workflows pending |
 | Pakit Storage | 8001 | `/api/pakit/` | Live; DAG activation workflows pending |
 | Pakit P2P | 8081 (internal) | — | Live |
-| UI (Maya Wallet + Blue Hole Portal) | 3000 | `/` | 9/14 wallet pages live |
+| UI (Maya Wallet + Blue Hole Portal) | 3000 | `/` | Page wiring tracked in `ui/UI_WIRING_STATUS_CURRENT.md` — do not restate a count here |
 | IPFS Gateway | container only | `/ipfs/` (read-only) | Live, legacy pinned content |
 
 **Note**: Pakit and Nawal local development ports differ from the Ceiba
@@ -74,22 +92,18 @@ container ports (Pakit local 8080 / Ceiba 8001; Nawal local 8000 / Ceiba 8080).
 
 ---
 
-## GEM Contract Deployment (May 11–12 2026)
+## GEM Contract Deployment
 
-Live on `belizechain_testnet` (full addresses in
-`gem/deployment-*.json` artifacts in the gem repo):
+Contract addresses are **not** listed here. The addresses this section used to
+carry were wiped by the 2026-09-29 re-genesis and must not be reused or quoted.
 
-- DALLA Token (PSP22) — `r1Vkg9k4vy7YcgSES8HMPrbtAsr6QWZcCixDQ19saBYfQv9me`
-- BeliNFT (PSP34) — `r1V67KtGB3i2mL4421WSd5WVfWPRuwwUVu6VMwDYfzobjVKHE`
-- Simple DAO — `r1WcVzmmX6bXvX4wpoR1W8ffA3Chr8UU7PtxXE8JQG4RZkzSK`
-- Faucet (1000 DALLA / 100 blocks) — `r1WXkqkVdPb4ap9SYPi7zdKa2PXjYUGzve5HsPn6FaezKRJvX`
-- PSP37 Multi-Token — `r1U6k8Unb1gbnhQ8KHmqxKQvmWEQ5nxqeSHPL7VBkiUGKRYwM`
-- BelizeX DEX — Factory `r1UZZBGTX6cRLSYSvL2i6cCGXvRF9JY9TtM4rmaXtgAr73DGQ`,
-  Router `r1XKmdL9wopmVJedPepW76oPYTV1tFdTaPsHT73CqfZruPww1`,
-  Pair code hash `0x96de81afced1e99600f0f54e513fcdb95d167c01a8a7c644c9f849f43f8a5c69`
+Current addresses live in the gem repo's deployment manifest
+(`gem/deployment-*.json`) and in the UI's `CEIBA_GEM_DEPLOYMENT` config. If those
+two disagree, the manifest is the record of what was deployed — verify on-chain
+before quoting any address.
 
-**Pending deployment**: `access-control` (library, optional standalone deploy),
-`hello-belizechain` (tutorial-only).
+Contract inventory and per-contract line counts are in the gem repo's README;
+this file does not restate them.
 
 ---
 

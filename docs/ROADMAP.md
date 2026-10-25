@@ -8,7 +8,8 @@ Project status, verified milestones, and planned development.
 **Status (October 2026):** BelizeChain is in **active testnet development** on
 the single-node Ceiba testnet. **Mainnet has not launched.** Items marked ✅ are
 live and verifiable; items marked 📅 are plans, not commitments.
-**Last verified:** 2026-10-06.
+**Last verified:** 2026-10-25. Live values (spec version, head height, validator
+count) are not restated in this file — see [`ECOSYSTEM_STATE.md`](ECOSYSTEM_STATE.md) §2.
 
 ---
 
@@ -16,10 +17,10 @@ live and verifiable; items marked 📅 are plans, not commitments.
 
 ### Runtime and pallets
 
-- Runtime **spec_version 110**, hot-upgraded on the live testnet on 2026-10-08
-  with no node restart
-- **19 custom pallets** at runtime indexes 20–38, plus **14 standard Substrate
-  pallets** at indexes 0–13
+- Runtime deployed on the live testnet by hot upgrade with no node restart;
+  current `spec_version` in [`ECOSYSTEM_STATE.md`](ECOSYSTEM_STATE.md) §2.1
+- **19 custom pallets** at runtime indexes 20–38, plus **17 standard Substrate
+  pallets** at indexes 0–16
 - 6-second block times, BABE block production with GRANDPA finality, SS58
   address prefix `1981`
 - ~2,000 TPS target throughput for the runtime; no verified public benchmark
@@ -124,7 +125,8 @@ High-level ambitions carried in the design:
 - BelizeX DEX liquidity growth and tourism-cashback merchant expansion
 - BNS `.bz` registration and Pakit-hosted websites
 - Cross-chain bridges via the Interoperability pallet (design stage; relayers
-  not deployed)
+  deployed in observe mode and acknowledge nothing; message delivery to a
+  foreign chain is not implemented)
 - Off-grid mesh networking via the Mesh pallet (pallet in the runtime; field
   rollout pending)
 - Nawal (AI) and Kinich (quantum) service maturation, including PoUW
@@ -135,15 +137,16 @@ High-level ambitions carried in the design:
 
 No verified public metrics (network, user, or economic) are published yet.
 Testnet figures are simulated protocol parameters, as noted at the top of this
-document. Live network statistics will be published once public access (DNS,
-TLS, status surface) is up.
+document. This includes throughput: the long-quoted ~2,000 TPS is a **design
+target**, never measured, and must not be presented as a result.
 
 ---
 
 ## How to follow
 
 - **Repositories**: https://github.com/BelizeChain
-- **Website**: https://belizechain.org (DNS and TLS bring-up in progress)
+- **Website**: https://belizechain.org (live; see [`ECOSYSTEM_STATE.md`](ECOSYSTEM_STATE.md) §2.3
+  for current endpoints)
 - **Release notes**: [CHANGELOG.md](../CHANGELOG.md) in this repository
 
 ---

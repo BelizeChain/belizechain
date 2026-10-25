@@ -363,10 +363,12 @@
 
 ## 📊 Performance Benchmarks
 
+> **No benchmark exists.** No load test has ever been run against this chain, so there is
+> no average, peak or theoretical throughput figure to report. The six-second block time
+> is the one real number here: it is a consensus parameter, not a measurement.
+
 ### Transaction Throughput
-- **Average**: 150-300 TPS
-- **Peak**: 1,000 TPS
-- **Theoretical Max**: 10,000+ TPS
+- **Measured**: none — throughput is unknown until a load test runs
 
 ### Latency
 - **Block Time**: 6 seconds
@@ -412,7 +414,7 @@
 ### Comparison to Other Chains
 | Feature | BelizeChain | Bitcoin | Ethereum | Polkadot |
 |---------|-------------|---------|----------|----------|
-| TPS | 1,000 | 7 | 15-30 | 1,000+ |
+| TPS | unmeasured | 7 | 15-30 | 1,000+ |
 | Finality | 6 sec | 60 min | 13 min | 6 sec |
 | Energy | Low (PoUW) | High (PoW) | Medium (PoS) | Low (PoS) |
 | Governance | On-chain | Off-chain | Mixed | On-chain |

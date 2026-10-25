@@ -93,6 +93,22 @@ mod benchmarks {
         let _operator = register_operator::<T>(0);
         let merchant: T::AccountId = account("merchant", 0, 0);
 
+        // Seed an earlier verification with a DIFFERENT certification, so the
+        // benchmark measures the re-verification path rather than first
+        // registration. Re-verification is the heavier branch: it finds the
+        // previous `MerchantCategories` row and releases the stale
+        // `CertificationOwners` entry, which is one extra write. Measuring only
+        // the first-registration path under-charges every renewal.
+        Pallet::<T>::verify_merchant(
+            RawOrigin::Root.into(),
+            merchant.clone(),
+            0u8,
+            BoundedVec::<u8, ConstU32<MAX_CERT_LEN>>::truncate_from(b"cert-old".to_vec()),
+            BoundedVec::<u8, ConstU32<MAX_CERT_LEN>>::truncate_from(b"license".to_vec()),
+            Some((17_000_000, -88_000_000)),
+        )
+        .expect("benchmark seed verification must succeed");
+
         #[extrinsic_call]
         verify_merchant(
             RawOrigin::Root,

@@ -795,11 +795,32 @@ fn process_unlock_requires_validator_registration() {
 
 // ============================================================================
 // Cross-Chain Message Tests
+//
+// A message is a `BridgeTransaction` with `MessagePassing`, so it shares the
+// transaction id space, status machine and validator set with value transfers.
 // ============================================================================
+
+/// Enable Ethereum for the messaging tests. A message now targets a configured
+/// chain, so the config has to exist before one can be queued.
+fn setup_messaging_chain() {
+    ChainConfigurations::<Test>::insert(
+        BridgeChain::Ethereum,
+        ChainConfig {
+            enabled: true,
+            min_confirmations: 12,
+            max_amount: 1_000_000_000,
+            fee_rate: 50,
+            pq_signatures_required: 3,
+            rpc_endpoint: b"https://eth.example.com".to_vec().try_into().unwrap(),
+            contract_address: Some(vec![0xAB; 20].try_into().unwrap()),
+        },
+    );
+}
 
 #[test]
 fn send_cross_chain_message_works() {
     new_test_ext().execute_with(|| {
+        setup_messaging_chain();
         let payload = test_message_payload();
 
         assert_ok!(Interoperability::send_cross_chain_message(
@@ -808,20 +829,43 @@ fn send_cross_chain_message_works() {
             payload.clone(),
         ));
 
-        // Verify message created
-        let message = Interoperability::cross_chain_messages(0).unwrap();
-        assert_eq!(message.target_chain, BridgeChain::Ethereum);
-        assert_eq!(message.payload.to_vec(), payload);
-        assert!(!message.delivered);
+        // A message is a bridge transaction, not a separate record.
+        let tx = Interoperability::bridge_transactions(0).unwrap();
+        match tx.operation {
+            BridgeOperation::MessagePassing {
+                target_chain,
+                message_hash,
+                payload: stored,
+            } => {
+                assert_eq!(target_chain, BridgeChain::Ethereum);
+                assert_eq!(stored.to_vec(), payload);
+                assert_eq!(message_hash, sp_io::hashing::blake2_256(&payload));
+            }
+            other => panic!("expected MessagePassing, got {other:?}"),
+        }
+        assert_eq!(tx.status, BridgeStatus::Initiated);
+        assert!(tx.external_confirmation.is_none());
 
-        // Verify NextMessageId incremented
-        assert_eq!(Interoperability::next_message_id(), 1);
+        // Shares the single transaction id space with `initiate_bridge`.
+        assert_eq!(Interoperability::next_tx_id(), 1);
+    });
+}
+
+#[test]
+fn send_cross_chain_message_rejects_empty_payload() {
+    new_test_ext().execute_with(|| {
+        setup_messaging_chain();
+        assert_noop!(
+            Interoperability::send_cross_chain_message(RuntimeOrigin::signed(ALICE), 1, vec![]),
+            Error::<Test>::EmptyPayload
+        );
     });
 }
 
 #[test]
 fn send_cross_chain_message_validates_payload_size() {
     new_test_ext().execute_with(|| {
+        setup_messaging_chain();
         // Payload too large (> 2048 bytes)
         let large_payload = vec![0xFF; 3000];
 
@@ -2367,6 +2411,7 @@ fn send_cross_chain_message_unsupported_chain_fails() {
 #[test]
 fn send_cross_chain_message_event_emitted() {
     new_test_ext().execute_with(|| {
+        setup_messaging_chain();
         let payload = test_message_payload();
 
         assert_ok!(Interoperability::send_cross_chain_message(
@@ -2379,7 +2424,7 @@ fn send_cross_chain_message_event_emitted() {
         assert!(events.iter().any(|e| matches!(
             &e.event,
             RuntimeEvent::Interoperability(Event::CrossChainMessageSent {
-                message_id: 0,
+                tx_id: 0,
                 target_chain: 1,
                 ..
             })
@@ -2861,11 +2906,11 @@ fn dispute_reserves_correct_bond_amount() {
 }
 
 // ============================================================================
-// Acknowledge Message Tests
+// External Delivery Confirmation Tests
 //
-// `send_cross_chain_message` writes `delivered: false`. Before
-// `acknowledge_message` existed there was no path that ever wrote `true`, so
-// outbound messaging was an append-only log rather than a transport.
+// `external_confirmation` is the only field that ties an on-chain transaction to
+// something that actually happened on the far side. Nothing wrote it before, so
+// `Finalized` described our own bookkeeping and nothing else.
 // ============================================================================
 
 /// Register `who` as a bridge validator. The mock already treats accounts 1-3 as
@@ -2886,102 +2931,311 @@ fn register_validator_for_messaging(who: u64) {
     );
 }
 
-/// Seed a sent-but-undelivered message and return its id.
-fn seed_undelivered_message() -> u32 {
-    let message_id = 0u32;
-    CrossChainMessages::<Test>::insert(
-        message_id,
-        crate::CrossChainMessage {
-            message_id,
-            source_chain: BridgeChain::Polkadot,
-            target_chain: BridgeChain::Ethereum,
-            payload: vec![1u8; 32].try_into().unwrap(),
-            message_hash: [1u8; 32],
-            delivered: false,
-            timestamp: 0,
+/// Seed a threshold-cleared transaction and return its id.
+fn seed_ready_transaction(status: BridgeStatus) -> u32 {
+    let tx_id = 0u32;
+    BridgeTransactions::<Test>::insert(
+        tx_id,
+        crate::BridgeTransaction {
+            tx_id,
+            initiator: ALICE,
+            operation: BridgeOperation::MessagePassing {
+                target_chain: BridgeChain::Ethereum,
+                message_hash: [1u8; 32],
+                payload: vec![1u8; 32].try_into().unwrap(),
+            },
+            status,
+            required_signatures: 1,
+            collected_signatures: 1,
+            pq_signatures: Default::default(),
+            fee: 0,
+            initiated_at: 0,
+            completed_at: None,
+            external_confirmation: None,
+            dispute_info: None,
         },
     );
-    message_id
+    tx_id
 }
 
 #[test]
-fn acknowledge_message_marks_delivered() {
+fn confirm_external_delivery_records_the_hash() {
     new_test_ext().execute_with(|| {
         register_validator_for_messaging(ALICE);
-        let message_id = seed_undelivered_message();
+        let tx_id = seed_ready_transaction(BridgeStatus::ReadyForExecution);
 
-        assert_ok!(Interoperability::acknowledge_message(
+        assert_ok!(Interoperability::confirm_external_delivery(
             RuntimeOrigin::signed(ALICE),
-            message_id,
+            tx_id,
+            vec![0x42; 32],
         ));
 
-        let message = Interoperability::cross_chain_messages(message_id).unwrap();
-        assert!(
-            message.delivered,
-            "acknowledgement must set delivered = true"
+        let tx = Interoperability::bridge_transactions(tx_id).unwrap();
+        assert_eq!(
+            tx.external_confirmation.map(|b| b.to_vec()),
+            Some(vec![0x42; 32]),
+            "the foreign-chain hash must be recorded"
         );
     });
 }
 
 #[test]
-fn acknowledge_message_emits_event() {
+fn confirm_external_delivery_emits_event() {
     new_test_ext().execute_with(|| {
         register_validator_for_messaging(ALICE);
-        let message_id = seed_undelivered_message();
+        let tx_id = seed_ready_transaction(BridgeStatus::ReadyForExecution);
 
-        assert_ok!(Interoperability::acknowledge_message(
+        assert_ok!(Interoperability::confirm_external_delivery(
             RuntimeOrigin::signed(ALICE),
-            message_id,
+            tx_id,
+            vec![0x42; 32],
         ));
 
         System::assert_has_event(RuntimeEvent::Interoperability(
-            crate::Event::CrossChainMessageDelivered {
-                message_id,
-                target_chain: 1, // Ethereum
-                acknowledged_by: ALICE,
+            crate::Event::ExternalDeliveryConfirmed {
+                tx_id,
+                external_tx_hash: vec![0x42; 32],
+                confirmed_by: ALICE,
             },
         ));
     });
 }
 
 #[test]
-fn acknowledge_message_rejects_second_acknowledgement() {
+fn confirm_external_delivery_rejects_a_second_confirmation() {
     new_test_ext().execute_with(|| {
         register_validator_for_messaging(ALICE);
-        let message_id = seed_undelivered_message();
+        let tx_id = seed_ready_transaction(BridgeStatus::ReadyForExecution);
 
-        assert_ok!(Interoperability::acknowledge_message(
+        assert_ok!(Interoperability::confirm_external_delivery(
             RuntimeOrigin::signed(ALICE),
-            message_id,
+            tx_id,
+            vec![0x42; 32],
         ));
         assert_noop!(
-            Interoperability::acknowledge_message(RuntimeOrigin::signed(ALICE), message_id),
-            crate::Error::<Test>::MessageAlreadyDelivered
+            Interoperability::confirm_external_delivery(
+                RuntimeOrigin::signed(ALICE),
+                tx_id,
+                vec![0x43; 32]
+            ),
+            Error::<Test>::AlreadyExecuted
         );
     });
 }
 
 #[test]
-fn acknowledge_message_requires_registered_validator() {
+fn confirm_external_delivery_requires_registered_validator() {
     new_test_ext().execute_with(|| {
         // BOB has KYC Level 3 in the mock but is not in BridgeValidators
-        let message_id = seed_undelivered_message();
+        let tx_id = seed_ready_transaction(BridgeStatus::ReadyForExecution);
 
         assert_noop!(
-            Interoperability::acknowledge_message(RuntimeOrigin::signed(BOB), message_id),
-            crate::Error::<Test>::ValidatorNotRegistered
+            Interoperability::confirm_external_delivery(
+                RuntimeOrigin::signed(BOB),
+                tx_id,
+                vec![0x42; 32]
+            ),
+            Error::<Test>::ValidatorNotRegistered
         );
     });
 }
 
 #[test]
-fn acknowledge_message_rejects_unknown_message() {
+fn confirm_external_delivery_rejects_unknown_transaction() {
     new_test_ext().execute_with(|| {
         register_validator_for_messaging(ALICE);
 
         assert_noop!(
-            Interoperability::acknowledge_message(RuntimeOrigin::signed(ALICE), 999u32),
-            crate::Error::<Test>::MessageNotFound
+            Interoperability::confirm_external_delivery(
+                RuntimeOrigin::signed(ALICE),
+                999u32,
+                vec![0x42; 32]
+            ),
+            Error::<Test>::TransactionNotFound
         );
     });
 }
+
+#[test]
+fn confirm_external_delivery_rejects_unsigned_transaction() {
+    new_test_ext().execute_with(|| {
+        register_validator_for_messaging(ALICE);
+        let tx_id = seed_ready_transaction(BridgeStatus::Initiated);
+
+        assert_noop!(
+            Interoperability::confirm_external_delivery(
+                RuntimeOrigin::signed(ALICE),
+                tx_id,
+                vec![0x42; 32]
+            ),
+            Error::<Test>::NotReadyForExecution
+        );
+    });
+}
+
+#[test]
+fn confirm_external_delivery_is_allowed_after_finalization() {
+    new_test_ext().execute_with(|| {
+        register_validator_for_messaging(ALICE);
+        let tx_id = seed_ready_transaction(BridgeStatus::Finalized);
+
+        assert_ok!(Interoperability::confirm_external_delivery(
+            RuntimeOrigin::signed(ALICE),
+            tx_id,
+            vec![0x42; 32],
+        ));
+    });
+}
+
+// ============================================================================
+// Validator EVM address registry
+//
+// The EVM receiver verifies `secp256k1` signatures from EVM addresses; this
+// pallet verifies ML-DSA-87 signatures from accounts. Neither key derives from
+// the other, so the two validator sets were unrelated lists. These tests cover
+// the declaration that makes them comparable.
+// ============================================================================
+
+const EVM_ADDRESS: [u8; 20] = [0x11; 20];
+
+#[test]
+fn set_evm_address_records_the_declaration() {
+    new_test_ext().execute_with(|| {
+        register_validator_for_messaging(ALICE);
+
+        assert_ok!(Interoperability::set_evm_address(
+            RuntimeOrigin::signed(ALICE),
+            EVM_ADDRESS,
+        ));
+
+        assert_eq!(Interoperability::evm_address_of(ALICE), Some(EVM_ADDRESS));
+    });
+}
+
+#[test]
+fn set_evm_address_emits_event() {
+    new_test_ext().execute_with(|| {
+        register_validator_for_messaging(ALICE);
+
+        assert_ok!(Interoperability::set_evm_address(
+            RuntimeOrigin::signed(ALICE),
+            EVM_ADDRESS,
+        ));
+
+        System::assert_last_event(
+            crate::Event::ValidatorEvmAddressSet {
+                validator: ALICE,
+                evm_address: EVM_ADDRESS,
+            }
+            .into(),
+        );
+    });
+}
+
+#[test]
+fn set_evm_address_rejects_an_unregistered_validator() {
+    new_test_ext().execute_with(|| {
+        // ALICE is a KYC-3 bridge operator in the mock but has never registered as a
+        // validator. Declaring an address she cannot sign for would put a phantom
+        // signer in the reconciled set.
+        assert_noop!(
+            Interoperability::set_evm_address(RuntimeOrigin::signed(ALICE), EVM_ADDRESS),
+            Error::<Test>::ValidatorNotRegistered
+        );
+    });
+}
+
+#[test]
+fn set_evm_address_rejects_insufficient_kyc() {
+    new_test_ext().execute_with(|| {
+        // Account 10 holds KYC-2 (can use bridges) but is not an operator.
+        register_validator_for_messaging(10);
+        assert_noop!(
+            Interoperability::set_evm_address(RuntimeOrigin::signed(10), EVM_ADDRESS),
+            Error::<Test>::BridgeOperatorKycInsufficient
+        );
+    });
+}
+
+#[test]
+fn set_evm_address_rejects_unsigned_origin() {
+    new_test_ext().execute_with(|| {
+        assert_noop!(
+            Interoperability::set_evm_address(RuntimeOrigin::root(), EVM_ADDRESS),
+            sp_runtime::DispatchError::BadOrigin
+        );
+    });
+}
+
+#[test]
+fn zero_address_clears_the_declaration() {
+    new_test_ext().execute_with(|| {
+        register_validator_for_messaging(ALICE);
+        assert_ok!(Interoperability::set_evm_address(
+            RuntimeOrigin::signed(ALICE),
+            EVM_ADDRESS,
+        ));
+
+        assert_ok!(Interoperability::set_evm_address(
+            RuntimeOrigin::signed(ALICE),
+            [0u8; 20],
+        ));
+
+        assert_eq!(
+            Interoperability::evm_address_of(ALICE),
+            None,
+            "the zero address is a withdrawal, not a stored signer"
+        );
+    });
+}
+
+#[test]
+fn re_declaring_replaces_the_previous_address() {
+    new_test_ext().execute_with(|| {
+        register_validator_for_messaging(ALICE);
+        assert_ok!(Interoperability::set_evm_address(
+            RuntimeOrigin::signed(ALICE),
+            EVM_ADDRESS,
+        ));
+
+        let rotated = [0x22u8; 20];
+        assert_ok!(Interoperability::set_evm_address(
+            RuntimeOrigin::signed(ALICE),
+            rotated,
+        ));
+
+        assert_eq!(Interoperability::evm_address_of(ALICE), Some(rotated));
+    });
+}
+
+#[test]
+fn removing_a_validator_drops_its_evm_address() {
+    new_test_ext().execute_with(|| {
+        register_validator_for_messaging(ALICE);
+        assert_ok!(Interoperability::set_evm_address(
+            RuntimeOrigin::signed(ALICE),
+            EVM_ADDRESS,
+        ));
+
+        assert_ok!(Interoperability::remove_bridge_validator(
+            RuntimeOrigin::root(),
+            ALICE,
+        ));
+
+        assert_eq!(
+            Interoperability::evm_address_of(ALICE),
+            None,
+            "a departed validator must not linger in the reconciled set"
+        );
+    });
+}
+
+#[test]
+fn evm_address_registry_is_empty_at_genesis() {
+    new_test_ext().execute_with(|| {
+        // The map is additive, so the upgrade that ships it needs no migration. Assert
+        // the starting state so a future genesis patch cannot silently pre-seed it.
+        assert_eq!(crate::EvmAddressOf::<Test>::iter().count(), 0);
+    });
+}
+

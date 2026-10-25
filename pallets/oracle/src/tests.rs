@@ -8,6 +8,7 @@ const ALICE: u64 = 1;
 const BOB: u64 = 2;
 const CHARLIE: u64 = 3;
 const DAVE: u64 = 4;
+const EVE: u64 = 5;
 
 // ================================
 // Operator Management Tests
@@ -397,26 +398,152 @@ fn expired_merchant_returns_none() {
     });
 }
 
-// NOTE: Certification validation not implemented yet
-// #[test]
-// fn invalid_certification_fails() {
-//     new_test_ext().execute_with(|| {
-//         let merchant = DAVE;
-//         let empty_cert: BoundedVec<u8, ConstU32<128>> = vec![].try_into().unwrap();
-//         let license: BoundedVec<u8, ConstU32<128>> = b"BL-67890".to_vec().try_into().unwrap();
-//         assert_noop!(
-//             Oracle::verify_merchant(
-//                 RuntimeOrigin::root(),
-//                 merchant,
-//                 MerchantCategory::Accommodation.to_u8(),
-//                 empty_cert,
-//                 license,
-//                 None
-//             ),
-//             Error::<Test>::InvalidCertification
-//         );
-//     });
-// }
+// Certification validation: the chain can only check what it can see itself.
+// It does not verify an issuer's signature, so these tests pin exactly the
+// properties that are enforced — non-empty credentials and one holder per
+// certification number — and nothing more.
+
+#[test]
+fn empty_certification_is_rejected() {
+    new_test_ext().execute_with(|| {
+        let merchant = DAVE;
+        let empty_cert: BoundedVec<u8, ConstU32<128>> = vec![].try_into().unwrap();
+        let license: BoundedVec<u8, ConstU32<128>> = b"BL-67890".to_vec().try_into().unwrap();
+
+        assert_noop!(
+            Oracle::verify_merchant(
+                RuntimeOrigin::root(),
+                merchant,
+                MerchantCategory::Accommodation.to_u8(),
+                empty_cert,
+                license,
+                None
+            ),
+            Error::<Test>::InvalidCertification
+        );
+        assert_eq!(Oracle::get_merchant_category(&merchant), None);
+    });
+}
+
+#[test]
+fn empty_license_is_rejected() {
+    new_test_ext().execute_with(|| {
+        let merchant = DAVE;
+        let cert: BoundedVec<u8, ConstU32<128>> = b"FSC-12345".to_vec().try_into().unwrap();
+        let empty_license: BoundedVec<u8, ConstU32<128>> = vec![].try_into().unwrap();
+
+        assert_noop!(
+            Oracle::verify_merchant(
+                RuntimeOrigin::root(),
+                merchant,
+                MerchantCategory::Accommodation.to_u8(),
+                cert,
+                empty_license,
+                None
+            ),
+            Error::<Test>::InvalidCertification
+        );
+    });
+}
+
+/// One certification number cannot be claimed by two merchants.
+#[test]
+fn certification_cannot_be_reused_by_another_merchant() {
+    new_test_ext().execute_with(|| {
+        let cert: BoundedVec<u8, ConstU32<128>> = b"FSC-12345".to_vec().try_into().unwrap();
+        let license: BoundedVec<u8, ConstU32<128>> = b"BL-67890".to_vec().try_into().unwrap();
+
+        assert_ok!(Oracle::verify_merchant(
+            RuntimeOrigin::root(),
+            DAVE,
+            MerchantCategory::Accommodation.to_u8(),
+            cert.clone(),
+            license.clone(),
+            None
+        ));
+
+        assert_noop!(
+            Oracle::verify_merchant(
+                RuntimeOrigin::root(),
+                EVE,
+                MerchantCategory::Retail.to_u8(),
+                cert,
+                license,
+                None
+            ),
+            Error::<Test>::CertificationAlreadyRegistered
+        );
+
+        assert_eq!(Oracle::get_merchant_category(&EVE), None);
+    });
+}
+
+/// Re-verifying the *same* merchant with the same certification is allowed, so a
+/// renewal is not blocked by the uniqueness rule.
+#[test]
+fn same_merchant_may_reverify_with_the_same_certification() {
+    new_test_ext().execute_with(|| {
+        let cert: BoundedVec<u8, ConstU32<128>> = b"FSC-12345".to_vec().try_into().unwrap();
+        let license: BoundedVec<u8, ConstU32<128>> = b"BL-67890".to_vec().try_into().unwrap();
+
+        assert_ok!(Oracle::verify_merchant(
+            RuntimeOrigin::root(),
+            DAVE,
+            MerchantCategory::Accommodation.to_u8(),
+            cert.clone(),
+            license.clone(),
+            None
+        ));
+
+        System::set_block_number(100);
+        assert_ok!(Oracle::verify_merchant(
+            RuntimeOrigin::root(),
+            DAVE,
+            MerchantCategory::Accommodation.to_u8(),
+            cert,
+            license,
+            None
+        ));
+    });
+}
+
+/// Replacing a certification releases the previous number, so it is not held
+/// permanently by a merchant that no longer uses it.
+#[test]
+fn replacing_a_certification_releases_the_previous_number() {
+    new_test_ext().execute_with(|| {
+        let old_cert: BoundedVec<u8, ConstU32<128>> = b"FSC-OLD".to_vec().try_into().unwrap();
+        let new_cert: BoundedVec<u8, ConstU32<128>> = b"FSC-NEW".to_vec().try_into().unwrap();
+        let license: BoundedVec<u8, ConstU32<128>> = b"BL-67890".to_vec().try_into().unwrap();
+
+        assert_ok!(Oracle::verify_merchant(
+            RuntimeOrigin::root(),
+            DAVE,
+            MerchantCategory::Accommodation.to_u8(),
+            old_cert.clone(),
+            license.clone(),
+            None
+        ));
+        assert_ok!(Oracle::verify_merchant(
+            RuntimeOrigin::root(),
+            DAVE,
+            MerchantCategory::Retail.to_u8(),
+            new_cert,
+            license.clone(),
+            None
+        ));
+
+        // The released number can now be taken by a different merchant.
+        assert_ok!(Oracle::verify_merchant(
+            RuntimeOrigin::root(),
+            EVE,
+            MerchantCategory::Accommodation.to_u8(),
+            old_cert,
+            license,
+            None
+        ));
+    });
+}
 
 // ================================
 // Sanctions Tests

@@ -358,9 +358,9 @@ Built something cool? Share it!
 
 **BelizeChain Stats**:
 - **Block Time**: 6 seconds
-- **Finality**: 1 block (6 seconds)
-- **TPS**: ~1000 transactions/second
-- **Fee**: ~$0.01 USD average
+- **Finality**: GRANDPA — finality lag not measured
+- **TPS**: unmeasured — no load test has been run
+- **Fee**: unmeasured — fees vary with weight and are not priced in USD
 - **Languages**: Rust (pallets), JavaScript/TypeScript (dApps)
 - **API**: Polkadot.js compatible
 

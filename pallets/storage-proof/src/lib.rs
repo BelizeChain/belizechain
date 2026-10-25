@@ -81,6 +81,20 @@ pub const MAX_PROOF_STEPS: u32 = 64;
 /// Length (bytes) of a content identifier commitment as enforced by Pakit.
 pub const CID_COMMITMENT_LEN: usize = 32;
 
+/// Maximum IPFS CID length accepted, in bytes.
+///
+/// CIDv0 (base58btc) is 46 bytes and CIDv1 (base32) is 59 for a sha2-256
+/// multihash, so 128 leaves room for a hash-function change without needing a
+/// storage migration later.
+pub const MAX_IPFS_CID_LEN: u32 = 128;
+
+/// Maximum opaque content-metadata length accepted, in bytes.
+///
+/// Pakit sends a small JSON object (size, mime type, filename). The pallet never
+/// interprets the bytes; the bound only keeps per-record state growth bounded,
+/// and the deposit is what makes that growth paid for.
+pub const MAX_CONTENT_METADATA_LEN: u32 = 512;
+
 #[derive(
     Clone,
     Encode,
@@ -195,6 +209,8 @@ pub mod pallet {
 
     parameter_types! {
         pub MaxProofSteps: u32 = MAX_PROOF_STEPS;
+        pub MaxIpfsCidLen: u32 = MAX_IPFS_CID_LEN;
+        pub MaxContentMetadataLen: u32 = MAX_CONTENT_METADATA_LEN;
     }
 
     /// On-chain storage version for this pallet.
@@ -274,6 +290,16 @@ pub mod pallet {
     pub type ClientCommitmentCount<T: Config> =
         StorageMap<_, Blake2_128Concat, T::AccountId, u32, ValueQuery>;
 
+    /// Content id → owner-registered description of the stored bytes.
+    ///
+    /// Deliberately separate from [`StorageProofs`]: this map answers *what* a
+    /// content id is, not that its bytes were proven. Proving and payment stay in
+    /// `submit_storage_proof` / `commit_storage`, so a row here creates no payout
+    /// claim and a self-declared root buys nothing.
+    #[pallet::storage]
+    pub type ContentMetadata<T: Config> =
+        StorageMap<_, Blake2_128Concat, ContentId, ContentRecord<T::AccountId, BlockNumberFor<T>>>;
+
     #[derive(
         Clone,
         Encode,
@@ -290,6 +316,37 @@ pub mod pallet {
         pub submitter: AccountId,
         pub submitted_at: BlockNumber,
         pub proof_type: ProofType,
+    }
+
+    /// Description of a content item, registered by an account that paid a
+    /// refundable deposit for it.
+    ///
+    /// Both bounded fields use a fixed maximum encoded size, so one deposit
+    /// covers a record for its whole lifetime and `deregister_content` can
+    /// return it in full.
+    #[derive(
+        Clone,
+        Encode,
+        Decode,
+        PartialEq,
+        Eq,
+        Debug,
+        TypeInfo,
+        MaxEncodedLen,
+        codec::DecodeWithMemTracking,
+    )]
+    pub struct ContentRecord<AccountId, BlockNumber> {
+        /// Account that registered the record — the only one that may update or
+        /// remove it, and the one the deposit is reserved from.
+        pub owner: AccountId,
+        /// IPFS CID for the same bytes, so IPFS gateways can resolve the content.
+        pub ipfs_cid: BoundedVec<u8, MaxIpfsCidLen>,
+        /// Opaque metadata. The pallet does not parse it.
+        pub metadata: BoundedVec<u8, MaxContentMetadataLen>,
+        /// Block the record was created in.
+        pub registered_at: BlockNumber,
+        /// Block of the most recent update.
+        pub updated_at: BlockNumber,
     }
 
     #[pallet::error]
@@ -346,6 +403,15 @@ pub mod pallet {
         EscrowUnavailable,
         /// The client cannot cover the requested escrow.
         InsufficientEscrow,
+
+        // --- content metadata registry ---
+        /// A metadata record already exists for this content id. Use
+        /// `update_content_metadata` instead of overwriting someone's row.
+        ContentAlreadyRegistered,
+        /// No metadata record exists for this content id.
+        ContentNotFound,
+        /// Only the account that registered a record may change or remove it.
+        NotContentOwner,
     }
 
     #[pallet::call]
@@ -789,6 +855,102 @@ pub mod pallet {
             });
             Ok(())
         }
+
+        /// Register on-chain metadata for a content id.
+        ///
+        /// This is the descriptive half of a Pakit content record: it makes a
+        /// content id resolvable (IPFS CID plus caller-supplied metadata) without
+        /// asserting the bytes were proven and without creating any payout claim.
+        /// Proving and payment remain in `commit_storage` / `submit_storage_proof`.
+        ///
+        /// A refundable deposit is reserved, so registration is not free state
+        /// growth. `deregister_content` returns it in full.
+        ///
+        /// Fails if a record already exists. There is deliberately no upsert here:
+        /// silently overwriting another account's row would let anyone rewrite
+        /// metadata they neither own nor paid for.
+        #[pallet::weight(T::WeightInfo::register_content())]
+        #[pallet::call_index(7)]
+        pub fn register_content(
+            origin: OriginFor<T>,
+            content_id: ContentId,
+            ipfs_cid: BoundedVec<u8, MaxIpfsCidLen>,
+            metadata: BoundedVec<u8, MaxContentMetadataLen>,
+        ) -> DispatchResult {
+            let owner = ensure_signed(origin)?;
+
+            ensure!(
+                !ContentMetadata::<T>::contains_key(content_id),
+                Error::<T>::ContentAlreadyRegistered
+            );
+
+            T::Currency::reserve(&owner, T::StorageDeposit::get())
+                .map_err(|_| Error::<T>::InsufficientDeposit)?;
+
+            let now = <frame_system::Pallet<T>>::block_number();
+            ContentMetadata::<T>::insert(
+                content_id,
+                ContentRecord {
+                    owner: owner.clone(),
+                    ipfs_cid,
+                    metadata,
+                    registered_at: now,
+                    updated_at: now,
+                },
+            );
+
+            Self::deposit_event(Event::ContentRegistered { content_id, owner });
+            Ok(())
+        }
+
+        /// Replace the IPFS CID and metadata of an existing record.
+        ///
+        /// Owner-only: the deposit is held by the account that registered the
+        /// row, so letting anyone else rewrite it would change data at someone
+        /// else's expense. Neither bounded field affects the deposit, because
+        /// both have a fixed maximum encoded size.
+        #[pallet::weight(T::WeightInfo::update_content_metadata())]
+        #[pallet::call_index(8)]
+        pub fn update_content_metadata(
+            origin: OriginFor<T>,
+            content_id: ContentId,
+            ipfs_cid: BoundedVec<u8, MaxIpfsCidLen>,
+            metadata: BoundedVec<u8, MaxContentMetadataLen>,
+        ) -> DispatchResult {
+            let owner = ensure_signed(origin)?;
+
+            let mut record =
+                ContentMetadata::<T>::get(content_id).ok_or(Error::<T>::ContentNotFound)?;
+            ensure!(record.owner == owner, Error::<T>::NotContentOwner);
+
+            record.ipfs_cid = ipfs_cid;
+            record.metadata = metadata;
+            record.updated_at = <frame_system::Pallet<T>>::block_number();
+            ContentMetadata::<T>::insert(content_id, record);
+
+            Self::deposit_event(Event::ContentMetadataUpdated { content_id, owner });
+            Ok(())
+        }
+
+        /// Remove a record and return its deposit to the owner.
+        ///
+        /// Owner-only. The content id may be registered again afterwards, taking
+        /// a fresh deposit.
+        #[pallet::weight(T::WeightInfo::deregister_content())]
+        #[pallet::call_index(9)]
+        pub fn deregister_content(origin: OriginFor<T>, content_id: ContentId) -> DispatchResult {
+            let owner = ensure_signed(origin)?;
+
+            let record =
+                ContentMetadata::<T>::get(content_id).ok_or(Error::<T>::ContentNotFound)?;
+            ensure!(record.owner == owner, Error::<T>::NotContentOwner);
+
+            ContentMetadata::<T>::remove(content_id);
+            let _ = T::Currency::unreserve(&record.owner, T::StorageDeposit::get());
+
+            Self::deposit_event(Event::ContentDeregistered { content_id, owner });
+            Ok(())
+        }
     }
 
     #[pallet::event]
@@ -859,6 +1021,21 @@ pub mod pallet {
             provider: Option<T::AccountId>,
             refunded: BalanceOf<T>,
         },
+        /// A content metadata record was registered.
+        ContentRegistered {
+            content_id: ContentId,
+            owner: T::AccountId,
+        },
+        /// A content metadata record was updated by its owner.
+        ContentMetadataUpdated {
+            content_id: ContentId,
+            owner: T::AccountId,
+        },
+        /// A content metadata record was removed and its deposit returned.
+        ContentDeregistered {
+            content_id: ContentId,
+            owner: T::AccountId,
+        },
     }
 
     impl<T: Config> Pallet<T> {
@@ -915,6 +1092,9 @@ pub trait WeightInfo {
     fn challenge_provider() -> Weight;
     fn claim_challenge_failed() -> Weight;
     fn release_provider() -> Weight;
+    fn register_content() -> Weight;
+    fn update_content_metadata() -> Weight;
+    fn deregister_content() -> Weight;
 }
 
 impl WeightInfo for () {
@@ -964,5 +1144,23 @@ impl WeightInfo for () {
         Weight::from_parts(22_000_000, 3_000)
             .saturating_add(RocksDbWeight::get().reads(2))
             .saturating_add(RocksDbWeight::get().writes(3))
+    }
+
+    fn register_content() -> Weight {
+        Weight::from_parts(30_000_000, 4_000)
+            .saturating_add(RocksDbWeight::get().reads(2))
+            .saturating_add(RocksDbWeight::get().writes(2))
+    }
+
+    fn update_content_metadata() -> Weight {
+        Weight::from_parts(28_000_000, 4_000)
+            .saturating_add(RocksDbWeight::get().reads(1))
+            .saturating_add(RocksDbWeight::get().writes(1))
+    }
+
+    fn deregister_content() -> Weight {
+        Weight::from_parts(28_000_000, 4_000)
+            .saturating_add(RocksDbWeight::get().reads(1))
+            .saturating_add(RocksDbWeight::get().writes(1))
     }
 }

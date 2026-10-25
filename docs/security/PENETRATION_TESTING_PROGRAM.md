@@ -6,8 +6,11 @@
 > executed and should be struck from any engagement.
 >
 > Test `pallet-belize-interoperability` instead: `provide_pq_signature`, `submit_incoming_unlock`,
-> `process_unlock`, `acknowledge_message`, and the KYC/sanctions gates on each. See
-> `docs/bridges/README.md`.
+> `process_unlock`, `confirm_external_delivery`, `set_evm_address`, and the KYC/sanctions gates
+> on each. Priority targets are `confirm_external_delivery` (the only writer of
+> `external_confirmation`, so a false confirmation mints on the far side) and the
+> `EvmAddressOf` declaration (lying about an address puts a phantom signer in the reconciled
+> set). See `docs/bridges/README.md`.
 
 **Version:** 1.0  
 **Last Updated:** October 6, 2026  

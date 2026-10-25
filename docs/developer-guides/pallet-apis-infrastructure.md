@@ -163,7 +163,7 @@ pub fn create_liquidity_pool(
 // call_index(3) — release locked assets after multi-sig + challenge period
 pub fn process_unlock(origin: OriginFor<T>, tx_id: u32) -> DispatchResult;
 
-// call_index(4)
+// call_index(4) — queue an outbound message as a BridgeTransaction
 pub fn send_cross_chain_message(origin: OriginFor<T>, target_chain_index: u8, payload: Vec<u8>) -> DispatchResult;
 
 // call_index(5) — governance
@@ -197,10 +197,27 @@ pub fn withdraw_liquidity(
 
 // call_index(11) — confirm an oracle-attested burn proof
 pub fn confirm_burn_proof(origin: OriginFor<T>, tx_id: u32) -> DispatchResult;
+
+// call_index(12) — record that a finalized transaction landed on its target chain.
+// The ONLY writer of `BridgeTransaction.external_confirmation`. Requires
+// KYC L3 (`verify_bridge_operator`), status ReadyForExecution or Finalized, and
+// a non-empty hash of at most 128 bytes. Rejects a second confirmation.
+pub fn confirm_external_delivery(origin: OriginFor<T>, tx_id: u32, external_tx_hash: Vec<u8>) -> DispatchResult;
+
+// call_index(13) — declare the secp256k1 address this validator signs EVM
+// deliveries with. The zero address clears the declaration. A declaration, not
+// proof: off-chain tooling reconciles it against the receiver contract.
+pub fn set_evm_address(origin: OriginFor<T>, evm_address: [u8; 20]) -> DispatchResult;
 ```
 
 **Chain selection:** `target_chain_index` / `chain_index` index into the `BridgeChain` enum
 (52 variants) used by `ChainConfigurations`, not a small `ChainId` list.
+
+**One bridge, not two.** A value transfer and a message are both a `BridgeTransaction`,
+distinguished by `BridgeOperation::{LockAndMint, BurnAndUnlock, MessagePassing}`. They share
+`NextTxId`, `BridgeStatus` and `BridgeValidators`. Before spec 121 the pallet carried a
+parallel `CrossChainMessages` map with its own id counter, its own status field and its own
+`delivered` flag that nothing ever wrote; that map is gone.
 
 ### Storage
 
@@ -208,10 +225,10 @@ pub fn confirm_burn_proof(origin: OriginFor<T>, tx_id: u32) -> DispatchResult;
 |---|---|
 | `BridgeValidators` | Registered bridge validators + PQ keys |
 | `LiquidityPools` | Per-pool liquidity (`pool_id → _`) |
-| `BridgeTransactions` | Outbound/inbound bridge transactions (`tx_id → _`) |
-| `CrossChainMessages` | Arbitrary cross-chain messages |
+| `BridgeTransactions` | Outbound/inbound bridge transactions (`tx_id → _`), including messages |
 | `ChainConfigurations` | Per-`BridgeChain` config (enabled, fee rate, max amount, PQ requirements, endpoints) |
-| `NextTxId` / `NextPoolId` / `NextMessageId` | Id counters |
+| `EvmAddressOf` | Validator account → declared `secp256k1` address, for reconciling with the EVM receiver |
+| `NextTxId` / `NextPoolId` | Id counters |
 | `TotalLockedAssets` | Locked assets per chain/asset |
 | `PendingFinalizations` | Transactions awaiting finalization |
 | `UserBridgeLocks` | Per-user locked amount |
@@ -225,7 +242,8 @@ Exact value structs: see `pallets/interoperability/src/lib.rs`.
 
 `BridgeTransactionInitiated`, `BridgeTransactionExecuted`, `LiquidityPoolCreated`,
 `AssetsLocked`, `AssetsUnlocked`, `BridgeValidatorRegistered`, `PQSignatureProvided`,
-`CrossChainMessageSent`, `BridgeConfigUpdated`, `BridgeFeeCollected`,
+`CrossChainMessageSent`, `ExternalDeliveryConfirmed`, `ValidatorEvmAddressSet`,
+`BridgeConfigUpdated`, `BridgeFeeCollected`,
 `BridgeTransactionDisputed`, `BridgeTransactionFinalized`, `UnverifiedBurnProofWarning`,
 `BurnProofConfirmed`
 

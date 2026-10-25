@@ -47,10 +47,11 @@ value inline, so the next agent can see what moved.
 | Peers | 0 (`shouldHavePeers: false` — single node, expected) |
 | Repo agreement | **`runtime/src/lib.rs` reads `spec_version: 119`** — the repo is two versions ahead of the chain; see below |
 
-**The repo is at 119 and the chain is at 117.** Four runtime changes are committed but
-**not deployed**: `acknowledge_message` (interop call 12), `unlock_conviction` (governance
-call 46) plus the conviction-bond enforcement, a corrected `transfer_bbzd`
-self-transfer error, and the P1-08 BelizeX matching engine (spec 119, §4.3).
+**The repo is at 121 and the chain is at 117.** Five runtime changes are committed but
+**not deployed**: the bridge consolidation (`confirm_external_delivery` replacing
+`acknowledge_message` at interop call 12, plus `set_evm_address` at call 13),
+`unlock_conviction` (governance call 46) plus the conviction-bond enforcement, a corrected
+`transfer_bbzd` self-transfer error, and the P1-08 BelizeX matching engine (spec 119, §4.3).
 
 **119 is the first of these that needs a storage migration.** `OrderEntry` gained an
 `escrow` field, so `pallet-belize-belizex`'s `STORAGE_VERSION` went 0 → 1 and
@@ -227,10 +228,24 @@ real relayer is `docs/bridges/RELAYER_SCOPE.md`. Summary:
 - **What exists:** `pallet-belize-interoperability` at runtime index 27 — 51 chain identifiers,
   ML-DSA-87 signatures, `BridgeAsset` limited to DALLA/bBZD, KYC L2 for messaging and L3 for
   operators, escrow, liquidity pools, disputes.
-- **Gap 1 closed 2026-10-23:** `acknowledge_message` (call_index 12) now flips
-  `CrossChainMessage.delivered` to `true`. Before it, nothing in the pallet ever wrote `true`,
-  so outbound messaging was an append-only log. **Its weight is now measured** (8 reads,
+- **Gap 1 closed 2026-10-25:** `confirm_external_delivery` (call_index 12) is the only writer
+  of `BridgeTransaction.external_confirmation`, and it refuses to write unless the transaction
+  already reached `ReadyForExecution`/`Finalized` — i.e. the ML-DSA-87 threshold was met.
+  Before it, that field was declared and never set, so `Finalized` described our own
+  bookkeeping and nothing about the far side. **Its weight is now measured** (8 reads,
   2026-10-25) — the derived AMENDMENT block it used to carry is gone.
+- **One bridge, not two (spec 121).** `send_cross_chain_message` now queues a
+  `BridgeTransaction` with `BridgeOperation::MessagePassing` instead of writing a parallel
+  `CrossChainMessages` row. That map, `NextMessageId`, and the redundancy they implied are
+  gone. `MessagePassing` had been declared in the operation enum and never constructed — the
+  duplicate path was the mistake.
+- **The two validator registries are now comparable.** `BridgeValidators` holds ML-DSA-87
+  keys; `BelizeBridgeReceiver.sol` holds `secp256k1` addresses. Neither key derives from the
+  other and neither chain can read the other's set. `set_evm_address` (call 13, map
+  `EvmAddressOf`) records the declaration, and
+  `infra/relayer/scripts/check-validator-sets.mjs` compares the two sets and exits non-zero on
+  drift. This makes drift **visible**; it does not prevent it. Preventing it needs
+  `pallet_beefy` + `pallet_beefy_mmr`, neither of which is in `construct_runtime!`.
 - ⚠️ **A regeneration deletes a hand-written AMENDMENT block.** `scripts/bench_weights.sh`
   writes `--output` **wholesale**, so anything a human added to `weights.rs` is gone with no
   warning. This is the bug already hit on `belizex`, whose block was silently overwritten.
@@ -264,7 +279,7 @@ below, and note the two rows whose expectation was wrong.**
 | `governance` | `cast_vote` | derived: **+2 reads, +2 writes** for the conviction bond | authoritative | ⚠️ 82.81 ms, **up 33 %** |
 | `governance` | `reveal_vote` | derived, same cause | authoritative | ✅ 58.46 ms, flat |
 | `governance` | `unlock_conviction` | **never measured**, hand-derived from scratch | first real measurement | ⚠️ 35.11 ms, **up 77 %** |
-| `interoperability` | `acknowledge_message` | derived from `submit_incoming_unlock` | first real measurement | ⛔ reverted — benchmark bypasses identity checks |
+| `interoperability` | `acknowledge_message` → `confirm_external_delivery` | derived from `submit_incoming_unlock` | first real measurement | ⛔ reverted — benchmark bypasses identity checks |
 | `mesh` | `register_mesh_sender_key` | **hand-estimated**, added after the file was generated | first real measurement | ⚠️ 18.11 ms, **up 21 %** |
 | `oracle` | `verify_merchant` | rationale only — one read either way | ~unchanged | ✅ 11.12 ms, **0 reads** — the "one read" was also wrong |
 | `staking` | `distribute_rewards` | derived: **+1 read, +1 write** for the epoch gate | authoritative | ✅ 40.23 ms, flat |
@@ -301,26 +316,32 @@ takes.** Measured before → after (committed values, 1.25× applied):
 | `mesh` | `register_mesh_sender_key` | 15.00 ms | **18.11 ms** | ✅ replaced — hand-estimate under by 21 % |
 | `staking` | `distribute_rewards` | 39.30 ms | **40.23 ms** | ✅ replaced |
 | `oracle` | `verify_merchant` | 19.49 ms / 1 read | **11.12 ms / 0 reads** | ✅ replaced — derived value over-charged |
-| `interoperability` | `acknowledge_message` | 31.24 ms / 4 reads | **8 reads** (2026-10-25) | ✅ resolved — bypasses removed, re-measured |
+| `interoperability` | `confirm_external_delivery` | 31.24 ms / 4 reads | **66.58 ms / 8 reads / 155 KB PoV** (2026-10-25) | ✅ resolved — bypasses removed, re-measured |
 
 **The "all six are biased upward" claim in the earlier table was wrong.** `unlock_conviction`
 was derived 44 % *below* its real cost and `cast_vote` 25 % below — while their read counts
 were overstated. A derived weight can be conservative on one axis and optimistic on the
 other; "biased upward" has to be verified per axis, not asserted per entry.
 
-**✅ RESOLVED 2026-10-25 — the bypasses are gone, and `acknowledge_message` is measured.**
-`interoperability::acknowledge_message` was the one genuine under-charge in this table: the
-extrinsic calls `T::Identity::verify_bridge_operator` and `T::Identity::is_sanctioned`, and
-both runtime adapters short-circuited under `runtime-benchmarks` (`return true` /
-`return false`). The benchmark build did 2 reads fewer than production, and the derived 4
-it carried was itself only a partial count.
+**✅ RESOLVED 2026-10-25 — the bypasses are gone, and `confirm_external_delivery` is measured.**
+`interoperability::confirm_external_delivery` (then called `acknowledge_message`) was the one
+genuine under-charge in this table: the extrinsic calls `T::Identity::verify_bridge_operator`
+and `T::Identity::is_sanctioned`, and both runtime adapters short-circuited under
+`runtime-benchmarks` (`return true` / `return false`). The benchmark build did 2 reads fewer
+than production, and the derived 4 it carried was itself only a partial count.
 
 All 15 benchmark-mode early returns in `runtime/src/lib.rs`'s `pub mod providers` have been
 removed. Benchmarks now write the real state the gate reads, through a defaulted
 `Config::seed_bench_kyc` hook implemented in the runtime — the same idiom as the existing
 `make_council_member` / `make_mediator` / `make_house_member`. After regeneration,
-`acknowledge_message` measures **8 reads** (was 4, production-real) and its hand-written
+`confirm_external_delivery` measures **8 reads** (was 4, production-real) and its hand-written
 `AMENDMENT` block is gone.
+
+> ⚠️ **That measurement's 155 KB proof estimate is not a typo.** A `BridgeTransactions` row
+> contains `pq_signatures: BoundedVec<(AccountId, BoundedVec<u8, 4627>), 32>` — 32 ML-DSA-87
+> signatures of up to 4,627 bytes each, so the encoded worst case really is ~149 KB. Reading
+> one row can therefore pull 155 KB of PoV, and `confirm_external_delivery` does exactly
+> that. Budget it against the 5 MiB block PoV limit before raising the signature bound.
 
 > 🔴 **The seeding rule that is easy to get backwards: seed the *cheapest* level the gate
 > accepts, not the maximum.** `Identity::get_verified_kyc_level` probes L3 → L2 → L1 and

@@ -246,11 +246,31 @@ check_host_pins() { # $1 = infra repo root
 # ═══════════════════════════════════════════════════════════════════════════
 # CHECK 3 — extrinsic calls from sibling repos vs the actual runtime
 #   (workspace mode only). Module-aware: the call_module must exist in
-#   construct_runtime!, and when it maps to a BelizeChain pallet the function
-#   must be defined there. Framework pallets (System, Contracts, ...) are out
-#   of scope — their call names belong to upstream Substrate, not this repo.
+#   construct_runtime!, and the function must be defined in that pallet — for
+#   BelizeChain pallets from `pallets/*`, for upstream pallets from their
+#   cargo-registry source.
 #   Caught: kinich's Consensus.submit_proof_of_* calls (nowhere defined).
+#   Caught: pakit's Contracts.store_contract_data / cleanup_contract_data — a
+#   module that exists (pallet-contracts) but extrinsics that never did. That
+#   was skipped for months because "framework pallet" was treated as out of
+#   scope, which made the check pass over a call that could only fail at
+#   dispatch.
 # ═══════════════════════════════════════════════════════════════════════════
+upstream_pallet_dir() { # $1 = crate name (underscores) → registry source dir, or nothing
+  local crate="${1//_/-}" reg hit
+  for reg in "${CARGO_HOME:-$HOME/.cargo}/registry/src"/*; do
+    [ -d "$reg" ] || continue
+    # The `-[0-9]*` glob keeps pallet-contracts from matching
+    # pallet-contracts-mock-network-7.0.0. sort -V picks the newest vendored copy.
+    hit="$(printf '%s\n' "$reg/$crate"-[0-9]* | sort -V | tail -1)"
+    [ -d "$hit" ] && {
+      printf '%s\n' "$hit"
+      return 0
+    }
+  done
+  return 0
+}
+
 check_extrinsic_names() {
   local runtime="$WS/belizechain/runtime/src/lib.rs"
   [ -n "$WS" ] && [ -d "$WS/belizechain/pallets" ] && [ -f "$runtime" ] || {
@@ -272,7 +292,7 @@ check_extrinsic_names() {
   done
 
   # collect call sites: pair each call_module= with the next call_function=
-  local sites bad=0 framework=0
+  local sites bad=0 upstream=0 unresolved=0
   sites="$(mktemp)"
 
   # An array, not an unquoted $(find). awk needs the file list word-split, but an
@@ -317,8 +337,15 @@ check_extrinsic_names() {
     fi
     dir="$(awk -v c="$crate_name" '$1==c{print $2}' "$map_dir")"
     if [ -z "$dir" ]; then
-      framework=$((framework + 1))   # upstream framework pallet — out of scope
-      continue
+      # Not one of ours. Resolve the upstream pallet from the cargo registry and
+      # check the call name there — a module that exists is not evidence that the
+      # function does.
+      dir="$(upstream_pallet_dir "$crate_name")"
+      if [ -z "$dir" ]; then
+        unresolved=$((unresolved + 1))
+        continue
+      fi
+      upstream=$((upstream + 1))
     fi
     fnlist="$(grep -rhoE 'pub fn [a-z0-9_]+' --include='*.rs' "$dir" 2>/dev/null | awk '{print $3}' | sort -u)"
     if ! printf '%s\n' "$fnlist" | grep -qx "$fname"; then
@@ -327,8 +354,11 @@ check_extrinsic_names() {
     fi
   done < "$sites"
   rm -f "$modmap" "$map_dir" "$sites"
+  if [ "$unresolved" -gt 0 ]; then
+    skip "extrinsic names: $unresolved upstream pallet crate(s) not vendored locally — their call names were not verified"
+  fi
   if [ "$bad" -eq 0 ]; then
-    pass "extrinsic names: every custom-pallet call exists in the runtime ($framework framework call(s) skipped)"
+    pass "extrinsic names: every call exists in the runtime ($upstream upstream pallet(s) verified)"
   fi
 }
 

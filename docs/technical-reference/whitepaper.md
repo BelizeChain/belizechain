@@ -371,17 +371,16 @@ pub enum BelizeSignature {
 ### 8.1 Transaction Throughput
 
 **Current Performance:**
-- 1,000 TPS baseline capacity
+- Throughput: **unmeasured** — no load test has been run, so no TPS figure is published
 - 6-second block times
-- 12-second finality
-- Sub-second confirmation for simple transfers
+- GRANDPA finality (a few blocks behind production)
 
-**Scaling Roadmap:**
+**Scaling Roadmap** (aspirational — none of these figures has been demonstrated):
 ```
-Phase 1: 1,000 TPS (Launch)
-Phase 2: 10,000 TPS (Sharding)
-Phase 3: 100,000 TPS (Layer 2)
-Phase 4: 1,000,000 TPS (Quantum Enhancement)
+Phase 1: ~2,000 TPS design target (never benchmarked)
+Phase 2: 10,000 TPS (Sharding — not designed)
+Phase 3: 100,000 TPS (Layer 2 — not designed)
+Phase 4: 1,000,000 TPS (Quantum Enhancement — not designed)
 ```
 
 ### 8.2 Storage Optimization
@@ -693,11 +692,13 @@ The future of Belize's digital sovereignty is in our hands. Together, we will bu
 ### Appendix A: Technical Specifications
 
 **Blockchain Specifications:**
-- **Consensus**: Proof of Useful Work (PoUW)
+- **Block Production**: BABE (slot-based authoring)
 - **Finality**: GRANDPA finality gadget
+- **Consensus**: Proof of Useful Work (PoUW) scores determine rewards; they do **not**
+  select block authors
 - **Block Time**: 6 seconds
 - **Block Size**: 5MB maximum
-- **Transaction Throughput**: 1,000 TPS baseline
+- **Transaction Throughput**: unmeasured — no benchmark exists
 
 **Cryptographic Specifications:**
 - **Signatures**: Sr25519 (current), Dilithium (post-quantum)

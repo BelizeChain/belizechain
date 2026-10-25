@@ -81,18 +81,13 @@ pub trait PQSignatureVerifier {
 
 /// Default passthrough verifier — accepts any signature of length ≥ 64 bytes.
 ///
-/// **WARNING**: This is NOT a real cryptographic verifier.  It exists solely to
-/// allow the pallet to compile and to be replaced by a real implementation.
-/// Using this in production leaves bridge signatures UNVERIFIED (AR-6).
+/// **WARNING**: This is NOT a real cryptographic verifier. It exists only for
+/// tests and weight benchmarks.
 ///
-/// TODO (AR-6): Replace with a host-function-backed Falcon or Dilithium verifier
-/// before mainnet deployment.
-///
-/// P1-05: gated to test/benchmark builds so it cannot be wired into a
-/// production runtime by mistake. `MLDsaVerifier` is the production verifier.
-/// Note that this alone would not have been sufficient — `verify` also fails
-/// closed outside those builds — but gating removes the type from the
-/// production build graph entirely, which is the stronger guarantee.
+/// AR-6 is resolved: [`MLDsaVerifier`] below is the production verifier (NIST
+/// FIPS 204 ML-DSA-87, pure Rust). This type is gated to test/benchmark builds
+/// so it cannot be wired into a production runtime by mistake — that gating is
+/// the guarantee, not the length check inside `verify`.
 #[cfg(any(test, feature = "runtime-benchmarks"))]
 pub struct PassthroughPQVerifier;
 
@@ -504,20 +499,31 @@ pub mod pallet {
     >;
 
     #[pallet::storage]
-    #[pallet::getter(fn cross_chain_messages)]
-    /// Cross-chain message records
-    pub type CrossChainMessages<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        u32, // Message ID
-        CrossChainMessage,
-    >;
-
-    #[pallet::storage]
     #[pallet::getter(fn chain_configurations)]
     /// Configuration for each supported chain
     pub type ChainConfigurations<T: Config> =
         StorageMap<_, Blake2_128Concat, BridgeChain, ChainConfig>;
+
+    /// EVM signing address declared by each bridge validator.
+    ///
+    /// A validator holds two pieces of key material that cannot be derived from
+    /// each other: an ML-DSA-87 public key, which this pallet verifies for
+    /// `BridgeTransaction` signatures, and a `secp256k1` address, which the EVM
+    /// receiver contract verifies for `deliverMessage`/`deliverValue`. Nothing
+    /// links them cryptographically, so without this map the contract's validator
+    /// set and this pallet's validator set are simply two unrelated lists — a
+    /// threshold on one says nothing about the threshold on the other.
+    ///
+    /// Recording the address here does not enforce agreement; it makes the two
+    /// sets *comparable*, which is what a reconciliation check needs. Enforcing it
+    /// would require the far chain to read this registry, which needs BEEFY.
+    ///
+    /// Additive: a new map starts empty, so no storage migration and no
+    /// `STORAGE_VERSION` bump.
+    #[pallet::storage]
+    #[pallet::getter(fn evm_address_of)]
+    pub type EvmAddressOf<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, [u8; 20]>;
 
     #[pallet::storage]
     #[pallet::getter(fn next_tx_id)]
@@ -528,11 +534,6 @@ pub mod pallet {
     #[pallet::getter(fn next_pool_id)]
     /// Next available pool ID
     pub type NextPoolId<T: Config> = StorageValue<_, u32, ValueQuery>;
-
-    #[pallet::storage]
-    #[pallet::getter(fn next_message_id)]
-    /// Next available message ID
-    pub type NextMessageId<T: Config> = StorageValue<_, u32, ValueQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn total_locked_assets)]
@@ -672,17 +673,22 @@ pub mod pallet {
             validator: T::AccountId,
             signatures_collected: u32,
         },
-        /// Cross-chain message sent
+        /// Cross-chain message queued as a bridge transaction
         CrossChainMessageSent {
-            message_id: u32,
+            tx_id: u32,
             target_chain: u8,
             message_hash: [u8; 32],
         },
-        /// Cross-chain message delivery acknowledged by a bridge validator
-        CrossChainMessageDelivered {
-            message_id: u32,
-            target_chain: u8,
-            acknowledged_by: T::AccountId,
+        /// A finalized bridge transaction was observed on its target chain
+        ExternalDeliveryConfirmed {
+            tx_id: u32,
+            external_tx_hash: Vec<u8>,
+            confirmed_by: T::AccountId,
+        },
+        /// A validator declared the `secp256k1` address it signs with on the EVM side
+        ValidatorEvmAddressSet {
+            validator: T::AccountId,
+            evm_address: [u8; 20],
         },
         /// Bridge configuration updated
         BridgeConfigUpdated { chain: u8, fee_rate: u32 },
@@ -762,10 +768,12 @@ pub mod pallet {
         NotBurnTransaction,
         /// P0-1: Insufficient oracle confirmations for burn proof
         BurnNotVerifiedByOracle,
-        /// Cross-chain message ID does not exist
-        MessageNotFound,
-        /// Cross-chain message was already acknowledged as delivered
-        MessageAlreadyDelivered,
+        /// Message payload was empty
+        EmptyPayload,
+        /// Transaction has not reached `ReadyForExecution` or `Finalized`
+        NotReadyForExecution,
+        /// EVM address is zero or otherwise unusable as a signing key
+        InvalidEvmAddress,
     }
 
     // ===== HOOKS (§4.4b Challenge Period Finalization) =====
@@ -1369,7 +1377,13 @@ pub mod pallet {
             Ok(())
         }
 
-        /// Send cross-chain message (H-36 fix: KYC, sanctions, fee)
+        /// Send a cross-chain message (H-36 fix: KYC, sanctions, fee).
+        ///
+        /// This queues a `BridgeTransaction` with `BridgeOperation::MessagePassing`, so a
+        /// message is the same kind of object as a value transfer: one ID space, one status
+        /// machine, one validator set, one delivery proof. An earlier version kept a separate
+        /// `CrossChainMessages` map with its own id counter and its own `delivered` flag, which
+        /// duplicated every one of those.
         #[pallet::call_index(4)]
         #[pallet::weight(T::WeightInfo::send_message())]
         pub fn send_cross_chain_message(
@@ -1391,6 +1405,17 @@ pub mod pallet {
 
             let target_chain =
                 Self::decode_chain(target_chain_index).ok_or(Error::<T>::UnsupportedChain)?;
+            let chain_config =
+                Self::chain_configurations(&target_chain).ok_or(Error::<T>::UnsupportedChain)?;
+            ensure!(chain_config.enabled, Error::<T>::BridgeDisabled);
+
+            let payload_bounded: BoundedVec<u8, ConstU32<2048>> = payload
+                .try_into()
+                .map_err(|_| Error::<T>::InvalidConfiguration)?;
+            // An empty payload is indistinguishable from a no-op once hashed, so refuse it
+            // rather than queueing a transaction every validator would sign for nothing.
+            ensure!(!payload_bounded.is_empty(), Error::<T>::EmptyPayload);
+            let message_hash = sp_io::hashing::blake2_256(payload_bounded.as_slice());
 
             // H-36: Charge a messaging fee (MinBridgeAmount sent to treasury)
             let fee = T::MinBridgeAmount::get();
@@ -1402,29 +1427,33 @@ pub mod pallet {
                 frame_support::traits::ExistenceRequirement::KeepAlive,
             )?;
 
-            let message_id = Self::next_message_id();
-            let payload_bounded: BoundedVec<u8, ConstU32<2048>> = payload
-                .try_into()
-                .map_err(|_| Error::<T>::InvalidConfiguration)?;
-            let message_hash = sp_io::hashing::blake2_256(payload_bounded.as_slice());
-            // SAFETY: BlockNumber fits in u64 (runtime uses u32 block numbers)
-            let timestamp = frame_system::Pallet::<T>::block_number().saturated_into::<u64>();
+            let tx_id = Self::next_tx_id();
+            let current_block = frame_system::Pallet::<T>::block_number();
 
-            let message = CrossChainMessage {
-                message_id,
-                source_chain: BridgeChain::Polkadot, // BelizeChain as source
-                target_chain: target_chain.clone(),
-                payload: payload_bounded,
-                message_hash,
-                delivered: false,
-                timestamp,
+            let bridge_tx = BridgeTransaction {
+                tx_id,
+                initiator: who.clone(),
+                operation: BridgeOperation::MessagePassing {
+                    target_chain: target_chain.clone(),
+                    message_hash,
+                    payload: payload_bounded,
+                },
+                status: BridgeStatus::Initiated,
+                required_signatures: chain_config.pq_signatures_required,
+                collected_signatures: 0,
+                pq_signatures: BoundedVec::default(),
+                fee: fee.saturated_into::<u128>(),
+                initiated_at: current_block,
+                completed_at: None,
+                external_confirmation: None,
+                dispute_info: None,
             };
 
-            CrossChainMessages::<T>::insert(message_id, message);
-            NextMessageId::<T>::put(message_id.checked_add(1).ok_or(Error::<T>::IdOverflow)?);
+            BridgeTransactions::<T>::insert(tx_id, bridge_tx);
+            NextTxId::<T>::put(tx_id.checked_add(1).ok_or(Error::<T>::IdOverflow)?);
 
             Self::deposit_event(Event::CrossChainMessageSent {
-                message_id,
+                tx_id,
                 target_chain: Self::encode_chain(&target_chain),
                 message_hash,
             });
@@ -1432,16 +1461,22 @@ pub mod pallet {
             Ok(())
         }
 
-        /// Acknowledge that a previously sent cross-chain message reached its target chain.
+        /// Record that a finalized bridge transaction was observed on its target chain.
         ///
-        /// `send_cross_chain_message` records a message with `delivered: false`; without this
-        /// call that flag could never become `true`, which made outbound messaging an
-        /// append-only log rather than a transport. Only a registered bridge validator (KYC
-        /// Level 3, not sanctioned) may attest delivery, because the attestation is the
-        /// relayer's assertion that the payload was observed on the foreign chain.
+        /// This is the only writer of `BridgeTransaction::external_confirmation`, which was
+        /// declared but never set: after `on_idle` marked a transaction `Finalized`, the chain
+        /// had no record of whether anything actually happened on the far side. That made
+        /// "finalized" a statement about our own bookkeeping only.
+        ///
+        /// Only a registered bridge validator (KYC Level 3, not sanctioned) may record it, and
+        /// the recorded hash is the foreign-chain transaction that carried the payload or mint.
         #[pallet::call_index(12)]
-        #[pallet::weight(T::WeightInfo::acknowledge_message())]
-        pub fn acknowledge_message(origin: OriginFor<T>, message_id: u32) -> DispatchResult {
+        #[pallet::weight(T::WeightInfo::confirm_external_delivery())]
+        pub fn confirm_external_delivery(
+            origin: OriginFor<T>,
+            tx_id: u32,
+            external_tx_hash: Vec<u8>,
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
             ensure!(
@@ -1454,17 +1489,82 @@ pub mod pallet {
             );
             Self::bridge_validators(&who).ok_or(Error::<T>::ValidatorNotRegistered)?;
 
-            let mut message =
-                Self::cross_chain_messages(message_id).ok_or(Error::<T>::MessageNotFound)?;
-            ensure!(!message.delivered, Error::<T>::MessageAlreadyDelivered);
+            let mut bridge_tx =
+                BridgeTransactions::<T>::get(tx_id).ok_or(Error::<T>::TransactionNotFound)?;
 
-            message.delivered = true;
-            CrossChainMessages::<T>::insert(message_id, message.clone());
+            // Only a transaction that validators have signed off has anything to confirm.
+            ensure!(
+                matches!(
+                    bridge_tx.status,
+                    BridgeStatus::ReadyForExecution | BridgeStatus::Finalized
+                ),
+                Error::<T>::NotReadyForExecution
+            );
+            ensure!(
+                bridge_tx.external_confirmation.is_none(),
+                Error::<T>::AlreadyExecuted
+            );
 
-            Self::deposit_event(Event::CrossChainMessageDelivered {
-                message_id,
-                target_chain: Self::encode_chain(&message.target_chain),
-                acknowledged_by: who,
+            let bounded: BoundedVec<u8, ConstU32<128>> = external_tx_hash
+                .try_into()
+                .map_err(|_| Error::<T>::InvalidConfiguration)?;
+            ensure!(!bounded.is_empty(), Error::<T>::InvalidConfiguration);
+
+            bridge_tx.external_confirmation = Some(bounded.clone());
+            BridgeTransactions::<T>::insert(tx_id, bridge_tx);
+
+            Self::deposit_event(Event::ExternalDeliveryConfirmed {
+                tx_id,
+                external_tx_hash: bounded.into_inner(),
+                confirmed_by: who,
+            });
+
+            Ok(())
+        }
+
+        /// Declare the `secp256k1` address this validator signs bridge deliveries with.
+        ///
+        /// The EVM receiver holds a validator set of EVM addresses; this pallet holds
+        /// one of ML-DSA-87 public keys. Neither key can be derived from the other, so
+        /// without this declaration the two sets are unrelated and a threshold on one
+        /// means nothing about the other. Off-chain tooling compares the two sets and
+        /// reports drift (see `infra/relayer/scripts/check-validator-sets.mjs`).
+        ///
+        /// Passing the zero address clears the declaration, which is how a validator
+        /// withdraws from the EVM side without unregistering here. The zero address is
+        /// never a valid signer — the contract rejects it for both validators and
+        /// recipients — so it is unambiguous as a sentinel.
+        ///
+        /// This is a declaration, not proof: the pallet cannot verify that the caller
+        /// controls the address. A wrong entry produces a reconciliation mismatch,
+        /// which is loud, rather than a silently weaker bridge.
+        #[pallet::call_index(13)]
+        #[pallet::weight(T::WeightInfo::set_evm_address())]
+        pub fn set_evm_address(
+            origin: OriginFor<T>,
+            evm_address: [u8; 20],
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            ensure!(
+                T::Identity::verify_bridge_operator(&who),
+                Error::<T>::BridgeOperatorKycInsufficient
+            );
+            ensure!(
+                !T::Identity::is_sanctioned(&who),
+                Error::<T>::AccountSanctioned
+            );
+            Self::bridge_validators(&who).ok_or(Error::<T>::ValidatorNotRegistered)?;
+
+            if evm_address == [0u8; 20] {
+                EvmAddressOf::<T>::remove(&who);
+            } else {
+                EvmAddressOf::<T>::insert(&who, evm_address);
+            }
+
+            Self::deposit_event(Event::ValidatorEvmAddressSet {
+                validator: who,
+                evm_address,
             });
 
             Ok(())
@@ -1679,6 +1779,9 @@ pub mod pallet {
             T::Currency::remove_lock(BRIDGE_LOCK_ID, &validator_account);
 
             BridgeValidators::<T>::remove(&validator_account);
+            // Drop the EVM declaration too: leaving it behind would keep a departed
+            // validator in the reconciled set and overstate the contract's quorum.
+            EvmAddressOf::<T>::remove(&validator_account);
 
             Ok(())
         }
@@ -1978,7 +2081,8 @@ pub trait WeightInfo {
     fn withdraw_liquidity() -> Weight;
     fn register_bridge_validator() -> Weight;
     fn submit_incoming_unlock() -> Weight;
-    fn acknowledge_message() -> Weight;
+    fn confirm_external_delivery() -> Weight;
+    fn set_evm_address() -> Weight;
 }
 
 impl WeightInfo for () {
@@ -2015,7 +2119,10 @@ impl WeightInfo for () {
     fn submit_incoming_unlock() -> Weight {
         Weight::from_parts(25_000_000, 512).saturating_add(Weight::from_parts(0, 3500))
     }
-    fn acknowledge_message() -> Weight {
+    fn confirm_external_delivery() -> Weight {
+        Weight::from_parts(12_000_000, 512).saturating_add(Weight::from_parts(0, 2000))
+    }
+    fn set_evm_address() -> Weight {
         Weight::from_parts(12_000_000, 512).saturating_add(Weight::from_parts(0, 2000))
     }
 }

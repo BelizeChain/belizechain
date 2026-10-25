@@ -180,5 +180,77 @@ mod benchmarks {
         release_provider(RawOrigin::Signed(client), root);
     }
 
+    /// Maximum-length IPFS CID, so the benchmark measures the worst-case record.
+    fn max_ipfs_cid() -> BoundedVec<u8, MaxIpfsCidLen> {
+        BoundedVec::truncate_from(
+            core::iter::repeat(b'c')
+                .take(MAX_IPFS_CID_LEN as usize)
+                .collect::<Vec<u8>>(),
+        )
+    }
+
+    /// Maximum-length metadata blob, so the benchmark measures the worst case.
+    fn max_metadata() -> BoundedVec<u8, MaxContentMetadataLen> {
+        BoundedVec::truncate_from(
+            core::iter::repeat(b'm')
+                .take(MAX_CONTENT_METADATA_LEN as usize)
+                .collect::<Vec<u8>>(),
+        )
+    }
+
+    /// Funds `caller` for the content deposit and registers `content_id`.
+    fn register_or_panic<T: Config>(caller: &T::AccountId, content_id: ContentId) {
+        let deposit = T::StorageDeposit::get();
+        let _ = T::Currency::make_free_balance_be(caller, deposit.saturating_mul(10u32.into()));
+        Pallet::<T>::register_content(
+            RawOrigin::Signed(caller.clone()).into(),
+            content_id,
+            max_ipfs_cid(),
+            max_metadata(),
+        )
+        .expect("benchmark registration setup must succeed");
+    }
+
+    #[benchmark]
+    fn register_content() {
+        let caller: T::AccountId = whitelisted_caller();
+        let content_id: ContentId = [7u8; 32];
+        let deposit = T::StorageDeposit::get();
+        let _ = T::Currency::make_free_balance_be(&caller, deposit.saturating_mul(10u32.into()));
+
+        #[extrinsic_call]
+        register_content(
+            RawOrigin::Signed(caller),
+            content_id,
+            max_ipfs_cid(),
+            max_metadata(),
+        );
+    }
+
+    #[benchmark]
+    fn update_content_metadata() {
+        let caller: T::AccountId = whitelisted_caller();
+        let content_id: ContentId = [7u8; 32];
+        register_or_panic::<T>(&caller, content_id);
+
+        #[extrinsic_call]
+        update_content_metadata(
+            RawOrigin::Signed(caller),
+            content_id,
+            max_ipfs_cid(),
+            max_metadata(),
+        );
+    }
+
+    #[benchmark]
+    fn deregister_content() {
+        let caller: T::AccountId = whitelisted_caller();
+        let content_id: ContentId = [7u8; 32];
+        register_or_panic::<T>(&caller, content_id);
+
+        #[extrinsic_call]
+        deregister_content(RawOrigin::Signed(caller), content_id);
+    }
+
     impl_benchmark_test_suite!(Pallet, crate::mock::new_test_ext(), crate::mock::Test);
 }
