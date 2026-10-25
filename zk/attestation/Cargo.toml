@@ -1,0 +1,88 @@
+[package]
+name = "belizechain-zk-attestation"
+version = "0.1.0"
+description = "Privacy-preserving registry attestations for BelizeChain — Poseidon commitments and Groth16 proofs"
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# Two audiences, one crate:
+#   * the runtime links only the verifier (`no_std`), which is the pairing check
+#   * the prover CLI links the circuit and needs `std`
+# Keeping them together is what stops the two halves drifting — a mismatch
+# between prover and verifier produces proofs that never verify, and there is no
+# compile-time error for that.
+[lib]
+name = "belizechain_zk_attestation"
+crate-type = ["rlib"]
+
+[dependencies]
+ark-bls12-381 = { version = "0.5.0", default-features = false, features = ["curve"] }
+ark-ec = { version = "0.5.0", default-features = false }
+ark-ff = { version = "0.5.0", default-features = false }
+ark-serialize = { version = "0.5.0", default-features = false }
+ark-std = { version = "0.5.0", default-features = false }
+ark-groth16 = { version = "0.5.0", default-features = false }
+
+# Crucially: the chain never runs Poseidon. Roots arrive from governance and are
+# validated as canonical field elements; verification is a pairing check. So the
+# runtime half needs no prover-side machinery at all.
+
+[features]
+default = ["std"]
+std = [
+    "ark-bls12-381/std",
+    "ark-ec/std",
+    "ark-ff/std",
+    "ark-serialize/std",
+    "ark-std/std",
+    "ark-groth16/std",
+]
+
+# Circuit synthesis and proving. Pulls in ark-crypto-primitives, which is a
+# large dependency and must never reach the runtime wasm — hence a feature
+# rather than a default.
+prover = [
+    "std",
+    "ark-crypto-primitives",
+    "ark-r1cs-std",
+    "ark-relations",
+    "ark-snark",
+    "ark-std/getrandom",
+]
+
+[dependencies.ark-crypto-primitives]
+version = "0.5.0"
+default-features = false
+features = ["sponge", "r1cs"]
+optional = true
+
+[dependencies.ark-r1cs-std]
+version = "0.5.0"
+default-features = false
+optional = true
+
+[dependencies.ark-relations]
+version = "0.5.0"
+default-features = false
+optional = true
+
+[dependencies.ark-snark]
+version = "0.5.1"
+default-features = false
+optional = true
+
+[dev-dependencies]
+ark-relations = { version = "0.5.0", default-features = false }
+ark-snark = { version = "0.5.1", default-features = false }
+ark-r1cs-std = { version = "0.5.0", default-features = false }
+ark-crypto-primitives = { version = "0.5.0", default-features = false, features = ["sponge", "r1cs"] }
+
+# Operator CLI. Needs the prover, so it is a separate target rather than part of
+# the library the runtime links.
+[[bin]]
+name = "attest"
+path = "src/bin/attest.rs"
+required-features = ["prover"]

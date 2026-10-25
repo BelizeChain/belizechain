@@ -384,6 +384,7 @@ mod tests {
             assert_storage_version!(BelizeWhistleblower);
             assert_storage_version!(BelizeModeration);
             assert_storage_version!(StorageProof);
+            assert_storage_version!(ZkAttestation);
 
             // A pending migration is the expected state on a fresh chain; running
             // the coordinator must close every gap.
@@ -408,6 +409,7 @@ mod tests {
             assert_migration_closed_the_gap!(BelizeWhistleblower);
             assert_migration_closed_the_gap!(BelizeModeration);
             assert_migration_closed_the_gap!(StorageProof);
+            assert_migration_closed_the_gap!(ZkAttestation);
         });
     }
 }
@@ -668,7 +670,47 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     //   signatures (~149 KB), so this is the real worst case, not a mistake.
     //   `set_evm_address` 7 reads / 1 write / 57.2 ms. No AMENDMENT blocks were
     //   present, so the regeneration lost nothing.
-    spec_version: 121,
+    // - 122: `pallets/zk-attestation` added at index 39 — privacy-preserving
+    //   registry attestations. A ministry publishes a Poseidon commitment root
+    //   over its registry; a citizen submits a Groth16 proof that their record is
+    //   under that root and clears a threshold, disclosing neither. Merkle proofs
+    //   cannot express this, because verifying one requires handing over the leaf.
+    //
+    //   What the runtime actually executes is a BLS12-381 pairing check. There is
+    //   no Poseidon, no constraint system and no prover anywhere in the wasm: the
+    //   shared `belizechain-zk-attestation` crate exposes the verifier
+    //   unconditionally and the circuit only behind its `prover` feature, which
+    //   this runtime does not enable. Roots arrive from governance and are
+    //   validated as canonical field elements; the chain never builds a tree.
+    //
+    //   Storage is all new (`RegistryRoots`, `VerifyingKeys`, `UsedNullifiers`,
+    //   `AttestationCount`), so a fresh pallet at `STORAGE_VERSION = 1` needs no
+    //   migration and no coordinator entry.
+    //
+    //   ⚠️ Three properties an operator must not overstate:
+    //   1. This layer is **not post-quantum** — Groth16 over BLS12-381 rests on
+    //      discrete log. The ML-DSA-87 machinery elsewhere in the runtime is
+    //      unaffected; an attestation is the one proof type a quantum adversary
+    //      could forge.
+    //   2. Groth16 needs a **trusted setup per circuit**. Until a real multi-party
+    //      ceremony produces the verifying key, anyone who ran the local setup
+    //      could forge proofs. `setup_for_testing` is named to say so.
+    //   3. Submitting is a signed extrinsic, so an observer learns which account
+    //      attested against which registry. The record stays hidden; the link does
+    //      not.
+    //
+    //   `submit_attestation` is weighted by a **measured constant**, not a
+    //   benchmark: no benchmark can produce a valid proof without linking the
+    //   prover into the runtime. 2,000 verifications of a real three-input proof
+    //   measured 8.0 ms each on the Ryzen 9 5900X reference host; the charge is
+    //   10 ms. Constant weight is sound here because Groth16 verification is
+    //   constant in circuit size and the inputs are fixed-width (192-byte proof,
+    //   536-byte key, exactly three scalars) — there is nothing unbounded to
+    //   inflate.
+    //
+    //   `transaction_version` is unchanged: a new pallet adds no call to an
+    //   existing one.
+    spec_version: 122,
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,
     // Adding call indices to a live pallet is additive, but the version
@@ -2189,6 +2231,28 @@ impl pallet_storage_proof::Config for Runtime {
     type WeightInfo = pallet_storage_proof::weights::SubstrateWeight<Runtime>;
 }
 
+parameter_types! {
+    /// Encoded proof size cap. A real three-input Groth16 proof over BLS12-381 is
+    /// 192 bytes; the headroom avoids a migration if the encoding is ever
+    /// re-versioned.
+    pub const MaxAttestationProofLen: u32 = pallet_zk_attestation::MAX_PROOF_LEN;
+    /// Encoded verifying-key cap. Measured at 536 bytes for this circuit.
+    pub const MaxAttestationVerifyingKeyLen: u32 =
+        pallet_zk_attestation::MAX_VERIFYING_KEY_LEN;
+}
+
+impl pallet_zk_attestation::Config for Runtime {
+    /// ⚠️ POLICY PLACEHOLDER — needs product sign-off before mainnet.
+    /// Publishing a registry root asserts a fact about an entire ministry's
+    /// records, so it starts at root rather than any signed origin. The intended
+    /// production shape is a supermajority of `GovernanceCouncil`, mirroring how
+    /// other whole-population claims are approved.
+    type RegistryAuthority = EnsureRoot<Self::AccountId>;
+    type MaxProofLen = MaxAttestationProofLen;
+    type MaxVerifyingKeyLen = MaxAttestationVerifyingKeyLen;
+    type WeightInfo = pallet_zk_attestation::weights::SubstrateWeight<Runtime>;
+}
+
 // Construct runtime
 // P0-14 FIX: Explicit pallet indices prevent runtime upgrade breakage.
 // Adding/removing/reordering pallets will NOT shift call/storage indices.
@@ -2250,6 +2314,9 @@ construct_runtime!(
         BelizeModeration: pallet_belize_moderation = 37,
         // Phase 6A: Pakit DAG storage proof verification (Merkle-first, ZK-gated Stage B)
         StorageProof: pallet_storage_proof = 38,
+        // Phase 7A: privacy-preserving registry attestations (Groth16 over
+        // Poseidon commitments). Verify-only in wasm; the prover never ships.
+        ZkAttestation: pallet_zk_attestation = 39,
     }
 );
 

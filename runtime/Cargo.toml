@@ -73,6 +73,7 @@ pallet-belize-justice = { path = "../pallets/justice", default-features = false 
 pallet-belize-moderation = { path = "../pallets/moderation", default-features = false }
 pallet-belize-whistleblower = { path = "../pallets/whistleblower", default-features = false }
 pallet-storage-proof = { path = "../pallets/storage-proof", default-features = false }
+pallet-zk-attestation = { path = "../pallets/zk-attestation", default-features = false }
 
 sp-staking = { workspace = true, default-features = false }
 
@@ -140,6 +141,7 @@ std = [
     "pallet-belize-whistleblower/std",
     "pallet-belize-moderation/std",
     "pallet-storage-proof/std",
+    "pallet-zk-attestation/std",
     "sp-api/std",
     "sp-block-builder/std",
     "sp-consensus-babe/std",
@@ -196,6 +198,7 @@ runtime-benchmarks = [
     "pallet-belize-whistleblower/runtime-benchmarks",
     "pallet-belize-moderation/runtime-benchmarks",
     "pallet-storage-proof/runtime-benchmarks",
+    "pallet-zk-attestation/runtime-benchmarks",
     "sp-runtime/runtime-benchmarks",
 ]
 
@@ -245,6 +248,7 @@ try-runtime = [
     "pallet-belize-whistleblower/try-runtime",
     "pallet-belize-moderation/try-runtime",
     "pallet-storage-proof/try-runtime",
+    "pallet-zk-attestation/try-runtime",
     "pallet-contracts/try-runtime",
     "sp-runtime/try-runtime",
 ]

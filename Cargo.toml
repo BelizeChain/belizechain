@@ -23,6 +23,8 @@ members = [
     "pallets/whistleblower",
     "pallets/moderation",
     "pallets/storage-proof",
+    "zk/attestation",
+    "pallets/zk-attestation",
 ]
 
 [workspace.package]
