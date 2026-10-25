@@ -129,3 +129,6 @@ build-context/
 # Stray release binary at repo root (build output)
 /belizechain-node
 generated_keys/
+
+# Runtime blobs captured for rollback — reproducible from live :code, not source.
+artifacts/*.wasm

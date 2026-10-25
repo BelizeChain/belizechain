@@ -35,25 +35,47 @@ value inline, so the next agent can see what moved.
 
 ## 2. Live state
 
-### 2.1 Chain — verified 2026-10-22
+### 2.1 Chain — verified 2026-10-25
 
 | | |
 |---|---|
 | Chain name | **Jade** (Chain D) |
 | Genesis | `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef` |
-| Runtime | **spec_version 117** live · impl 1 · transaction 2 |
-| Head (2026-10-22) | **227,401** (`0x37849`) |
-| Epoch | index **758** · **duration 300 slots** · start slot 298781245 |
+| Runtime | **spec_version 121** live · impl 1 · transaction 2 |
+| Head (2026-10-25) | **273,648** (`0x42D70`) |
+| Epoch | **duration 300 slots** — unchanged across the 117 → 121 upgrade |
 | Peers | 0 (`shouldHavePeers: false` — single node, expected) |
-| Repo agreement | **`runtime/src/lib.rs` reads `spec_version: 119`** — the repo is two versions ahead of the chain; see below |
+| Repo agreement | ✅ `runtime/src/lib.rs` reads `spec_version: 121` — repo and chain agree |
 
-**The repo is at 121 and the chain is at 117.** Five runtime changes are committed but
-**not deployed**: the bridge consolidation (`confirm_external_delivery` replacing
-`acknowledge_message` at interop call 12, plus `set_evm_address` at call 13),
-`unlock_conviction` (governance call 46) plus the conviction-bond enforcement, a corrected
-`transfer_bbzd` self-transfer error, and the P1-08 BelizeX matching engine (spec 119, §4.3).
+**121 is live (2026-10-25).** Applied hot from 117 via `sudo.sudo(System::set_code)`; no node
+restart. Blob 1,509,932 bytes, blake2b-256
+`1c458e7953063258fb165529c871c8a191c9cd4fb630e0c18e772e644a73efd5`, built with
+`--features testnet-fast-epoch`. All three migrations ran: the coordinated counter went
+unset → **3**, and `ChainConfigurations` went 0 → **13** chains (it had never been seeded, so
+`initiate_bridge` had been failing `UnsupportedChain` on every chain index since genesis).
+Pre-upgrade purge targets were re-verified empty **after** the upgrade: `OrderBook`,
+`PairOrders`, `AccountOrderCount`, `PendingMeshTransactions` all 0, and
+`PendingMeshTxCount` 0 — nothing was destroyed. Verified live afterwards:
+`confirm_external_delivery` and `set_evm_address` present in metadata, `acknowledge_message`
+absent, blocks still 6 s apart.
 
-**119 is the first of these that needs a storage migration.** `OrderEntry` gained an
+Rollback blob: `artifacts/runtime-spec117-live.wasm` (1,492,283 B, blake2b-256
+`e4f072179dc326b5063df2c4bebcccd00c57d93b50574812206f22bc29811ca0`) — extracted byte-exact
+from `:code` **before** the upgrade, so it needs no rebuild. Restore with
+`upgrade-runtime.py <blob> --rpc … --without-checks --execute`.
+
+⚠️ **`state_getStorage` keys must use little-endian twox128.**
+`xxhash.xxh64(data, seed).digest()` returns **big-endian** bytes; Substrate uses
+`.intdigest().to_bytes(8, 'little')` for seeds 0 and 1. A big-endian key silently returns
+`None` for every read, which reads exactly like “the map is empty”. Always verify the helper
+against `System.Number` (it must equal the chain head) before trusting any storage survey.
+
+**117 → 121 shipped four changes at once**, because 118–120 were committed but never
+deployed: `unlock_conviction` (governance call 46) plus conviction-bond enforcement, a
+corrected `transfer_bbzd` self-transfer error, the P1-08 BelizeX matching engine, and the
+bridge consolidation.
+
+**119 was the first of these that needed a storage migration.** `OrderEntry` gained an
 `escrow` field, so `pallet-belize-belizex`'s `STORAGE_VERSION` went 0 → 1 and
 `runtime/src/migrations.rs` `CURRENT_RUNTIME_VERSION` went 2 → 3. The migration **purges**
 `OrderBook` / `PairOrders` / `AccountOrderCount` rather than reinterpreting old bytes —
