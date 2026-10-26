@@ -548,6 +548,32 @@ pub mod pallet {
         ValueQuery,
     >;
 
+    /// Foreign transactions already released by `submit_incoming_unlock`.
+    ///
+    /// Without this, the same burn could be submitted twice: every check that
+    /// extrinsic performs — KYC, sanctions, validator registration, chain enabled,
+    /// `TotalLockedAssets` covers the amount — passes identically on the second
+    /// call, because the first one only *reduced* the liquidity the second one
+    /// needs. The burn exists once on the foreign chain; nothing else in the
+    /// extrinsic is unique per burn.
+    ///
+    /// The key is the pair, not the hash alone: a transaction hash is only unique
+    /// within its own chain, and two supported chains can produce the same digest.
+    ///
+    /// Additive: a new map starts empty, so no storage migration and no
+    /// `STORAGE_VERSION` bump.
+    #[pallet::storage]
+    #[pallet::getter(fn source_tx_hash_used)]
+    pub type SourceTxHashUsed<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        BridgeChain,
+        Blake2_128Concat,
+        BoundedVec<u8, ConstU32<64>>,
+        (),
+        OptionQuery,
+    >;
+
     #[pallet::storage]
     #[pallet::getter(fn pending_finalizations)]
     /// Bridge transactions awaiting finalization after challenge period (§4.4b).
@@ -774,6 +800,8 @@ pub mod pallet {
         NotReadyForExecution,
         /// EVM address is zero or otherwise unusable as a signing key
         InvalidEvmAddress,
+        /// This (source chain, source transaction hash) has already been released
+        DuplicateSourceTransaction,
     }
 
     // ===== HOOKS (§4.4b Challenge Period Finalization) =====
@@ -1328,6 +1356,17 @@ pub mod pallet {
             let source_tx_hash_bounded: BoundedVec<u8, ConstU32<64>> = source_tx_hash
                 .try_into()
                 .map_err(|_| Error::<T>::InvalidConfiguration)?;
+
+            // One foreign burn, one release. Checked before anything is minted or
+            // paid, and recorded below only once the transaction is committed.
+            ensure!(
+                !SourceTxHashUsed::<T>::contains_key(&source_chain, &source_tx_hash_bounded),
+                Error::<T>::DuplicateSourceTransaction
+            );
+            // Recorded now rather than after the insert below, because a dispatch
+            // error discards the whole storage overlay: if any later step fails,
+            // this write never happened.
+            SourceTxHashUsed::<T>::insert(&source_chain, &source_tx_hash_bounded, ());
 
             let recipient_encoded = recipient.encode();
             let recipient_bounded: BoundedVec<u8, ConstU32<64>> = recipient_encoded

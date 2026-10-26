@@ -1337,6 +1337,138 @@ fn submit_incoming_unlock_works() {
     });
 }
 
+/// Registers a validator and enables Ethereum, so a `submit_incoming_unlock`
+/// reaches the replay guard instead of failing an earlier check.
+fn seed_unlock_prerequisites() {
+    BridgeValidators::<Test>::insert(
+        ALICE,
+        BridgeValidator {
+            account: ALICE,
+            pq_public_key: vec![0xAB; 64].try_into().unwrap(),
+            supported_chains: vec![BridgeChain::Ethereum].try_into().unwrap(),
+            stake: 1_000_000,
+            reliability_score: 100,
+            signatures_count: 0,
+            failed_signatures: 0,
+        },
+    );
+    ChainConfigurations::<Test>::insert(
+        BridgeChain::Ethereum,
+        ChainConfig {
+            enabled: true,
+            min_confirmations: 12,
+            max_amount: 1_000_000_000,
+            fee_rate: 50,
+            pq_signatures_required: 3,
+            rpc_endpoint: b"https://eth.example.com".to_vec().try_into().unwrap(),
+            contract_address: Some(vec![0xAB; 20].try_into().unwrap()),
+        },
+    );
+    TotalLockedAssets::<Test>::insert(BridgeChain::Ethereum, BridgeAsset::DALLA, 500_000u128);
+}
+
+#[test]
+fn submit_incoming_unlock_rejects_a_replayed_source_transaction() {
+    new_test_ext().execute_with(|| {
+        seed_unlock_prerequisites();
+
+        assert_ok!(Interoperability::submit_incoming_unlock(
+            RuntimeOrigin::signed(ALICE),
+            1,
+            test_tx_hash(),
+            EVE,
+            100_000u128,
+            0,
+        ));
+
+        // Same burn, submitted again. Every other check still passes, so only the
+        // source-hash guard stands between one burn and two payouts.
+        assert_noop!(
+            Interoperability::submit_incoming_unlock(
+                RuntimeOrigin::signed(ALICE),
+                1,
+                test_tx_hash(),
+                EVE,
+                100_000u128,
+                0,
+            ),
+            Error::<Test>::DuplicateSourceTransaction
+        );
+
+        assert_eq!(Interoperability::next_tx_id(), 1, "no second transaction");
+    });
+}
+
+#[test]
+fn submit_incoming_unlock_accepts_a_different_source_transaction() {
+    new_test_ext().execute_with(|| {
+        seed_unlock_prerequisites();
+
+        let mut other_hash = test_tx_hash();
+        other_hash[0] = other_hash[0].wrapping_add(1);
+
+        assert_ok!(Interoperability::submit_incoming_unlock(
+            RuntimeOrigin::signed(ALICE),
+            1,
+            test_tx_hash(),
+            EVE,
+            100_000u128,
+            0,
+        ));
+        assert_ok!(Interoperability::submit_incoming_unlock(
+            RuntimeOrigin::signed(ALICE),
+            1,
+            other_hash,
+            EVE,
+            100_000u128,
+            0,
+        ));
+
+        assert_eq!(Interoperability::next_tx_id(), 2);
+    });
+}
+
+/// A hash is only unique within its own chain, so the guard is keyed by both.
+#[test]
+fn submit_incoming_unlock_scopes_the_guard_to_the_source_chain() {
+    new_test_ext().execute_with(|| {
+        seed_unlock_prerequisites();
+        ChainConfigurations::<Test>::insert(
+            BridgeChain::Polygon,
+            ChainConfig {
+                enabled: true,
+                min_confirmations: 12,
+                max_amount: 1_000_000_000,
+                fee_rate: 50,
+                pq_signatures_required: 3,
+                rpc_endpoint: b"https://polygon.example.com".to_vec().try_into().unwrap(),
+                contract_address: Some(vec![0xCD; 20].try_into().unwrap()),
+            },
+        );
+        TotalLockedAssets::<Test>::insert(BridgeChain::Polygon, BridgeAsset::DALLA, 500_000u128);
+
+        assert_ok!(Interoperability::submit_incoming_unlock(
+            RuntimeOrigin::signed(ALICE),
+            1,
+            test_tx_hash(),
+            EVE,
+            100_000u128,
+            0,
+        ));
+        // Same digest, different chain: a distinct burn, so it must be releasable.
+        assert_ok!(Interoperability::submit_incoming_unlock(
+            RuntimeOrigin::signed(ALICE),
+            8, // Polygon
+            test_tx_hash(),
+            EVE,
+            100_000u128,
+            0,
+        ));
+
+        assert_eq!(Interoperability::next_tx_id(), 2);
+    });
+}
+
 // ============================================================================
 // Register Bridge Validator Tests (H-37)
 // ============================================================================
