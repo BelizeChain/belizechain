@@ -41,28 +41,35 @@ value inline, so the next agent can see what moved.
 |---|---|
 | Chain name | **Jade** (Chain D) |
 | Genesis | `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef` |
-| Runtime | **spec_version 121** live · impl 1 · transaction 2 |
-| Head (2026-10-25) | **273,648** (`0x42D70`) |
-| Epoch | **duration 300 slots** — unchanged across the 117 → 121 upgrade |
+| Runtime | **spec_version 122** live · impl 1 · transaction 2 |
+| Head (2026-10-25) | **274,984** (`0x43228`) |
+| Epoch | **duration 300 slots** — unchanged across the 117 → 121 → 122 upgrades |
 | Peers | 0 (`shouldHavePeers: false` — single node, expected) |
-| Repo agreement | ✅ `runtime/src/lib.rs` reads `spec_version: 121` — repo and chain agree |
+| Repo agreement | ✅ `runtime/src/lib.rs` reads `spec_version: 122` — repo and chain agree |
 
-**121 is live (2026-10-25).** Applied hot from 117 via `sudo.sudo(System::set_code)`; no node
-restart. Blob 1,509,932 bytes, blake2b-256
-`1c458e7953063258fb165529c871c8a191c9cd4fb630e0c18e772e644a73efd5`, built with
-`--features testnet-fast-epoch`. All three migrations ran: the coordinated counter went
-unset → **3**, and `ChainConfigurations` went 0 → **13** chains (it had never been seeded, so
-`initiate_bridge` had been failing `UnsupportedChain` on every chain index since genesis).
-Pre-upgrade purge targets were re-verified empty **after** the upgrade: `OrderBook`,
-`PairOrders`, `AccountOrderCount`, `PendingMeshTransactions` all 0, and
-`PendingMeshTxCount` 0 — nothing was destroyed. Verified live afterwards:
-`confirm_external_delivery` and `set_evm_address` present in metadata, `acknowledge_message`
-absent, blocks still 6 s apart.
+**122 is live (2026-10-25).** Applied hot from 121 via `sudo.sudo(System::set_code)`; no node
+restart. Blob 1,592,424 bytes, blake2b-256
+`fc42727e2bbe280d5a2b4bbbd818d1cd3d9f1a08afcc0e4cac46c2fe59ab60c4`, built with
+`--features testnet-fast-epoch`. No storage migration: both changes are additive (a new pallet
+at index 39, a new map in an existing pallet), so `CURRENT_RUNTIME_VERSION` is unchanged.
+Verified live afterwards: `ZkAttestation` is in the pallet set, and
+`submit_incoming_unlock`, `DuplicateSourceTransaction` and `SourceTxHashUsed` are all in
+metadata. `EpochDuration` was 300 slots before **and** after — the check that matters, since a
+blob built without the feature has stalled this chain before.
 
-Rollback blob: `artifacts/runtime-spec117-live.wasm` (1,492,283 B, blake2b-256
-`e4f072179dc326b5063df2c4bebcccd00c57d93b50574812206f22bc29811ca0`) — extracted byte-exact
-from `:code` **before** the upgrade, so it needs no rebuild. Restore with
+What 122 ships: `pallet-zk-attestation` at index 39 (Groth16 verification is **not** usable
+until a trusted setup exists — verify-only, see `ZK_ATTESTATION_CEREMONY_PLAN.md`), and the
+`SourceTxHashUsed` replay guard in `pallet-belize-interoperability`.
+
+Rollback blob for 121 → 122: `artifacts/runtime-spec121-live.wasm` (1,509,932 B, blake2b-256
+`1c458e7953063258fb165529c871c8a191c9cd4fb630e0c18e772e644a73efd5`) — extracted byte-exact
+from `:code` **before** the upgrade. Restore with
 `upgrade-runtime.py <blob> --rpc … --without-checks --execute`.
+
+**Capture the rollback blob at upgrade time, not from whatever is already in `artifacts/`.**
+The file present before this upgrade was `runtime-spec117-live.wasm`, which is the rollback for
+117 → 121 — correct for that upgrade, and two versions behind for this one. Rolling back with
+it would have skipped 118–121 entirely.
 
 ⚠️ **`state_getStorage` keys must use little-endian twox128.**
 `xxhash.xxh64(data, seed).digest()` returns **big-endian** bytes; Substrate uses
