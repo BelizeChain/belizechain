@@ -1038,6 +1038,13 @@ Counts verified 2026-10-22:
 - Upgrades are applied as a hot `sudo.sudo(System::set_code)` — **never** a regenerated
   spec (`testnet-spec.json` is gitignored and pins genesis). Rollback blob hashes live in
   `docs/operations/CEIBA_OPERATIONS_RUNBOOK.md`.
+- **Node image rebuilt 2026-10-27** (`01d51bb-spec124-20261027`) to ship the four
+  RPC servers (governance/staking/bridge/oracle) that 123's runtime APIs did not
+  expose on their own. Built **on Ceiba** from an rsynced source tree, because the
+  host has no checkout and no CI job builds this image; the build arg
+  `CARGO_FEATURES=testnet-fast-epoch` was passed explicitly and verified in the
+  resulting image (`epoch_length 300`) before the pin was changed. Rollback:
+  `.env.bak-pre-node-20261027` + `76dea3f-stable2609-20261019`.
 - **Node image rebuilt 2026-10-19** (`76dea3f-stable2609-20261019`) for five new RustSec
   advisories that appeared 2026-10-14: RUSTSEC-2026-0346/-0347/-0348/-0349 (`rustls`
   ≤0.23.45 → **0.23.46**) and RUSTSEC-2026-0363 (`wasmtime` 36.0.16 → **36.0.18**).

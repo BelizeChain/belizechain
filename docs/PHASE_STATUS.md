@@ -193,13 +193,15 @@ the first place a runtime executes. Note the rehearsal *proved the distinction*:
 `--dev` chain's own native runtime reports 14400, while the blob reports 300 — the
 feature lives in the blob, which is exactly the thing being deployed.
 
-**What 123 did *not* do:** the four JSON-RPC methods are still absent from Ceiba
-(`-32601 Method not found`) because the RPC *server* lives in the node binary, and
-Ceiba runs the pre-123 image. The runtime half is live and provable via `state_call`
+**What 123 did *not* do — closed by the 2026-10-27 node rollout.** The four
+JSON-RPC APIs were absent from Ceiba (`-32601 Method not found`) after 123,
+because the RPC *server* lives in the node binary and Ceiba was running the
+pre-123 image. The runtime half was live and provable via `state_call`
 (`GovernanceApi_council_term` → 1, `BridgeApi_chain_configurations` → compact 52 →
-13 chains), but exposing the methods needs a node image rebuild and redeploy. No
-storage migration was needed: no layout change, no new pallet, no extrinsic added or
-reordered, so `CURRENT_RUNTIME_VERSION` stays u3.
+13 chains). `belizechain/ceiba-node:01d51bb-spec124-20261027` was then built,
+pinned and rolled out, and all twelve methods now answer. No storage migration was
+needed for either 123 or 124: no layout change, no new pallet, no extrinsic added
+or reordered, so `CURRENT_RUNTIME_VERSION` stays u3.
 
 **Gap 5 detail — corrected 2026-10-27.** The previous entry said a `pallet_vesting`
 "is referenced by the treasury spec". **That was not verified, and it is wrong.**
