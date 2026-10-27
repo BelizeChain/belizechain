@@ -1143,22 +1143,30 @@ without a date is a bug.
 
 `pallet-belize-belizex` limit orders went from "written but never matched" to a real
 escrowed price-time book. The commit (`78a661c`) is an ancestor of the live spec 124
-runtime, so the engine is deployed, and `BelizeX:__STORAGE_VERSION__:` reads **1** on
-chain (`pallet::storage_version` is `new(1)` in this tree; it was `0` at the 2026-09-29
-re-genesis, which predates the commit).
+runtime, so the engine is deployed. Both migration records agree, read 2026-10-27:
 
-⚠️ **Unresolved, worth checking before the book carries real orders.** The book purge is
-gated on this runtime's own migration counter — `runtime/src/migrations.rs` writes
-`twox128(b"belizechain::migration_version")` via `unhashed::put` — and that key reads
-**absent** on the live chain, while `BelizeX`'s storage version reads 1. Both cannot be
-right if only `CoordinatedUpgrade` drives the pallet migration. Either the counter is not
-persisting (in which case every future upgrade re-runs every pending step, including a
-book purge) or the pallet's version came from somewhere else. `state_getStorage` returned
-`None` for that exact key; the derivation was validated against the well-known `System`
-prefix, so a second look with a different tool is warranted before concluding.
+| key | live value |
+|---|---|
+| `BelizeX:__STORAGE_VERSION__:` | **1** (`pallet::storage_version` is `new(1)` in this tree) |
+| `twox128(b"belizechain::migration_version")` | **3** (`CURRENT_RUNTIME_VERSION` is `3`) |
 
-The catch on top of that is **state, not code**: `TradingPairs` and `LiquidityPools` are
-both empty, so no limit order can be placed. The read/write paths below have never executed
+So the V2 → V3 belizex book purge is recorded as applied, and the counter that gates
+it advances. Checked further, 2026-10-27: **all 18 pallets that declare a storage
+version match their code** (`BelizeX` 1/1, `Mesh` 1/1, the other 16 at 0/0), and none
+is unwritten. The migration framework is in sync with the live runtime.
+
+⚠️ **A note on how that was almost mis-reported.** The first read of the migration key
+returned *absent*, which would have meant `CoordinatedUpgrade` re-runs every pending
+step on each upgrade — including a book purge. That was a **bug in the probe**: `twox128`
+is *two* `xxhash64` chunks (seeds 0 and 1, 16 bytes), and the script built *four*
+(seeds 0–3, 32 bytes), so it queried a 64-byte key that could not exist. The reason it
+slipped through a "sanity check" is that the 32-byte `System` blob *begins* with the
+correct 16 bytes, so the prefix comparison passed while the concatenated key was wrong.
+The lesson is the general one: **a negative storage read proves nothing without a
+positive control** — `System.Number` under the same code path is what exposed it.
+
+The catch is **state, not code**: `TradingPairs` and `LiquidityPools` are both empty, so no
+limit order can be placed. The read/write paths below have never executed
 against live state — they are unit- and benchmark-tested only. Listing one pair and
 placing one order is the cheapest way to convert that assumption into evidence.
 
