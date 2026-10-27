@@ -1045,6 +1045,41 @@ Counts verified 2026-10-22:
   `CARGO_FEATURES=testnet-fast-epoch` was passed explicitly and verified in the
   resulting image (`epoch_length 300`) before the pin was changed. Rollback:
   `.env.bak-pre-node-20261027` + `76dea3f-stable2609-20261019`.
+
+  **Why the stale image went unnoticed for two days (root-caused 2026-10-27).**
+  Three things combined, and only the third is a defect:
+
+  1. A runtime upgrade correctly does *not* need a node image - `set_code` is
+     the whole mechanism - so "spec bumped, image unchanged" is legitimate.
+  2. Since polkadot-sdk stable2609 the executor is **WASM-only**: `sc-executor`
+     exports no `NativeExecutor`, and `--execution` prints *"has no effect
+     anymore"*. The binary's embedded runtime (spec 116 at `76dea3f`) is never
+     executed on a live chain, so there was no consensus risk and nothing
+     logged a warning. The 105→107 note in
+     `docs/operations/RUNTIME_UPGRADE_105_TO_107_2026-09-20.md` still justifies
+     itself as "native and WASM are out of sync" - that framing is obsolete.
+  3. **Nothing linked a runtime bump to a client rebuild.** No CI job builds
+     this image (`.github/workflows/deploy.yml` is lint/test/smoke; no
+     `docker build`, no registry push), and no script compared the two.
+
+  The trap is that `state_getRuntimeVersion` reports the *chain's* WASM blob,
+  not the binary's, so before this rollout it returned `124` on a spec-116
+  image. Every ordinary health check passed while all twelve `belizechain_*`
+  RPCs returned `-32601`.
+
+  Guarded now by **`scripts/check-node-image-parity.sh`**, which fails when the
+  image does not descend from the newest commit touching `node/` (the client
+  surface: RPC servers, host functions, service wiring) and warns when it
+  predates the newest `runtime/src/lib.rs` spec bump. It fails closed on an
+  unknown sha rather than passing, and also gates rollouts through
+  `infra/deploy/ceiba-release-readiness.sh` (`run_node_image_parity`). Verified
+  both ways: `76dea3f` is rejected, `01d51bb` passes.
+
+  ⚠️ The residual risk the guard only *partly* covers: a runtime that needs a
+  host function, inherent or digest the old binary does not provide does not
+  fail with a tidy `-32601` - it fails to instantiate, which is a consensus
+  halt. `121`→`124` happened to need no client support; that was luck, not
+  design.
 - **Node image rebuilt 2026-10-19** (`76dea3f-stable2609-20261019`) for five new RustSec
   advisories that appeared 2026-10-14: RUSTSEC-2026-0346/-0347/-0348/-0349 (`rustls`
   ≤0.23.45 → **0.23.46**) and RUSTSEC-2026-0363 (`wasmtime` 36.0.16 → **36.0.18**).
