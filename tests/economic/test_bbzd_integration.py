@@ -13,6 +13,7 @@ Run with: pytest tests/integration/economic/test_bbzd_integration.py -v
 import pytest
 from substrateinterface import SubstrateInterface, Keypair
 from substrateinterface.exceptions import SubstrateRequestException
+from substrateinterface.utils.ss58 import ss58_decode
 
 
 def fund_account(substrate: SubstrateInterface, from_kp: Keypair, to_addr: str, amount: int):
@@ -36,6 +37,8 @@ class TestBbzdMinting:
         blockchain_connection: SubstrateInterface,
         alice_keypair: Keypair,
         bob_keypair: Keypair,
+        verify_kyc,
+        set_reserves,
     ):
         """Authorized Central Bank can mint bBZD after BZD deposit."""
         substrate = blockchain_connection
@@ -52,11 +55,7 @@ class TestBbzdMinting:
 
         # Governance: set Central Bank reserves
         initial_reserves = 10_000_000_000_000
-        res = submit_sudo_extrinsic(
-            pallet="Economy",
-            call="update_reserves",
-            params={"new_reserves": initial_reserves},
-        )
+        set_reserves(initial_reserves)
         assert res["success"], f"Set reserves failed: {res.get('error')}"
 
         # Ensure Bob is not sanctioned in dev runtime
@@ -68,21 +67,7 @@ class TestBbzdMinting:
 
         # Ensure Bob has KYC and funds to sign
         assert fund_account(substrate, alice, bob.ss58_address, 1_000_000_000_000)
-        call = substrate.compose_call(
-            call_module="Oracle",
-            call_function="verify_identity",
-            call_params={
-                "account": str(bob.ss58_address),
-                "kyc_level": 1,
-                "id_hash": [0] * 32,
-                "provider": "testnet",
-                "biometric_verified": False,
-                "address_verified": False,
-            },
-        )
-        xt = substrate.create_signed_extrinsic(call=call, keypair=bob)
-        receipt = substrate.submit_extrinsic(xt, wait_for_finalization=True)
-        assert receipt.is_success
+        verify_kyc(bob, 1)
 
         # Get Bob's initial bBZD balance
         initial_balance = substrate.query(
@@ -153,7 +138,8 @@ class TestBbzdMinting:
         blockchain_connection: SubstrateInterface,
         alice_keypair: Keypair,
         bob_keypair: Keypair,
-    ):
+     verify_kyc,
+        set_reserves,):
         """Test that minting more than reserves fails"""
         substrate = blockchain_connection
         alice = alice_keypair
@@ -169,30 +155,12 @@ class TestBbzdMinting:
 
         # Governance: set low reserves (only 100 BZD)
         low_reserves = 100_000_000_000
-        res = submit_sudo_extrinsic(
-            pallet="Economy",
-            call="update_reserves",
-            params={"new_reserves": low_reserves},
-        )
+        set_reserves(low_reserves)
         assert res["success"]
         
         # Ensure Bob has KYC and funds
         assert fund_account(substrate, alice, bob.ss58_address, 1_000_000_000_000)
-        call = substrate.compose_call(
-            call_module="Oracle",
-            call_function="verify_identity",
-            call_params={
-                "account": str(bob.ss58_address),
-                "kyc_level": 1,
-                "id_hash": [0] * 32,
-                "provider": "testnet",
-                "biometric_verified": False,
-                "address_verified": False,
-            },
-        )
-        xt = substrate.create_signed_extrinsic(call=call, keypair=bob)
-        receipt = substrate.submit_extrinsic(xt, wait_for_finalization=True)
-        assert receipt.is_success
+        verify_kyc(bob, 1)
         
         # Try to mint 10,000 bBZD (way more than reserves)
         excessive_amount = 10_000_000_000_000
@@ -225,6 +193,8 @@ class TestBbzdRedemption:
         blockchain_connection: SubstrateInterface,
         alice_keypair: Keypair,
         bob_keypair: Keypair,
+        verify_kyc,
+        set_reserves,
     ):
         """Test that redeem_bbzd burns bBZD and creates redemption request"""
         substrate = blockchain_connection
@@ -238,11 +208,7 @@ class TestBbzdRedemption:
             params={"account": str(alice.ss58_address), "authorized": True},
         )
         assert res["success"]
-        res = submit_sudo_extrinsic(
-            pallet="Economy",
-            call="update_reserves",
-            params={"new_reserves": 10_000_000_000_000},
-        )
+        set_reserves(10_000_000_000_000)
         assert res["success"]
         
         # Ensure Bob is not sanctioned in dev runtime
@@ -254,21 +220,7 @@ class TestBbzdRedemption:
 
         # Ensure Bob has KYC and fund for fees
         assert fund_account(substrate, alice, bob.ss58_address, 1_000_000_000_000)
-        call = substrate.compose_call(
-            call_module="Oracle",
-            call_function="verify_identity",
-            call_params={
-                "account": str(bob.ss58_address),
-                "kyc_level": 1,
-                "id_hash": [0] * 32,
-                "provider": "testnet",
-                "biometric_verified": False,
-                "address_verified": False,
-            },
-        )
-        xt = substrate.create_signed_extrinsic(call=call, keypair=bob)
-        receipt = substrate.submit_extrinsic(xt, wait_for_finalization=True)
-        assert receipt.is_success
+        verify_kyc(bob, 1)
 
         # Mint 5000 bBZD to Bob
         mint_amount = 5_000_000_000_000
@@ -291,12 +243,15 @@ class TestBbzdRedemption:
             params=[bob.ss58_address]
         )
         
-        # Get next redemption ID
+        # The pallet assigns the *current* NextRedemptionId as the new request's
+        # id, then increments it, so the value read here is the id about to be
+        # used. `0` is a valid id — substituting 1 for a falsy 0 would expect the
+        # wrong record on the very first redemption of a fresh chain.
         next_redemption_id = substrate.query(
             module='Economy',
             storage_function='NextRedemptionId'
         )
-        expected_redemption_id = next_redemption_id.value if next_redemption_id.value else 1
+        expected_redemption_id = next_redemption_id.value or 0
         
         # Bob redeems 2000 bBZD
         redeem_amount = 2_000_000_000_000
@@ -338,10 +293,17 @@ class TestBbzdRedemption:
             params=[expected_redemption_id]
         )
         if redemption_request.value is None:
-            pytest.skip("Redemption queue not available in dev runtime (no RedemptionRequests entry)")
+            raise AssertionError(
+                f"redeem_bbzd succeeded but left no request at id "
+                f"{expected_redemption_id}; storage is inconsistent"
+            )
         request = redemption_request.value
-        if request.get('user') not in (bob.ss58_address, str(bob.ss58_address)):
-            pytest.skip(f"Redemption request user encoding differs in dev runtime: {request.get('user')}")
+        # Compare the underlying AccountId, not the SS58 text: the chain encodes
+        # with prefix 1981 (`r1…`) while a `Keypair.create_from_uri("//Bob")`
+        # defaults to prefix 42 (`5F…`). Same account, different rendering.
+        assert ss58_decode(request['user']) == ss58_decode(str(bob.ss58_address)), (
+            f"Redemption recorded for the wrong account: {request.get('user')}"
+        )
         assert request['amount'] == redeem_amount
         assert request['status'] == 'Pending'
         
@@ -351,7 +313,10 @@ class TestBbzdRedemption:
         for event in events:
             if event.value['event_id'] == 'BbzdRedeemed':
                 event_data = event.value['attributes']
-                assert event_data['user'] == bob.ss58_address
+                # Same prefix caveat as the storage check above.
+                assert ss58_decode(event_data['user']) == ss58_decode(
+                    str(bob.ss58_address)
+                ), f"Event named the wrong account: {event_data['user']}"
                 assert event_data['amount'] == redeem_amount
                 assert event_data['redemption_id'] == expected_redemption_id
                 redeemed_found = True
@@ -360,7 +325,8 @@ class TestBbzdRedemption:
         assert redeemed_found, "BbzdRedeemed event not found"
     
     def test_redeem_bbzd_insufficient_balance_fails(
-        self, blockchain_connection: SubstrateInterface, bob_keypair: Keypair, alice_keypair: Keypair
+        self, blockchain_connection: SubstrateInterface, bob_keypair: Keypair, alice_keypair: Keypair,
+        verify_kyc,
     ):
         """Test that redemption fails if user has insufficient bBZD balance"""
         substrate = blockchain_connection
@@ -369,21 +335,7 @@ class TestBbzdRedemption:
 
         # Ensure Bob has KYC (to avoid KYC error ahead of balance error)
         assert fund_account(substrate, alice, bob.ss58_address, 1_000_000_000_000)
-        call = substrate.compose_call(
-            call_module="Oracle",
-            call_function="verify_identity",
-            call_params={
-                "account": str(bob.ss58_address),
-                "kyc_level": 1,
-                "id_hash": [0] * 32,
-                "provider": "testnet",
-                "biometric_verified": False,
-                "address_verified": False,
-            },
-        )
-        xt = substrate.create_signed_extrinsic(call=call, keypair=bob)
-        receipt = substrate.submit_extrinsic(xt, wait_for_finalization=True)
-        assert receipt.is_success
+        verify_kyc(bob, 1)
         
         # Get Bob's current balance
         current_balance = substrate.query(
@@ -424,6 +376,8 @@ class TestRedemptionProcessing:
         blockchain_connection: SubstrateInterface,
         alice_keypair: Keypair,
         bob_keypair: Keypair,
+        verify_kyc,
+        set_reserves,
     ):
         """Test that Central Bank can process pending redemptions"""
         substrate = blockchain_connection
@@ -439,11 +393,7 @@ class TestRedemptionProcessing:
             params={"account": str(alice.ss58_address), "authorized": True},
         )
         assert res["success"]
-        res = submit_sudo_extrinsic(
-            pallet="Economy",
-            call="update_reserves",
-            params={"new_reserves": 10_000_000_000_000},
-        )
+        set_reserves(10_000_000_000_000)
         assert res["success"]
         
         call = substrate.compose_call(
@@ -474,21 +424,7 @@ class TestRedemptionProcessing:
 
         # Ensure Bob has KYC and fund
         assert fund_account(substrate, alice, bob.ss58_address, 1_000_000_000_000)
-        call = substrate.compose_call(
-            call_module="Oracle",
-            call_function="verify_identity",
-            call_params={
-                "account": str(bob.ss58_address),
-                "kyc_level": 1,
-                "id_hash": [0] * 32,
-                "provider": "testnet",
-                "biometric_verified": False,
-                "address_verified": False,
-            },
-        )
-        xt = substrate.create_signed_extrinsic(call=call, keypair=bob)
-        receipt = substrate.submit_extrinsic(xt, wait_for_finalization=True)
-        assert receipt.is_success
+        verify_kyc(bob, 1)
 
         # Bob creates redemption
         call = substrate.compose_call(
@@ -573,7 +509,8 @@ class TestReserveInvariants:
         blockchain_connection: SubstrateInterface,
         alice_keypair: Keypair,
         bob_keypair: Keypair,
-    ):
+     verify_kyc,
+        set_reserves,):
         """CRITICAL: Verify TotalBbzdSupply ≤ CentralBankReserves at all times"""
         substrate = blockchain_connection
         alice = alice_keypair
@@ -587,30 +524,12 @@ class TestReserveInvariants:
         )
         assert res["success"]
         reserves_amount = 5_000_000_000_000
-        res = submit_sudo_extrinsic(
-            pallet="Economy",
-            call="update_reserves",
-            params={"new_reserves": reserves_amount},
-        )
+        set_reserves(reserves_amount)
         assert res["success"]
         
         # Ensure Bob has KYC and fund
         assert fund_account(substrate, alice, bob.ss58_address, 1_000_000_000_000)
-        call = substrate.compose_call(
-            call_module="Oracle",
-            call_function="verify_identity",
-            call_params={
-                "account": str(bob.ss58_address),
-                "kyc_level": 1,
-                "id_hash": [0] * 32,
-                "provider": "testnet",
-                "biometric_verified": False,
-                "address_verified": False,
-            },
-        )
-        xt = substrate.create_signed_extrinsic(call=call, keypair=bob)
-        receipt = substrate.submit_extrinsic(xt, wait_for_finalization=True)
-        assert receipt.is_success
+        verify_kyc(bob, 1)
 
         # Mint multiple times to same user
         for i in range(3):
@@ -669,7 +588,8 @@ class TestGovernanceIntegration:
     """Test Economy pallet integration with Governance"""
     
     def test_minter_authorization_requires_governance(
-        self, blockchain_connection: SubstrateInterface, alice_keypair: Keypair, bob_keypair: Keypair
+        self, blockchain_connection: SubstrateInterface, alice_keypair: Keypair, bob_keypair: Keypair,
+        verify_kyc,
     ):
         """Test that only governance can authorize minters"""
         substrate = blockchain_connection

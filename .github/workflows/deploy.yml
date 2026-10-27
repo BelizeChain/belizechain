@@ -162,16 +162,71 @@ jobs:
           cat /tmp/belizechain-testnet-smoke.log
           exit 1
 
-  # M-4: the Python integration/security suites under tests/ were never checked
-  # by CI. They need the full Ceiba service stack (chain, Postgres, Redis, IPFS,
-  # Nawal, Kinich) to *run*, but collection alone catches import rot, syntax
-  # errors and stale fixture wiring, which is what CI can honestly enforce here.
-  # Full runs stay a documented, operator-triggered activity (tests/README.md).
+  # M-4: the Python integration/security suites under tests/ were never *run* by
+  # CI — only collected, which is why 17 stale tests stayed red for months while
+  # the pipeline reported green. They now genuinely execute against a local
+  # `--dev` node booted from the release binary built in the `test` job.
+  #
+  # Suites needing the wider Ceiba stack (Postgres, Redis, IPFS, Nawal, Kinich)
+  # skip themselves at fixture level and are reported as SKIPPED, not passed.
   python-tests:
     name: Python Integration Suites
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.90.0
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler libclang-dev llvm-dev
+
+      - name: Configure portable LLVM paths
+        run: |
+          LLVM_CONFIG_BIN="$(command -v llvm-config)"
+          echo "LLVM_CONFIG_PATH=${LLVM_CONFIG_BIN}" >> "$GITHUB_ENV"
+          echo "LIBCLANG_PATH=$(${LLVM_CONFIG_BIN} --libdir)" >> "$GITHUB_ENV"
+
+      - name: Cache cargo registry and build output
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-pytests-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-pytests-
+
+      - name: Build node for the integration suites
+        run: cargo build --release -p belizechain-node
+
+      - name: Boot a local dev chain
+        run: |
+          ./target/release/belizechain-node \
+            --dev \
+            --base-path /tmp/belizechain-pytest \
+            --rpc-port 9944 \
+            --rpc-methods Unsafe \
+            --prometheus-port 9616 \
+            > /tmp/belizechain-pytest-node.log 2>&1 &
+          echo $! > /tmp/belizechain-pytest-node.pid
+
+          for _ in $(seq 1 60); do
+            if curl -sS -m 2 -H "Content-Type: application/json" \
+              -d '{"id":1,"jsonrpc":"2.0","method":"system_health","params":[]}' \
+              http://127.0.0.1:9944 | grep -q '"result"'; then
+              echo "dev chain is up"
+              exit 0
+            fi
+            sleep 2
+          done
+
+          cat /tmp/belizechain-pytest-node.log
+          exit 1
 
       - name: Install Python 3.12
         uses: actions/setup-python@v7
@@ -185,8 +240,56 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r tests/requirements.txt
 
-      - name: Collect integration suites
+      # One invocation, so file order is stable and `tests/governance/test_council.py`
+      # runs before the suites that need a council seat to exist.
+      # `-rs` prints every skip reason, so a suite that silently stops asserting
+      # is visible in the log rather than looking like a pass.
+      #
+      # The `pristine_oracle_rate` tests run first and alone: they need a chain on
+      # which no Oracle rate has been written, and `update_exchange_rate` has no
+      # inverse. Everything after them may (and does) set the rate.
+      - name: Fail-closed guard (needs a chain with no Oracle rate yet)
+        run: |
+          python -m pytest \
+            -m pristine_oracle_rate \
+            tests/belizex \
+            -q -rs --timeout=180 -p no:cacheprovider
+
+      - name: Run every chain-only suite
+        run: |
+          python -m pytest \
+            tests/economic \
+            tests/belizex \
+            tests/governance \
+            tests/oracle \
+            tests/cross_pallet \
+            tests/blockchain \
+            tests/test_probe.py \
+            tests/test_chain_spec_guard.py \
+            -m "not pristine_oracle_rate" \
+            -q -rs --timeout=180 -p no:cacheprovider
+
+      # Two suites need infrastructure the dev chain does not provide:
+      #   tests/e2e             -> Pakit/IPFS, Nawal FL server, Kinich API
+      #   tests/test_full_stack -> Redis, IPFS, Postgres
+      # Both self-skip via their fixtures. Running them here proves they still
+      # import and keeps the exclusion visible instead of silent.
+      - name: Service-dependent suites (self-skipping, must still import)
+        run: |
+          python -m pytest tests/e2e tests/test_full_stack.py \
+            -q -rs --timeout=60 -p no:cacheprovider
+
+      - name: Collect every suite (catches import rot anywhere in tests/)
         run: python -m pytest tests/ --collect-only -q
+
+      - name: Stop the dev chain
+        if: always()
+        run: |
+          if [ -f /tmp/belizechain-pytest-node.pid ]; then
+            kill "$(cat /tmp/belizechain-pytest-node.pid)" 2>/dev/null || true
+          fi
+          echo "--- node log tail ---"
+          tail -n 40 /tmp/belizechain-pytest-node.log 2>/dev/null || true
 
   coverage:
     name: Coverage Gate

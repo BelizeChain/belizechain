@@ -1,8 +1,10 @@
 import pytest
 
+from conftest import event_pairs
+
 @pytest.mark.requires_blockchain
 class TestBelizeXOracleSlippageGuard:
-    def test_trade_respects_oracle_guard(self, submit_sudo_extrinsic, query_storage, blockchain_connection, alice_keypair):
+    def test_trade_respects_oracle_guard(self, submit_sudo_extrinsic, verify_kyc, fund_bbzd, query_storage, blockchain_connection, alice_keypair):
         """
         Set USD/BZD exchange rate, add liquidity to DALLA/BBZD, and execute a trade.
         While BBZD guard relies on Oracle rate, it only applies when Oracle returns a rate.
@@ -19,21 +21,11 @@ class TestBelizeXOracleSlippageGuard:
         )
         assert res["success"], f"Oracle rate update failed: {res.get('error')}"
 
-        # 2) Ensure Alice has KYC (Identity pallet)
-        # KYC level: 1 (Basic). Identity::verify_identity doesn't require admin in this dev config.
-        res = submit_sudo_extrinsic(
-            pallet="Oracle",
-            call="verify_identity",
-            params={
-                "account": str(alice_keypair.ss58_address),
-                "kyc_level": 1,
-                "id_hash": [0]*32,
-                "provider": "testnet",
-                "biometric_verified": False,
-                "address_verified": False,
-            },
-        )
-        assert res["success"], f"Set KYC failed: {res.get('error')}"
+        # 2) Ensure Alice has KYC (oracle quorum, not sudo)
+        verify_kyc(alice_keypair, 1)
+
+        # bBZD lives in the economy pallet's ledger, so the quote leg must be minted
+        fund_bbzd(alice_keypair, 50_000_000_000_000)
 
         # 3) Create DALLA/BBZD pair if not present (already defaults to active)
         # We'll proceed to add liquidity directly.
@@ -76,16 +68,6 @@ class TestBelizeXOracleSlippageGuard:
         assert receipt.is_success, f"Trade failed: {getattr(receipt, 'error_message', None)}"
 
         # 6) Confirm event emitted
-        def _is_trade_executed(ev):
-            module = None
-            name = None
-            if hasattr(ev, "event") and hasattr(ev.event, "value") and isinstance(ev.event.value, dict):
-                module = ev.event.value.get("module") or ev.event.value.get("pallet") or ev.event.value.get("section")
-                name = ev.event.value.get("event") or ev.event.value.get("name")
-            module = module or getattr(ev, "event_module", None)
-            name = name or getattr(ev, "event_name", None)
-            if module == "BelizeX" and name == "TradeExecuted":
-                return True
-            return "TradeExecuted" in str(ev)
-
-        assert any(_is_trade_executed(ev) for ev in receipt.triggered_events), "TradeExecuted event not found"
+        assert ("BelizeX", "TradeExecuted") in event_pairs(receipt), (
+            f"TradeExecuted event not found; got {event_pairs(receipt)}"
+        )

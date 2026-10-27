@@ -1,14 +1,21 @@
 import pytest
+from substrateinterface import Keypair
 
 
 @pytest.mark.requires_blockchain
 class TestEconomyCompliance:
-    def test_mint_requires_kyc(self, blockchain_connection, submit_sudo_extrinsic, alice_keypair, bob_keypair):
+    def test_mint_requires_kyc(self, blockchain_connection, submit_sudo_extrinsic, alice_keypair, fund_account, verify_kyc, set_reserves):
         """
-        Minting bBZD should require recipient KYC >= 1. Without KYC, expect KycVerificationRequired.
-        After setting KYC via a signed Oracle call, mint should succeed.
+        Minting bBZD must require recipient KYC >= 1.
+
+        Uses a fresh, funded account rather than a named fixture: other test
+        modules verify Alice and Bob, and pytest shares one chain for the whole
+        session, so reusing them would silently prove nothing (the negative case
+        would be skipped because the recipient already held KYC).
         """
         substrate = blockchain_connection
+        unverified = Keypair.create_from_uri("//Ferdie")
+        fund_account(unverified, 1_000_000_000_000)
 
         # 1) Authorize Alice as Central Bank minter (governance-only)
         res = submit_sudo_extrinsic(
@@ -22,81 +29,44 @@ class TestEconomyCompliance:
         assert res.is_success, f"Authorize minter failed: {getattr(res, 'error_message', None)}"
 
         # 2) Set reserves high enough to allow minting
-        res = submit_sudo_extrinsic(
-            pallet="Economy",
-            call="update_reserves",
-            params={
-                "new_reserves": 1_000_000_000_000_000,
-            },
-        )
-        assert res.is_success, f"Update reserves failed: {getattr(res, 'error_message', None)}"
+        set_reserves(1_000_000_000_000_000)
 
-        # Ensure recipient not sanctioned in dev runtime
-        submit_sudo_extrinsic(
-            pallet="Oracle",
-            call="remove_sanction",
-            params={"account": str(bob_keypair.ss58_address)},
-        )
+        assert substrate.query(
+            "Oracle", "IdentityVerifications", [unverified.ss58_address]
+        ).value is None, "precondition: the recipient must start without KYC"
 
-        # 3) Attempt mint to Bob WITHOUT KYC -> expect failure
-        call = substrate.compose_call(
-            call_module="Economy",
-            call_function="mint_bbzd",
-            call_params={
-                "recipient": str(bob_keypair.ss58_address),
-                "amount": 1_000_000_000,
-                "deposit_reference": f"0x{b'test-deposit'.hex()}",
-            },
-        )
-        extrinsic = substrate.create_signed_extrinsic(call=call, keypair=alice_keypair)
-        receipt = substrate.submit_extrinsic(extrinsic, wait_for_finalization=True)
-        if receipt.is_success:
-            pytest.skip("KYC gating not enforced in dev runtime (mint without KYC succeeds)")
-        assert not receipt.is_success, "Mint should fail when recipient lacks KYC"
-        def _mod(ev):
-            return getattr(ev, "event_module", None) or getattr(ev.value, "module", None)
-        def _name(ev):
-            return getattr(ev, "event_name", None) or getattr(ev.value, "event_id", None)
-
-        if receipt.triggered_events:
-            assert any(_mod(ev) == "System" and _name(ev) == "ExtrinsicFailed" for ev in receipt.triggered_events), (
-                f"Expected ExtrinsicFailed, got: {[ (_mod(e), _name(e)) for e in receipt.triggered_events ]}"
+        def _mint(amount, tag):
+            call = substrate.compose_call(
+                call_module="Economy",
+                call_function="mint_bbzd",
+                call_params={
+                    "recipient": str(unverified.ss58_address),
+                    "amount": amount,
+                    "deposit_reference": f"0x{tag.hex()}",
+                },
             )
-        else:
-            pytest.skip("Mint without KYC failed but dev runtime emitted no System.ExtrinsicFailed")
+            extrinsic = substrate.create_signed_extrinsic(
+                call=call, keypair=alice_keypair
+            )
+            return substrate.submit_extrinsic(extrinsic, wait_for_finalization=True)
 
-        # 4) Set Bob's KYC Level 1 via signed Oracle call
-        call = substrate.compose_call(
-            call_module="Oracle",
-            call_function="verify_identity",
-            call_params={
-                "account": str(bob_keypair.ss58_address),
-                "kyc_level": 1,
-                "id_hash": [0] * 32,
-                "provider": "testnet",
-                "biometric_verified": False,
-                "address_verified": False,
-            },
+        # 3) Attempt mint WITHOUT KYC -> must be refused, and for that reason.
+        receipt = _mint(1_000_000_000, b"no-kyc-deposit")
+        assert not receipt.is_success, "Mint succeeded for a recipient without KYC"
+        assert "KycVerificationRequired" in str(getattr(receipt, "error_message", "")), (
+            f"Expected KycVerificationRequired, got: {receipt.error_message}"
         )
-        extrinsic = substrate.create_signed_extrinsic(call=call, keypair=bob_keypair)
-        receipt = substrate.submit_extrinsic(extrinsic, wait_for_finalization=True)
-        assert receipt.is_success, f"Set KYC failed: {getattr(receipt, 'error_message', None)}"
+
+        # 4) Grant KYC (oracle quorum — a single signed call cannot do it)
+        verify_kyc(unverified, 1)
 
         # 5) Retry mint -> should succeed now
-        call = substrate.compose_call(
-            call_module="Economy",
-            call_function="mint_bbzd",
-            call_params={
-                "recipient": str(bob_keypair.ss58_address),
-                "amount": 2_000_000_000,
-                "deposit_reference": f"0x{b'test-deposit-2'.hex()}",
-            },
+        receipt = _mint(2_000_000_000, b"kyc-deposit")
+        assert receipt.is_success, (
+            f"Mint should succeed after KYC: {getattr(receipt, 'error_message', None)}"
         )
-        extrinsic = substrate.create_signed_extrinsic(call=call, keypair=alice_keypair)
-        receipt = substrate.submit_extrinsic(extrinsic, wait_for_finalization=True)
-        assert receipt.is_success, f"Mint should succeed after KYC: {getattr(receipt, 'error_message', None)}"
 
-    def test_mint_blocks_sanctioned(self, blockchain_connection, submit_sudo_extrinsic, alice_keypair, bob_keypair):
+    def test_mint_blocks_sanctioned(self, blockchain_connection, submit_sudo_extrinsic, alice_keypair, bob_keypair, set_reserves):
         """
         Minting bBZD should be blocked if recipient is sanctioned.
         """
@@ -109,12 +79,7 @@ class TestEconomyCompliance:
             params={"account": str(alice_keypair.ss58_address), "authorized": True},
         )
         assert res.is_success, f"Authorize minter failed: {getattr(res, 'error_message', None)}"
-        res = submit_sudo_extrinsic(
-            pallet="Economy",
-            call="update_reserves",
-            params={"new_reserves": 1_000_000_000_000_000},
-        )
-        assert res.is_success, f"Update reserves failed: {getattr(res, 'error_message', None)}"
+        set_reserves(1_000_000_000_000_000)
 
         # Sanction Bob via Oracle (admin/root)
         res = submit_sudo_extrinsic(
@@ -129,30 +94,34 @@ class TestEconomyCompliance:
         )
         assert res.is_success, f"Add sanction failed: {getattr(res, 'error_message', None)}"
 
-        # Attempt mint to Bob -> should fail with sanction
-        call = substrate.compose_call(
-            call_module="Economy",
-            call_function="mint_bbzd",
-            call_params={
-                "recipient": str(bob_keypair.ss58_address),
-                "amount": 1_000_000_000,
-                "deposit_reference": f"0x{b'sanctioned-deposit'.hex()}",
-            },
-        )
-        extrinsic = substrate.create_signed_extrinsic(call=call, keypair=alice_keypair)
-        receipt = substrate.submit_extrinsic(extrinsic, wait_for_finalization=True)
-        if receipt.is_success:
-            pytest.skip("Sanction gating not enforced in dev runtime (mint succeeded for sanctioned user)")
-        assert not receipt.is_success, "Mint should fail for sanctioned recipient"
-        err_msg = str(getattr(receipt, "error_message", ""))
-        if "Sanctioned" in err_msg or "SanctionedEntity" in err_msg:
-            return
-        if receipt.triggered_events:
-            assert any(getattr(ev, "event_module", None) == "System" and getattr(ev, "event_name", None) == "ExtrinsicFailed" for ev in receipt.triggered_events)
-        else:
-            pytest.skip("Mint failed for sanction but no System.ExtrinsicFailed emitted in dev runtime")
+        try:
+            # Attempt mint to Bob -> should fail with sanction
+            call = substrate.compose_call(
+                call_module="Economy",
+                call_function="mint_bbzd",
+                call_params={
+                    "recipient": str(bob_keypair.ss58_address),
+                    "amount": 1_000_000_000,
+                    "deposit_reference": f"0x{b'sanctioned-deposit'.hex()}",
+                },
+            )
+            extrinsic = substrate.create_signed_extrinsic(call=call, keypair=alice_keypair)
+            receipt = substrate.submit_extrinsic(extrinsic, wait_for_finalization=True)
+            assert not receipt.is_success, "Mint should fail for sanctioned recipient"
+            err_msg = str(getattr(receipt, "error_message", ""))
+            assert "Sanctioned" in err_msg or "SanctionedEntity" in err_msg, (
+                f"Expected a sanction rejection, got: {err_msg}"
+            )
+        finally:
+            # A lingering sanction would fail every later test that touches Bob.
+            cleanup = submit_sudo_extrinsic(
+                pallet="Oracle",
+                call="remove_sanction",
+                params={"account": str(bob_keypair.ss58_address)},
+            )
+            assert cleanup.is_success, "remove_sanction failed — Bob is still sanctioned"
 
-    def test_redeem_requires_kyc_and_not_sanctioned(self, blockchain_connection, submit_sudo_extrinsic, alice_keypair, bob_keypair):
+    def test_redeem_requires_kyc_and_not_sanctioned(self, blockchain_connection, submit_sudo_extrinsic, alice_keypair, bob_keypair, verify_kyc, set_reserves):
         """
         Redeeming bBZD should require KYC >= 1 and non-sanctioned status.
         """
@@ -165,28 +134,9 @@ class TestEconomyCompliance:
             params={"account": str(alice_keypair.ss58_address), "authorized": True},
         )
         assert res.is_success, f"Authorize minter failed: {getattr(res, 'error_message', None)}"
-        res = submit_sudo_extrinsic(
-            pallet="Economy",
-            call="update_reserves",
-            params={"new_reserves": 1_000_000_000_000_000},
-        )
-        assert res.is_success, f"Update reserves failed: {getattr(res, 'error_message', None)}"
+        set_reserves(1_000_000_000_000_000)
         # Mint some bBZD to Bob (use KYC first to allow mint)
-        call = substrate.compose_call(
-            call_module="Oracle",
-            call_function="verify_identity",
-            call_params={
-                "account": str(bob_keypair.ss58_address),
-                "kyc_level": 1,
-                "id_hash": [0] * 32,
-                "provider": "testnet",
-                "biometric_verified": False,
-                "address_verified": False,
-            },
-        )
-        extrinsic = substrate.create_signed_extrinsic(call=call, keypair=bob_keypair)
-        receipt = substrate.submit_extrinsic(extrinsic, wait_for_finalization=True)
-        assert receipt.is_success, "Setting KYC should succeed"
+        verify_kyc(bob_keypair, 1)
         call = substrate.compose_call(
             call_module="Economy",
             call_function="mint_bbzd",

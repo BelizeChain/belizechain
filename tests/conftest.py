@@ -16,6 +16,7 @@ import pytest
 import requests
 from substrateinterface import SubstrateInterface, Keypair
 from substrateinterface.exceptions import SubstrateRequestException
+from substrateinterface.utils.ss58 import ss58_decode
 
 # Test configuration
 BLOCKCHAIN_WS_URL = os.getenv("BLOCKCHAIN_WS_URL", "ws://localhost:9944")
@@ -733,24 +734,429 @@ def submit_extrinsic(blockchain_connection):
                     extrinsic_hash=None,
                 )
 
-        class ReceiptWrapper:
-            def __init__(self, inner):
-                self.inner = inner
-                self.is_success = getattr(inner, "is_success", False)
-                self.error_message = getattr(inner, "error_message", None)
-                self.triggered_events = getattr(inner, "triggered_events", [])
-                self.block_hash = getattr(inner, "block_hash", None)
-                self.extrinsic_hash = getattr(inner, "extrinsic_hash", None)
-            def __getitem__(self, key):
-                if key == "success":
-                    return self.is_success
-                if key == "error":
-                    return self.error_message
-                raise KeyError(key)
-
         return ReceiptWrapper(receipt)
     
     return _submit
+
+
+class ReceiptWrapper:
+    """Uniform receipt surface for both plain and sudo-wrapped extrinsics.
+
+    Supports attribute access (`receipt.is_success`), item access
+    (`receipt["success"]`) and `.get("error")`, because existing tests use all
+    three spellings.
+    """
+
+    def __init__(self, inner, is_success: Optional[bool] = None,
+                 error_message=None):
+        self.inner = inner
+        self.triggered_events = getattr(inner, "triggered_events", None) or []
+        self.block_hash = getattr(inner, "block_hash", None)
+        self.extrinsic_hash = getattr(inner, "extrinsic_hash", None)
+        self.is_success = (
+            getattr(inner, "is_success", False) if is_success is None else is_success
+        )
+        self.error_message = (
+            getattr(inner, "error_message", None)
+            if error_message is None
+            else error_message
+        )
+
+    def __getitem__(self, key):
+        if key == "success":
+            return self.is_success
+        if key == "error":
+            return self.error_message
+        raise KeyError(key)
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+
+def event_pairs(receipt) -> list:
+    """Return `(module_id, event_id)` for every event a receipt triggered.
+
+    `substrate-interface` exposes the decoded event inside `.value`; older
+    versions exposed `event_module` / `event_name` as attributes. Reading the
+    attributes silently yields `None` on current versions, which turns every
+    "did it emit X?" assertion into a permanent False. Read `.value` first.
+    """
+    pairs = []
+    for event in getattr(receipt, "triggered_events", None) or []:
+        value = getattr(event, "value", None)
+        if not isinstance(value, dict):
+            continue
+        module = value.get("module_id")
+        name = value.get("event_id")
+        if module and name:
+            pairs.append((module, name))
+    return pairs
+
+
+def same_account(a, b) -> bool:
+    """True when two SS58 strings are the same on-chain account.
+
+    The chain encodes with prefix 1981 (`r1...`) while
+    `Keypair.create_from_uri` defaults to prefix 42 (`5F...`). Comparing the
+    rendered strings therefore fails for the *same* account, which silently
+    broke assertions in four suites. Compare the decoded AccountId instead.
+    """
+    if a is None or b is None:
+        return False
+    try:
+        return ss58_decode(str(a)) == ss58_decode(str(b))
+    except (ValueError, TypeError):
+        return str(a) == str(b)
+
+
+@pytest.fixture
+def oracle_operator(blockchain_connection, submit_sudo_extrinsic, fund_account):
+    """Return a funded keypair registered in `Oracle.OracleOperators`.
+
+    `submit_price`, `verify_merchant` and `verify_identity` are all gated on that
+    set. `OracleAdminOrigin` is `TechnicalCouncilMember`, which is an
+    `EitherOfDiverse<EnsureRoot, _>`, so sudo can add an operator.
+    """
+    substrate = blockchain_connection
+    operator = Keypair.create_from_uri(ORACLE_OPERATOR_SEEDS[0])
+
+    def _oracle_operator() -> Keypair:
+        fund_account(operator, 100 * 1_000_000_000_000)
+
+        registered = substrate.query(
+            "Oracle", "OracleOperators", [operator.ss58_address]
+        ).value
+        if registered:
+            return operator
+
+        receipt = submit_sudo_extrinsic(
+            "Oracle", "add_operator", {"operator": operator.ss58_address}
+        )
+        message = str(receipt.error_message)
+        assert receipt.is_success or "AlreadyRegistered" in message, (
+            f"add_operator failed: {message}"
+        )
+        return operator
+
+    return _oracle_operator
+
+
+# --- Identity-pallet KYC (a different store from the Oracle one) -------------
+
+IDENTITY_ISSUER_URI = "//Alice//identity-issuer"
+
+# `pallet_identity::AttributeType`: Ssn, Passport, Biometrics.
+ATTRIBUTE_SSN = 0
+ATTRIBUTE_PASSPORT = 1
+ATTRIBUTE_BIOMETRICS = 2
+
+# `pallet_identity::KycLevel` is derived, not stored: L1 needs an SSN
+# attestation, L2 adds a passport, L3 adds biometrics.
+_ATTRIBUTES_BY_LEVEL = {
+    1: (ATTRIBUTE_SSN,),
+    2: (ATTRIBUTE_SSN, ATTRIBUTE_PASSPORT),
+    3: (ATTRIBUTE_SSN, ATTRIBUTE_PASSPORT, ATTRIBUTE_BIOMETRICS),
+}
+
+
+@pytest.fixture
+def identity_kyc(
+    blockchain_connection, submit_sudo_extrinsic, submit_extrinsic, fund_account
+):
+    """Return `identity_kyc(account, level)` that seeds Identity attestations.
+
+    This is **not** the same store as `verify_kyc`. The oracle quorum writes
+    `Oracle.IdentityVerifications`, which is what `Economy::transfer_bbzd` and
+    the governance compliance gates read. `T::BelizeKyc` — used by LandLedger,
+    Staking, BNS and Community — instead reads `Identity.SsnAttestations`,
+    `PassportAttestations` and `BiometricAttestations`, keyed by identity id.
+    An account verified through the oracle is therefore still KYC-less for
+    those pallets, which is why tests that seeded only the oracle skipped.
+
+    `IssuerBondAmount` defaults to 0, so authorising an issuer needs no bond.
+    """
+    import hashlib
+
+    substrate = blockchain_connection
+    issuer = Keypair.create_from_uri(IDENTITY_ISSUER_URI)
+    authorized_attributes: set = set()
+
+    def _ensure_registered(account: Keypair) -> None:
+        if substrate.query("Identity", "IdentityOf", [account.ss58_address]).value:
+            return
+        fund_account(account, 100 * 1_000_000_000_000)
+        receipt = submit_extrinsic(
+            "Identity",
+            "register_identity",
+            {"name": f"test-{account.ss58_address[:8]}"},
+            account,
+        )
+        if not receipt.is_success and "IdentityExists" not in str(
+            receipt.error_message
+        ):
+            raise AssertionError(
+                f"register_identity failed for {account.ss58_address}: "
+                f"{receipt.error_message}"
+            )
+
+    def _ensure_issuer(attribute: int) -> None:
+        if attribute in authorized_attributes:
+            return
+
+        # `add_issuer` requires `IssuerBonds[attr][issuer] >= IssuerBondAmount`,
+        # and that value is 1000 DALLA in this runtime's genesis — not zero, as
+        # the pallet's `OptionQuery` default suggests.
+        bond = substrate.query("Identity", "IssuerBondAmount").value
+        fund_account(issuer, int(bond or 0) + 100 * 1_000_000_000_000)
+
+        deposited = submit_extrinsic(
+            "Identity", "issuer_deposit_bond", {"attr": attribute}, issuer
+        )
+        if not deposited.is_success:
+            raise AssertionError(
+                f"issuer_deposit_bond({attribute}) failed: {deposited.error_message}"
+            )
+
+        receipt = submit_sudo_extrinsic(
+            "Identity",
+            "add_issuer",
+            {"attr": attribute, "issuer": issuer.ss58_address},
+        )
+        message = str(receipt.error_message)
+        # `AlreadyAttested` means a previous run or test already authorised it.
+        if not receipt.is_success and "AlreadyAttested" not in message:
+            raise AssertionError(
+                f"add_issuer({attribute}) failed: {receipt.error_message}"
+            )
+        authorized_attributes.add(attribute)
+
+    def _issue(account: Keypair, attribute: int) -> None:
+        _ensure_issuer(attribute)
+        digest = hashlib.sha256(
+            f"{account.ss58_address}:{attribute}".encode()
+        ).hexdigest()
+
+        if attribute == ATTRIBUTE_BIOMETRICS:
+            call, params = "issue_biometrics", {
+                "target": account.ss58_address,
+                "anchor": "ipfs://test-biometrics",
+            }
+        else:
+            call = "issue_ssn" if attribute == ATTRIBUTE_SSN else "issue_passport"
+            params = {
+                "target": account.ss58_address,
+                "hash": "0x" + digest,
+                "anchor": f"ipfs://test-{attribute}",
+                "format_ok": True,
+            }
+
+        receipt = submit_extrinsic("Identity", call, params, issuer)
+        message = str(receipt.error_message)
+        if not receipt.is_success and "AlreadyAttested" not in message:
+            raise AssertionError(
+                f"{call} failed for {account.ss58_address}: {message}"
+            )
+
+    def _identity_kyc(account: Keypair, level: int = 1) -> None:
+        if level not in _ATTRIBUTES_BY_LEVEL:
+            raise ValueError(f"level must be 1..3, got {level}")
+        _ensure_registered(account)
+        for attribute in _ATTRIBUTES_BY_LEVEL[level]:
+            _issue(account, attribute)
+
+    return _identity_kyc
+
+
+# Dev accounts, in the order `--dev` funds them.
+DEV_ACCOUNT_URIS = (
+    "//Alice",
+    "//Bob",
+    "//Charlie",
+    "//Dave",
+    "//Eve",
+    "//Ferdie",
+)
+
+
+# A derivation path no other test touches. `//Dave` and `//Bob` were used as
+# "unverified" stand-ins until it turned out `test_council.py` verifies them —
+# which made the compliance-gate tests pass or fail depending on file order.
+UNVERIFIED_ACCOUNT_URI = "//Alice//governance-unverified"
+
+# Mutable so the fixture closure can share one monotonically increasing value
+# across the session.
+_UNVERIFIED_ACCOUNTS_ISSUED = [0]
+
+
+@pytest.fixture
+def unverified_account(blockchain_connection, fund_account):
+    """Return `unverified_account()` -> a funded keypair with no KYC record.
+
+    Each call derives a *different* account. A single shared path looked fine
+    until a test that deliberately verifies its account (`..._succeeds_once_the
+    _sender_is_verified`) ran first and left a permanent KYC record behind, after
+    which every later negative test tripped this fixture's own guard. Varying the
+    path keeps the guard meaningful instead of trading one failure for another.
+
+    Raises `AssertionError` if the account already has an
+    `Oracle.IdentityVerifications` entry, so a compliance-gate test can never
+    pass for the wrong reason.
+    """
+    substrate = blockchain_connection
+
+    def _unverified_account() -> Keypair:
+        # The counter is module-level on purpose: this fixture is function-scoped,
+        # so a local counter would restart at 1 for every test and hand out the
+        # same account each time — which is exactly the collision it exists to
+        # avoid.
+        _UNVERIFIED_ACCOUNTS_ISSUED[0] += 1
+        account = Keypair.create_from_uri(
+            f"{UNVERIFIED_ACCOUNT_URI}-{_UNVERIFIED_ACCOUNTS_ISSUED[0]}"
+        )
+
+        record = substrate.query(
+            "Oracle", "IdentityVerifications", [account.ss58_address]
+        )
+        assert record.value is None, (
+            f"{UNVERIFIED_ACCOUNT_URI} already has a KYC record "
+            f"({record.value}); the compliance-gate assertion would be "
+            f"meaningless"
+        )
+
+        fund_account(account, 100 * 1_000_000_000_000)  # 100 DALLA for fees
+        return account
+
+    return _unverified_account
+
+
+@pytest.fixture
+def council_keypair(blockchain_connection):
+    """A dev keypair that currently holds a Governance council seat, or `None`.
+
+    Several Governance extrinsics (`veto_emergency`, `approve_treasury_spend`)
+    are gated on `CouncilMembers`, and they are `ensure_signed`, so the call has
+    to be signed by the member itself. Seats are created by district elections,
+    so this returns `None` until `tests/governance/test_council.py` has run.
+    """
+    substrate = blockchain_connection
+
+    def _council_keypair() -> Optional[Keypair]:
+        seats = [
+            key.value
+            for key, _ in substrate.query_map("Governance", "CouncilMembers")
+        ]
+        if not seats:
+            return None
+
+        seat_accounts = {ss58_decode(seat) for seat in seats}
+        for uri in DEV_ACCOUNT_URIS:
+            candidate = Keypair.create_from_uri(uri)
+            if candidate.public_key.hex() in seat_accounts:
+                return candidate
+        return None
+
+    return _council_keypair
+
+
+def sudo_inner_result(receipt) -> Optional[dict]:
+    """Return the inner `DispatchResult` from a `Sudo.Sudid` event, or None.
+
+    `Sudo.sudo` succeeds whenever the wrapper extrinsic is included, even when
+    the wrapped call is rejected — the rejection lands in `Sudid.sudo_result`.
+    Checking only `receipt.is_success` therefore reports success for a call
+    that did nothing.
+    """
+    for event in getattr(receipt, "triggered_events", None) or []:
+        value = getattr(event, "value", None)
+        if not isinstance(value, dict):
+            continue
+        if value.get("module_id") != "Sudo" or value.get("event_id") != "Sudid":
+            continue
+        return (value.get("attributes") or {}).get("sudo_result")
+    return None
+
+
+# Pallet names never change mid-session, and each lookup costs an RPC.
+_PALLET_NAME_BY_INDEX: dict = {}
+_ERROR_NAME_BY_INDEX: dict = {}
+
+
+def decode_dispatch_error(substrate, error) -> str:
+    """Render a swap-level dispatch error as `Pallet.Variant`.
+
+    Two shapes show up, depending on the path:
+
+    * `{'type': 'Module', 'name': 'CannotTransferToSelf', 'docs': [...]}` —
+      already decoded by `submit_extrinsic`.
+    * `{'Module': {'index': 26, 'error': '0x10000000'}}` — raw, as returned by
+      the `Sudo` path. The variant is the low byte of the hex payload.
+
+    Returning one spelling for both is what lets a test assert
+    `"EmployerAlreadyRegistered" in receipt.error_message` without caring which
+    submitter it used. Before this, every sudo assertion compared a name against
+    a hex blob and could never match.
+    """
+    if error is None:
+        return "None"
+
+    if isinstance(error, str):
+        return error
+
+    if not isinstance(error, dict):
+        return str(error)
+
+    # Already-decoded form.
+    if "type" in error and "name" in error:
+        return error["name"]
+
+    module = error.get("Module")
+    if not isinstance(module, dict):
+        return str(error)
+
+    index = module.get("index")
+    raw = module.get("error")
+
+    # `DispatchError::Module` carries `error: [u8; 4]`, so the variant index is
+    # the FIRST byte of the hex payload, not the low one:
+    #   "0x10000000" -> [0x10, 0x00, 0x00, 0x00] -> 16
+    hex_digits = str(raw)
+    if hex_digits.startswith("0x"):
+        hex_digits = hex_digits[2:]
+    try:
+        error_index = int(hex_digits[:2], 16)
+    except (TypeError, ValueError):
+        return str(error)
+
+    if not _ERROR_NAME_BY_INDEX:
+        # `MetadataVersioned.pallets` is a list of `PalletMetadataV14`, not a
+        # name-keyed mapping, so index them directly.
+        for pallet in substrate.get_metadata().pallets:
+            pallet_index = pallet.value["index"]
+            _PALLET_NAME_BY_INDEX[pallet_index] = pallet.value["name"]
+            _ERROR_NAME_BY_INDEX[pallet_index] = [
+                variant["name"] for variant in pallet.errors
+            ]
+
+    names = _ERROR_NAME_BY_INDEX.get(index) or []
+    pallet_name = _PALLET_NAME_BY_INDEX.get(index, f"pallet#{index}")
+    variant = names[error_index] if error_index < len(names) else f"error#{error_index}"
+    return f"{pallet_name}.{variant}"
+
+
+def error_name(receipt) -> str:
+    """`receipt.error_message` rendered as `Pallet.Variant` where possible."""
+    return str(getattr(receipt, "error_message", None))
+
+
+def sudo_call_failed(receipt) -> Optional[str]:
+    """Return the inner sudo error as text when the wrapped call was rejected."""
+    inner = sudo_inner_result(receipt)
+    if isinstance(inner, dict) and "Err" in inner:
+        return str(inner["Err"])
+    return None
 
 
 @pytest.fixture
@@ -760,6 +1166,10 @@ def submit_sudo_extrinsic(blockchain_connection, sudo_keypair):
     
     Returns a function that wraps an extrinsic in Sudo.sudo() and submits it.
     This is required for extrinsics that use ensure_root().
+
+    Reports the *inner* call's result: `Sudo.sudo` is marked successful as soon
+    as the wrapper is included, so a rejected inner call must be read from the
+    `Sudid` event instead of from `receipt.is_success`.
     """
     def _submit_sudo(pallet: str, call: str, params, keypair: Optional[Keypair] = None):
         """Submit sudo-wrapped extrinsic, defaulting to the sudo key."""
@@ -836,24 +1246,372 @@ def submit_sudo_extrinsic(blockchain_connection, sudo_keypair):
                 extrinsic_hash=None,
             )
 
-        class ReceiptWrapper:
-            def __init__(self, inner):
-                self.inner = inner
-                self.is_success = getattr(inner, "is_success", False)
-                self.error_message = getattr(inner, "error_message", None)
-                self.triggered_events = getattr(inner, "triggered_events", [])
-                self.block_hash = getattr(inner, "block_hash", None)
-                self.extrinsic_hash = getattr(inner, "extrinsic_hash", None)
-            def __getitem__(self, key):
-                if key == "success":
-                    return self.is_success
-                if key == "error":
-                    return self.error_message
-                raise KeyError(key)
-
+        # The wrapper extrinsic succeeding says nothing about the call it
+        # carried — trust `Sudid` when it is present.
+        inner_error = sudo_call_failed(receipt)
+        if inner_error is not None:
+            inner = sudo_inner_result(receipt) or {}
+            raw = inner.get("Err") if isinstance(inner, dict) else None
+            detail = decode_dispatch_error(substrate, raw) if raw is not None else inner_error
+            return ReceiptWrapper(
+                receipt,
+                is_success=False,
+                error_message=f"Sudo-wrapped {pallet}.{call} rejected: {detail}",
+            )
         return ReceiptWrapper(receipt)
     
     return _submit_sudo
+
+
+# Accounts that sign as oracle operators. Three distinct accounts because
+# `MinOracleAgreement` is 3 — a single vote only stages, it never finalizes.
+ORACLE_OPERATOR_SEEDS = ("//Alice", "//Bob", "//Charlie")
+
+
+@pytest.fixture
+def verify_kyc(blockchain_connection, sudo_keypair):
+    """Return `verify_kyc(account, level)` backed by a real oracle quorum.
+
+    `Oracle.verify_identity` is `ensure_signed` *and* requires an
+    `OracleOperators` entry, so it can never be driven by `Sudo.sudo` — that
+    path returns `BadOrigin` while the wrapper still reports success. It also
+    needs `MinOracleAgreement` (3) matching votes before
+    `IdentityVerifications` is written; fewer votes only stage.
+
+    This fixture registers the operator set once per session (sudo accepted:
+    `OracleAdminOrigin` is `SignedTechnicalCouncilMember`, which admits `Root`),
+    then casts the full quorum per call.
+    """
+    import hashlib
+
+    substrate = blockchain_connection
+    operators = [Keypair.create_from_uri(seed) for seed in ORACLE_OPERATOR_SEEDS]
+
+    # Operators must pay fees. `--dev` endows only Alice/Bob, so fund the rest
+    # rather than assume a specific genesis.
+    OPERATOR_MIN_FREE = 100 * 1_000_000_000_000  # 100 DALLA at 12 decimals
+
+    def _fund_operator(operator):
+        account = substrate.query("System", "Account", [operator.ss58_address]).value
+        free = (account or {}).get("data", {}).get("free", 0)
+        if free >= OPERATOR_MIN_FREE:
+            return
+        inner = substrate.compose_call(
+            call_module="Balances",
+            call_function="force_set_balance",
+            call_params={"who": operator.ss58_address, "new_free": OPERATOR_MIN_FREE},
+        )
+        outer = substrate.compose_call(
+            call_module="Sudo", call_function="sudo", call_params={"call": inner}
+        )
+        receipt = substrate.submit_extrinsic(
+            substrate.create_signed_extrinsic(call=outer, keypair=sudo_keypair),
+            wait_for_inclusion=True,
+        )
+        error = sudo_call_failed(receipt)
+        if error is not None:
+            pytest.skip(f"Cannot fund oracle operator: {error}")
+
+    def _register_operators():
+        for operator in operators:
+            _fund_operator(operator)
+            already = substrate.query(
+                "Oracle", "OracleOperators", [operator.ss58_address]
+            )
+            if already.value:
+                continue
+            inner = substrate.compose_call(
+                call_module="Oracle",
+                call_function="add_operator",
+                call_params={"operator": operator.ss58_address},
+            )
+            outer = substrate.compose_call(
+                call_module="Sudo", call_function="sudo", call_params={"call": inner}
+            )
+            receipt = substrate.submit_extrinsic(
+                substrate.create_signed_extrinsic(call=outer, keypair=sudo_keypair),
+                wait_for_inclusion=True,
+            )
+            error = sudo_call_failed(receipt)
+            if error is not None:
+                pytest.skip(f"Cannot register oracle operator: {error}")
+
+    _register_operators()
+
+    def _verify_kyc(account: Keypair, kyc_level: int = 1) -> None:
+        """Reach oracle consensus for `account` at `kyc_level`."""
+        # Idempotent: a prior run (or an earlier test) may have finalized this
+        # subject already, and re-voting the identical payload is rejected as
+        # `AlreadyVotedSameKyc` at the pallet level.
+        existing = substrate.query(
+            "Oracle", "IdentityVerifications", [account.ss58_address]
+        )
+        if existing.value is not None:
+            return
+
+        # A dispute from earlier divergent votes would block *every* vote with
+        # `KycDisputeActive`, so clear it before trying to build consensus.
+        dispute = substrate.query(
+            "Oracle", "OracleDisputeFlag", [account.ss58_address]
+        )
+        if dispute.value:
+            inner = substrate.compose_call(
+                call_module="Oracle",
+                call_function="resolve_kyc_dispute",
+                call_params={"account": account.ss58_address},
+            )
+            outer = substrate.compose_call(
+                call_module="Sudo", call_function="sudo", call_params={"call": inner}
+            )
+            receipt = substrate.submit_extrinsic(
+                substrate.create_signed_extrinsic(call=outer, keypair=sudo_keypair),
+                wait_for_inclusion=True,
+            )
+            error = sudo_call_failed(receipt)
+            if error is not None:
+                raise AssertionError(
+                    f"Cannot clear KYC dispute for {account.ss58_address}: {error}"
+                )
+
+        # A disagreement between operators sets a dispute flag that blocks all
+        # further votes for the subject. Tests that previously voted with a
+        # different (level, id_hash) leave that flag behind, so clear it before
+        # voting — otherwise this fixture inherits another test's mess.
+        disputed = substrate.query(
+            "Oracle", "OracleDisputeFlag", [account.ss58_address]
+        )
+        if disputed.value:
+            inner = substrate.compose_call(
+                call_module="Oracle",
+                call_function="resolve_kyc_dispute",
+                call_params={"account": account.ss58_address},
+            )
+            outer = substrate.compose_call(
+                call_module="Sudo", call_function="sudo", call_params={"call": inner}
+            )
+            receipt = substrate.submit_extrinsic(
+                substrate.create_signed_extrinsic(call=outer, keypair=sudo_keypair),
+                wait_for_inclusion=True,
+            )
+            error = sudo_call_failed(receipt)
+            if error is not None:
+                raise AssertionError(
+                    f"Cannot clear KYC dispute for {account.ss58_address}: {error}"
+                )
+
+        # Every operator must submit the *same* (level, id_hash) pair or the
+        # votes collide and flag a dispute instead of converging.
+        id_hash = "0x" + hashlib.sha256(
+            f"{account.ss58_address}-kyc-{kyc_level}".encode()
+        ).hexdigest()
+
+        for operator in operators:
+            call = substrate.compose_call(
+                call_module="Oracle",
+                call_function="verify_identity",
+                call_params={
+                    "account": account.ss58_address,
+                    "kyc_level": kyc_level,
+                    "id_hash": id_hash,
+                    "provider": "testnet",
+                    "biometric_verified": False,
+                    "address_verified": False,
+                },
+            )
+            receipt = substrate.submit_extrinsic(
+                substrate.create_signed_extrinsic(call=call, keypair=operator),
+                wait_for_inclusion=True,
+            )
+            error = getattr(receipt, "error_message", None) or {}
+            if receipt.is_success:
+                continue
+            # An operator that already cast this exact vote still counts toward
+            # the quorum, so this is not a failure.
+            if "AlreadyVotedSameKyc" in str(error):
+                continue
+            raise AssertionError(
+                f"Oracle vote by {operator.ss58_address} rejected: {error}"
+            )
+
+        resolved = substrate.query(
+            "Oracle", "IdentityVerifications", [account.ss58_address]
+        )
+        if resolved.value is None:
+            raise AssertionError(
+                f"Oracle consensus did not finalize KYC for {account.ss58_address}: "
+                f"MinOracleAgreement not reached"
+            )
+
+    return _verify_kyc
+
+
+@pytest.fixture
+def set_reserves(blockchain_connection, sudo_keypair):
+    """Return `set_reserves(desired)` that raises central-bank reserves safely.
+
+    `Economy.update_reserves` refuses a value below circulating bBZD supply
+    (`InsufficientReserves`) — reserves may never under-collateralize. Tests
+    share one chain, so a later test's smaller literal would fail even though
+    its own logic is fine. Clamp to the current supply instead.
+    """
+    substrate = blockchain_connection
+
+    def _set_reserves(desired: int) -> int:
+        supply = substrate.query("Economy", "TotalBbzdSupply").value or 0
+        target = max(desired, int(supply))
+
+        inner = substrate.compose_call(
+            call_module="Economy",
+            call_function="update_reserves",
+            call_params={"new_reserves": target},
+        )
+        outer = substrate.compose_call(
+            call_module="Sudo", call_function="sudo", call_params={"call": inner}
+        )
+        receipt = substrate.submit_extrinsic(
+            substrate.create_signed_extrinsic(call=outer, keypair=sudo_keypair),
+            wait_for_inclusion=True,
+        )
+        error = sudo_call_failed(receipt)
+        if error is not None:
+            raise AssertionError(f"Cannot set reserves to {target}: {error}")
+        return target
+
+    return _set_reserves
+
+
+@pytest.fixture
+def fund_account(blockchain_connection, sudo_keypair):
+    """Return `fund_account(address_or_keypair, amount)` that sets a native balance.
+
+    Lets a test use a *fresh* account (to prove a negative like "no KYC means
+    no trade") without depending on which seeds a given genesis happens to
+    endow. `Balances.force_set_balance` is root-only, hence the sudo wrapper.
+    """
+    substrate = blockchain_connection
+
+    def _fund_account(account, amount: int) -> None:
+        address = getattr(account, "ss58_address", account)
+        inner = substrate.compose_call(
+            call_module="Balances",
+            call_function="force_set_balance",
+            call_params={"who": address, "new_free": amount},
+        )
+        outer = substrate.compose_call(
+            call_module="Sudo", call_function="sudo", call_params={"call": inner}
+        )
+        receipt = substrate.submit_extrinsic(
+            substrate.create_signed_extrinsic(call=outer, keypair=sudo_keypair),
+            wait_for_inclusion=True,
+        )
+        error = sudo_call_failed(receipt)
+        if error is not None:
+            raise AssertionError(f"Cannot fund {address}: {error}")
+
+    return _fund_account
+
+
+@pytest.fixture
+def fund_bbzd(blockchain_connection, sudo_keypair, verify_kyc):
+    """Return `fund_bbzd(account, amount)` that mints bBZD through the economy pallet.
+
+    bBZD is **not** a `Balances` asset — it lives in
+    `pallet_belize_economy::BBZDBalances`, and `BelizeXAssetLedger` routes
+    `AssetId::BBZD` there. A DEX fixture therefore cannot fund the quote leg by
+    sending DALLA; it has to go through the minting path, which needs an
+    authorized minter, collateralized reserves and recipient KYC >= 1.
+
+    Amounts are kept below `TravelRuleThreshold` (100 DALLA) so Basic KYC is
+    sufficient; at or above it the pallet demands Enhanced KYC (L2).
+    """
+    substrate = blockchain_connection
+    minter = Keypair.create_from_uri("//Alice")
+
+    def _ensure_minter_setup():
+        res = substrate.query(
+            "Economy", "AuthorizedMinters", [minter.ss58_address]
+        )
+        if not res.value:
+            inner = substrate.compose_call(
+                call_module="Economy",
+                call_function="set_minter_authorization",
+                call_params={"account": minter.ss58_address, "authorized": True},
+            )
+            outer = substrate.compose_call(
+                call_module="Sudo", call_function="sudo", call_params={"call": inner}
+            )
+            receipt = substrate.submit_extrinsic(
+                substrate.create_signed_extrinsic(call=outer, keypair=sudo_keypair),
+                wait_for_inclusion=True,
+            )
+            error = sudo_call_failed(receipt)
+            if error is not None:
+                pytest.skip(f"Cannot authorize bBZD minter: {error}")
+
+        inner = substrate.compose_call(
+            call_module="Economy",
+            call_function="update_reserves",
+            call_params={"new_reserves": 10**18},
+        )
+        outer = substrate.compose_call(
+            call_module="Sudo", call_function="sudo", call_params={"call": inner}
+        )
+        substrate.submit_extrinsic(
+            substrate.create_signed_extrinsic(call=outer, keypair=sudo_keypair),
+            wait_for_inclusion=True,
+        )
+
+    _ensure_minter_setup()
+
+    def _fund_bbzd(account: Keypair, amount: int) -> None:
+        verify_kyc(account, 1)
+        call = substrate.compose_call(
+            call_module="Economy",
+            call_function="mint_bbzd",
+            call_params={
+                "recipient": account.ss58_address,
+                "amount": amount,
+                "deposit_reference": "0x" + b"dex-test-deposit".hex(),
+            },
+        )
+        receipt = substrate.submit_extrinsic(
+            substrate.create_signed_extrinsic(call=call, keypair=minter),
+            wait_for_inclusion=True,
+        )
+        if not receipt.is_success:
+            raise AssertionError(
+                f"mint_bbzd for {account.ss58_address} failed: "
+                f"{getattr(receipt, 'error_message', None)}"
+            )
+
+    return _fund_bbzd
+
+
+@pytest.fixture
+def fund_wusdc(blockchain_connection, submit_sudo_extrinsic):
+    """Return `fund_wusdc(account, amount)` that mints WUSDC through `BelizeX`.
+
+    WUSDC is **not** a `Balances` asset either: `BelizeXAssetLedger` routes
+    `AssetId::WUSDC` to `pallet_belize_belizex::WusdcBalances`, which only
+    `issue_wusdc` (governance-gated) and `burn_wusdc` can move. Before that
+    ledger existed the WUSDC/BBZD pair could never hold a reserve, which made
+    the pallet's oracle deviation guard unreachable.
+    """
+    substrate = blockchain_connection
+
+    def _fund_wusdc(account, amount: int) -> None:
+        address = getattr(account, "ss58_address", account)
+        res = submit_sudo_extrinsic(
+            pallet="BelizeX",
+            call="issue_wusdc",
+            params={"account": address, "amount": amount},
+        )
+        if not res["success"]:
+            raise AssertionError(
+                f"issue_wusdc for {address} failed: {res.get('error')}"
+            )
+
+    return _fund_wusdc
 
 
 @pytest.fixture
@@ -898,6 +1656,25 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers", "requires_blockchain: mark test as requiring blockchain"
+    )
+    # Suites that need the sibling services (Kinich, Nawal, Pakit) rather than
+    # just a dev chain. They self-skip when the endpoints are absent, so this
+    # marker exists to make that dependency greppable and selectable:
+    #   pytest -m "not requires_services"
+    config.addinivalue_line(
+        "markers",
+        "requires_services: mark test as requiring Kinich/Nawal/Pakit services",
+    )
+    # A test whose assertion depends on chain state that can only be *written*,
+    # never cleared. `Oracle.update_exchange_rate` has no inverse, so the
+    # fail-closed guard is observable exactly once per chain. Marked so the default
+    # run can exclude it and a dedicated first step can run it for real instead of
+    # skipping:
+    #   pytest -m "not pristine_oracle_rate"  (shared run)
+    #   pytest -m "pristine_oracle_rate"      (first, on a fresh chain)
+    config.addinivalue_line(
+        "markers",
+        "pristine_oracle_rate: needs a chain on which no Oracle rate has been set yet",
     )
     # Pallet-specific markers used across integration suite
     pallet_markers = [

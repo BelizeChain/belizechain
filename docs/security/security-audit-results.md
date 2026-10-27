@@ -125,10 +125,21 @@ pub trait AssetLedger<AccountId> {
 
 Six settlement sites converted. The runtime adapter (`BelizeXAssetLedger`) routes
 DALLA and TourismDALLA to `Balances`, bBZD to `Economy::bbzd_balances` with the
-same sanction re-check `pallet-economy` applies, and returns `UnsupportedAsset`
-for WUSDC rather than silently moving the wrong token. The mock implements the
+same sanction re-check `pallet-economy` applies, and WUSDC to
+`BelizeX::WusdcBalances`. The mock implements the
 trait with a `thread_local!` transfer log so the tests can assert *which* asset
 moved, not just that a balance changed.
+
+> **Correction (spec 123).** This section originally said WUSDC "returns
+> `UnsupportedAsset` rather than silently moving the wrong token", and that was
+> the state at the time. It had a consequence the fix did not anticipate: with
+> no WUSDC ledger the WUSDC/bBZD pair could never hold a reserve, and the
+> pallet's oracle deviation guard — scoped to exactly that pair — became
+> unreachable. The guard read like a live safety control while protecting
+> nothing. WUSDC now has a real ledger in the belizex pallet, minted by the
+> governance/bridge-gated `issue_wusdc` and burned by `burn_wusdc`, so the pair
+> is settleable and the guard fires. See
+> `pallets/belizex/src/tests.rs` (`oracle_guard_*`) for the proof.
 
 ##### The pair index (matching prerequisite)
 

@@ -8,6 +8,8 @@ class TestBbzdMinimalIntegration:
         blockchain_connection: SubstrateInterface,
         alice_keypair: Keypair,
         dave_keypair: Keypair,
+        verify_kyc,
+        set_reserves,
     ):
         substrate = blockchain_connection
         alice = alice_keypair
@@ -22,29 +24,11 @@ class TestBbzdMinimalIntegration:
         assert res["success"], f"Authorize minter failed: {res.get('error')}"
 
         # Set reserves sufficiently high
-        res = submit_sudo_extrinsic(
-            pallet="Economy",
-            call="update_reserves",
-            params={"new_reserves": 10_000_000_000_000},
-        )
+        set_reserves(10_000_000_000_000)
         assert res["success"], f"Set reserves failed: {res.get('error')}"
 
         # Ensure Bob has KYC level 1
-        call = substrate.compose_call(
-            call_module="Oracle",
-            call_function="verify_identity",
-            call_params={
-                "account": str(user.ss58_address),
-                "kyc_level": 1,
-                "id_hash": [0] * 32,
-                "provider": "testnet",
-                "biometric_verified": False,
-                "address_verified": False,
-            },
-        )
-        xt = substrate.create_signed_extrinsic(call=call, keypair=user)
-        receipt = substrate.submit_extrinsic(xt, wait_for_finalization=True)
-        assert receipt.is_success
+        verify_kyc(user, 1)
 
         # Read initial balance and supply
         init_balance = substrate.query(

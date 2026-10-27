@@ -2,7 +2,7 @@ import pytest
 
 @pytest.mark.requires_blockchain
 class TestBbzdCompliance:
-    def test_mint_requires_kyc(self, submit_sudo_extrinsic, blockchain_connection, alice_keypair, dave_keypair):
+    def test_mint_requires_kyc(self, submit_sudo_extrinsic, blockchain_connection, alice_keypair, dave_keypair, verify_kyc, set_reserves):
         substrate = blockchain_connection
         alice = alice_keypair
         recipient = dave_keypair
@@ -16,11 +16,7 @@ class TestBbzdCompliance:
         assert res["success"], f"Authorize minter failed: {res.get('error')}"
 
         # 2) Governance: set reserves
-        res = submit_sudo_extrinsic(
-            pallet="Economy",
-            call="update_reserves",
-            params={"new_reserves": 10_000_000_000_000},
-        )
+        set_reserves(10_000_000_000_000)
         assert res["success"], f"Set reserves failed: {res.get('error')}"
 
         # 3) Attempt mint to recipient WITHOUT KYC -> should fail
@@ -58,21 +54,7 @@ class TestBbzdCompliance:
         assert fund_receipt.is_success, f"Funding recipient failed: {getattr(fund_receipt, 'error_message', None)}"
 
         # 5) Set recipient's KYC Level 1 via signed Oracle call
-        call = substrate.compose_call(
-            call_module="Oracle",
-            call_function="verify_identity",
-            call_params={
-                "account": str(recipient.ss58_address),
-                "kyc_level": 1,
-                "id_hash": "0x" + ("00" * 32),
-                "provider": f"0x{b'dev'.hex()}",
-                "biometric_verified": False,
-                "address_verified": False,
-            },
-        )
-        extrinsic = substrate.create_signed_extrinsic(call=call, keypair=recipient)
-        receipt = substrate.submit_extrinsic(extrinsic, wait_for_finalization=True)
-        assert receipt.is_success, f"Set KYC failed: {getattr(receipt, 'error_message', None)}"
+        verify_kyc(recipient, 1)
 
         # 6) Mint to recipient WITH KYC -> should succeed
         call = substrate.compose_call(
@@ -88,7 +70,7 @@ class TestBbzdCompliance:
         receipt = substrate.submit_extrinsic(extrinsic, wait_for_finalization=True)
         assert receipt.is_success, f"Mint with KYC failed: {getattr(receipt, 'error_message', None)}"
 
-    def test_redeem_blocks_for_sanctioned(self, submit_sudo_extrinsic, blockchain_connection, alice_keypair, bob_keypair):
+    def test_redeem_blocks_for_sanctioned(self, submit_sudo_extrinsic, blockchain_connection, alice_keypair, bob_keypair, verify_kyc, set_reserves):
         substrate = blockchain_connection
         alice = alice_keypair
         user = bob_keypair
@@ -110,29 +92,11 @@ class TestBbzdCompliance:
             params={"account": str(alice.ss58_address), "authorized": True},
         )
         assert res["success"], f"Authorize minter failed: {res.get('error')}"
-        res = submit_sudo_extrinsic(
-            pallet="Economy",
-            call="update_reserves",
-            params={"new_reserves": 10_000_000_000_000},
-        )
+        set_reserves(10_000_000_000_000)
         assert res["success"], f"Set reserves failed: {res.get('error')}"
 
         # Fund user with minimal bBZD by minting (requires KYC first)
-        call = substrate.compose_call(
-            call_module="Oracle",
-            call_function="verify_identity",
-            call_params={
-                "account": str(user.ss58_address),
-                "kyc_level": 1,
-                "id_hash": [0] * 32,
-                "provider": "testnet",
-                "biometric_verified": False,
-                "address_verified": False,
-            },
-        )
-        extrinsic = substrate.create_signed_extrinsic(call=call, keypair=user)
-        receipt = substrate.submit_extrinsic(extrinsic, wait_for_finalization=True)
-        assert receipt.is_success
+        verify_kyc(user, 1)
 
         call = substrate.compose_call(
             call_module="Economy",

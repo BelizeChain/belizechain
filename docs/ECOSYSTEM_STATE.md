@@ -41,13 +41,67 @@ value inline, so the next agent can see what moved.
 |---|---|
 | Chain name | **Jade** (Chain D) |
 | Genesis | `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef` |
-| Runtime | **spec_version 122** live · impl 1 · transaction 2 |
-| Head (2026-10-25) | **274,984** (`0x43228`) |
-| Epoch | **duration 300 slots** — unchanged across the 117 → 121 → 122 upgrades |
+| Runtime | **spec_version 124** live · impl 1 · transaction 3 |
+| Head (2026-10-27) | **299,684+** — verified still advancing after the 124 upgrade |
+| Epoch | **duration 300 slots** — unchanged across the 117 → 121 → 122 → 123 → 124 upgrades |
 | Peers | 0 (`shouldHavePeers: false` — single node, expected) |
-| Repo agreement | ✅ `runtime/src/lib.rs` reads `spec_version: 122` — repo and chain agree |
+| Repo agreement | ✅ `runtime/src/lib.rs` reads `spec_version: 124` — repo and chain agree |
 
-**122 is live (2026-10-25).** Applied hot from 121 via `sudo.sudo(System::set_code)`; no node
+**124 is live (2026-10-27).** Applied hot from 123 via `sudo.sudo(System::set_code)`;
+no node restart. Blob 1,609,157 bytes, blake2b-256
+`7b263ea00a5f681f92e32f606289e9a1e85dc54f376820049cbefc523816855a`, built with
+`--features testnet-fast-epoch`. Pre-upgrade `:code` (1,603,358 bytes, blake2b
+`9a5cce64…`) is retained as `artifacts/runtime-spec123-live.wasm`.
+
+Rehearsed first: spec 122 → 124, epoch 14400 → **300**, tx version → 3, and +4
+blocks in 24 s with zero error lines. Then verified live by reading the chain:
+`specVersion 124`, `implVersion 1`, `transactionVersion 3`, `epoch_length 300`
+(unchanged), `:code` blake2b matching the submitted blob, and 10 blocks in 60 s
+with `isSyncing: false`.
+
+**`transaction_version` moved 2 → 3, and 124 is not the reason.** 123 appended
+`BelizeX::issue_wusdc` (call index 11) and `BelizeX::burn_wusdc` (12) but shipped
+with `transaction_version` still at 2, contrary to the convention documented on that
+field. Verified against the live chain rather than assumed: at spec 123 the runtime
+metadata listed 13 BelizeX calls including both, while `state_getRuntimeVersion`
+reported 2. 124 adds no extrinsic of its own; the bump covers 123's omission. The
+indices were appended, never reordered, so no existing call encoding changed.
+
+No storage migration: `CURRENT_RUNTIME_VERSION` stays u3 and every change is
+additive (no layout change, no new pallet, no reordered call index).
+
+**123 was live (2026-10-25 → 2026-10-27).** Applied hot from 122 via `sudo.sudo(System::set_code)`;
+no node restart. Blob 1,603,358 bytes, blake2b-256
+`9a5cce640841f47585cb5df991b25338cc1b8091003c58824fcad3677138eb58`, built with
+`--features testnet-fast-epoch`. Pre-upgrade `:code` was
+`fc42727e2bbe280d5a2b4bbbd818d1cd3d9f1a08afcc0e4cac46c2fe59ab60c4` and is
+retained as `artifacts/runtime-spec122-live.wasm` for rollback.
+
+No storage migration and no coordinator entry: 123 changes no storage layout,
+adds no pallet, and adds/reorders no extrinsic. `CURRENT_RUNTIME_VERSION` stays at
+u3.
+
+Rehearsed before submission with `scripts/rehearse-runtime-upgrade.py` against a
+throwaway `--dev` chain: spec 122 → 123, epoch 14400 → **300**, blocks still
+imported at 6 s afterwards. That rehearsal is what catches the failure mode that
+killed Chain C; the target chain is never the first place a blob runs.
+
+Verified live afterwards, reading the chain rather than the script's own report:
+`specVersion 123`, `implVersion 1`, `transactionVersion 2`, `slot_duration 6000 ms`,
+`epoch_length 300`, `:code` blake2b matches the submitted blob byte-for-byte, and
+10 blocks landed in 60 s with `isSyncing: false`.
+
+**123 does not, by itself, expose the new JSON-RPC methods.** The runtime APIs are
+live — `state_call` answers `GovernanceApi_council_term` (`0x01000000` = 1),
+`StakingApi_validator_count` (= 1), `OracleApi_price_feeds` (`0x00`, empty) and
+`BridgeApi_chain_configurations` (compact `52` → **13** chains). But
+`belizechain_governanceCouncil`, `…stakingValidatorCount`, `…bridgeChains` and
+`…oracleFeeds` still return `-32601 Method not found`, because the RPC *server*
+code lives in the node binary and Ceiba is running the pre-123 image. Exposing
+them needs a node image rebuild and redeploy, which is a separate change from the
+runtime upgrade.
+
+**122 was live (2026-10-25).** Applied hot from 121 via `sudo.sudo(System::set_code)`; no node
 restart. Blob 1,592,424 bytes, blake2b-256
 `fc42727e2bbe280d5a2b4bbbd818d1cd3d9f1a08afcc0e4cac46c2fe59ab60c4`, built with
 `--features testnet-fast-epoch`. No storage migration: both changes are additive (a new pallet
@@ -226,6 +280,115 @@ source.** A doc claiming a value that the code contradicts is drift, and the cod
 ---
 
 ## 4. Open workstreams
+
+### 4.0 ✅ Fixed and deployed — the WUSDC/BBZD oracle guard was one-sided, and its rate source was empty
+
+Found 2026-10-27 while verifying the 123 upgrade. **Not a live outage** — see
+severity below — but it will be a real one the moment the DEX is populated.
+
+#### It is latent, not live
+
+Verified on Ceiba: **`BelizeX::TradingPairs` has 0 entries and `LiquidityPools`
+has 0 entries.** The DEX has no markets at all, so no swap, guarded or otherwise,
+can execute today. An earlier version of this note described bBZD trading as
+"disabled"; that overstated it. The correct statement is that the guard has never
+fired because there is nothing to trade, and the defects below are waiting for the
+first pair.
+
+#### Defect 1 — the rate source is empty, and cannot fill itself
+
+`BelizeXOracleProvider::get_crypto_exchange_rate` prices the bBZD leg by asking the
+Oracle for `USD/BZD`. `Oracle::get_exchange_rate` prefers `ManualExchangeRates`,
+falls back to `PriceFeeds`, and returns `None` if neither is fresh.
+
+| Query (live, 2026-10-27) | Result |
+|---|---|
+| `OracleApi_price_feeds` | `0x00` — **0** aggregated feeds |
+| `OracleApi_manual_exchange_rates` | `0x00` — **0** manual rates |
+| `Oracle::OperatorCount` | unset · `OracleOperators` **0** entries |
+
+`MinConsensusOperators = 3`, so the aggregated path cannot produce a rate
+*structurally* — not "has not yet". That leaves exactly one live source, the
+admin-gated `Oracle::update_exchange_rate`, which writes `ManualExchangeRates` and
+expires after `MaxDataStaleness = 100` blocks — **10 minutes** at 6 s blocks. A
+one-off call unblocks the pair for ten minutes and re-blocks it.
+
+#### Defect 2 — the guard only checks one direction
+
+| Site | Condition | Effect |
+|---|---|---|
+| `execute_trade` | `base == WUSDC && quote == BBZD` | guarded |
+| `execute_multihop_trade` | hop `WUSDC -> BBZD` | guarded |
+| `execute_trade` / multihop | **`BBZD -> WUSDC`** | **not guarded** |
+| `execute_trade` / multihop | every other pair (incl. DALLA/BBZD) | not guarded — correct |
+| `add_liquidity`, `place_limit_order` | n/a — never consults the oracle | see below |
+
+The *pair* scope is deliberate and documented in `pallets/belizex`: WUSDC is a USD
+representation so `USD/BZD` is its correct reference, while DALLA floats and has no
+USD rate.
+
+The *direction* scope is not deliberate — it is an artifact of the formula.
+`implied_rate = amount_out * 1e6 / amount_in` only equals `USD/BZD` when the trade
+is WUSDC in, BBZD out. In the reverse direction the same expression yields
+`USD/BZD`'s reciprocal, so the comparison would fail by construction. Guarding only
+the orientation the formula happens to fit leaves the mirrored risk — WUSDC, the
+USD representation, leaving the pool at an unchecked rate — completely open.
+
+**The trap for whoever fixes this.** Widening the condition alone makes things
+*worse*, not better: `get_crypto_exchange_rate` returns `Some` only when
+`quote_asset == BBZD` and `None` otherwise. Extend the guard to `BBZD -> WUSDC`
+without also fixing the provider and every reverse trade is rejected outright by
+the fail-closed branch — an unchecked direction becomes a dead one, and it looks
+like the guard working. The provider has to answer in both orientations (invert
+when `base` is BBZD) *before* the guard can be widened.
+
+#### The order book is a carve-out, not a bypass
+
+`place_limit_order` → `match_order` settles at the maker's limit price with **zero
+oracle consultation**. That is defensible and should stay: the guard exists to stop
+the AMM from pricing off a missing or manipulated reference, and an order-book fill
+moves already-escrowed funds between two consenting parties without touching a
+pool. There is no pool to drain. Do not "fix" this by adding an oracle check —
+that would make bilateral trades impossible to price.
+
+#### Fixed in spec 124 — live since 2026-10-27
+
+| # | Change | Where |
+|---|---|---|
+| 1 | `reference_rate()` returns the orientation-correct rate and substitutes the peg when the oracle has none | `pallets/belizex/src/lib.rs` |
+| 2 | `BBZD_USD_PEG = 2_000_000` (BZ$2.00 = US$1.00) as the provider's fallback | `runtime/src/lib.rs` |
+| 3 | One `enforce_oracle_deviation()` replaces two duplicated inline blocks, and covers both directions | `pallets/belizex/src/lib.rs` |
+| 4 | 11 tests: both directions × {accept, reject, fail-closed}, multihop reverse hop, and the pure orientation/peg cases | `pallets/belizex/src/tests.rs` |
+
+The order in the earlier plan turned out to be load-bearing in a way that only
+showed up in testing: widening the guard *before* fixing the provider would have
+made the reverse direction permanently untradeable, because the provider answered
+`None` whenever bBZD was the base side and the guard fails closed. The provider had
+to answer in both orientations first.
+
+**Falsified, not just passing.** Reverting the gate to `(WUSDC, BBZD)` only makes
+the three reverse-direction tests fail; removing the reciprocal makes four others
+fail, including the one that accepts a correctly-priced reverse trade. Both halves
+are load-bearing.
+
+**The reverse pair does not exist in genesis,** which is why this was latent rather
+than live: `TradingPairs` is keyed by an ordered tuple and only `(WUSDC, BBZD)` is
+listed. `create_trading_pair` is `PairListingOrigin`-gated, so listing
+`(BBZD, WUSDC)` is a deliberate governance act — and until 124 that act would have
+silently created a second market for the same two assets with no price guard at all.
+The tests now list the pair before exercising it, so they model the real trigger
+rather than a state that cannot occur.
+
+**What is still required before the DEX is usable:** nothing in 124 creates a
+market. `TradingPairs` and `LiquidityPools` are still empty on Ceiba, so trading
+remains impossible until governance lists pairs and someone provides liquidity. 124
+makes that safe; it does not make it happen.
+
+**Deployment status: live.** Shipped in spec 124 on 2026-10-27 using the same
+capture-rollback → rehearse → dry-run → deploy → verify sequence as 123. Verified on
+the chain: spec 124, epoch still 300, `:code` hash matching the submitted blob,
+blocks still importing at 6 s. Rollback target is
+`artifacts/runtime-spec123-live.wasm`.
 
 ### 4.1 Honesty sweep (Tier-2 code audit) — IN PROGRESS
 

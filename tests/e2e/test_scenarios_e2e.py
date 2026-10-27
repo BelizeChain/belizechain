@@ -7,6 +7,19 @@ These tests demonstrate complete real-world workflows combining all components:
 3. Tourism Incentives (Payments + Analytics + Rewards)
 
 Each scenario tests the entire stack working together.
+
+**Requires the service stack, not just a dev chain.** The `quantum_service`,
+`fl_server` and `ipfs_client` fixtures each `pytest.skip` when their endpoint is
+unreachable, so on a bare `--dev` node the whole module reports as skipped. That
+skip is the honest result — these scenarios prove integration with Kinich, Nawal
+and Pakit, and there is nothing to integrate with if those services are absent.
+Run them against the Ceiba stack, or locally with:
+
+    docker compose -f ../infra/docker-compose.yml up -d ipfs
+    QUANTUM_API_URL=http://localhost:8888 \
+    FL_SERVER_URL=http://localhost:8000 \
+    IPFS_API_URL=http://localhost:5001 \
+    python -m pytest tests/e2e -q
 """
 
 import json
@@ -23,6 +36,7 @@ import pytest
 @pytest.mark.integration
 @pytest.mark.slow
 @pytest.mark.requires_blockchain
+@pytest.mark.requires_services
 class TestHurricanePreparedness:
     """
     End-to-end scenario: Hurricane approaching Belize.
@@ -386,6 +400,7 @@ class TestHurricanePreparedness:
 @pytest.mark.integration
 @pytest.mark.slow
 @pytest.mark.requires_blockchain
+@pytest.mark.requires_services
 class TestHealthcareAI:
     """
     End-to-end scenario: National Healthcare AI for diabetes prediction.

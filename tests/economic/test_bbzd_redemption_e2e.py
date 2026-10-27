@@ -21,7 +21,9 @@ async def test_bbzd_redemption_e2e(
     alice_keypair: Keypair,
     bob_keypair: Keypair,
     submit_sudo_extrinsic,
-):
+    verify_kyc,
+        set_reserves,
+    ):
     substrate = blockchain_connection
     alice = alice_keypair
     bob = bob_keypair
@@ -36,29 +38,13 @@ async def test_bbzd_redemption_e2e(
 
     # 2) Governance sets reserves (simulate off-chain BZD holdings)
     reserves = 1_000_000_000_000_000  # Large reserve to avoid InsufficientReserves in dev
-    res = submit_sudo_extrinsic(
-        pallet='Economy',
-        call='update_reserves',
-        params={'new_reserves': reserves},
-    )
-    assert res.is_success, f"Update reserves failed: {res.error_message}"
+    set_reserves(reserves)
 
-    # 3) Ensure Bob KYC Level 1 (required for mint and redeem)
-    call = substrate.compose_call(
-        call_module='Oracle',
-        call_function='verify_identity',
-        call_params={
-            'account': str(bob.ss58_address),
-            'kyc_level': 1,
-            'id_hash': [0] * 32,
-            'provider': 'testnet',
-            'biometric_verified': False,
-            'address_verified': False,
-        },
-    )
-    extrinsic = substrate.create_signed_extrinsic(call=call, keypair=bob)
-    receipt = substrate.submit_extrinsic(extrinsic, wait_for_inclusion=True)
-    assert receipt.is_success, f"Set KYC failed: {receipt.error_message}"
+    # 3) Ensure Bob KYC Level 1 (required for mint and redeem).
+    # Oracle.verify_identity needs an authorized operator *and* three matching
+    # votes, and rejects an all-zero id_hash — so it cannot be driven by a
+    # single signed call from the subject itself.
+    verify_kyc(bob, 1)
 
     # 3) Central Bank mints to Bob
     mint_amount = 3_000_000_000_000  # 3,000 bBZD
