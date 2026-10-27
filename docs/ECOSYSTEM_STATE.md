@@ -91,15 +91,26 @@ Verified live afterwards, reading the chain rather than the script's own report:
 `epoch_length 300`, `:code` blake2b matches the submitted blob byte-for-byte, and
 10 blocks landed in 60 s with `isSyncing: false`.
 
-**123 does not, by itself, expose the new JSON-RPC methods.** The runtime APIs are
-live — `state_call` answers `GovernanceApi_council_term` (`0x01000000` = 1),
-`StakingApi_validator_count` (= 1), `OracleApi_price_feeds` (`0x00`, empty) and
-`BridgeApi_chain_configurations` (compact `52` → **13** chains). But
-`belizechain_governanceCouncil`, `…stakingValidatorCount`, `…bridgeChains` and
-`…oracleFeeds` still return `-32601 Method not found`, because the RPC *server*
-code lives in the node binary and Ceiba is running the pre-123 image. Exposing
-them needs a node image rebuild and redeploy, which is a separate change from the
-runtime upgrade.
+**The four JSON-RPC APIs are now served (2026-10-27).** The runtime APIs went live
+with 123; the RPC *servers* live in the node binary, so exposing them needed a
+separate image rebuild. `belizechain/ceiba-node:01d51bb-spec124-20261027` was
+built on Ceiba with `--build-arg CARGO_FEATURES=testnet-fast-epoch` (verified in
+the image: `specVersion 124`, `slot_duration 6000`, **`epoch_length 300`**),
+pinned in `/opt/belizechain/.env`, and rolled out at 18:03Z. All twelve methods
+return `result`, not `-32601`:
+
+| Group | Methods |
+|---|---|
+| Governance | `belizechain_governanceCouncil`, `…CouncilTerm`, `…Elections`, `…NextProposalId` |
+| Staking | `belizechain_stakingValidators`, `…ValidatorCount`, `…CurrentEpoch`, `…LastRewardDistribution` |
+| Bridge | `belizechain_bridgeChains`, `…bridgeTransactions` |
+| Oracle | `belizechain_oracleFeeds`, `…oracleManualRates` |
+
+Values read back after the rollout: `bridgeChains` → **13** chains, all
+`enabled: true` (the §4 Gap 7 genesis seeding, confirmed through the API rather
+than through `state_call`); `governanceCouncil` → 3 members; `stakingValidatorCount`
+→ 1. Chain continued across the restart (300,072 → 300,101) at 5 blocks / 30 s.
+Rollback: `.env.bak-pre-node-20261027` + `76dea3f-stable2609-20261019`.
 
 **122 was live (2026-10-25).** Applied hot from 121 via `sudo.sudo(System::set_code)`; no node
 restart. Blob 1,592,424 bytes, blake2b-256
@@ -183,7 +194,7 @@ no `runtime_version` method — using it returns nothing and looks like a dead n
 | Host | **`ceiba`** — Tailscale `100.119.97.38`, LAN `10.0.0.19` |
 | Access | `ssh wicked@ceiba` (Tailscale). LAN fallback `10.0.0.19` |
 | Containers | **19 running** · 0 exited · 0 failed units · host uptime 15 days |
-| Node image | `belizechain/ceiba-node:76dea3f-stable2609-20261019` |
+| Node image | `belizechain/ceiba-node:01d51bb-spec124-20261027` (rollout 2026-10-27; previous `76dea3f-stable2609-20261019`) |
 | Public ingress | **Oracle edge proxy** `129.213.95.153` → ceiba over the tailnet |
 
 **Image pins on the host** (`/opt/belizechain/.env`, verified 2026-10-22):
@@ -389,6 +400,34 @@ capture-rollback → rehearse → dry-run → deploy → verify sequence as 123.
 the chain: spec 124, epoch still 300, `:code` hash matching the submitted blob,
 blocks still importing at 6 s. Rollback target is
 `artifacts/runtime-spec123-live.wasm`.
+
+### 4.0a OPEN — genesis stamps every council seat as `Founder`, which contradicts the role's own cap
+
+Found 2026-10-27 while reading the new `belizechain_governanceCouncil` RPC on the live chain:
+all 3 seated members report `role: "Founder"`, but `BoardRole::Founder.max_count()`
+returns **1** (`pallets/governance/src/lib.rs:714`). The cause is
+`BuildGenesisConfig::build`, which hardcodes `role: BoardRole::Founder` for *every*
+entry in `council_members` (`pallets/governance/src/lib.rs:2412`). The cap is only
+enforced on the runtime appointment path, never at genesis, so a 12-seat council
+(as `testnet_genesis` and the mainnet roster both intend) would seat **12 Founders**.
+
+Severity is **low, not an authorization defect**: `BoardRole` is descriptive
+metadata — `Founder` is never tested in a signing/privilege path (only `name()`,
+`is_rotating()`, `max_count()`, and `board_composition()` read it). The damage is
+that `board_composition(Founder)` reports 3 against a cap of 1, so the role table
+misrepresents the council's shape.
+
+Two ways to close it, both governance decisions rather than code-only ones:
+
+1. Genesis fix — assign distinct roles per seat (or add an explicit `role` field to
+   the `council_members` genesis tuple) so a 12-seat roster reads as the bicameral
+   structure it is. Takes effect only on a re-genesis, so it is the right fix for
+   mainnet and a no-op for the running testnet.
+2. Migration — reassign the live 3 seats and bump `CURRENT_RUNTIME_VERSION`. Only
+   worth it if the live roster's shape matters before the next re-genesis.
+
+Not fixed in this pass on purpose: both routes change seated-council semantics,
+which is the owner's call, and neither unblocks anything else.
 
 ### 4.1 Honesty sweep (Tier-2 code audit) — IN PROGRESS
 
