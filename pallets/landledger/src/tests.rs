@@ -2118,3 +2118,161 @@ fn transfer_encumbered_property_rejected() {
         );
     });
 }
+
+// ============================================================================
+// Zoning Tests
+//
+// `ZoningMap` was read by `register_property` and `survey_property` but had no
+// writer, so every property was permanently `MixedUse`. These tests pin the
+// writer and the authoritative read path.
+// ============================================================================
+
+#[test]
+fn set_zoning_works() {
+    new_test_ext().execute_with(|| {
+        let coords = test_coordinates(0, 0);
+
+        assert_ok!(LandLedger::set_zoning(
+            RuntimeOrigin::root(),
+            coords,
+            ZoningType::Agricultural,
+        ));
+
+        assert_eq!(
+            LandLedger::zoning_map(coords.0, coords.1),
+            Some(ZoningType::Agricultural)
+        );
+    });
+}
+
+#[test]
+fn set_zoning_overwrites_a_previous_classification() {
+    new_test_ext().execute_with(|| {
+        let coords = test_coordinates(0, 0);
+
+        assert_ok!(LandLedger::set_zoning(
+            RuntimeOrigin::root(),
+            coords,
+            ZoningType::Agricultural,
+        ));
+        assert_ok!(LandLedger::set_zoning(
+            RuntimeOrigin::root(),
+            coords,
+            ZoningType::Commercial,
+        ));
+
+        assert_eq!(
+            LandLedger::zoning_map(coords.0, coords.1),
+            Some(ZoningType::Commercial)
+        );
+    });
+}
+
+#[test]
+fn set_zoning_requires_government_origin() {
+    new_test_ext().execute_with(|| {
+        assert_noop!(
+            LandLedger::set_zoning(
+                RuntimeOrigin::signed(ALICE),
+                test_coordinates(0, 0),
+                ZoningType::Agricultural,
+            ),
+            sp_runtime::DispatchError::BadOrigin
+        );
+        assert_eq!(LandLedger::zoning_map(17_000_000, -88_000_000), None);
+    });
+}
+
+#[test]
+fn set_zoning_rejects_coordinates_outside_belize() {
+    new_test_ext().execute_with(|| {
+        // Miami. No property in this ledger can occupy it, so the entry would be
+        // unreadable state.
+        assert_noop!(
+            LandLedger::set_zoning(
+                RuntimeOrigin::root(),
+                (25_761_000, -80_191_000),
+                ZoningType::Commercial,
+            ),
+            Error::<Test>::InvalidCoordinates
+        );
+        assert_eq!(LandLedger::zoning_map(25_761_000, -80_191_000), None);
+    });
+}
+
+/// The point of the whole change: a property registered before its area was
+/// zoned must report the new classification through the authoritative reader.
+#[test]
+fn effective_zoning_prefers_the_map_over_the_registration_snapshot() {
+    new_test_ext().execute_with(|| {
+        let coords = test_coordinates(0, 0);
+
+        assert_ok!(LandLedger::register_property(
+            RuntimeOrigin::signed(ALICE),
+            test_title(1),
+            test_description("Undeclared parcel"),
+            coords,
+            1000,
+            0, // Residential
+            500_000,
+        ));
+        // No zoning entry yet, so the snapshot stands.
+        assert_eq!(
+            LandLedger::effective_zoning(0),
+            Some(ZoningType::MixedUse),
+            "an unzoned area falls back to the recorded snapshot"
+        );
+
+        assert_ok!(LandLedger::set_zoning(
+            RuntimeOrigin::root(),
+            coords,
+            ZoningType::EnvironmentalProtected,
+        ));
+
+        assert_eq!(
+            LandLedger::effective_zoning(0),
+            Some(ZoningType::EnvironmentalProtected),
+            "the map is authoritative once it has an entry"
+        );
+    });
+}
+
+/// Documents the deliberate limit: changing zoning does not rewrite every
+/// property in the area, because properties are not indexed by coordinates and
+/// the scan would be unbounded. The snapshot stays as it was.
+#[test]
+fn set_zoning_does_not_rewrite_existing_property_snapshots() {
+    new_test_ext().execute_with(|| {
+        let coords = test_coordinates(0, 0);
+
+        assert_ok!(LandLedger::register_property(
+            RuntimeOrigin::signed(ALICE),
+            test_title(1),
+            test_description("Parcel"),
+            coords,
+            1000,
+            0,
+            500_000,
+        ));
+        let before = LandLedger::properties(0).expect("just registered").zoning;
+
+        assert_ok!(LandLedger::set_zoning(
+            RuntimeOrigin::root(),
+            coords,
+            ZoningType::HeavyIndustrial,
+        ));
+
+        assert_eq!(
+            LandLedger::properties(0).expect("still present").zoning,
+            before,
+            "the snapshot is point-in-time; `effective_zoning` is the live read"
+        );
+    });
+}
+
+#[test]
+fn effective_zoning_is_none_for_an_unknown_property() {
+    new_test_ext().execute_with(|| {
+        assert_eq!(LandLedger::effective_zoning(9_999), None);
+    });
+}

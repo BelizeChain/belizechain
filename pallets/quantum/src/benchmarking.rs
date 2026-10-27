@@ -1,9 +1,10 @@
 //! Benchmarks for pallet-belize-quantum (v2 API)
 //!
-//! Covers 14 WeightInfo functions:
+//! Covers all 18 `WeightInfo` functions:
 //!   submit_quantum_job, update_job_status, record_quantum_result,
 //!   verify_quantum_result (Root), mint_achievement_nft,
 //!   transfer_nft, list_nft, buy_nft, delist_nft,
+//!   create_auction, place_bid, settle_auction, cancel_auction,
 //!   bridge_to_ethereum, bridge_to_parachain, cancel_bridge,
 //!   request_verification, submit_verification
 
@@ -150,6 +151,28 @@ fn insert_listing<T: Config>(
     };
 
     NFTListings::<T>::insert(nft_id, listing);
+    ListingCounter::<T>::mutate(|c| *c = c.saturating_add(1));
+}
+
+/// Insert an auction directly into storage, bypassing extrinsic validation.
+fn insert_auction<T: Config>(
+    nft_id: u64,
+    seller: &T::AccountId,
+    start_price: <T::Currency as Currency<T::AccountId>>::Balance,
+    end_block: BlockNumberFor<T>,
+) {
+    let started_at = frame_system::Pallet::<T>::block_number();
+    let auction = AuctionListing {
+        nft_id,
+        original_minter: seller.clone(),
+        seller: seller.clone(),
+        start_price,
+        current_bid: Zero::zero(),
+        current_bidder: None,
+        end_block,
+        started_at,
+    };
+    NFTAuctions::<T>::insert(nft_id, auction);
     ListingCounter::<T>::mutate(|c| *c = c.saturating_add(1));
 }
 
@@ -438,6 +461,106 @@ mod benchmarks {
             90u8,      // confidence
             [3u8; 32], // result_hash
         );
+    }
+
+    #[benchmark]
+    fn create_auction() {
+        let seller = funded_account::<T>("auction-seller", 0);
+        let nft_id = 500u64;
+        insert_nft::<T>(&seller, nft_id, true);
+
+        let start_price = T::Currency::minimum_balance().saturating_mul(50u32.into());
+        let duration: BlockNumberFor<T> = 1000u32.into();
+
+        #[extrinsic_call]
+        create_auction(RawOrigin::Signed(seller), nft_id, start_price, duration);
+
+        assert!(NFTAuctions::<T>::contains_key(nft_id));
+    }
+
+    #[benchmark]
+    fn place_bid() {
+        let seller = funded_account::<T>("bid-seller", 0);
+        let bidder = funded_account::<T>("bidder", 1);
+        let nft_id = 510u64;
+        insert_nft::<T>(&seller, nft_id, true);
+
+        let start_price = T::Currency::minimum_balance().saturating_mul(10u32.into());
+        let duration: BlockNumberFor<T> = 1000u32.into();
+        let end_block = frame_system::Pallet::<T>::block_number().saturating_add(duration);
+        insert_auction::<T>(nft_id, &seller, start_price, end_block);
+
+        // A bid above the reserve reaches the escrow transfer and the storage
+        // write, which is the path being measured.
+        let amount = start_price.saturating_mul(2u32.into());
+
+        #[extrinsic_call]
+        place_bid(RawOrigin::Signed(bidder.clone()), nft_id, amount);
+
+        assert_eq!(
+            NFTAuctions::<T>::get(nft_id).expect("auction exists").current_bidder,
+            Some(bidder)
+        );
+    }
+
+    #[benchmark]
+    fn settle_auction() {
+        let seller = funded_account::<T>("settle-seller", 0);
+        let bidder = funded_account::<T>("settle-bidder", 1);
+        let caller = funded_account::<T>("settle-caller", 2);
+        let nft_id = 520u64;
+        insert_nft::<T>(&seller, nft_id, true);
+
+        // 200× ED sale: the 2% marketplace fee is 4× ED and the 5% royalty is
+        // 10× ED, so no split can land under the existential deposit.
+        let start_price = T::Currency::minimum_balance().saturating_mul(100u32.into());
+        let amount = start_price.saturating_mul(2u32.into());
+        // Already ended: `end_block` equals the current block.
+        let end_block = frame_system::Pallet::<T>::block_number();
+        insert_auction::<T>(nft_id, &seller, start_price, end_block);
+
+        // Seed an escrowed bid so settlement has funds to split.
+        //
+        // Absolute, not additive: FRAME does not roll back non-whitelisted
+        // storage between benchmarks, so the escrow still holds whatever dust
+        // earlier benchmarks (`place_bid`, `buy_nft`) left in it. A relative
+        // transfer would leave that dust behind, and because settlement pays out
+        // the bid exactly, the residue is whatever the dust was — arbitrarily
+        // small, hence `ExistentialDeposit` on the final drain.
+        let escrow = Pallet::<T>::auction_escrow_account();
+        T::Currency::make_free_balance_be(&escrow, amount);
+        NFTAuctions::<T>::mutate(nft_id, |maybe| {
+            if let Some(auction) = maybe {
+                auction.current_bid = amount;
+                auction.current_bidder = Some(bidder.clone());
+            }
+        });
+
+        #[extrinsic_call]
+        settle_auction(RawOrigin::Signed(caller), nft_id);
+
+
+        assert_eq!(
+            QuantumAchievements::<T>::get(nft_id).expect("nft exists").owner,
+            bidder
+        );
+    }
+
+    #[benchmark]
+    fn cancel_auction() {
+        let seller = funded_account::<T>("cancel-seller", 0);
+        let nft_id = 530u64;
+        insert_nft::<T>(&seller, nft_id, true);
+
+        let start_price = T::Currency::minimum_balance().saturating_mul(10u32.into());
+        let duration: BlockNumberFor<T> = 1000u32.into();
+        let end_block = frame_system::Pallet::<T>::block_number().saturating_add(duration);
+        insert_auction::<T>(nft_id, &seller, start_price, end_block);
+
+        #[extrinsic_call]
+        cancel_auction(RawOrigin::Signed(seller), nft_id);
+
+        assert!(!NFTAuctions::<T>::contains_key(nft_id));
     }
 
     impl_benchmark_test_suite!(Pallet, crate::mock::new_test_ext(), crate::mock::Test);

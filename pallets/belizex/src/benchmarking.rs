@@ -235,6 +235,35 @@ mod benchmarks {
         );
     }
 
+    // ───────────────────────────────────────────
+    // 10. issue_wusdc — Root (PairListingOrigin)
+    // ───────────────────────────────────────────
+    #[benchmark]
+    fn issue_wusdc() {
+        let target: T::AccountId = account("wusdc_holder", 0, 0);
+        let amount = 1_000_000_000_000u128;
+
+        #[extrinsic_call]
+        issue_wusdc(RawOrigin::Root, target.clone(), amount);
+
+        assert_eq!(WusdcBalances::<T>::get(&target), amount);
+    }
+
+    // ───────────────────────────────────────────
+    // 11. burn_wusdc — signed, burns the caller's own balance
+    // ───────────────────────────────────────────
+    #[benchmark]
+    fn burn_wusdc() {
+        let caller: T::AccountId = whitelisted_caller();
+        let amount = 1_000_000_000_000u128;
+        WusdcBalances::<T>::insert(&caller, amount);
+
+        #[extrinsic_call]
+        burn_wusdc(RawOrigin::Signed(caller.clone()), amount);
+
+        assert_eq!(WusdcBalances::<T>::get(&caller), 0);
+    }
+
     // ───────────────────────────────────────
     // 10. cancel_order → cancel_order
     //     WeightInfo fn: cancel_order()

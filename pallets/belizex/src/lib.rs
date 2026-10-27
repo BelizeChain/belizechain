@@ -17,7 +17,7 @@ use frame_support::{
 };
 use frame_system::pallet_prelude::*;
 use sp_runtime::{
-    traits::{AccountIdConversion, IntegerSquareRoot, SaturatedConversion, Saturating},
+    traits::{AccountIdConversion, IntegerSquareRoot, SaturatedConversion},
     FixedPointNumber, FixedU128,
 };
 
@@ -63,8 +63,9 @@ pub type OrderList<T> = Vec<(
 /// economy pallet, so each asset settles against its real ledger.
 ///
 /// `TourismDALLA` is a fee/discount flag rather than a separate balance and maps
-/// to the DALLA ledger. `WUSDC` has no ledger in this runtime; implementations
-/// must reject it rather than inventing a balance.
+/// to the DALLA ledger. `WUSDC` settles against this pallet's own
+/// [`WusdcBalances`], minted only by the governance-gated `issue_wusdc` and
+/// burned by `burn_wusdc`.
 pub trait AssetLedger<AccountId> {
     /// Spendable balance of `asset` held by `who`.
     fn balance_of(asset: AssetId, who: &AccountId) -> u128;
@@ -522,13 +523,37 @@ pub mod pallet {
         ValueQuery,
     >;
 
+    /// Wrapped-USDC balances.
+    ///
+    /// WUSDC had no ledger at all before this map: `BelizeXAssetLedger`
+    /// reported a balance of zero and rejected every transfer, so the
+    /// WUSDC/bBZD pair could never hold a reserve. The pallet's oracle
+    /// deviation guard is scoped to exactly that pair, which meant the guard
+    /// was unreachable and the DEX was left with no deviation protection.
+    ///
+    /// WUSDC enters circulation through `issue_wusdc` (governance-gated, i.e.
+    /// the bridge mint hook) and leaves through `burn_wusdc`.
+    #[pallet::storage]
+    #[pallet::getter(fn wusdc_balances)]
+    pub type WusdcBalances<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        u128,
+        ValueQuery,
+    >;
+
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
         /// Initial trading pairs - simplified to avoid serde issues
         pub enable_default_pairs: bool,
         /// Initial liquidity providers - simplified
         pub initial_providers: Vec<T::AccountId>,
-        /// Dev flag: seed minimal WUSDC/BBZD liquidity at startup
+        /// Dev flag: seed minimal WUSDC/BBZD liquidity at startup.
+        ///
+        /// The seed now moves real inventory: bBZD comes out of the treasury
+        /// and WUSDC is minted into the pool escrow. It waits, rather than
+        /// fabricating reserves, until the treasury holds the quote leg.
         pub dev_seed_default_liquidity: bool,
     }
 
@@ -617,43 +642,68 @@ pub mod pallet {
             }
 
             let pair_key: (u8, u8) = (AssetId::WUSDC.as_u8(), AssetId::BBZD.as_u8());
-            if let Some(mut pair) = TradingPairs::<T>::get(pair_key) {
-                // Minimal reserves aligned with integration tests (~2.0 price)
-                let base_amount: u128 = 10_000_000_000_000;
-                let quote_amount: u128 = 20_000_000_000_000;
-                let lp_tokens: u128 = (base_amount.saturating_add(quote_amount)).integer_sqrt();
+            let Some(mut pair) = TradingPairs::<T>::get(pair_key) else {
+                DevSeedDone::<T>::put(true);
+                return T::DbWeight::get().reads(1).saturating_add(T::DbWeight::get().writes(1));
+            };
 
-                pair.base_reserve = pair.base_reserve.saturating_add(base_amount);
-                pair.quote_reserve = pair.quote_reserve.saturating_add(quote_amount);
-                pair.total_lp_tokens = pair.total_lp_tokens.saturating_add(lp_tokens);
-                TradingPairs::<T>::insert(pair_key, &pair);
+            // Minimal reserves aligned with integration tests (~2.0 price)
+            let base_amount: u128 = 10_000_000_000_000;
+            let quote_amount: u128 = 20_000_000_000_000;
+            let treasury = T::Treasury::get();
 
-                let treasury = T::Treasury::get();
-                LiquidityProviders::<T>::mutate(&treasury, |maybe_provider| match maybe_provider {
-                    Some(provider) => {
-                        provider.total_value_locked = provider
-                            .total_value_locked
-                            .saturating_add(base_amount.saturating_add(quote_amount));
-                    }
-                    None => {
-                        *maybe_provider = Some(LiquidityProvider {
-                            provider: treasury.clone(),
-                            total_value_locked: base_amount.saturating_add(quote_amount),
-                            rewards_earned: 0,
-                            is_tourism_provider: false,
-                        });
-                    }
-                });
-
-                // Emit event for transparency
-                Self::deposit_event(Event::LiquidityAdded {
-                    provider: treasury,
-                    pair: pair_key,
-                    base_amount,
-                    quote_amount,
-                    lp_tokens,
-                });
+            // The seed must move real tokens into the pool escrow. Fabricating
+            // reserves without the matching balances would price every swap
+            // against an inventory the pool does not hold, and would leave
+            // `remove_liquidity` unable to pay out. If the treasury cannot
+            // cover the quote leg yet, wait for a later block.
+            if T::Assets::balance_of(AssetId::BBZD, &treasury) < quote_amount {
+                return Weight::zero();
             }
+
+            let pool = Self::pool_account();
+            if T::Assets::transfer(AssetId::BBZD, &treasury, &pool, quote_amount).is_err() {
+                // Leave `DevSeedDone` unset and retry on a later idle block.
+                return T::DbWeight::get().reads(2);
+            }
+            // WUSDC lives in this pallet's own ledger, so the seed mints it
+            // straight to the pool rather than moving it from an account.
+            WusdcBalances::<T>::mutate(&pool, |balance| {
+                *balance = balance.saturating_add(base_amount);
+            });
+
+            let lp_tokens: u128 = (base_amount.saturating_add(quote_amount)).integer_sqrt();
+
+            pair.base_reserve = pair.base_reserve.saturating_add(base_amount);
+            pair.quote_reserve = pair.quote_reserve.saturating_add(quote_amount);
+            pair.total_lp_tokens = pair.total_lp_tokens.saturating_add(lp_tokens);
+            TradingPairs::<T>::insert(pair_key, &pair);
+
+            LiquidityProviders::<T>::mutate(&treasury, |maybe_provider| match maybe_provider {
+                Some(provider) => {
+                    provider.total_value_locked = provider
+                        .total_value_locked
+                        .saturating_add(base_amount.saturating_add(quote_amount));
+                }
+                None => {
+                    *maybe_provider = Some(LiquidityProvider {
+                        provider: treasury.clone(),
+                        total_value_locked: base_amount.saturating_add(quote_amount),
+                        rewards_earned: 0,
+                        is_tourism_provider: false,
+                    });
+                }
+            });
+
+            // Emit event for transparency
+            Self::deposit_event(Event::LiquidityAdded {
+                provider: treasury,
+                pair: pair_key,
+                base_amount,
+                quote_amount,
+                lp_tokens,
+            });
+
 
             DevSeedDone::<T>::put(true);
             // DOS-008 FIX: Return actual consumed weight instead of zero.
@@ -752,6 +802,16 @@ pub mod pallet {
             quote_asset: u8,
             active: bool,
         },
+        /// Wrapped USDC minted into a holder's ledger (bridge deposit)
+        WusdcIssued {
+            account: T::AccountId,
+            amount: u128,
+        },
+        /// Wrapped USDC burned from a holder's ledger (bridge withdrawal)
+        WusdcBurned {
+            account: T::AccountId,
+            amount: u128,
+        },
     }
 
     #[pallet::error]
@@ -760,7 +820,12 @@ pub mod pallet {
         PairNotFound,
         /// Multi-hop path was empty, so no input or output asset is defined
         InvalidPath,
-        /// This asset has no ledger in the runtime (e.g. WUSDC today)
+        /// This asset has no ledger in the runtime.
+        ///
+        /// Every `AssetId` has one now, so nothing currently returns this. It
+        /// is kept as the correct failure mode for an asset that gets listed
+        /// before its ledger exists, and to avoid renumbering the errors after
+        /// it in the public metadata.
         UnsupportedAsset,
         /// The pair's open-order book for this side is full
         TooManyOrdersForPair,
@@ -809,6 +874,8 @@ pub mod pallet {
         /// this pallet. Failing closed beats paying out funds that were never
         /// held.
         EscrowUnderflow,
+        /// Amount must be greater than zero
+        ZeroAmount,
     }
 
     #[pallet::call]
@@ -874,10 +941,18 @@ pub mod pallet {
 
             ensure!(pair.active, Error::<T>::PairNotActive);
 
-            // Ensure sufficient balance
-            let total_amount = base_amount.saturating_add(quote_amount);
+            // P1-08: each leg is checked against its own ledger. This used to
+            // compare `base + quote` against the caller's *native* balance,
+            // which only worked while every asset was DALLA — it demanded DALLA
+            // for a WUSDC/bBZD deposit the caller was funding with neither.
             ensure!(
-                T::Currency::free_balance(&who) >= total_amount,
+                T::Assets::balance_of(AssetId::from(base_asset), &who)
+                    >= base_amount.saturated_into(),
+                Error::<T>::InsufficientBalance
+            );
+            ensure!(
+                T::Assets::balance_of(AssetId::from(quote_asset), &who)
+                    >= quote_amount.saturated_into(),
                 Error::<T>::InsufficientBalance
             );
 
@@ -1025,43 +1100,9 @@ pub mod pallet {
             let amount_out =
                 Self::get_amount_out(amount_after_fee, pair.base_reserve, pair.quote_reserve)?;
 
-            // Oracle-based slippage guard for WUSDC/BBZD trades only
-            // Compare implied rate vs Oracle-verified USD/BZD rate (both scaled by 1e6 precision)
-            if base_asset == AssetId::WUSDC.as_u8() && quote_asset == AssetId::BBZD.as_u8() {
-                // Require a fresh Oracle rate; if missing/stale, reject
-                if let Some(oracle_rate) =
-                    T::Oracle::get_crypto_exchange_rate(base_asset, quote_asset)
-                {
-                    let implied_rate = amount_out
-                        .saturating_mul(1_000_000)
-                        .checked_div(amount_in_u128)
-                        .unwrap_or(0);
-                    if oracle_rate > 0 {
-                        let diff = implied_rate.abs_diff(oracle_rate);
-                        let deviation_bps = diff
-                            .saturating_mul(10_000)
-                            .checked_div(oracle_rate)
-                            .unwrap_or(0);
-                        let max_allowed = T::MaxOracleDeviationBps::get() as u128;
-                        if deviation_bps > max_allowed {
-                            Self::deposit_event(Event::OracleGuardRejected {
-                                pair: (base_asset, quote_asset),
-                                implied_rate,
-                                oracle_rate,
-                                deviation_bps,
-                                max_allowed_bps: T::MaxOracleDeviationBps::get(),
-                            });
-                            return Err(Error::<T>::SlippageExceeded.into());
-                        }
-                    }
-                } else {
-                    // No Oracle rate available (likely stale or not set) → reject trade
-                    Self::deposit_event(Event::OracleRateUnavailable {
-                        pair: (base_asset, quote_asset),
-                    });
-                    return Err(Error::<T>::OracleRateUnavailable.into());
-                }
-            }
+            // Oracle-based slippage guard. See `enforce_oracle_deviation` for
+            // which pairs are checked and why both directions are covered.
+            Self::enforce_oracle_deviation(base_asset, quote_asset, amount_in_u128, amount_out)?;
 
             ensure!(amount_out >= min_amount_out, Error::<T>::SlippageExceeded);
 
@@ -1337,40 +1378,9 @@ pub mod pallet {
                 let amount_out =
                     Self::get_amount_out(amount_after_fee, pair.base_reserve, pair.quote_reserve)?;
 
-                // H-4 FIX: Oracle guard for WUSDC->BBZD hop — use hard-reject
-                // matching execute_trade logic (reject if Oracle unavailable)
-                if a == AssetId::WUSDC.as_u8() && b == AssetId::BBZD.as_u8() {
-                    if let Some(oracle_rate) = T::Oracle::get_crypto_exchange_rate(a, b) {
-                        if amount > 0 {
-                            let implied_rate = amount_out
-                                .saturating_mul(1_000_000)
-                                .checked_div(amount)
-                                .unwrap_or(0);
-                            let diff = implied_rate.abs_diff(oracle_rate);
-                            if oracle_rate > 0 {
-                                let deviation_bps = diff
-                                    .saturating_mul(10_000)
-                                    .checked_div(oracle_rate)
-                                    .unwrap_or(0);
-                                let max_allowed = T::MaxOracleDeviationBps::get() as u128;
-                                if deviation_bps > max_allowed {
-                                    Self::deposit_event(Event::OracleGuardRejected {
-                                        pair: (a, b),
-                                        implied_rate,
-                                        oracle_rate,
-                                        deviation_bps,
-                                        max_allowed_bps: T::MaxOracleDeviationBps::get(),
-                                    });
-                                    return Err(Error::<T>::SlippageExceeded.into());
-                                }
-                            }
-                        }
-                    } else {
-                        // No Oracle rate available → hard-reject (same as execute_trade)
-                        Self::deposit_event(Event::OracleRateUnavailable { pair: (a, b) });
-                        return Err(Error::<T>::OracleRateUnavailable.into());
-                    }
-                }
+                // Same guard as `execute_trade`, applied per hop in whichever
+                // direction that hop runs.
+                Self::enforce_oracle_deviation(a, b, amount, amount_out)?;
 
                 // Update reserves for this hop
                 pair.base_reserve = pair
@@ -1593,6 +1603,61 @@ pub mod pallet {
             Self::deposit_event(Event::OrderCancelled {
                 order_id,
                 creator: who,
+            });
+
+            Ok(())
+        }
+
+        /// Mint wrapped USDC into `account`'s ledger.
+        ///
+        /// This is the bridge mint hook. WUSDC is a representation of USDC held
+        /// off-chain by the custodian, so issuance is governance-gated (`PairListingOrigin`,
+        /// the same authority that lists pairs) rather than open to any caller —
+        /// an unbacked mint would be a direct claim on the pool's bBZD reserves.
+        ///
+        /// A future interoperability integration calls this on a verified
+        /// inbound transfer instead of exposing it to governance directly.
+        #[pallet::call_index(11)]
+        #[pallet::weight(T::WeightInfo::issue_wusdc())]
+        pub fn issue_wusdc(
+            origin: OriginFor<T>,
+            account: T::AccountId,
+            amount: u128,
+        ) -> DispatchResult {
+            T::PairListingOrigin::ensure_origin(origin)?;
+            ensure!(amount > 0, Error::<T>::ZeroAmount);
+
+            WusdcBalances::<T>::mutate(&account, |balance| {
+                *balance = balance.saturating_add(amount);
+            });
+
+            Self::deposit_event(Event::WusdcIssued {
+                account,
+                amount,
+            });
+
+            Ok(())
+        }
+
+        /// Burn wrapped USDC from the caller's ledger.
+        ///
+        /// The withdraw side of the bridge: burning on-chain releases the
+        /// matching USDC off-chain. Only the holder can burn their own balance,
+        /// and the pallet fails rather than letting a balance go negative.
+        #[pallet::call_index(12)]
+        #[pallet::weight(T::WeightInfo::burn_wusdc())]
+        pub fn burn_wusdc(origin: OriginFor<T>, amount: u128) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            ensure!(amount > 0, Error::<T>::ZeroAmount);
+
+            let balance = WusdcBalances::<T>::get(&who);
+            ensure!(balance >= amount, Error::<T>::InsufficientBalance);
+
+            WusdcBalances::<T>::insert(&who, balance.saturating_sub(amount));
+
+            Self::deposit_event(Event::WusdcBurned {
+                account: who,
+                amount,
             });
 
             Ok(())
@@ -1975,6 +2040,84 @@ pub mod pallet {
             ))
         }
 
+        /// Whether an AMM quote for this pair is checked against the Oracle.
+        ///
+        /// Only pairs with a USD representation on one side. WUSDC is one, so the
+        /// Oracle's USD/BZD rate is a meaningful reference for it in **either**
+        /// direction. DALLA floats and deliberately has none — checking it would
+        /// reject every legitimate trade. Widen only for another USD-denominated
+        /// asset.
+        fn is_oracle_guarded(base_asset: u8, quote_asset: u8) -> bool {
+            let wusdc = AssetId::WUSDC.as_u8();
+            let bbzd = AssetId::BBZD.as_u8();
+            (base_asset == wusdc && quote_asset == bbzd)
+                || (base_asset == bbzd && quote_asset == wusdc)
+        }
+
+        /// Reject an AMM quote that deviates from the Oracle reference.
+        ///
+        /// Fails closed: a guarded pair with no usable reference rate is refused,
+        /// not waved through — a missing rate must never mean "trade anyway".
+        ///
+        /// Covers both directions. That is not cosmetic: the reference rate
+        /// describes one orientation, so [`crate::reference_rate`] inverts it for
+        /// the other. Comparing a single un-inverted value in both directions
+        /// would reject one of them by construction, which is how the reverse
+        /// direction came to be left unchecked in the first place.
+        fn enforce_oracle_deviation(
+            base_asset: u8,
+            quote_asset: u8,
+            amount_in: u128,
+            amount_out: u128,
+        ) -> DispatchResult {
+            if !Self::is_oracle_guarded(base_asset, quote_asset) {
+                return Ok(());
+            }
+
+            let Some(oracle_rate) = T::Oracle::get_crypto_exchange_rate(base_asset, quote_asset)
+            else {
+                Self::deposit_event(Event::OracleRateUnavailable {
+                    pair: (base_asset, quote_asset),
+                });
+                return Err(Error::<T>::OracleRateUnavailable.into());
+            };
+
+            // A zero rate says nothing and would divide by zero below; treat it
+            // exactly like an absent one rather than skipping the check.
+            if oracle_rate == 0 {
+                Self::deposit_event(Event::OracleRateUnavailable {
+                    pair: (base_asset, quote_asset),
+                });
+                return Err(Error::<T>::OracleRateUnavailable.into());
+            }
+
+            // Both sides are 1e6-scaled, so the implied rate is directly
+            // comparable to the reference regardless of which side is base.
+            let implied_rate = amount_out
+                .saturating_mul(crate::REFERENCE_RATE_SCALE)
+                .checked_div(amount_in)
+                .unwrap_or(0);
+            let deviation_bps = implied_rate
+                .abs_diff(oracle_rate)
+                .saturating_mul(10_000)
+                .checked_div(oracle_rate)
+                .unwrap_or(0);
+            let max_allowed = T::MaxOracleDeviationBps::get() as u128;
+
+            if deviation_bps > max_allowed {
+                Self::deposit_event(Event::OracleGuardRejected {
+                    pair: (base_asset, quote_asset),
+                    implied_rate,
+                    oracle_rate,
+                    deviation_bps,
+                    max_allowed_bps: T::MaxOracleDeviationBps::get(),
+                });
+                return Err(Error::<T>::SlippageExceeded.into());
+            }
+
+            Ok(())
+        }
+
         /// Get Oracle-verified exchange rate for crypto pairs (with on-chain fallback)
         pub fn get_verified_exchange_rate(base_asset: u8, quote_asset: u8) -> Option<u128> {
             // Try Oracle first for real-time rates
@@ -2080,6 +2223,10 @@ pub trait WeightInfo {
     fn resume() -> Weight;
     fn set_pair_status() -> Weight;
     fn remove_liquidity() -> Weight;
+    /// Mint wrapped USDC into a holder's ledger (bridge deposit hook).
+    fn issue_wusdc() -> Weight;
+    /// Burn wrapped USDC from the caller's ledger (bridge withdrawal hook).
+    fn burn_wusdc() -> Weight;
 }
 
 impl WeightInfo for () {
@@ -2135,6 +2282,65 @@ impl WeightInfo for () {
         Weight::from_parts(45_000_000, 2048)
             .saturating_add(RocksDbWeight::get().reads(4))
             .saturating_add(RocksDbWeight::get().writes(4))
+    }
+    fn issue_wusdc() -> Weight {
+        Weight::from_parts(12_000_000, 2527)
+            .saturating_add(RocksDbWeight::get().reads(1))
+            .saturating_add(RocksDbWeight::get().writes(1))
+    }
+    fn burn_wusdc() -> Weight {
+        Weight::from_parts(12_000_000, 2527)
+            .saturating_add(RocksDbWeight::get().reads(1))
+            .saturating_add(RocksDbWeight::get().writes(1))
+    }
+}
+
+/// Scale for Oracle reference rates: 1e6, matching `pallet-belize-oracle`.
+pub const REFERENCE_RATE_SCALE: u128 = 1_000_000;
+
+/// Reference rate for a pair that has a USD representation on one side, expressed
+/// as "quote out per base in" at [`REFERENCE_RATE_SCALE`].
+///
+/// `observed_bzd_per_usd` is what the Oracle reports for the `USD/BZD` pair —
+/// units of quote per unit of base, i.e. bBZD per USD, which is `2.0` under the
+/// Belize peg. `peg_bzd_per_usd` is the value to substitute when the Oracle has no
+/// usable rate; pass `None` to model "no rate at all", which the deviation guard
+/// must treat as fail-closed.
+///
+/// The reciprocal is needed because a reference rate only describes one
+/// orientation. In `WUSDC -> BBZD` the AMM's implied rate is already bBZD per USD,
+/// so the observation passes through unchanged; in `BBZD -> WUSDC` the implied
+/// rate is USD per bBZD, so the observation must be inverted. Feeding a single
+/// un-inverted value to both directions means one of them can never match — which
+/// is why the reverse direction went unguarded rather than wrongly guarded.
+///
+/// Returns `None` when neither side is bBZD: DALLA floats, so there is no USD
+/// reference for it, and inventing one would reject every legitimate trade.
+pub fn reference_rate(
+    base_asset: u8,
+    quote_asset: u8,
+    observed_bzd_per_usd: Option<u128>,
+    peg_bzd_per_usd: Option<u128>,
+) -> Option<u128> {
+    let bbzd = pallet::AssetId::BBZD.as_u8();
+    if base_asset != bbzd && quote_asset != bbzd {
+        return None;
+    }
+
+    // A zero observation is not a rate: fall through to the peg, and if there is
+    // no peg either, report that no rate is available.
+    let bzd_per_usd = observed_bzd_per_usd
+        .filter(|rate| *rate > 0)
+        .or(peg_bzd_per_usd)
+        .filter(|rate| *rate > 0)?;
+
+    if quote_asset == bbzd {
+        Some(bzd_per_usd)
+    } else {
+        // bBZD is the base side, so the caller needs USD per bBZD.
+        REFERENCE_RATE_SCALE
+            .saturating_mul(REFERENCE_RATE_SCALE)
+            .checked_div(bzd_per_usd)
     }
 }
 

@@ -4118,3 +4118,319 @@ fn reveal_vote_rejects_conviction_above_max() {
         assert!(!crate::Votes::<Test>::contains_key(proposal_id, 2u64));
     });
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Regression: district elections were single-use per district
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Finalizing must not lock a district out of ever holding another election.
+///
+/// `start_district_election` used to require the `DistrictElections` key to be
+/// absent, and nothing removed it, so the chain permitted exactly six elections
+/// ever — one per district — and the council could never be re-elected.
+#[test]
+fn district_holds_a_second_election_after_the_first_is_finalized() {
+    new_test_ext().execute_with(|| {
+        // First election: reg_end=101, voting_end=301.
+        assert_ok!(BelizeGovernance::start_district_election(
+            RuntimeOrigin::root(),
+            0,
+            1,
+            100,
+            200,
+        ));
+        assert_ok!(BelizeGovernance::register_candidate(
+            RuntimeOrigin::signed(1),
+            0u8,
+            b"first term".to_vec(),
+        ));
+        System::set_block_number(302);
+        assert_ok!(BelizeGovernance::finalize_district_election(
+            RuntimeOrigin::root(),
+            0u8
+        ));
+
+        let first = crate::DistrictElections::<Test>::get(crate::BelizeDistrict::Belize)
+            .expect("the finalized record stays queryable until the next election starts");
+        assert_eq!(first.status, crate::ElectionStatus::Finalized);
+
+        // Second election in the same district, starting at a later block so it
+        // gets a distinct election id (`id == start block`).
+        System::set_block_number(500);
+        assert_ok!(BelizeGovernance::start_district_election(
+            RuntimeOrigin::root(),
+            0,
+            1,
+            100,
+            200,
+        ));
+
+        let second = crate::DistrictElections::<Test>::get(crate::BelizeDistrict::Belize)
+            .expect("the new election replaced the finalized one");
+        assert_eq!(second.status, crate::ElectionStatus::Registration);
+        assert_ne!(
+            second.id, first.id,
+            "the second election reused the first election's id"
+        );
+    });
+}
+
+/// A *running* election still blocks a second one in the same district.
+///
+/// The fix above must not turn the guard off: two concurrent elections in one
+/// district would share a registration window and double-count voters.
+#[test]
+fn district_cannot_open_a_second_election_while_one_is_running() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeGovernance::start_district_election(
+            RuntimeOrigin::root(),
+            0,
+            1,
+            100,
+            200,
+        ));
+        System::set_block_number(102); // now in the voting phase
+        assert_noop!(
+            BelizeGovernance::start_district_election(RuntimeOrigin::root(), 0, 1, 100, 200),
+            Error::<Test>::ElectionAlreadyActive
+        );
+    });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Regression: district elections ignored the CitizenDelegate role cap
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Six districts seating up to five members each would put 30 delegates on a
+/// council whose `CitizenDelegate` role is capped at 3.
+///
+/// The overflow is *across* districts, not within one: `start_district_election`
+/// already refuses `seats > district.seat_allocation()`, and the largest
+/// allocation (Belize, 3) equals the role cap exactly. So one district can fill
+/// the council and the next district must be refused.
+#[test]
+fn finalize_refuses_to_seat_more_delegates_than_the_role_allows() {
+    new_test_ext().execute_with(|| {
+        // Belize seats 3, which fills the CitizenDelegate role exactly.
+        assert_ok!(BelizeGovernance::start_district_election(
+            RuntimeOrigin::root(),
+            0,
+            crate::BoardRole::CitizenDelegate.max_count(),
+            100,
+            200,
+        ));
+        // Corpus Christi/Cayo (index 1) seats 2 and would push past the cap.
+        assert_ok!(BelizeGovernance::start_district_election(
+            RuntimeOrigin::root(),
+            1,
+            2,
+            100,
+            200,
+        ));
+
+        for account in 1..=3u64 {
+            assert_ok!(BelizeGovernance::register_candidate(
+                RuntimeOrigin::signed(account),
+                0u8,
+                b"platform".to_vec(),
+            ));
+        }
+        for account in 4..=5u64 {
+            assert_ok!(BelizeGovernance::register_candidate(
+                RuntimeOrigin::signed(account),
+                1u8,
+                b"platform".to_vec(),
+            ));
+        }
+
+        System::set_block_number(302);
+        assert_ok!(BelizeGovernance::finalize_district_election(
+            RuntimeOrigin::root(),
+            0u8
+        ));
+
+        // The role is full, so the second district cannot add its two seats.
+        assert_noop!(
+            BelizeGovernance::finalize_district_election(RuntimeOrigin::root(), 1u8),
+            Error::<Test>::BoardRoleLimitExceeded
+        );
+
+        assert_eq!(
+            crate::DistrictRepresentation::<Test>::get(crate::BelizeDistrict::Cayo).len(),
+            0,
+            "a rejected finalize still wrote the district representation"
+        );
+        assert_eq!(
+            crate::CouncilMembers::<Test>::iter().count() as u32,
+            crate::BoardRole::CitizenDelegate.max_count(),
+            "more delegates were seated than the role allows"
+        );
+    });
+}
+
+/// Seating within the cap succeeds and leaves `BoardComposition` in step.
+#[test]
+fn finalize_records_the_delegate_count_in_board_composition() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeGovernance::start_district_election(
+            RuntimeOrigin::root(),
+            0,
+            2,
+            100,
+            200,
+        ));
+        for account in 1..=2u64 {
+            assert_ok!(BelizeGovernance::register_candidate(
+                RuntimeOrigin::signed(account),
+                0u8,
+                b"platform".to_vec(),
+            ));
+        }
+
+        System::set_block_number(302);
+        assert_ok!(BelizeGovernance::finalize_district_election(
+            RuntimeOrigin::root(),
+            0u8
+        ));
+
+        let seated = crate::CouncilMembers::<Test>::iter()
+            .filter(|(_, member)| member.role == crate::BoardRole::CitizenDelegate)
+            .count() as u32;
+        assert_eq!(
+            crate::BoardComposition::<Test>::get(crate::BoardRole::CitizenDelegate),
+            seated,
+            "BoardComposition disagrees with the seats that were filled"
+        );
+    });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Regression: an out-of-range emergency type was silently stored as `Other`
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn declare_emergency_rejects_an_out_of_range_type() {
+    new_test_ext().execute_with(|| {
+        assert_noop!(
+            BelizeGovernance::declare_emergency(
+                RuntimeOrigin::root(),
+                6u8,
+                b"typo".to_vec(),
+                24u32,
+            ),
+            Error::<Test>::InvalidEmergencyType
+        );
+        assert_eq!(
+            crate::JaguarMode::<Test>::get(),
+            None,
+            "a rejected declaration still wrote JaguarMode"
+        );
+    });
+}
+
+/// Index 5 is the documented `Other`, so it must still be accepted.
+#[test]
+fn declare_emergency_accepts_the_documented_other_index() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeGovernance::declare_emergency(
+            RuntimeOrigin::root(),
+            5u8,
+            b"unclassified".to_vec(),
+            24u32,
+        ));
+        let status = crate::JaguarMode::<Test>::get().expect("declaration was written");
+        assert_eq!(status.emergency_type, crate::EmergencyType::Other);
+    });
+}
+
+/// Two elections opened in the same block must not share a candidate pool.
+///
+/// The election id used to be the start block, and `ElectionCandidates` is keyed
+/// by `(election_id, account)`. Two districts started in one block therefore had
+/// the same id, and finalizing the second awarded its seats to candidates who had
+/// registered in the first — a district could be represented by people who never
+/// stood there.
+#[test]
+fn elections_opened_in_the_same_block_have_separate_candidate_pools() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeGovernance::start_district_election(
+            RuntimeOrigin::root(),
+            0,
+            1,
+            100,
+            200,
+        ));
+        assert_ok!(BelizeGovernance::start_district_election(
+            RuntimeOrigin::root(),
+            1,
+            1,
+            100,
+            200,
+        ));
+
+        let belize = crate::DistrictElections::<Test>::get(crate::BelizeDistrict::Belize)
+            .expect("Belize election");
+        let cayo = crate::DistrictElections::<Test>::get(crate::BelizeDistrict::Cayo)
+            .expect("Cayo election");
+        assert_ne!(belize.id, cayo.id, "same-block elections shared an id");
+
+        // One candidate in each district.
+        assert_ok!(BelizeGovernance::register_candidate(
+            RuntimeOrigin::signed(1),
+            0u8,
+            b"Belize platform".to_vec(),
+        ));
+        assert_ok!(BelizeGovernance::register_candidate(
+            RuntimeOrigin::signed(2),
+            1u8,
+            b"Cayo platform".to_vec(),
+        ));
+
+        let belize_candidates: Vec<u64> =
+            crate::ElectionCandidates::<Test>::iter_prefix(belize.id)
+                .map(|(account, _)| account)
+                .collect();
+        let cayo_candidates: Vec<u64> = crate::ElectionCandidates::<Test>::iter_prefix(cayo.id)
+            .map(|(account, _)| account)
+            .collect();
+
+        assert_eq!(belize_candidates, vec![1], "Belize pool is not its own");
+        assert_eq!(cayo_candidates, vec![2], "Cayo pool is not its own");
+    });
+}
+
+/// `district_of` resolves the reverse link without a second copy of the truth.
+#[test]
+fn district_of_resolves_a_seated_member() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(BelizeGovernance::start_district_election(
+            RuntimeOrigin::root(),
+            2, // Corozal
+            1,
+            100,
+            200,
+        ));
+        assert_ok!(BelizeGovernance::register_candidate(
+            RuntimeOrigin::signed(7),
+            2u8,
+            b"platform".to_vec(),
+        ));
+
+        System::set_block_number(302);
+        assert_ok!(BelizeGovernance::finalize_district_election(
+            RuntimeOrigin::root(),
+            2u8
+        ));
+
+        assert_eq!(
+            BelizeGovernance::district_of(&7u64),
+            Some(crate::BelizeDistrict::Corozal),
+            "district_of did not resolve the seated member"
+        );
+        assert_eq!(
+            BelizeGovernance::district_of(&99u64),
+            None,
+            "district_of resolved an account that holds no seat"
+        );
+    });
+}

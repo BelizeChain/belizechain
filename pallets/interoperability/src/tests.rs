@@ -3371,3 +3371,101 @@ fn evm_address_registry_is_empty_at_genesis() {
     });
 }
 
+// ── Genesis parity (Gap 7) ──────────────────────────────────────────────────
+//
+// `on_runtime_upgrade` never runs on a fresh genesis, so the seeding migration
+// alone leaves a *launched* chain with an empty bridge that nothing can fill
+// (`update_bridge_config` refuses an absent key; there is no `add_bridge_chain`).
+
+#[test]
+fn genesis_seeds_every_configured_chain() {
+    use frame_support::traits::Get;
+
+    use crate::migrations::SEEDED_CHAINS;
+
+    new_test_ext_with_bridge_configs().execute_with(|| {
+        for chain in SEEDED_CHAINS {
+            assert!(
+                ChainConfigurations::<Test>::contains_key(chain),
+                "{chain:?} was not seeded at genesis"
+            );
+        }
+        assert_eq!(
+            ChainConfigurations::<Test>::iter().count(),
+            SEEDED_CHAINS.len(),
+            "genesis seeded a different number of chains than SEEDED_CHAINS"
+        );
+
+        let config =
+            ChainConfigurations::<Test>::get(BridgeChain::Ethereum).expect("Ethereum is seeded");
+        assert!(config.enabled, "seeded chains must start enabled");
+        assert_eq!(
+            config.fee_rate,
+            <Test as crate::Config>::BridgeFeeRate::get()
+        );
+        assert_eq!(
+            config.pq_signatures_required,
+            <Test as crate::Config>::PQSignatureThreshold::get()
+        );
+        assert_eq!(config.max_amount, crate::migrations::SEEDED_MAX_AMOUNT);
+    });
+}
+
+/// The genesis config and the V1 → V2 migration must produce the *same* registry:
+/// a chain launched at genesis and a chain upgraded into the same spec would
+/// otherwise differ, and the integration suite (which runs against a genesis
+/// chain) would not be exercising what Ceiba actually has.
+#[test]
+fn genesis_and_migration_seed_identical_configurations() {
+    use frame_support::traits::OnRuntimeUpgrade;
+    use sp_std::collections::btree_map::BTreeMap;
+
+    fn registry() -> BTreeMap<u8, (bool, u32, u128, u32, u32)> {
+        ChainConfigurations::<Test>::iter()
+            .map(|(chain, config)| {
+                (
+                    Interoperability::encode_chain(&chain),
+                    (
+                        config.enabled,
+                        config.min_confirmations,
+                        config.max_amount,
+                        config.fee_rate,
+                        config.pq_signatures_required,
+                    ),
+                )
+            })
+            .collect()
+    }
+
+    let from_migration = new_test_ext().execute_with(|| {
+        crate::migrations::SeedChainConfigurations::<Test>::on_runtime_upgrade();
+        registry()
+    });
+    let from_genesis = new_test_ext_with_bridge_configs().execute_with(registry);
+
+    assert_eq!(
+        from_migration, from_genesis,
+        "the genesis config and the seeding migration disagree"
+    );
+    assert!(
+        !from_genesis.is_empty(),
+        "both sides are empty, so this proves nothing"
+    );
+}
+
+/// The genesis config stores chains as a `u8` index because `BridgeChain` is not
+/// serde-capable under `no_std`, so `index -> chain -> index` has to be lossless.
+///
+/// Without this check a wrong index silently seeds a *different* chain than the
+/// one intended — or panics at genesis when the index decodes to `None`.
+#[test]
+fn every_seeded_chain_survives_the_index_round_trip() {
+    for chain in crate::migrations::SEEDED_CHAINS {
+        let index = crate::chain_index(chain);
+        assert_eq!(
+            Interoperability::decode_chain(index).as_ref(),
+            Some(chain),
+            "index {index} decodes to a different chain than {chain:?} encodes to"
+        );
+    }
+}

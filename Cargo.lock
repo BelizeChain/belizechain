@@ -1094,6 +1094,15 @@ dependencies = [
  "log",
  "pallet-babe",
  "pallet-balances",
+ "pallet-belize-governance-rpc",
+ "pallet-belize-governance-rpc-runtime-api",
+ "pallet-belize-interoperability",
+ "pallet-belize-interoperability-rpc",
+ "pallet-belize-interoperability-rpc-runtime-api",
+ "pallet-belize-oracle-rpc",
+ "pallet-belize-oracle-rpc-runtime-api",
+ "pallet-belize-staking-rpc",
+ "pallet-belize-staking-rpc-runtime-api",
  "pallet-grandpa",
  "pallet-staking",
  "pallet-sudo",
@@ -1169,16 +1178,20 @@ dependencies = [
  "pallet-belize-consensus",
  "pallet-belize-economy",
  "pallet-belize-governance",
+ "pallet-belize-governance-rpc-runtime-api",
  "pallet-belize-identity",
  "pallet-belize-interoperability",
+ "pallet-belize-interoperability-rpc-runtime-api",
  "pallet-belize-justice",
  "pallet-belize-landledger",
  "pallet-belize-mesh",
  "pallet-belize-moderation",
  "pallet-belize-oracle",
+ "pallet-belize-oracle-rpc-runtime-api",
  "pallet-belize-payroll",
  "pallet-belize-quantum",
  "pallet-belize-staking",
+ "pallet-belize-staking-rpc-runtime-api",
  "pallet-belize-whistleblower",
  "pallet-collective",
  "pallet-contracts",
@@ -7151,9 +7164,34 @@ dependencies = [
  "pallet-belize-compliance",
  "parity-scale-codec",
  "scale-info",
+ "serde",
  "sp-core",
  "sp-io",
  "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
+name = "pallet-belize-governance-rpc"
+version = "0.1.0"
+dependencies = [
+ "jsonrpsee",
+ "pallet-belize-governance",
+ "pallet-belize-governance-rpc-runtime-api",
+ "parity-scale-codec",
+ "serde",
+ "sp-api",
+ "sp-blockchain",
+ "sp-runtime",
+]
+
+[[package]]
+name = "pallet-belize-governance-rpc-runtime-api"
+version = "0.1.0"
+dependencies = [
+ "pallet-belize-governance",
+ "parity-scale-codec",
+ "sp-api",
  "sp-std",
 ]
 
@@ -7193,6 +7231,30 @@ dependencies = [
  "sp-core",
  "sp-io",
  "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
+name = "pallet-belize-interoperability-rpc"
+version = "0.1.0"
+dependencies = [
+ "jsonrpsee",
+ "pallet-belize-interoperability",
+ "pallet-belize-interoperability-rpc-runtime-api",
+ "parity-scale-codec",
+ "serde",
+ "sp-api",
+ "sp-blockchain",
+ "sp-runtime",
+]
+
+[[package]]
+name = "pallet-belize-interoperability-rpc-runtime-api"
+version = "0.1.0"
+dependencies = [
+ "pallet-belize-interoperability",
+ "parity-scale-codec",
+ "sp-api",
  "sp-std",
 ]
 
@@ -7291,6 +7353,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-belize-oracle-rpc"
+version = "0.1.0"
+dependencies = [
+ "jsonrpsee",
+ "pallet-belize-oracle",
+ "pallet-belize-oracle-rpc-runtime-api",
+ "parity-scale-codec",
+ "serde",
+ "sp-api",
+ "sp-blockchain",
+ "sp-runtime",
+]
+
+[[package]]
+name = "pallet-belize-oracle-rpc-runtime-api"
+version = "0.1.0"
+dependencies = [
+ "pallet-belize-oracle",
+ "parity-scale-codec",
+ "sp-api",
+ "sp-std",
+]
+
+[[package]]
 name = "pallet-belize-payroll"
 version = "0.1.0"
 dependencies = [
@@ -7335,9 +7421,34 @@ dependencies = [
  "pallet-balances",
  "parity-scale-codec",
  "scale-info",
+ "serde",
  "sp-core",
  "sp-io",
  "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
+name = "pallet-belize-staking-rpc"
+version = "0.1.0"
+dependencies = [
+ "jsonrpsee",
+ "pallet-belize-staking",
+ "pallet-belize-staking-rpc-runtime-api",
+ "parity-scale-codec",
+ "serde",
+ "sp-api",
+ "sp-blockchain",
+ "sp-runtime",
+]
+
+[[package]]
+name = "pallet-belize-staking-rpc-runtime-api"
+version = "0.1.0"
+dependencies = [
+ "pallet-belize-staking",
+ "parity-scale-codec",
+ "sp-api",
  "sp-std",
 ]
 
@@ -7655,6 +7766,7 @@ name = "pallet-zk-attestation"
 version = "0.1.0"
 dependencies = [
  "belizechain-zk-attestation",
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
  "log",

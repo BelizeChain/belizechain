@@ -14,12 +14,15 @@
 //! - `belizechain_getChainInfo` — node-observed chain/runtime metadata: spec
 //!   name and versions, genesis/best/finalized pointers, and the runtime API
 //!   surface actually compiled into the running runtime.
+//! - `belizechain_governanceCouncil`, `belizechain_governanceCouncilTerm`,
+//!   `belizechain_governanceElections`, `belizechain_governanceNextProposalId`
+//!   — see `pallet-belize-governance-rpc`.
 
 #![warn(missing_docs)]
 
 use std::sync::Arc;
 
-use belizechain_runtime::{opaque::Block, AccountId, Balance, Nonce};
+use belizechain_runtime::{opaque::Block, AccountId, Balance, BlockNumber, Nonce};
 use jsonrpsee::types::ErrorObjectOwned;
 use jsonrpsee::RpcModule;
 use sc_transaction_pool_api::TransactionPool;
@@ -47,10 +50,18 @@ where
         + 'static,
     C::Api: substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Nonce>
         + pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>
+        + pallet_belize_governance_rpc_runtime_api::GovernanceApi<Block, AccountId, BlockNumber>
+        + pallet_belize_staking_rpc_runtime_api::StakingApi<Block, AccountId, Balance, BlockNumber>
+        + pallet_belize_interoperability_rpc_runtime_api::BridgeApi<Block, AccountId, BlockNumber>
+        + pallet_belize_oracle_rpc_runtime_api::OracleApi<Block, BlockNumber>
         + sp_api::Core<Block>
         + BlockBuilder<Block>,
     P: TransactionPool + 'static,
 {
+    use pallet_belize_governance_rpc::{Governance, GovernanceApiServer};
+    use pallet_belize_interoperability_rpc::{Bridge, BridgeApiServer};
+    use pallet_belize_oracle_rpc::{Oracle, OracleApiServer};
+    use pallet_belize_staking_rpc::{Staking, StakingApiServer};
     use pallet_transaction_payment_rpc::{TransactionPayment, TransactionPaymentApiServer};
     use substrate_frame_rpc_system::{System, SystemApiServer};
 
@@ -58,6 +69,12 @@ where
     let FullDeps { client, pool } = deps;
 
     module.merge(System::new(client.clone(), pool).into_rpc())?;
+    module.merge(
+        Governance::<C, Block, AccountId, BlockNumber>::new(client.clone()).into_rpc(),
+    )?;
+    module.merge(Staking::<C, Block, AccountId, Balance, BlockNumber>::new(client.clone()).into_rpc())?;
+    module.merge(Bridge::<C, Block, AccountId, BlockNumber>::new(client.clone()).into_rpc())?;
+    module.merge(Oracle::<C, Block, BlockNumber>::new(client.clone()).into_rpc())?;
     let chain_info_client = client.clone();
     module.merge(TransactionPayment::new(client).into_rpc())?;
 
@@ -114,17 +131,15 @@ where
         }))
     })?;
 
-    // TODO(§3.3): Add typed custom RPCs for key pallets:
-    // - belizechain_governanceProposals  (requires GovernanceApi runtime API)
-    // - belizechain_stakingValidators    (requires StakingApi runtime API)
-    // - belizechain_bridgeTransactions   (requires BridgeApi runtime API)
-    // - belizechain_oracleFeeds          (requires OracleApi runtime API)
-    //
-    // Each requires:
+    // Remaining §3.3 pallets. Governance is wired above; these three follow the
+    // same four steps and only need the runtime API written:
     //   1. `decl_runtime_apis!` in a `<pallet>-rpc-runtime-api` crate
     //   2. `impl_runtime_apis!` in runtime/src/lib.rs
     //   3. Server struct in a `<pallet>-rpc` crate
     //   4. Registration via `module.merge(...)` here
+    // - staking:          belizechain_stakingValidators
+    // - interoperability: belizechain_bridgeTransactions
+    // - oracle:           belizechain_oracleFeeds
 
     Ok(module)
 }

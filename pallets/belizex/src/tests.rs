@@ -25,6 +25,19 @@ thread_local! {
         const { core::cell::RefCell::new(None) };
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Asset whose transfers the mock ledger rejects.
+    ///
+    /// [`REJECT_TRANSFERS_TO`] can only fail the *first* leg of a multi-asset
+    /// extrinsic, because both legs usually target the same account. Rejecting by
+    /// asset instead lets a test fail a specific leg — e.g. the quote leg of
+    /// `add_liquidity` — which is the only way to observe whether an extrinsic
+    /// that writes partly and then errors leaves that partial write behind.
+    static REJECT_TRANSFERS_OF: core::cell::RefCell<Option<AssetId>> =
+        const { core::cell::RefCell::new(None) };
+}
+
 impl MockAssetLedger {
     fn clear() {
         TRANSFER_LOG.with(|l| l.borrow_mut().clear());
@@ -39,27 +52,48 @@ impl MockAssetLedger {
     fn accept_transfers_to_all() {
         REJECT_TRANSFERS_TO.with(|r| *r.borrow_mut() = None);
     }
+    /// Reject every transfer of `asset` until `accept_all_assets` is called.
+    fn reject_transfers_of(asset: AssetId) {
+        REJECT_TRANSFERS_OF.with(|r| *r.borrow_mut() = Some(asset));
+    }
+    fn accept_all_assets() {
+        REJECT_TRANSFERS_OF.with(|r| *r.borrow_mut() = None);
+    }
 }
 
 impl AssetLedger<u64> for MockAssetLedger {
-    fn balance_of(_asset: AssetId, who: &u64) -> u128 {
-        Balances::free_balance(who)
+    fn balance_of(asset: AssetId, who: &u64) -> u128 {
+        match asset {
+            AssetId::WUSDC => WusdcBalances::<Test>::get(who),
+            _ => Balances::free_balance(who),
+        }
     }
 
     fn transfer(asset: AssetId, from: &u64, to: &u64, amount: u128) -> DispatchResult {
-        // WUSDC has no ledger in the runtime; mirror that here so the test
-        // double does not silently accept what production rejects.
-        if asset == AssetId::WUSDC {
-            return Err(Error::<Test>::UnsupportedAsset.into());
-        }
         if amount == 0 {
             return Ok(());
         }
-        // Failure injection: see `REJECT_TRANSFERS_TO`.
+        // Failure injection: see `REJECT_TRANSFERS_TO` and `REJECT_TRANSFERS_OF`.
         if REJECT_TRANSFERS_TO.with(|r| *r.borrow()) == Some(*to) {
             return Err(Error::<Test>::InsufficientBalance.into());
         }
+        if REJECT_TRANSFERS_OF.with(|r| *r.borrow()) == Some(asset) {
+            return Err(Error::<Test>::InsufficientBalance.into());
+        }
         TRANSFER_LOG.with(|l| l.borrow_mut().push((asset, *from, *to)));
+
+        // WUSDC settles in the pallet's own ledger, mirroring the runtime's
+        // `BelizeXAssetLedger`; every other asset collapses to `Balances`.
+        if asset == AssetId::WUSDC {
+            let balance = WusdcBalances::<Test>::get(from);
+            if balance < amount {
+                return Err(Error::<Test>::InsufficientBalance.into());
+            }
+            WusdcBalances::<Test>::insert(from, balance - amount);
+            WusdcBalances::<Test>::insert(to, WusdcBalances::<Test>::get(to) + amount);
+            return Ok(());
+        }
+
         <Balances as frame_support::traits::Currency<u64>>::transfer(
             from,
             to,
@@ -71,9 +105,11 @@ impl AssetLedger<u64> for MockAssetLedger {
     }
 
     #[cfg(feature = "runtime-benchmarks")]
-    fn set_balance(_asset: AssetId, who: &u64, amount: u128) {
-        // Every asset collapses to `Balances` in this double, which is exactly
-        // why the mock cannot reproduce a runtime failure on the quote leg.
+    fn set_balance(asset: AssetId, who: &u64, amount: u128) {
+        if asset == AssetId::WUSDC {
+            WusdcBalances::<Test>::insert(who, amount);
+            return;
+        }
         let _ = Balances::make_free_balance_be(who, amount);
     }
 }
@@ -284,6 +320,80 @@ fn add_liquidity_increases_pair_reserves() {
     });
 }
 
+/// An extrinsic that fails on a later leg must leave nothing behind.
+///
+/// This pins an *SDK* guarantee, not a pallet behaviour — one the pallet relies on
+/// without ever stating. `#[pallet::call]` wraps every dispatchable in
+/// `frame_support::storage::with_storage_layer`; in the SDK's own words: "We
+/// execute all dispatchable in a new storage layer, allowing them to return an
+/// error at any point, and undoing any storage changes."
+///
+/// That is what makes `add_liquidity`'s two sequential ledger transfers safe: the
+/// base leg moves to the pool, the quote leg is rejected, and the base leg is
+/// undone. If the layer ever became opt-in, the base tokens would be stranded in
+/// the pool with no LP claim against them and no reserve backing them — so this
+/// test is the alarm for that, not a description of a current defect.
+///
+/// The mock rejects the *quote* asset rather than an account, because both legs
+/// target the pool — rejecting by account would fail the first leg and prove
+/// nothing.
+#[test]
+fn add_liquidity_rolls_back_when_a_later_leg_fails() {
+    new_test_ext().execute_with(|| {
+        let provider = 2u64;
+        let pair = (0u8, 1u8);
+        let pool = BelizeX::pool_account();
+
+        let provider_before = Balances::free_balance(provider);
+        let pool_before = Balances::free_balance(&pool);
+        let reserves_before = BelizeX::trading_pairs(pair).expect("default pair must exist");
+
+        MockAssetLedger::clear();
+        MockAssetLedger::reject_transfers_of(AssetId::BBZD);
+        let result = BelizeX::add_liquidity(
+            RuntimeOrigin::signed(provider),
+            0,
+            1,
+            5_000u128,
+            5_000u128,
+            1,
+        );
+        MockAssetLedger::accept_all_assets();
+
+        assert!(
+            result.is_err(),
+            "the quote leg was rejected but the call returned Ok"
+        );
+        assert_eq!(
+            MockAssetLedger::transfers().len(),
+            1,
+            "the base leg never ran, so this test proves nothing about rollback"
+        );
+
+        assert_eq!(
+            Balances::free_balance(provider),
+            provider_before,
+            "the base leg was debited and not rolled back"
+        );
+        assert_eq!(
+            Balances::free_balance(&pool),
+            pool_before,
+            "the pool kept the base leg of a failed add_liquidity"
+        );
+
+        let reserves_after = BelizeX::trading_pairs(pair).expect("pair survives");
+        assert_eq!(
+            reserves_after.base_reserve, reserves_before.base_reserve,
+            "reserves moved despite the call failing"
+        );
+        assert_eq!(
+            BelizeX::lp_balances(provider, pair),
+            0,
+            "LP tokens were minted for a failed add_liquidity"
+        );
+    });
+}
+
 #[test]
 fn add_liquidity_zero_amount_fails() {
     let mut ext = new_test_ext();
@@ -472,14 +582,81 @@ fn settlement_debits_the_assets_the_pair_names() {
 }
 
 #[test]
-fn settlement_refuses_an_asset_with_no_ledger() {
-    // WUSDC has no ledger in this runtime. The mock mirrors production and
-    // rejects it rather than inventing a balance.
+fn settlement_debits_wusdc_against_its_own_ledger() {
+    // WUSDC settles in this pallet's `WusdcBalances`, not in `Balances`. Before
+    // the ledger existed the pair could never hold a reserve, which left the
+    // oracle deviation guard unreachable.
     let mut ext = new_test_ext();
     ext.execute_with(|| {
+        WusdcBalances::<Test>::insert(1u64, 1_000);
+        let native_before =
+            <Balances as frame_support::traits::Currency<u64>>::free_balance(&1);
+
+        assert_ok!(MockAssetLedger::transfer(AssetId::WUSDC, &1, &2, 400));
+
+        assert_eq!(WusdcBalances::<Test>::get(1), 600);
+        assert_eq!(WusdcBalances::<Test>::get(2), 400);
+        assert_eq!(
+            MockAssetLedger::balance_of(AssetId::WUSDC, &1),
+            600,
+            "balance_of must read the WUSDC ledger"
+        );
+        assert_eq!(
+            <Balances as frame_support::traits::Currency<u64>>::free_balance(&1),
+            native_before,
+            "WUSDC must not move native balances"
+        );
         assert_noop!(
-            MockAssetLedger::transfer(AssetId::WUSDC, &1, &2, 1),
-            Error::<Test>::UnsupportedAsset
+            MockAssetLedger::transfer(AssetId::WUSDC, &1, &2, 10_000),
+            Error::<Test>::InsufficientBalance
+        );
+    });
+}
+
+#[test]
+fn issue_wusdc_is_gated_and_credits_the_target() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        assert_ok!(BelizeX::issue_wusdc(RuntimeOrigin::root(), 2u64, 5_000));
+        assert_eq!(WusdcBalances::<Test>::get(2), 5_000);
+        assert_eq!(
+            WusdcBalances::<Test>::get(2),
+            MockAssetLedger::balance_of(AssetId::WUSDC, &2u64),
+            "the ledger must be the single source of the pair's base balance"
+        );
+
+        assert_noop!(
+            BelizeX::issue_wusdc(RuntimeOrigin::root(), 2u64, 0),
+            Error::<Test>::ZeroAmount
+        );
+        assert_noop!(
+            BelizeX::issue_wusdc(RuntimeOrigin::signed(2), 2u64, 1),
+            sp_runtime::DispatchError::BadOrigin
+        );
+    });
+}
+
+#[test]
+fn burn_wusdc_debits_the_caller_and_rejects_overdraft() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        assert_ok!(BelizeX::issue_wusdc(RuntimeOrigin::root(), 1u64, 5_000));
+
+        assert_ok!(BelizeX::burn_wusdc(RuntimeOrigin::signed(1), 2_000));
+        assert_eq!(WusdcBalances::<Test>::get(1), 3_000);
+
+        assert_noop!(
+            BelizeX::burn_wusdc(RuntimeOrigin::signed(1), 10_000),
+            Error::<Test>::InsufficientBalance
+        );
+        assert_noop!(
+            BelizeX::burn_wusdc(RuntimeOrigin::signed(1), 0),
+            Error::<Test>::ZeroAmount
+        );
+        assert_eq!(
+            WusdcBalances::<Test>::get(1),
+            3_000,
+            "a rejected burn must not change the balance"
         );
     });
 }
@@ -2345,3 +2522,302 @@ fn a_full_fill_frees_the_account_order_slot() {
         assert_eq!(BelizeX::account_order_count(2), 0);
     });
 }
+
+// ── Oracle deviation guard (WUSDC/BBZD) ──────────────────────────────────────
+//
+// The guard compares the trade's *implied* rate against the oracle's USD/BZD
+// rate. It was written when every asset settled through `Balances`; once each
+// asset moved to its own ledger and WUSDC had none, the pair became
+// unseedable and these branches were unreachable. WUSDC now settles in
+// `WusdcBalances`, so the guard is exercised here for real.
+
+const WUSDC: u8 = 3;
+const BBZD: u8 = 1;
+
+/// Seed a WUSDC/BBZD pool priced at `quote / base`, holding `base` WUSDC and
+/// `quote` bBZD, and leave `spend` WUSDC in the provider's account to trade
+/// with. The mock's asset ledger maps bBZD to native `Balances`.
+fn seed_wusdc_bbzd_pool(who: u64, base: u128, quote: u128, spend: u128) {
+    assert!(
+        TradingPairs::<Test>::contains_key((WUSDC, BBZD)),
+        "genesis must create the WUSDC/BBZD pair"
+    );
+    WusdcBalances::<Test>::insert(who, base);
+    let _ = Balances::make_free_balance_be(&who, quote);
+    assert_ok!(BelizeX::add_liquidity(
+        RuntimeOrigin::signed(who),
+        WUSDC,
+        BBZD,
+        base,
+        quote,
+        1,
+    ));
+
+    // `add_liquidity` moved the whole deposit into the pool.
+    WusdcBalances::<Test>::insert(who, spend);
+    assert_eq!(BelizeX::wusdc_balances(&who), spend);
+}
+
+#[test]
+fn oracle_guard_accepts_a_trade_priced_near_the_oracle_rate() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        // Pool at 2.0 bBZD per WUSDC; a 1e6 trade slips to ~1.992, which is
+        // within the 500 bps cap of a 2.0 oracle rate.
+        seed_wusdc_bbzd_pool(1, 1_000_000_000, 2_000_000_000, 1_000_000);
+        MockOracle::set_rate(Some(2_000_000));
+
+        assert_ok!(BelizeX::execute_trade(
+            RuntimeOrigin::signed(1),
+            WUSDC,
+            BBZD,
+            1_000_000,
+            0,
+            false,
+        ));
+    });
+}
+
+#[test]
+fn oracle_guard_rejects_a_deviation_beyond_the_cap() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        seed_wusdc_bbzd_pool(1, 1_000_000_000, 2_000_000_000, 1_000_000);
+        // The pool implies ~2.0; telling the guard USD/BZD is 1.0 is a ~50%
+        // deviation, far outside `MaxOracleDeviationBps` (500).
+        MockOracle::set_rate(Some(1_000_000));
+
+        assert_noop!(
+            BelizeX::execute_trade(
+                RuntimeOrigin::signed(1),
+                WUSDC,
+                BBZD,
+                1_000_000,
+                0,
+                false,
+            ),
+            Error::<Test>::SlippageExceeded
+        );
+    });
+}
+
+#[test]
+fn oracle_guard_fails_closed_without_an_oracle_rate() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        seed_wusdc_bbzd_pool(1, 1_000_000_000, 2_000_000_000, 1_000_000);
+        MockOracle::set_rate(None);
+
+        assert_noop!(
+            BelizeX::execute_trade(
+                RuntimeOrigin::signed(1),
+                WUSDC,
+                BBZD,
+                1_000_000,
+                0,
+                false,
+            ),
+            Error::<Test>::OracleRateUnavailable
+        );
+    });
+}
+
+#[test]
+fn oracle_guard_does_not_gate_dalla_pairs() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        // DALLA floats, so the USD/BZD rate is not a valid reference for it.
+        // A wildly "wrong" rate must not block a DALLA/BBZD trade.
+        MockOracle::set_rate(Some(1_000_000));
+
+        assert_ok!(BelizeX::add_liquidity(
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            100_000_000,
+            200_000_000,
+            1,
+        ));
+        assert_ok!(BelizeX::execute_trade(
+            RuntimeOrigin::signed(1),
+            0,
+            1,
+            100_000,
+            0,
+            false,
+        ));
+    });
+}
+
+// ── The guard must cover both directions of the pair ────────────────────────
+//
+// These are the cases the original single-direction check missed. The guard read
+// one shared reference rate against `amount_out / amount_in`, which only equals
+// bBZD-per-USD for `WUSDC -> BBZD`; in the reverse direction it equals the
+// reciprocal, so that direction could never have passed and was therefore never
+// checked. Everything below fails if the reference is not orientation-aware.
+//
+// The reverse pair does not exist in genesis — `TradingPairs` is keyed by an
+// ordered tuple and governance lists `(WUSDC, BBZD)` only. So each test below
+// lists `(BBZD, WUSDC)` first, which is precisely the moment the unguarded
+// direction would have become reachable: `create_trading_pair` is
+// `PairListingOrigin`-gated, so listing the reverse market is a deliberate act
+// that silently shipped a second, unchecked market for the same two assets.
+
+/// List `(BBZD, WUSDC)` as governance and fund it at the same 2:1 ratio the
+/// canonical pool uses.
+fn seed_reverse_bbzd_wusdc_pool(who: u64) {
+    assert_ok!(BelizeX::create_trading_pair(RuntimeOrigin::root(), BBZD, WUSDC, 30));
+
+    WusdcBalances::<Test>::insert(who, 1_000_000_000u128);
+    let _ = Balances::make_free_balance_be(&who, 2_000_000_000_000u128);
+    assert_ok!(BelizeX::add_liquidity(
+        RuntimeOrigin::signed(who),
+        BBZD,
+        WUSDC,
+        2_000_000_000,
+        1_000_000_000,
+        1,
+    ));
+
+    // `add_liquidity` moved the whole deposit into the pool.
+    WusdcBalances::<Test>::insert(who, 1_000);
+}
+
+#[test]
+fn oracle_guard_rejects_a_bad_rate_in_the_reverse_direction_too() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        seed_reverse_bbzd_wusdc_pool(1);
+        // Pool holds 2.0 bBZD per WUSDC, so 0.5 WUSDC per bBZD. Telling the oracle
+        // USD/BZD is 1.0 makes the reference 1.0 WUSDC per bBZD in this
+        // direction — double the pool's actual rate, far outside the 500 bps cap.
+        MockOracle::set_rate(Some(1_000_000));
+
+        assert_noop!(
+            BelizeX::execute_trade(RuntimeOrigin::signed(1), BBZD, WUSDC, 1_000, 0, false),
+            Error::<Test>::SlippageExceeded
+        );
+    });
+}
+
+#[test]
+fn oracle_guard_fails_closed_in_the_reverse_direction_too() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        seed_reverse_bbzd_wusdc_pool(1);
+        MockOracle::set_rate(None);
+
+        assert_noop!(
+            BelizeX::execute_trade(RuntimeOrigin::signed(1), BBZD, WUSDC, 1_000, 0, false),
+            Error::<Test>::OracleRateUnavailable
+        );
+    });
+}
+
+#[test]
+fn oracle_guard_accepts_a_reverse_trade_priced_near_the_oracle_rate() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        seed_reverse_bbzd_wusdc_pool(1);
+        MockOracle::set_rate(Some(2_000_000));
+
+        assert_ok!(BelizeX::execute_trade(
+            RuntimeOrigin::signed(1),
+            BBZD,
+            WUSDC,
+            1_000,
+            0,
+            false,
+        ));
+    });
+}
+
+#[test]
+fn oracle_guard_gates_the_reverse_hop_of_a_multihop_trade() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        seed_reverse_bbzd_wusdc_pool(1);
+
+        // BBZD -> WUSDC as a hop. Before the fix the multihop check was keyed on
+        // `WUSDC -> BBZD`, so this hop was never inspected.
+        MockOracle::set_rate(None);
+        assert_noop!(
+            BelizeX::execute_multihop_trade(
+                RuntimeOrigin::signed(1),
+                vec![BBZD, WUSDC],
+                1_000,
+                0,
+                false,
+            ),
+            Error::<Test>::OracleRateUnavailable
+        );
+    });
+}
+
+// ── `reference_rate`: the pure orientation + peg logic ──────────────────────
+
+#[test]
+fn reference_rate_passes_through_when_bbzd_is_the_quote_side() {
+    // WUSDC -> BBZD: the implied rate already is bBZD per USD.
+    assert_eq!(
+        reference_rate(WUSDC, BBZD, Some(2_000_000), None),
+        Some(2_000_000)
+    );
+}
+
+#[test]
+fn reference_rate_inverts_when_bbzd_is_the_base_side() {
+    // BBZD -> WUSDC: the implied rate is USD per bBZD, i.e. 1 / 2.0 = 0.5.
+    assert_eq!(
+        reference_rate(BBZD, WUSDC, Some(2_000_000), None),
+        Some(500_000)
+    );
+}
+
+#[test]
+fn reference_rate_falls_back_to_the_peg_only_when_the_observation_is_missing() {
+    assert_eq!(reference_rate(WUSDC, BBZD, None, Some(2_000_000)), Some(2_000_000));
+    assert_eq!(reference_rate(BBZD, WUSDC, None, Some(2_000_000)), Some(500_000));
+}
+
+#[test]
+fn reference_rate_prefers_the_observation_over_the_peg() {
+    // A live feed that disagrees with the peg must win: that is the whole point
+    // of keeping the oracle ahead of the constant — it can detect a depeg.
+    assert_eq!(
+        reference_rate(WUSDC, BBZD, Some(3_000_000), Some(2_000_000)),
+        Some(3_000_000)
+    );
+}
+
+#[test]
+fn reference_rate_treats_a_zero_observation_as_absent() {
+    // Zero is not a rate; it would divide by zero on the reverse side.
+    assert_eq!(reference_rate(WUSDC, BBZD, Some(0), None), None);
+    assert_eq!(reference_rate(WUSDC, BBZD, Some(0), Some(2_000_000)), Some(2_000_000));
+    assert_eq!(reference_rate(BBZD, WUSDC, Some(0), Some(2_000_000)), Some(500_000));
+}
+
+#[test]
+fn reference_rate_has_no_answer_without_a_bbzd_leg() {
+    // DALLA floats. Returning a rate here would let the guard reject every
+    // legitimate DALLA trade.
+    assert_eq!(reference_rate(0, WUSDC, Some(2_000_000), Some(2_000_000)), None);
+    assert_eq!(reference_rate(WUSDC, 0, Some(2_000_000), Some(2_000_000)), None);
+}
+
+#[test]
+fn a_peg_only_provider_keeps_the_pair_tradeable() {
+    let mut ext = new_test_ext();
+    ext.execute_with(|| {
+        seed_wusdc_bbzd_pool(1, 1_000_000_000, 2_000_000_000, 1_000);
+        // No oracle observation at all, but the runtime supplies the peg as a
+        // fallback — this is the live chain's situation, where `PriceFeeds` and
+        // `ManualExchangeRates` are both empty.
+        MockOracle::set_rate(None);
+        let with_peg = reference_rate(WUSDC, BBZD, None, Some(2_000_000));
+        assert_eq!(with_peg, Some(2_000_000));
+    });
+}
+

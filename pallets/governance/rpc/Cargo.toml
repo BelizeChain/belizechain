@@ -1,0 +1,21 @@
+[package]
+name = "pallet-belize-governance-rpc"
+version = "0.1.0"
+authors = ["BelizeChain Core Team <dev@belizechain.org>"]
+description = "JSON-RPC server for BelizeChain governance"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+codec = { workspace = true }
+jsonrpsee = { workspace = true, features = ["server"] }
+serde = { workspace = true, features = ["derive"] }
+
+# Substrate
+sp-api = { workspace = true }
+sp-blockchain = { workspace = true }
+sp-runtime = { workspace = true }
+
+# BelizeChain pallets
+pallet-belize-governance = { path = "../" }
+pallet-belize-governance-rpc-runtime-api = { path = "../rpc-runtime-api" }

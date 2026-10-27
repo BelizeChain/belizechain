@@ -264,3 +264,50 @@ pub fn run_to_block(n: u64) {
         Timestamp::set_timestamp((System::block_number() * 6000));
     }
 }
+
+/// `new_test_ext` plus `ChainConfigurations` seeded through the pallet's genesis
+/// config — what a chain spec supplies at launch.
+///
+/// Separate from [`new_test_ext`] on purpose: most tests insert only the one
+/// chain they need, and a pre-seeded registry would hide a wrong key.
+pub fn new_test_ext_with_bridge_configs() -> sp_io::TestExternalities {
+    use frame_support::traits::Get;
+
+    let mut t = frame_system::GenesisConfig::<Test>::default()
+        .build_storage()
+        .unwrap();
+
+    pallet_balances::GenesisConfig::<Test> {
+        balances: vec![
+            (ALICE, 1_000_000_000),
+            (BOB, 1_000_000_000),
+            (CHARLIE, 1_000_000_000),
+            (EVE, 500_000_000),
+            (FERDIE, 500_000_000),
+            (NO_KYC, 500_000_000),
+            (LOW_KYC, 500_000_000),
+            (SANCTIONED, 500_000_000),
+            (TREASURY, 1_000),
+        ],
+        ..Default::default()
+    }
+    .assimilate_storage(&mut t)
+    .unwrap();
+
+    crate::GenesisConfig::<Test> {
+        chain_configurations: crate::migrations::seeded_chain_configuration_entries(
+            <Test as crate::Config>::BridgeFeeRate::get(),
+            <Test as crate::Config>::PQSignatureThreshold::get(),
+        ),
+        _phantom: core::marker::PhantomData,
+    }
+    .assimilate_storage(&mut t)
+    .unwrap();
+
+    let mut ext = sp_io::TestExternalities::new(t);
+    ext.execute_with(|| {
+        System::set_block_number(1);
+        Timestamp::set_timestamp(1000);
+    });
+    ext
+}

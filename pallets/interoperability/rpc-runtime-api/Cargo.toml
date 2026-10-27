@@ -1,0 +1,24 @@
+[package]
+name = "pallet-belize-interoperability-rpc-runtime-api"
+version = "0.1.0"
+authors = ["BelizeChain Core Team <dev@belizechain.org>"]
+description = "Runtime API for BelizeChain bridges: chain registry, bridge transactions"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+codec = { workspace = true, default-features = false, features = ["derive"] }
+sp-api = { workspace = true, default-features = false }
+sp-std = { workspace = true, default-features = false }
+
+# BelizeChain pallets
+pallet-belize-interoperability = { path = "..", default-features = false }
+
+[features]
+default = ["std"]
+std = [
+    "codec/std",
+    "pallet-belize-interoperability/std",
+    "sp-api/std",
+    "sp-std/std",
+]

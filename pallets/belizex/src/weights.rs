@@ -295,4 +295,28 @@ impl<T: frame_system::Config> super::WeightInfo for SubstrateWeight<T> {
 			.saturating_add(T::DbWeight::get().writes((1_u64).saturating_mul(n.into())))
 			.saturating_add(Weight::from_parts(0, 2603).saturating_mul(n.into()))
 	}
+
+	/// Storage: `BelizeX::WusdcBalances` (r:1 w:1)
+	/// Proof: `BelizeX::WusdcBalances` (`max_values`: None, `max_size`: Some(52), added: 2527, mode: `MaxEncodedLen`)
+	fn issue_wusdc() -> Weight {
+		// Proof Size summary in bytes:
+		//  Measured:  `3`
+		//  Estimated: `2527`
+		// Minimum execution time: 12_000_000 picoseconds.
+		Weight::from_parts(12_000_000, 2527)
+			.saturating_add(T::DbWeight::get().reads(1_u64))
+			.saturating_add(T::DbWeight::get().writes(1_u64))
+	}
+
+	/// Storage: `BelizeX::WusdcBalances` (r:1 w:1)
+	/// Proof: `BelizeX::WusdcBalances` (`max_values`: None, `max_size`: Some(52), added: 2527, mode: `MaxEncodedLen`)
+	fn burn_wusdc() -> Weight {
+		// Proof Size summary in bytes:
+		//  Measured:  `3`
+		//  Estimated: `2527`
+		// Minimum execution time: 12_000_000 picoseconds.
+		Weight::from_parts(12_000_000, 2527)
+			.saturating_add(T::DbWeight::get().reads(1_u64))
+			.saturating_add(T::DbWeight::get().writes(1_u64))
+	}
 }

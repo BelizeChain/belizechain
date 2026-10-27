@@ -34,7 +34,7 @@ sp-block-builder = { workspace = true, features = ["std"] }
 sp-consensus-babe = { workspace = true, features = ["std"] }
 sp-consensus = { workspace = true }
 sp-consensus-grandpa = { workspace = true, features = ["std"] }
-sp-core = { workspace = true, features = ["std"] }
+sp-core = { workspace = true, features = ["std", "serde"] }
 sp-genesis-builder = { workspace = true, features = ["std"] }
 sp-inherents = { workspace = true, features = ["std"] }
 sp-io = { workspace = true, features = ["std"] }
@@ -78,6 +78,14 @@ pallet-sudo = { workspace = true, features = ["std"] }
 pallet-timestamp = { workspace = true, features = ["std"] }
 pallet-transaction-payment = { workspace = true, features = ["std"] }
 pallet-transaction-payment-rpc = { workspace = true }
+pallet-belize-governance-rpc = { path = "../pallets/governance/rpc" }
+pallet-belize-governance-rpc-runtime-api = { path = "../pallets/governance/rpc-runtime-api" }
+pallet-belize-staking-rpc = { path = "../pallets/staking/rpc" }
+pallet-belize-staking-rpc-runtime-api = { path = "../pallets/staking/rpc-runtime-api" }
+pallet-belize-interoperability-rpc = { path = "../pallets/interoperability/rpc" }
+pallet-belize-interoperability-rpc-runtime-api = { path = "../pallets/interoperability/rpc-runtime-api" }
+pallet-belize-oracle-rpc = { path = "../pallets/oracle/rpc" }
+pallet-belize-oracle-rpc-runtime-api = { path = "../pallets/oracle/rpc-runtime-api" }
 pallet-transaction-payment-rpc-runtime-api = { workspace = true, features = ["std"] }
 
 # RPC
@@ -85,6 +93,9 @@ substrate-frame-rpc-system = { workspace = true }
 
 # Runtime (includes all pallets)
 belizechain-runtime = { path = "../runtime" }
+# Chain specs seed `Interoperability` genesis from the pallet's own helper, so
+# the launched state cannot drift from what the V1 → V2 migration writes.
+pallet-belize-interoperability = { path = "../pallets/interoperability" }
 
 # General dependencies
 codec = { workspace = true }

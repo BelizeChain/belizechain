@@ -14,11 +14,12 @@ use frame_support::{
     pallet_prelude::*,
     traits::{Currency, ExistenceRequirement, Get, ReservableCurrency},
     weights::{constants::RocksDbWeight, Weight},
-    BoundedVec,
+    BoundedVec, PalletId,
 };
 use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
 use sp_runtime::traits::{SaturatedConversion, Saturating, Zero};
+use sp_runtime::traits::AccountIdConversion;
 
 pub use pallet::*;
 
@@ -91,6 +92,15 @@ pub mod pallet {
         /// Treasury account for marketplace fees (Q-1 FIX)
         #[pallet::constant]
         type Treasury: Get<Self::AccountId>;
+
+        /// Pallet id used to derive the account that escrows auction bids.
+        ///
+        /// A bid has to be *held*, not promised. If it only sat in a storage
+        /// field, a bidder could bid with funds they then spend, and win an
+        /// auction they cannot pay for — leaving the NFT locked against a
+        /// balance that no longer exists. A dedicated account also keeps auction
+        /// funds separate from `Treasury`, which holds protocol fees.
+        type AuctionEscrow: Get<PalletId>;
 
         /// Weight information for extrinsics
         type WeightInfo: WeightInfo;
@@ -722,8 +732,29 @@ pub mod pallet {
         },
         /// NFT delisted from marketplace (Phase 2.3.3)
         NFTDelisted { nft_id: u64, seller: T::AccountId },
-        // AuctionCreated, BidPlaced, AuctionFinalized, BridgeClaimed
-        // removed (E-7): orphaned events, never emitted via deposit_event.
+        /// NFT auction opened (Phase 2.3.3)
+        AuctionCreated {
+            nft_id: u64,
+            seller: T::AccountId,
+            start_price: <T::Currency as Currency<T::AccountId>>::Balance,
+            end_block: BlockNumberFor<T>,
+        },
+        /// A bid was escrowed and became the highest (Phase 2.3.3)
+        BidPlaced {
+            nft_id: u64,
+            bidder: T::AccountId,
+            amount: <T::Currency as Currency<T::AccountId>>::Balance,
+        },
+        /// Auction settled and the NFT changed hands (Phase 2.3.3)
+        AuctionSettled {
+            nft_id: u64,
+            seller: T::AccountId,
+            winner: T::AccountId,
+            amount: <T::Currency as Currency<T::AccountId>>::Balance,
+            royalty: <T::Currency as Currency<T::AccountId>>::Balance,
+        },
+        /// Auction closed without a winner (Phase 2.3.3)
+        AuctionCancelled { nft_id: u64, seller: T::AccountId },
         /// NFT bridge initiated (Phase 2.3.4)
         BridgeInitiated {
             nft_id: u64,
@@ -816,6 +847,14 @@ pub mod pallet {
         ExecutorCannotVerify,
         /// AUDIT FIX (C-Q1): Job has no executor assigned — cannot pay
         ExecutorNotAssigned,
+        /// Auction cannot be cancelled once a bid has been escrowed
+        AuctionHasBids,
+        /// A zero price, bid or duration is meaningless
+        InvalidAmount,
+        /// The auction seller cannot bid on their own auction
+        CannotBidOwnAuction,
+        /// Auction duration must be at least one block
+        InvalidDuration,
     }
 
     #[pallet::call]
@@ -1348,6 +1387,20 @@ pub mod pallet {
                 // Check if transferable
                 ensure!(nft.transferable, Error::<T>::NFTNotTransferable);
 
+                // An NFT that is listed or under auction is committed to a
+                // buyer who has not paid yet. Allowing the transfer would let
+                // the seller take the money *and* keep the asset: `buy_nft`
+                // and `settle_auction` pay the seller and then assign ownership
+                // unconditionally, so the recipient here would be the one robbed.
+                ensure!(
+                    !NFTListings::<T>::contains_key(nft_id),
+                    Error::<T>::NFTAlreadyListed
+                );
+                ensure!(
+                    !NFTAuctions::<T>::contains_key(nft_id),
+                    Error::<T>::NFTAlreadyListed
+                );
+
                 // Transfer NFT
                 nft.owner = to.clone();
 
@@ -1536,6 +1589,264 @@ pub mod pallet {
             NFTListings::<T>::remove(nft_id);
 
             Self::deposit_event(Event::NFTDelisted { nft_id, seller });
+
+            Ok(())
+        }
+
+        // ========== PHASE 2.3.3: NFT AUCTIONS ==========
+        //
+        // `NFTAuctions` existed as storage with a getter and was consulted by
+        // `list_nft`, `transfer_nft` and `mint_achievement_nft` as "is this NFT
+        // under auction?" — but nothing ever wrote it, so those guards were
+        // permanently true and no auction could be created.
+        //
+        // The bid is escrowed in `AuctionEscrow` rather than recorded as a
+        // promise, and the previous highest bidder is refunded inside the same
+        // call. Both movements are in one dispatch, so a failure reverts the
+        // lot: no bidder is ever charged without becoming the highest bidder.
+
+        /// Open an auction for an owned NFT.
+        ///
+        /// The NFT stays with the seller until settlement, so it keeps earning
+        /// and cannot be double-listed — settlement re-checks ownership.
+        #[pallet::call_index(14)]
+        #[pallet::weight(T::WeightInfo::create_auction())]
+        pub fn create_auction(
+            origin: OriginFor<T>,
+            nft_id: u64,
+            start_price: <T::Currency as Currency<T::AccountId>>::Balance,
+            duration: BlockNumberFor<T>,
+        ) -> DispatchResult {
+            let seller = ensure_signed(origin)?;
+
+            let nft = QuantumAchievements::<T>::get(nft_id).ok_or(Error::<T>::NFTNotFound)?;
+            ensure!(nft.owner == seller, Error::<T>::NotAuthorized);
+            ensure!(nft.transferable, Error::<T>::NFTNotTransferable);
+            ensure!(
+                !NFTListings::<T>::contains_key(nft_id),
+                Error::<T>::NFTAlreadyListed
+            );
+            ensure!(
+                !NFTAuctions::<T>::contains_key(nft_id),
+                Error::<T>::NFTAlreadyListed
+            );
+            ensure!(
+                start_price > Zero::zero(),
+                Error::<T>::InvalidAmount
+            );
+            ensure!(
+                duration > Zero::zero(),
+                Error::<T>::InvalidDuration
+            );
+
+            let started_at = frame_system::Pallet::<T>::block_number();
+            let end_block = started_at.saturating_add(duration);
+
+            let auction = AuctionListing {
+                nft_id,
+                original_minter: nft.original_minter,
+                seller: seller.clone(),
+                start_price,
+                current_bid: Zero::zero(),
+                current_bidder: None,
+                end_block,
+                started_at,
+            };
+
+            NFTAuctions::<T>::insert(nft_id, auction);
+            ListingCounter::<T>::mutate(|c| *c = c.saturating_add(1));
+
+            Self::deposit_event(Event::AuctionCreated {
+                nft_id,
+                seller,
+                start_price,
+                end_block,
+            });
+
+            Ok(())
+        }
+
+        /// Bid on an open auction, escrowing the amount.
+        ///
+        /// The first bid must reach `start_price`; later bids must exceed the
+        /// current bid. The previous highest bidder is refunded before this call
+        /// returns, so at most one bid per auction is ever held.
+        #[pallet::call_index(15)]
+        #[pallet::weight(T::WeightInfo::place_bid())]
+        pub fn place_bid(
+            origin: OriginFor<T>,
+            nft_id: u64,
+            amount: <T::Currency as Currency<T::AccountId>>::Balance,
+        ) -> DispatchResult {
+            let bidder = ensure_signed(origin)?;
+
+            let mut auction = NFTAuctions::<T>::get(nft_id).ok_or(Error::<T>::AuctionNotFound)?;
+
+            let now = frame_system::Pallet::<T>::block_number();
+            ensure!(now < auction.end_block, Error::<T>::AuctionEnded);
+            ensure!(bidder != auction.seller, Error::<T>::CannotBidOwnAuction);
+            ensure!(amount > Zero::zero(), Error::<T>::InvalidAmount);
+
+            // The opening bid has to reach the reserve; a later bid has to beat
+            // the standing one. Equality only counts when there is no bid yet.
+            let meets_reserve = match auction.current_bidder {
+                None => amount >= auction.start_price,
+                Some(_) => amount > auction.current_bid,
+            };
+            ensure!(meets_reserve, Error::<T>::BidTooLow);
+
+            let escrow = Self::auction_escrow_account();
+
+            // Take the new bid first. If the bidder cannot pay, nothing has been
+            // refunded yet and the call aborts cleanly.
+            T::Currency::transfer(
+                &bidder,
+                &escrow,
+                amount,
+                ExistenceRequirement::KeepAlive,
+            )?;
+
+            // Refund the outbid bidder. `AllowDeath` because the escrow still
+            // holds the new bid afterwards — it only "dies" in the sense of
+            // dropping below the existential deposit, and a later settlement
+            // pays it out anyway.
+            if let Some(previous) = auction.current_bidder.clone() {
+                T::Currency::transfer(
+                    &escrow,
+                    &previous,
+                    auction.current_bid,
+                    ExistenceRequirement::AllowDeath,
+                )?;
+            }
+
+            auction.current_bid = amount;
+            auction.current_bidder = Some(bidder.clone());
+            NFTAuctions::<T>::insert(nft_id, auction);
+
+            Self::deposit_event(Event::BidPlaced {
+                nft_id,
+                bidder,
+                amount,
+            });
+
+            Ok(())
+        }
+
+        /// Close an auction that has ended, paying the seller and moving the NFT.
+        ///
+        /// Permissionless on purpose. If only the seller could settle, a seller
+        /// who lost interest would strand the winning bid in escrow forever;
+        /// this way anyone can finish what the seller started.
+        ///
+        /// An auction that ended with no bids is simply cleared.
+        #[pallet::call_index(16)]
+        #[pallet::weight(T::WeightInfo::settle_auction())]
+        pub fn settle_auction(origin: OriginFor<T>, nft_id: u64) -> DispatchResult {
+            let _who = ensure_signed(origin)?;
+
+            let auction = NFTAuctions::<T>::get(nft_id).ok_or(Error::<T>::AuctionNotFound)?;
+
+            let now = frame_system::Pallet::<T>::block_number();
+            ensure!(now >= auction.end_block, Error::<T>::AuctionStillActive);
+
+            let Some(winner) = auction.current_bidder.clone() else {
+                NFTAuctions::<T>::remove(nft_id);
+                Self::deposit_event(Event::AuctionCancelled {
+                    nft_id,
+                    seller: auction.seller,
+                });
+                return Ok(());
+            };
+
+            // The NFT may have been transferred while the auction ran (the new
+            // guard in `transfer_nft` stops that, but storage could predate it).
+            // Paying out for an NFT the seller no longer holds would take the
+            // winner's money and give them nothing.
+            let nft = QuantumAchievements::<T>::get(nft_id).ok_or(Error::<T>::NFTNotFound)?;
+            ensure!(nft.owner == auction.seller, Error::<T>::NotAuthorized);
+
+            // Same split as `buy_nft`: 5% royalty, 2% marketplace fee.
+            let sale_price = auction.current_bid;
+            let royalty = sale_price.saturating_mul(5u32.into()) / 100u32.into();
+            let marketplace_fee = sale_price.saturating_mul(2u32.into()) / 100u32.into();
+            let seller_amount = sale_price
+                .saturating_sub(royalty)
+                .saturating_sub(marketplace_fee);
+
+            let escrow = Self::auction_escrow_account();
+            let treasury = T::Treasury::get();
+
+            // `AllowDeath` throughout: the escrow is a conduit, not a treasury.
+            // It is expected to empty out once the auction settles.
+            T::Currency::transfer(
+                &escrow,
+                &auction.seller,
+                seller_amount,
+                ExistenceRequirement::AllowDeath,
+            )?;
+
+            if marketplace_fee > Zero::zero() {
+                T::Currency::transfer(
+                    &escrow,
+                    &treasury,
+                    marketplace_fee,
+                    ExistenceRequirement::AllowDeath,
+                )?;
+            }
+
+            let royalty_recipient = if auction.original_minter == auction.seller {
+                // The minter is the seller, so the royalty is theirs as well.
+                auction.seller.clone()
+            } else {
+                auction.original_minter.clone()
+            };
+            if royalty > Zero::zero() {
+                T::Currency::transfer(
+                    &escrow,
+                    &royalty_recipient,
+                    royalty,
+                    ExistenceRequirement::AllowDeath,
+                )?;
+            }
+
+            QuantumAchievements::<T>::try_mutate(nft_id, |maybe_nft| {
+                let nft = maybe_nft.as_mut().ok_or(Error::<T>::NFTNotFound)?;
+                nft.owner = winner.clone();
+                Ok::<(), Error<T>>(())
+            })?;
+
+            NFTAuctions::<T>::remove(nft_id);
+
+            Self::deposit_event(Event::AuctionSettled {
+                nft_id,
+                seller: auction.seller,
+                winner,
+                amount: sale_price,
+                royalty,
+            });
+
+            Ok(())
+        }
+
+        /// Cancel an auction that has not received a bid.
+        ///
+        /// Once a bid is escrowed the seller has committed to it, so cancelling
+        /// would strand the bidder's money against nothing.
+        #[pallet::call_index(17)]
+        #[pallet::weight(T::WeightInfo::cancel_auction())]
+        pub fn cancel_auction(origin: OriginFor<T>, nft_id: u64) -> DispatchResult {
+            let seller = ensure_signed(origin)?;
+
+            let auction = NFTAuctions::<T>::get(nft_id).ok_or(Error::<T>::AuctionNotFound)?;
+            ensure!(auction.seller == seller, Error::<T>::NotAuthorized);
+            ensure!(
+                auction.current_bidder.is_none(),
+                Error::<T>::AuctionHasBids
+            );
+
+            NFTAuctions::<T>::remove(nft_id);
+
+            Self::deposit_event(Event::AuctionCancelled { nft_id, seller });
 
             Ok(())
         }
@@ -1965,6 +2276,15 @@ pub mod pallet {
 
     // Helper methods
     impl<T: Config> Pallet<T> {
+        /// Account that holds escrowed auction bids.
+        ///
+        /// Derived from `T::AuctionEscrow`, so it is a deterministic address
+        /// that no user key controls. Funds only leave it through `place_bid`
+        /// (refund) or `settle_auction` (payout).
+        pub fn auction_escrow_account() -> T::AccountId {
+            T::AuctionEscrow::get().into_account_truncating()
+        }
+
         /// Get total active jobs for an account
         pub fn get_active_job_count(account: &T::AccountId) -> u32 {
             let jobs = JobsByAccount::<T>::get(account);
@@ -2140,6 +2460,10 @@ pub trait WeightInfo {
     fn list_nft() -> Weight;
     fn buy_nft() -> Weight;
     fn delist_nft() -> Weight;
+    fn create_auction() -> Weight;
+    fn place_bid() -> Weight;
+    fn settle_auction() -> Weight;
+    fn cancel_auction() -> Weight;
     fn bridge_to_ethereum() -> Weight;
     fn bridge_to_parachain() -> Weight;
     fn request_verification() -> Weight;
@@ -2192,6 +2516,28 @@ impl WeightInfo for () {
         Weight::from_parts(10_000_000, 2560)
             .saturating_add(RocksDbWeight::get().reads(1)) // Read listing
             .saturating_add(RocksDbWeight::get().writes(1)) // Remove listing
+    }
+    fn create_auction() -> Weight {
+        Weight::from_parts(14_000_000, 2560)
+            .saturating_add(RocksDbWeight::get().reads(2)) // NFT + auction-absence check
+            .saturating_add(RocksDbWeight::get().writes(2)) // Insert auction, bump counter
+    }
+    fn place_bid() -> Weight {
+        // Two currency transfers at most (escrow in, refund out) plus the
+        // auction read-modify-write.
+        Weight::from_parts(30_000_000, 2560)
+            .saturating_add(RocksDbWeight::get().reads(3))
+            .saturating_add(RocksDbWeight::get().writes(3))
+    }
+    fn settle_auction() -> Weight {
+        Weight::from_parts(40_000_000, 2560)
+            .saturating_add(RocksDbWeight::get().reads(4))
+            .saturating_add(RocksDbWeight::get().writes(4))
+    }
+    fn cancel_auction() -> Weight {
+        Weight::from_parts(12_000_000, 2560)
+            .saturating_add(RocksDbWeight::get().reads(1))
+            .saturating_add(RocksDbWeight::get().writes(1))
     }
     fn bridge_to_ethereum() -> Weight {
         Weight::from_parts(18_000_000, 4096)

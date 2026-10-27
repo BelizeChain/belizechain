@@ -9,7 +9,10 @@ use sp_runtime::{
 };
 
 use crate::chain_spec_configs::NetworkConfig;
-use belizechain_runtime::{opaque::SessionKeys, AccountId, BABE_GENESIS_EPOCH_CONFIG, WASM_BINARY};
+use belizechain_runtime::{
+    opaque::SessionKeys, AccountId, BridgeFeeRate, PQSignatureThreshold, Runtime,
+    BABE_GENESIS_EPOCH_CONFIG, WASM_BINARY,
+};
 
 /// Specialized `ChainSpec`. This is a specialization of the general Substrate ChainSpec type.
 pub type ChainSpec = sc_service::GenericChainSpec;
@@ -390,7 +393,7 @@ fn testnet_genesis(
         }
     }
 
-    Ok(serde_json::json!({
+    let mut genesis = serde_json::json!({
         "balances": {
             "balances": balances,
         },
@@ -545,10 +548,33 @@ fn testnet_genesis(
                 ),
             ],
         },
-    }))
+    });
+
+    // ── Interoperability: bridge chain configurations ──────────────────────
+    // `on_runtime_upgrade` never runs on a fresh genesis, so the V1 → V2 seeding
+    // migration cannot populate this on a *launched* chain. Without this patch a
+    // new chain starts with an empty bridge that nothing can fill:
+    // `update_bridge_config` refuses a chain it does not already hold, and there
+    // is no `add_bridge_chain` call.
+    //
+    // Built from the same helper the migration uses, so a launched chain and an
+    // upgraded chain cannot end up with different registries.
+    genesis["interoperability"] =
+        serde_json::to_value(pallet_belize_interoperability::GenesisConfig::<Runtime> {
+            chain_configurations:
+                pallet_belize_interoperability::migrations::seeded_chain_configuration_entries(
+                    BridgeFeeRate::get(),
+                    PQSignatureThreshold::get(),
+                ),
+            _phantom: core::marker::PhantomData,
+        })
+        .map_err(|e| format!("interoperability genesis: {e}"))?;
+
+    Ok(genesis)
 }
 
 /// Production mainnet genesis configuration
+///
 ///
 /// # Security
 /// Validator keys and the root (sudo) key MUST be injected from a secure key

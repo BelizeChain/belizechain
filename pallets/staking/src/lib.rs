@@ -18,6 +18,8 @@ use frame_support::{
 };
 use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
+#[cfg(feature = "std")]
+use serde::{Deserialize, Serialize};
 use sp_runtime::{
     traits::{SaturatedConversion, Zero},
     Debug, Perbill,
@@ -221,6 +223,7 @@ pub mod pallet {
 
     /// Validator information
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+    #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
     pub struct ValidatorInfo<AccountId, Balance, BlockNumber> {
         /// Validator account ID
         pub account: AccountId,

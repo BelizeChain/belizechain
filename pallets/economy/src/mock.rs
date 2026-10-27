@@ -115,14 +115,55 @@ impl pallet_economy::OracleProvider<u64> for MockOracleProvider {
         // For testing, always return true
         true
     }
-    fn meets_kyc_requirement(_account: &u64, _required_level: u8) -> bool {
-        // In mock environment, default to true to simplify tests
-        true
+    fn meets_kyc_requirement(account: &u64, required_level: u8) -> bool {
+        // An account with no override passes every requirement, which is what the
+        // rest of this suite relies on. `set_kyc_level` lets one test drive a
+        // specific account below a requirement — without it the `transfer_bbzd`
+        // KYC gates were unexercisable here, because a provider that always
+        // returns `true` cannot fail.
+        match KYC_LEVELS.with(|levels| levels.borrow().get(account).copied()) {
+            Some(level) => level >= required_level,
+            None => true,
+        }
     }
-    fn is_sanctioned(_account: &u64) -> bool {
-        // In mock environment, no sanctioned accounts
-        false
+    fn is_sanctioned(account: &u64) -> bool {
+        SANCTIONED.with(|set| set.borrow().contains(account))
     }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Per-account KYC overrides. See `MockOracleProvider::meets_kyc_requirement`.
+    static KYC_LEVELS: std::cell::RefCell<std::collections::BTreeMap<u64, u8>> =
+        const { std::cell::RefCell::new(std::collections::BTreeMap::new()) };
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Accounts the mock treats as sanctioned.
+    static SANCTIONED: std::cell::RefCell<std::collections::BTreeSet<u64>> =
+        const { std::cell::RefCell::new(std::collections::BTreeSet::new()) };
+}
+
+/// Drive `account`'s KYC level to exactly `level` for the current test.
+pub fn set_kyc_level(account: u64, level: u8) {
+    KYC_LEVELS.with(|levels| {
+        levels.borrow_mut().insert(account, level);
+    });
+}
+
+/// Mark `account` as sanctioned for the current test.
+pub fn sanction(account: u64) {
+    SANCTIONED.with(|set| {
+        set.borrow_mut().insert(account);
+    });
+}
+
+/// Clear every oracle override. Called by [`new_test_ext`] so one test cannot leak
+/// into the next.
+fn reset_oracle_overrides() {
+    KYC_LEVELS.with(|levels| levels.borrow_mut().clear());
+    SANCTIONED.with(|set| set.borrow_mut().clear());
 }
 
 impl pallet_economy::Config for Test {
@@ -144,6 +185,8 @@ impl pallet_economy::Config for Test {
 
 // Build genesis storage according to the mock runtime.
 pub fn new_test_ext() -> sp_io::TestExternalities {
+    reset_oracle_overrides();
+
     let mut t = frame_system::GenesisConfig::<Test>::default()
         .build_storage()
         .unwrap();

@@ -198,6 +198,8 @@ use frame_support::{
     traits::{Currency, EnsureOrigin, ExistenceRequirement, Get, Randomness, ReservableCurrency},
 };
 use scale_info::TypeInfo;
+#[cfg(feature = "std")]
+use serde::{Deserialize, Serialize};
 use sp_io::hashing::blake2_256;
 use sp_runtime::traits::Saturating;
 
@@ -596,6 +598,7 @@ pub use DepartmentCall as GovDepartmentCall;
 /// };
 /// ```
 #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub enum BoardRole {
     /// Founder - Strategic lead and innovation oversight
     ///
@@ -721,6 +724,7 @@ impl BoardRole {
 
 /// Belize's 6 administrative districts (Phase 6)
 #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub enum BelizeDistrict {
     /// Belize District (largest population, includes Belize City)
     Belize,
@@ -789,6 +793,7 @@ impl BelizeDistrict {
 
 /// Election status (Phase 6)
 #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub enum ElectionStatus {
     /// Election announced, candidates can register
     Registration,
@@ -1053,6 +1058,7 @@ pub mod pallet {
 
     /// Council member information
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+    #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
     pub struct CouncilMember<AccountId, BlockNumber> {
         /// Member account ID
         pub account: AccountId,
@@ -1426,6 +1432,7 @@ pub mod pallet {
 
     /// Council election information (Phase 6)
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+    #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
     pub struct Election<BlockNumber> {
         /// Election ID (block number when started)
         pub id: BlockNumber,
@@ -2119,6 +2126,15 @@ pub mod pallet {
     /// Active district elections (district -> election info)
     pub type DistrictElections<T: Config> =
         StorageMap<_, Blake2_128Concat, BelizeDistrict, Election<BlockNumberFor<T>>, OptionQuery>;
+
+    #[pallet::storage]
+    /// Next election id to mint.
+    ///
+    /// Unset on a chain that has never used it, in which case the counter is seeded
+    /// from the current block — ids minted here therefore stay above any id from
+    /// the older `id == start block` scheme. Additive storage: an existing chain
+    /// starts empty and needs no migration.
+    pub type NextElectionId<T: Config> = StorageValue<_, BlockNumberFor<T>, OptionQuery>;
 
     #[pallet::storage]
     /// Election candidates (election_id -> candidate account -> candidate info)
@@ -3275,6 +3291,14 @@ pub mod pallet {
         ConvictionStillLocked,
         /// Account has no conviction bond to release.
         NoConvictionLock,
+
+        // ===== EMERGENCY DECLARATION =====
+        /// Emergency type index is outside the documented range (0-5).
+        ///
+        /// Previously any index >= 5 was silently stored as `EmergencyType::Other`,
+        /// so a mistyped declaration became a different emergency than the caller
+        /// asked for — and `Other` is the one type with no documented meaning.
+        InvalidEmergencyType,
     }
 
     #[pallet::call]
@@ -4371,14 +4395,21 @@ pub mod pallet {
                 );
             }
 
-            // Convert index to EmergencyType
+            // Convert index to EmergencyType.
+            //
+            // Out-of-range indices are rejected rather than folded into `Other`:
+            // every other index argument in this pallet (`role_index`,
+            // `district_index`, referendum option indices) errors out, and a
+            // declaration that silently records the wrong emergency type is worse
+            // than one that fails, because the stored type drives the response.
             let emergency_type = match emergency_type_index {
                 0 => EmergencyType::Hurricane,
                 1 => EmergencyType::HealthCrisis,
                 2 => EmergencyType::EconomicCrisis,
                 3 => EmergencyType::SecurityThreat,
                 4 => EmergencyType::InfrastructureFailure,
-                _ => EmergencyType::Other,
+                5 => EmergencyType::Other,
+                _ => return Err(Error::<T>::InvalidEmergencyType.into()),
             };
 
             // Convert description to bounded vec
@@ -5059,11 +5090,25 @@ pub mod pallet {
                 Error::<T>::InvalidDistrict
             );
 
-            // Ensure no active election for this district
-            ensure!(
-                !DistrictElections::<T>::contains_key(district),
-                Error::<T>::ElectionAlreadyActive
-            );
+            // Ensure no election is still running for this district.
+            //
+            // A finalized or cancelled election is history, not a lock. Requiring
+            // the key to be absent outright made each district single-use: there
+            // are six districts, so the chain allowed six elections in total and
+            // the council could never be re-elected. The previous election's id is
+            // its start block, and candidates are keyed by
+            // `(election_id, account)`, so overwriting the record loses only its
+            // queryable copy — the outcome lives in `DistrictRepresentation`,
+            // `CouncilMembers` and the `DistrictElectionFinalized` event.
+            if let Some(existing) = DistrictElections::<T>::get(district) {
+                ensure!(
+                    matches!(
+                        existing.status,
+                        ElectionStatus::Finalized | ElectionStatus::Cancelled
+                    ),
+                    Error::<T>::ElectionAlreadyActive
+                );
+            }
 
             // Calculate election timeline
             let current_block = frame_system::Pallet::<T>::block_number();
@@ -5077,8 +5122,17 @@ pub mod pallet {
             let voting_end: BlockNumberFor<T> = voting_end_u64.saturated_into();
 
             // Create election
+            //
+            // The id is a counter, not the start block. `ElectionCandidates` is
+            // keyed by `(election_id, account)`, so two districts started in the
+            // same block used to share an id and therefore a candidate pool —
+            // finalizing the second district awarded its seats to candidates who
+            // had registered in the first. The counter is seeded from the current
+            // block the first time it is used, which keeps new ids above any id
+            // minted by the old `id == start block` rule.
+            let election_id = Self::next_election_id(current_block);
             let election = Election {
-                id: current_block,
+                id: election_id,
                 district,
                 seats,
                 registration_end,
@@ -5092,7 +5146,7 @@ pub mod pallet {
             DistrictElections::<T>::insert(district, election);
 
             Self::deposit_event(Event::DistrictElectionStarted {
-                election_id: current_block,
+                election_id,
                 district_index,
                 seats,
                 registration_end,
@@ -5334,6 +5388,28 @@ pub mod pallet {
             // Verify we have winners
             ensure!(!winners.is_empty(), Error::<T>::InsufficientCandidates);
 
+            // District elections seat `CitizenDelegate`s, so they must respect that
+            // role's limit. Nothing enforced it here: a district may seat up to
+            // `district.seat_allocation()` members and there are six districts, so
+            // thirty delegates could sit against a role cap of three. The cap is
+            // whatever `add_board_member` uses, read from the same place.
+            //
+            // Counted from `CouncilMembers` rather than `BoardComposition`: only
+            // `add_board_member` and `remove_board_member` maintain the latter, so
+            // it has never reflected delegates seated by election. Re-seating a
+            // sitting delegate is not a new seat, hence the exclusion.
+            let max_delegates = BoardRole::CitizenDelegate.max_count();
+            let retained_delegates = CouncilMembers::<T>::iter()
+                .filter(|(account, member)| {
+                    member.role == BoardRole::CitizenDelegate && !winners.contains(account)
+                })
+                .count() as u32;
+            let delegates_after_seating = retained_delegates.saturating_add(winners.len() as u32);
+            ensure!(
+                delegates_after_seating <= max_delegates,
+                Error::<T>::BoardRoleLimitExceeded
+            );
+
             // Calculate term end (2 years from now)
             let term_blocks: BlockNumberFor<T> = (BLOCKS_PER_YEAR * 2).into();
             let current_u64: u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0);
@@ -5380,6 +5456,11 @@ pub mod pallet {
             let bounded_members: BoundedVec<T::AccountId, ConstU32<5>> =
                 district_members.try_into().unwrap_or_default();
             DistrictRepresentation::<T>::insert(district, bounded_members.clone());
+
+            // Keep the role counter in step with the seats just filled, so
+            // `BoardComposition` stops disagreeing with `CouncilMembers` about how
+            // many delegates are seated.
+            BoardComposition::<T>::insert(BoardRole::CitizenDelegate, delegates_after_seating);
 
             // Mark election as finalized
             election.status = ElectionStatus::Finalized;
@@ -5871,14 +5952,16 @@ pub mod pallet {
             // Converting amount to u128 for comparison (assuming 12 decimals)
             // SAFETY(saturated_into): BalanceOf<T> → u128 is lossless on standard runtimes (Balance is u128)
             let amount_value: u128 = amount.saturated_into();
+            // At 12 decimals these bounds are 10 and 100 DALLA. (The comment
+            // previously read "10K / 100K", which was off by 1000x.)
             let threshold = if amount_value < 10_000_000_000_000 {
-                // < 10K DALLA
+                // < 10 DALLA
                 1u8 // Single approval
             } else if amount_value < 100_000_000_000_000 {
-                // < 100K DALLA
+                // < 100 DALLA
                 3u8 // 3-of-7
             } else {
-                4u8 // 4-of-7 for large amounts
+                4u8 // 4-of-7 for larger amounts
             };
 
             let current_block = <frame_system::Pallet<T>>::block_number();
@@ -7512,11 +7595,56 @@ pub mod pallet {
 
         // ===== PHASE 6: ELECTION SYSTEM HELPER FUNCTIONS =====
 
+        /// Mint the next election id, seeded from the current block on first use.
+        ///
+        /// `ElectionCandidates` and `ElectionVotes` are keyed by election id, so an
+        /// id must identify exactly one election. Deriving it from the start block
+        /// was not unique: two districts opened in the same block shared an id, and
+        /// each saw the other's candidates.
+        ///
+        /// Seeding from the block keeps this transition safe. Ids minted under the
+        /// old rule were block numbers no greater than the current block, so
+        /// starting the counter at the current block cannot collide with them.
+        fn next_election_id(current_block: BlockNumberFor<T>) -> BlockNumberFor<T> {
+            let id = NextElectionId::<T>::get().unwrap_or(current_block);
+            NextElectionId::<T>::put(id.saturating_add(BlockNumberFor::<T>::from(1u32)));
+            id
+        }
+
         /// Get district election info
         pub fn get_district_election(
             district: BelizeDistrict,
         ) -> Option<Election<BlockNumberFor<T>>> {
             DistrictElections::<T>::get(district)
+        }
+
+        /// Which district, if any, a council member represents.
+        ///
+        /// `CouncilMember` deliberately carries no district: a member is a member,
+        /// and the district is a property of the seat, which `DistrictRepresentation`
+        /// already holds as the authoritative forward link. Adding a second copy to
+        /// `CouncilMember` would mean an encoding change, a migration, and two
+        /// records that can disagree — for a lookup that costs six reads.
+        ///
+        /// Returns the first district whose representation contains `account`. A
+        /// member can only be seated by one district at a time: finalize overwrites
+        /// that district's list and every other district's list is untouched, so a
+        /// member standing in two districts would have to be seated by both, which
+        /// the `CitizenDelegate` cap prevents.
+        pub fn district_of(account: &T::AccountId) -> Option<BelizeDistrict> {
+            const DISTRICTS: [BelizeDistrict; 6] = [
+                BelizeDistrict::Belize,
+                BelizeDistrict::Cayo,
+                BelizeDistrict::Corozal,
+                BelizeDistrict::OrangeWalk,
+                BelizeDistrict::StannCreek,
+                BelizeDistrict::Toledo,
+            ];
+            DISTRICTS.into_iter().find(|district| {
+                DistrictRepresentation::<T>::get(district)
+                    .iter()
+                    .any(|member| member == account)
+            })
         }
 
         /// Get election candidate info

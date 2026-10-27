@@ -2806,3 +2806,350 @@ fn verify_result_failed_refunds_submitter() {
         assert_eq!(Balances::reserved_balance(submitter), 0);
     });
 }
+
+// ============================================================================
+// NFT AUCTION TESTS (Phase 2.3.3)
+//
+// `NFTAuctions` was declared, had a getter, and was consulted by three
+// extrinsics — but nothing ever wrote it, so those guards were permanently
+// true. These tests pin the writer, the escrow, and the settlement split.
+// ============================================================================
+
+const AUCTION_DURATION: u64 = 100;
+
+fn auction_escrow_account() -> u64 {
+    Quantum::auction_escrow_account()
+}
+
+/// Open an auction for nft 0 owned by `owner` at `start_price`.
+fn open_auction(owner: u64, start_price: u128) {
+    assert_ok!(Quantum::create_auction(
+        RuntimeOrigin::signed(owner),
+        0,
+        start_price,
+        AUCTION_DURATION,
+    ));
+}
+
+#[test]
+fn create_auction_works() {
+    new_test_ext().execute_with(|| {
+        setup_nft(1);
+        open_auction(1, 1_000);
+
+        let auction = Quantum::nft_auctions(0).expect("auction written");
+        assert_eq!(auction.seller, 1);
+        assert_eq!(auction.start_price, 1_000);
+        assert_eq!(auction.current_bid, 0);
+        assert!(auction.current_bidder.is_none());
+        assert_eq!(auction.end_block, 1 + AUCTION_DURATION);
+    });
+}
+
+#[test]
+fn create_auction_requires_ownership() {
+    new_test_ext().execute_with(|| {
+        setup_nft(1);
+        assert_noop!(
+            Quantum::create_auction(RuntimeOrigin::signed(2), 0, 1_000, AUCTION_DURATION),
+            Error::<Test>::NotAuthorized
+        );
+    });
+}
+
+#[test]
+fn create_auction_rejects_a_zero_start_price() {
+    new_test_ext().execute_with(|| {
+        setup_nft(1);
+        assert_noop!(
+            Quantum::create_auction(RuntimeOrigin::signed(1), 0, 0, AUCTION_DURATION),
+            Error::<Test>::InvalidAmount
+        );
+    });
+}
+
+#[test]
+fn create_auction_rejects_a_zero_duration() {
+    new_test_ext().execute_with(|| {
+        setup_nft(1);
+        assert_noop!(
+            Quantum::create_auction(RuntimeOrigin::signed(1), 0, 1_000, 0),
+            Error::<Test>::InvalidDuration
+        );
+    });
+}
+
+#[test]
+fn create_auction_rejects_a_listed_nft() {
+    new_test_ext().execute_with(|| {
+        setup_nft(1);
+        assert_ok!(Quantum::list_nft(
+            RuntimeOrigin::signed(1),
+            0,
+            1_000,
+            100
+        ));
+        assert_noop!(
+            Quantum::create_auction(RuntimeOrigin::signed(1), 0, 1_000, AUCTION_DURATION),
+            Error::<Test>::NFTAlreadyListed
+        );
+    });
+}
+
+#[test]
+fn place_bid_escrows_the_amount() {
+    new_test_ext().execute_with(|| {
+        setup_nft(1);
+        open_auction(1, 1_000);
+
+        let bidder_before = Balances::free_balance(2);
+        assert_ok!(Quantum::place_bid(RuntimeOrigin::signed(2), 0, 5_000));
+
+        assert_eq!(
+            Balances::free_balance(2),
+            bidder_before - 5_000,
+            "the bid leaves the bidder"
+        );
+        assert_eq!(
+            Balances::free_balance(auction_escrow_account()),
+            5_000,
+            "and is held, not promised"
+        );
+
+        let auction = Quantum::nft_auctions(0).expect("auction still open");
+        assert_eq!(auction.current_bid, 5_000);
+        assert_eq!(auction.current_bidder, Some(2));
+    });
+}
+
+#[test]
+fn place_bid_below_the_reserve_is_refused() {
+    new_test_ext().execute_with(|| {
+        setup_nft(1);
+        open_auction(1, 1_000);
+        assert_noop!(
+            Quantum::place_bid(RuntimeOrigin::signed(2), 0, 999),
+            Error::<Test>::BidTooLow
+        );
+    });
+}
+
+#[test]
+fn a_bid_must_strictly_exceed_the_standing_bid() {
+    new_test_ext().execute_with(|| {
+        setup_nft(1);
+        open_auction(1, 1_000);
+        assert_ok!(Quantum::place_bid(RuntimeOrigin::signed(2), 0, 5_000));
+
+        // Equal is not enough once there is a bidder.
+        assert_noop!(
+            Quantum::place_bid(RuntimeOrigin::signed(3), 0, 5_000),
+            Error::<Test>::BidTooLow
+        );
+        assert_ok!(Quantum::place_bid(RuntimeOrigin::signed(3), 0, 5_001));
+    });
+}
+
+#[test]
+fn being_outbid_refunds_the_previous_bidder() {
+    new_test_ext().execute_with(|| {
+        setup_nft(1);
+        open_auction(1, 1_000);
+
+        let bob_before = Balances::free_balance(2);
+        assert_ok!(Quantum::place_bid(RuntimeOrigin::signed(2), 0, 5_000));
+        assert_ok!(Quantum::place_bid(RuntimeOrigin::signed(3), 0, 9_000));
+
+        assert_eq!(
+            Balances::free_balance(2),
+            bob_before,
+            "an outbid bidder gets every unit back"
+        );
+        assert_eq!(
+            Balances::free_balance(auction_escrow_account()),
+            9_000,
+            "only one bid is ever held"
+        );
+    });
+}
+
+#[test]
+fn the_seller_cannot_bid_on_their_own_auction() {
+    new_test_ext().execute_with(|| {
+        setup_nft(1);
+        open_auction(1, 1_000);
+        assert_noop!(
+            Quantum::place_bid(RuntimeOrigin::signed(1), 0, 5_000),
+            Error::<Test>::CannotBidOwnAuction
+        );
+    });
+}
+
+#[test]
+fn a_bid_after_the_deadline_is_refused() {
+    new_test_ext().execute_with(|| {
+        setup_nft(1);
+        open_auction(1, 1_000);
+
+        System::set_block_number(1 + AUCTION_DURATION);
+        assert_noop!(
+            Quantum::place_bid(RuntimeOrigin::signed(2), 0, 5_000),
+            Error::<Test>::AuctionEnded
+        );
+    });
+}
+
+#[test]
+fn settle_auction_moves_the_nft_and_pays_the_split() {
+    new_test_ext().execute_with(|| {
+        setup_nft(1);
+        open_auction(1, 1_000);
+
+        let seller_before = Balances::free_balance(1);
+        let treasury_before = Balances::free_balance(100);
+        // `setup_nft` mints to account 1, so the minter is the seller and the
+        // royalty folds into their payout. 2% goes to treasury.
+        let sale = 10_000u128;
+
+        assert_ok!(Quantum::place_bid(RuntimeOrigin::signed(2), 0, sale));
+        System::set_block_number(1 + AUCTION_DURATION);
+
+        assert_ok!(Quantum::settle_auction(RuntimeOrigin::signed(2), 0));
+
+        assert_eq!(
+            Balances::free_balance(100),
+            treasury_before + sale * 2 / 100,
+            "2% marketplace fee"
+        );
+        assert_eq!(
+            Balances::free_balance(1),
+            seller_before + sale - (sale * 2 / 100),
+            "seller keeps the rest (royalty folds in when minter == seller)"
+        );
+        assert_eq!(
+            Balances::free_balance(auction_escrow_account()),
+            0,
+            "the escrow empties on settlement"
+        );
+
+        let nft = Quantum::quantum_achievements(0).expect("nft exists");
+        assert_eq!(nft.owner, 2, "the winner receives the NFT");
+        assert!(
+            Quantum::nft_auctions(0).is_none(),
+            "the auction is cleared"
+        );
+    });
+}
+
+#[test]
+fn settle_auction_before_the_deadline_is_refused() {
+    new_test_ext().execute_with(|| {
+        setup_nft(1);
+        open_auction(1, 1_000);
+        assert_ok!(Quantum::place_bid(RuntimeOrigin::signed(2), 0, 5_000));
+
+        assert_noop!(
+            Quantum::settle_auction(RuntimeOrigin::signed(2), 0),
+            Error::<Test>::AuctionStillActive
+        );
+    });
+}
+
+#[test]
+fn settling_an_auction_without_bids_just_closes_it() {
+    new_test_ext().execute_with(|| {
+        setup_nft(1);
+        open_auction(1, 1_000);
+
+        System::set_block_number(1 + AUCTION_DURATION);
+        assert_ok!(Quantum::settle_auction(RuntimeOrigin::signed(2), 0));
+
+        assert!(Quantum::nft_auctions(0).is_none());
+        assert_eq!(
+            Quantum::quantum_achievements(0).expect("nft exists").owner,
+            1,
+            "no winner, so the seller keeps the NFT"
+        );
+    });
+}
+
+#[test]
+fn settle_auction_is_permissionless() {
+    new_test_ext().execute_with(|| {
+        setup_nft(1);
+        open_auction(1, 1_000);
+        assert_ok!(Quantum::place_bid(RuntimeOrigin::signed(2), 0, 5_000));
+        System::set_block_number(1 + AUCTION_DURATION);
+
+        // A third party who is neither seller nor winner.
+        assert_ok!(Quantum::settle_auction(RuntimeOrigin::signed(5), 0));
+    });
+}
+
+#[test]
+fn cancel_auction_works_before_any_bid() {
+    new_test_ext().execute_with(|| {
+        setup_nft(1);
+        open_auction(1, 1_000);
+
+        assert_ok!(Quantum::cancel_auction(RuntimeOrigin::signed(1), 0));
+        assert!(Quantum::nft_auctions(0).is_none());
+    });
+}
+
+#[test]
+fn cancel_auction_is_refused_once_a_bid_exists() {
+    new_test_ext().execute_with(|| {
+        setup_nft(1);
+        open_auction(1, 1_000);
+        assert_ok!(Quantum::place_bid(RuntimeOrigin::signed(2), 0, 5_000));
+
+        assert_noop!(
+            Quantum::cancel_auction(RuntimeOrigin::signed(1), 0),
+            Error::<Test>::AuctionHasBids
+        );
+    });
+}
+
+#[test]
+fn cancel_auction_requires_the_seller() {
+    new_test_ext().execute_with(|| {
+        setup_nft(1);
+        open_auction(1, 1_000);
+        assert_noop!(
+            Quantum::cancel_auction(RuntimeOrigin::signed(2), 0),
+            Error::<Test>::NotAuthorized
+        );
+    });
+}
+
+/// The auction guards in `transfer_nft` were always true because no auction
+/// could exist. Now that one can, they must actually prevent the seller from
+/// taking the money and keeping the asset.
+#[test]
+fn transfer_nft_is_refused_while_under_auction() {
+    new_test_ext().execute_with(|| {
+        setup_nft(1);
+        open_auction(1, 1_000);
+
+        assert_noop!(
+            Quantum::transfer_nft(RuntimeOrigin::signed(1), 0, 5),
+            Error::<Test>::NFTAlreadyListed
+        );
+    });
+}
+
+#[test]
+fn transfer_nft_is_refused_while_listed() {
+    new_test_ext().execute_with(|| {
+        setup_nft(1);
+        assert_ok!(Quantum::list_nft(RuntimeOrigin::signed(1), 0, 1_000, 100));
+
+        // Without this guard a seller could list, transfer away, and still be
+        // paid by a buyer — robbing the recipient of the NFT.
+        assert_noop!(
+            Quantum::transfer_nft(RuntimeOrigin::signed(1), 0, 5),
+            Error::<Test>::NFTAlreadyListed
+        );
+    });
+}

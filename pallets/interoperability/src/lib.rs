@@ -21,11 +21,13 @@ use frame_support::{
 };
 use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
+#[cfg(feature = "std")]
+use serde::{Deserialize, Serialize};
 use sp_runtime::{
     traits::{AccountIdConversion, SaturatedConversion, Saturating},
     Perbill,
 };
-use sp_std::{convert::TryInto, vec::Vec};
+use sp_std::{convert::TryInto, marker::PhantomData, vec::Vec};
 
 pub use pallet::*;
 
@@ -270,6 +272,7 @@ pub mod pallet {
     /// be added via governance proposal after security review. Chains without active
     /// validators or oracle coverage should be disabled via `ChainConfigurations`.
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+    #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
     pub enum BridgeChain {
         // L1s and Major Networks
         Bitcoin,           // 0
@@ -328,6 +331,7 @@ pub mod pallet {
 
     /// Bridgeable assets (DALLA and bBZD only for sovereignty)
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+    #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
     pub enum BridgeAsset {
         /// Native DALLA token
         DALLA,
@@ -337,6 +341,7 @@ pub mod pallet {
 
     /// Bridge operation types
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+    #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
     pub enum BridgeOperation {
         /// Lock assets on BelizeChain, mint on target chain
         LockAndMint {
@@ -363,6 +368,7 @@ pub mod pallet {
 
     /// Bridge transaction status
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+    #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
     pub enum BridgeStatus {
         /// Transaction initiated
         Initiated,
@@ -426,6 +432,7 @@ pub mod pallet {
 
     /// Bridge transaction record
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+    #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
     pub struct BridgeTransaction<AccountId, BlockNumber> {
         /// Transaction ID
         pub tx_id: u32,
@@ -522,8 +529,7 @@ pub mod pallet {
     /// `STORAGE_VERSION` bump.
     #[pallet::storage]
     #[pallet::getter(fn evm_address_of)]
-    pub type EvmAddressOf<T: Config> =
-        StorageMap<_, Blake2_128Concat, T::AccountId, [u8; 20]>;
+    pub type EvmAddressOf<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, [u8; 20]>;
 
     #[pallet::storage]
     #[pallet::getter(fn next_tx_id)]
@@ -630,6 +636,7 @@ pub mod pallet {
 
     /// Chain-specific configuration
     #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+    #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
     pub struct ChainConfig {
         /// Chain enabled for bridging
         pub enabled: bool,
@@ -647,8 +654,65 @@ pub mod pallet {
         pub contract_address: Option<BoundedVec<u8, ConstU32<64>>>,
     }
 
-    // GenesisConfig removed for Substrate v42 compatibility
-    // Chain configurations can be initialized through governance or extrinsics
+    // ===== GENESIS CONFIGURATION =====
+
+    /// Seeds `ChainConfigurations` at genesis.
+    ///
+    /// The seeding *migration* (`migrations::SeedChainConfigurations`) only runs
+    /// when `:code` changes — never on a fresh genesis. Without this, a chain
+    /// **launched** rather than upgraded starts with an empty bridge that
+    /// nothing can fill: `update_bridge_config` refuses a chain it does not
+    /// already hold, and there is no `add_bridge_chain` call. (An earlier
+    /// comment here claimed configurations "can be initialized through
+    /// governance or extrinsics"; that was false.)
+    ///
+    /// Entries are primitives rather than [`ChainConfig`] because the genesis
+    /// macro's serde derives must compile under `no_std`, where `BoundedVec` has
+    /// no `serde` impls. `build` reassembles the real records.
+    ///
+    /// Tuple layout: `(chain_index, enabled, min_confirmations, max_amount,
+    /// fee_rate, pq_signatures_required)`.
+    ///
+    /// `rpc_endpoint` and `contract_address` are not expressible here: they are
+    /// empty for every seeded chain and `update_bridge_config` cannot change
+    /// them either, so exposing them would imply a knob that does not exist.
+    #[pallet::genesis_config]
+    #[derive(frame_support::DefaultNoBound)]
+    pub struct GenesisConfig<T: Config> {
+        /// One entry per chain to seed.
+        pub chain_configurations: Vec<(u8, bool, u32, u128, u32, u32)>,
+        /// No genesis field depends on `T`, but the macro requires the parameter.
+        #[serde(skip)]
+        pub _phantom: PhantomData<T>,
+    }
+
+    #[pallet::genesis_build]
+    impl<T: Config> BuildGenesisConfig for GenesisConfig<T> {
+        fn build(&self) {
+            for (index, enabled, min_confirmations, max_amount, fee_rate, pq) in
+                &self.chain_configurations
+            {
+                let chain = Pallet::<T>::decode_chain(*index).unwrap_or_else(|| {
+                    panic!(
+                        "interoperability genesis: chain index {index} is not a \
+                         BridgeChain variant"
+                    )
+                });
+                ChainConfigurations::<T>::insert(
+                    chain,
+                    ChainConfig {
+                        enabled: *enabled,
+                        min_confirmations: *min_confirmations,
+                        max_amount: *max_amount,
+                        fee_rate: *fee_rate,
+                        pq_signatures_required: *pq,
+                        rpc_endpoint: BoundedVec::default(),
+                        contract_address: None,
+                    },
+                );
+            }
+        }
+    }
 
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -1579,10 +1643,7 @@ pub mod pallet {
         /// which is loud, rather than a silently weaker bridge.
         #[pallet::call_index(13)]
         #[pallet::weight(T::WeightInfo::set_evm_address())]
-        pub fn set_evm_address(
-            origin: OriginFor<T>,
-            evm_address: [u8; 20],
-        ) -> DispatchResult {
+        pub fn set_evm_address(origin: OriginFor<T>, evm_address: [u8; 20]) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
             ensure!(
@@ -2025,61 +2086,12 @@ pub mod pallet {
             }
         }
 
+        /// `BridgeChain` -> its stable on-chain index.
+        ///
+        /// Delegates to [`crate::chain_index`] so the chain specs, the genesis
+        /// config and this method cannot disagree.
         pub fn encode_chain(chain: &BridgeChain) -> u8 {
-            use BridgeChain::*;
-            match chain {
-                Bitcoin => 0,
-                Ethereum => 1,
-                Solana => 2,
-                BinanceSmartChain => 3,
-                Tron => 4,
-                Ripple => 5,
-                Cardano => 6,
-                Dogecoin => 7,
-                Polygon => 8,
-                Litecoin => 9,
-                Polkadot => 10,
-                Avalanche => 11,
-                CosmosHub => 12,
-                Ton => 13,
-                InternetComputer => 14,
-                Near => 15,
-                Stellar => 16,
-                Algorand => 17,
-                Tezos => 18,
-                EOS => 19,
-                Hedera => 20,
-                Fantom => 21,
-                Aptos => 22,
-                Sui => 23,
-                Kava => 24,
-                Celo => 25,
-                Harmony => 26,
-                Cronos => 27,
-                Thorchain => 28,
-                Gnosis => 29,
-                ArbitrumOne => 30,
-                Optimism => 31,
-                Base => 32,
-                ZkSyncEra => 33,
-                Linea => 34,
-                Scroll => 35,
-                Mantle => 36,
-                PolygonZkEvm => 37,
-                Metis => 38,
-                Boba => 39,
-                Zora => 40,
-                Moonbeam => 41,
-                Moonriver => 42,
-                Kusama => 43,
-                OKTC => 44,
-                Waves => 45,
-                Qtum => 46,
-                BitTorrentChain => 47,
-                ICON => 48,
-                VeChain => 49,
-                XCM => 50,
-            }
+            crate::chain_index(chain)
         }
 
         pub fn encode_asset(asset: &BridgeAsset) -> u8 {
@@ -2170,3 +2182,66 @@ impl WeightInfo for () {
 mod mock;
 #[cfg(test)]
 mod tests;
+
+/// `BridgeChain` -> its stable on-chain index.
+///
+/// Single source of truth: [`pallet::Pallet::encode_chain`] delegates here,
+/// and the chain specs need the mapping before a runtime is instantiated.
+/// Renumbering an arm is a breaking storage change — the index is what
+/// `initiate_bridge` and `ChainConfigurations` keys are derived from.
+pub fn chain_index(chain: &pallet::BridgeChain) -> u8 {
+    use pallet::BridgeChain::*;
+    match chain {
+        Bitcoin => 0,
+        Ethereum => 1,
+        Solana => 2,
+        BinanceSmartChain => 3,
+        Tron => 4,
+        Ripple => 5,
+        Cardano => 6,
+        Dogecoin => 7,
+        Polygon => 8,
+        Litecoin => 9,
+        Polkadot => 10,
+        Avalanche => 11,
+        CosmosHub => 12,
+        Ton => 13,
+        InternetComputer => 14,
+        Near => 15,
+        Stellar => 16,
+        Algorand => 17,
+        Tezos => 18,
+        EOS => 19,
+        Hedera => 20,
+        Fantom => 21,
+        Aptos => 22,
+        Sui => 23,
+        Kava => 24,
+        Celo => 25,
+        Harmony => 26,
+        Cronos => 27,
+        Thorchain => 28,
+        Gnosis => 29,
+        ArbitrumOne => 30,
+        Optimism => 31,
+        Base => 32,
+        ZkSyncEra => 33,
+        Linea => 34,
+        Scroll => 35,
+        Mantle => 36,
+        PolygonZkEvm => 37,
+        Metis => 38,
+        Boba => 39,
+        Zora => 40,
+        Moonbeam => 41,
+        Moonriver => 42,
+        Kusama => 43,
+        OKTC => 44,
+        Waves => 45,
+        Qtum => 46,
+        BitTorrentChain => 47,
+        ICON => 48,
+        VeChain => 49,
+        XCM => 50,
+    }
+}

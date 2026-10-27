@@ -127,9 +127,31 @@ pub struct RootOrigin;
 
 // Mock Oracle for tests
 pub struct MockOracle;
+
+thread_local! {
+    /// Rate the mock oracle reports for every pair. `None` models a missing or
+    /// stale rate, which the pallet's deviation guard must treat as fail-closed.
+    static ORACLE_RATE: core::cell::RefCell<Option<u128>> =
+        const { core::cell::RefCell::new(Some(1_000_000)) };
+}
+
+impl MockOracle {
+    /// Set the rate every pair reports (1e6 precision).
+    pub fn set_rate(rate: Option<u128>) {
+        ORACLE_RATE.with(|r| *r.borrow_mut() = rate);
+    }
+    pub fn reset() {
+        Self::set_rate(Some(1_000_000));
+    }
+}
+
 impl BelizeXOracleProvider<AccountId> for MockOracle {
-    fn get_crypto_exchange_rate(_base_asset: u8, _quote_asset: u8) -> Option<u128> {
-        Some(1_000_000) // 1:1 rate
+    fn get_crypto_exchange_rate(base_asset: u8, quote_asset: u8) -> Option<u128> {
+        // Same orientation logic the runtime uses, but with no peg fallback: the
+        // peg is the *runtime's* policy, and tests need to be able to model a
+        // provider with no rate at all to exercise the fail-closed branch.
+        let observed = ORACLE_RATE.with(|r| *r.borrow());
+        crate::reference_rate(base_asset, quote_asset, observed, None)
     }
     fn is_tourism_merchant(_account: &AccountId) -> bool {
         false
@@ -169,6 +191,10 @@ parameter_types! {
 }
 
 pub fn new_test_ext() -> sp_io::TestExternalities {
+    // Thread-locals outlive a single test when the harness reuses threads, so
+    // every test starts from the default oracle rate.
+    MockOracle::reset();
+
     let mut t = frame_system::GenesisConfig::<Test>::default()
         .build_storage()
         .unwrap();

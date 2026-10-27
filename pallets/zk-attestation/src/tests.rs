@@ -443,3 +443,52 @@ fn rebuilt_path() -> Vec<belizechain_zk_attestation::Fr> {
     let tree = SparseTree::new(&params, [(LEAF_INDEX, leaf), (0, decoy)]).unwrap();
     tree.path(&params, LEAF_INDEX).unwrap()
 }
+
+/// The proof embedded in `benchmarking.rs` must stay a real, valid proof.
+///
+/// The runtime cannot generate one — `belizechain-zk-attestation`'s `prover` feature
+/// is deliberately absent from the chain — so it has to be handed a proof. A stale
+/// or hand-edited constant would silently turn the `submit_attestation` benchmark
+/// into a measurement of the *rejection* path while production pays for a pairing,
+/// i.e. a weight that is wrong in the unsafe direction.
+///
+/// This checks the embedded `(verifying key, proof, public inputs)` triple verifies
+/// **against itself**. Byte-comparison with `fixture()` is not possible and not
+/// wanted: `setup_for_testing` seeds its RNG from `thread_rng`, so every run
+/// produces a fresh key pair. Self-consistency is the property that matters — if
+/// the circuit, the Poseidon parameters or the encoding change, the old proof stops
+/// verifying here instead of in a benchmark report nobody re-reads.
+///
+/// Gated on `runtime-benchmarks` because `benchmarking.rs`, and the constants with
+/// it, only exist under that feature. Run with
+/// `cargo test -p pallet-zk-attestation --features runtime-benchmarks`.
+#[cfg(feature = "runtime-benchmarks")]
+#[test]
+fn the_benchmark_fixture_is_a_valid_proof() {
+    let key = crate::benchmarking::FIXTURE_VERIFYING_KEY;
+    let proof = crate::benchmarking::FIXTURE_PROOF;
+    let inputs = crate::benchmarking::FIXTURE_PUBLIC_INPUTS;
+
+    // Both must clear the pallet's own length gates, or the benchmark would fail
+    // before reaching the pairing it is supposed to measure.
+    assert!(
+        proof.len() as u32 <= <Test as crate::Config>::MaxProofLen::get(),
+        "the embedded proof exceeds MaxProofLen"
+    );
+    assert!(
+        key.len() as u32 <= <Test as crate::Config>::MaxVerifyingKeyLen::get(),
+        "the embedded verifying key exceeds MaxVerifyingKeyLen"
+    );
+
+    belizechain_zk_attestation::verify_attestation(key, proof, &inputs).expect(
+        "the benchmark fixture no longer verifies — regenerate it from `dump_fixture` \
+         in benchmarks/RUNBOOK or the submit_attestation weight is measuring a rejection",
+    );
+
+    assert!(
+        crate::benchmarking::FIXTURE_PUBLIC_INPUTS
+            .iter()
+            .all(|input| belizechain_zk_attestation::canonical_field(input).is_some()),
+        "the embedded public inputs contain a non-canonical scalar"
+    );
+}

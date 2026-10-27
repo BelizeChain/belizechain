@@ -1,15 +1,21 @@
 //! Storage migrations for `pallet-interoperability`.
 //!
-//! `ChainConfigurations` has no genesis config and no extrinsic that can create
-//! an entry: `update_bridge_config` deliberately rejects a chain it does not
-//! already hold (`Error::UnsupportedChain`), and no `add_bridge_chain` call
-//! exists. A chain launched without the interoperability genesis patch — which
-//! is the case on Ceiba — therefore has a permanently empty bridge: the picker
-//! has nothing to offer and `initiate_bridge` fails with `UnsupportedChain` for
-//! every chain index.
+//! The bridge registry has two seed paths and they must agree:
 //!
-//! This module seeds the configurations once, on the runtime upgrade that ships
-//! it. Governance can adjust any seeded value afterwards through
+//! - **A chain launched at genesis** gets `ChainConfigurations` from this
+//!   module's helpers via the pallet's `#[pallet::genesis_config]`. Without that
+//!   path a launched chain starts empty, and nothing could fill it:
+//!   `update_bridge_config` deliberately rejects a chain it does not already
+//!   hold (`Error::UnsupportedChain`) and no `add_bridge_chain` call exists.
+//! - **A chain upgraded from an earlier spec** gets them from
+//!   [`SeedChainConfigurations`], the V1 → V2 step of the runtime's
+//!   `CoordinatedUpgrade`.
+//!
+//! `on_runtime_upgrade` never runs on a fresh genesis, which is why both paths
+//! exist. They derive from the same functions here, so a launched chain and an
+//! upgraded chain cannot end up with different registries.
+//!
+//! Governance can adjust any seeded value afterwards through
 //! `update_bridge_config`, and can disable a chain outright by setting
 //! `enabled = false`.
 
@@ -20,11 +26,10 @@ use frame_support::{
     BoundedVec,
 };
 use sp_std::marker::PhantomData;
+use sp_std::vec::Vec;
 
 #[cfg(feature = "try-runtime")]
 use codec::{Decode, Encode};
-#[cfg(feature = "try-runtime")]
-use sp_std::vec::Vec;
 
 /// Chains the bridge offers in the wallet.
 ///
@@ -57,26 +62,73 @@ pub const SEEDED_MIN_CONFIRMATIONS: u32 = 12;
 /// Per-transaction ceiling, in the 12-decimal base unit: 1,000,000 DALLA/bBZD.
 pub const SEEDED_MAX_AMOUNT: u128 = 1_000_000 * 1_000_000_000_000;
 
+/// The configuration written for every seeded chain.
+///
+/// `rpc_endpoint` and `contract_address` are left empty on purpose: no relayer
+/// endpoint is registered for any chain, and no contract is deployed on the far
+/// side, so recording a placeholder would be a claim that cannot be backed.
+///
+/// Lives outside `impl<T: Config>` so the chain specs can call it through
+/// [`seeded_chain_configurations`] without naming the runtime.
+pub fn seeded_chain_config(fee_rate: u32, pq_signatures_required: u32) -> ChainConfig {
+    ChainConfig {
+        enabled: true,
+        min_confirmations: SEEDED_MIN_CONFIRMATIONS,
+        max_amount: SEEDED_MAX_AMOUNT,
+        fee_rate,
+        pq_signatures_required,
+        rpc_endpoint: BoundedVec::default(),
+        contract_address: None,
+    }
+}
+
+/// Every [`SEEDED_CHAINS`] entry paired with its configuration.
+///
+/// Both the genesis config and the seeding migration use this function, so a
+/// chain launched at genesis and a chain upgraded from an earlier spec end up
+/// with identical configurations.
+pub fn seeded_chain_configurations(
+    fee_rate: u32,
+    pq_signatures_required: u32,
+) -> Vec<(BridgeChain, ChainConfig)> {
+    let config = seeded_chain_config(fee_rate, pq_signatures_required);
+    SEEDED_CHAINS
+        .iter()
+        .map(|chain| (chain.clone(), config.clone()))
+        .collect()
+}
+
+/// [`seeded_chain_configurations`] flattened into the primitive tuple shape the
+/// genesis config takes, since `ChainConfig` is not serde-capable under `no_std`.
+///
+/// Tuple layout: `(chain_index, enabled, min_confirmations, max_amount,
+/// fee_rate, pq_signatures_required)`.
+pub fn seeded_chain_configuration_entries(
+    fee_rate: u32,
+    pq_signatures_required: u32,
+) -> Vec<(u8, bool, u32, u128, u32, u32)> {
+    let config = seeded_chain_config(fee_rate, pq_signatures_required);
+    SEEDED_CHAINS
+        .iter()
+        .map(|chain| {
+            (
+                crate::chain_index(chain),
+                config.enabled,
+                config.min_confirmations,
+                config.max_amount,
+                config.fee_rate,
+                config.pq_signatures_required,
+            )
+        })
+        .collect()
+}
+
 /// Seeds `ChainConfigurations` for [`SEEDED_CHAINS`].
 pub struct SeedChainConfigurations<T>(PhantomData<T>);
 
 impl<T: Config> SeedChainConfigurations<T> {
-    /// The configuration written for every seeded chain.
-    ///
-    /// `rpc_endpoint` and `contract_address` are left empty on purpose: no
-    /// relayer endpoint is registered for any chain, and no contract is deployed
-    /// on the far side, so recording a placeholder would be a claim that cannot
-    /// be backed.
     fn chain_config() -> ChainConfig {
-        ChainConfig {
-            enabled: true,
-            min_confirmations: SEEDED_MIN_CONFIRMATIONS,
-            max_amount: SEEDED_MAX_AMOUNT,
-            fee_rate: T::BridgeFeeRate::get(),
-            pq_signatures_required: T::PQSignatureThreshold::get(),
-            rpc_endpoint: BoundedVec::default(),
-            contract_address: None,
-        }
+        seeded_chain_config(T::BridgeFeeRate::get(), T::PQSignatureThreshold::get())
     }
 }
 

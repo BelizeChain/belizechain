@@ -175,4 +175,14 @@ impl<T: frame_system::Config> super::WeightInfo for SubstrateWeight<T> {
 			.saturating_add(T::DbWeight::get().reads(1_u64))
 			.saturating_add(T::DbWeight::get().writes(1_u64))
 	}
+	/// Storage: `LandLedger::ZoningMap` (r:0 w:1)
+	/// Proof: `LandLedger::ZoningMap` (`max_values`: None, `max_size`: Some(49), added: 2524, mode: `MaxEncodedLen`)
+	fn set_zoning() -> Weight {
+		// Proof Size summary in bytes:
+		//  Measured:  `0`
+		//  Estimated: `0`
+		// Minimum execution time: 8_120_000 picoseconds.
+		Weight::from_parts(11_165_000, 0)
+			.saturating_add(T::DbWeight::get().writes(1_u64))
+	}
 }

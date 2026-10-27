@@ -1547,3 +1547,72 @@ fn transfer_bbzd_moves_balance_and_leaves_supply_unchanged() {
         assert_eq!(crate::TotalBbzdSupply::<Test>::get(), 50_000_000_000u128);
     });
 }
+
+/// The **sender** leg of `transfer_bbzd`'s KYC gate.
+///
+/// This was previously untestable: the integration suite could not construct an
+/// unverified account holding bBZD, because `mint_bbzd` requires recipient KYC and
+/// is `ensure_signed` (so sudo cannot stand in for a minter), and nothing lowers an
+/// account's Oracle KYC level once set. At unit level the provider is ours to
+/// drive, so the branch is reachable here and is asserted here.
+#[test]
+fn transfer_bbzd_refuses_an_unverified_sender() {
+    new_test_ext().execute_with(|| {
+        let sender = 2u64;
+        let recipient = 3u64;
+        // bBZD held despite no KYC — the state an integration test cannot build.
+        crate::BBZDBalances::<Test>::insert(sender, 50_000_000_000u128);
+
+        set_kyc_level(sender, 0);
+        set_kyc_level(recipient, 1);
+
+        assert_noop!(
+            Economy::transfer_bbzd(RuntimeOrigin::signed(sender), recipient, 1_000u128),
+            Error::<Test>::KycVerificationRequired
+        );
+
+        assert_eq!(
+            crate::BBZDBalances::<Test>::get(sender),
+            50_000_000_000u128,
+            "a refused transfer moved bBZD"
+        );
+        assert_eq!(crate::BBZDBalances::<Test>::get(recipient), 0);
+    });
+}
+
+/// The **recipient** leg, asserted at unit level as well as in the integration suite.
+#[test]
+fn transfer_bbzd_refuses_an_unverified_recipient() {
+    new_test_ext().execute_with(|| {
+        let sender = 2u64;
+        let recipient = 3u64;
+        crate::BBZDBalances::<Test>::insert(sender, 50_000_000_000u128);
+
+        set_kyc_level(sender, 1);
+        set_kyc_level(recipient, 0);
+
+        assert_noop!(
+            Economy::transfer_bbzd(RuntimeOrigin::signed(sender), recipient, 1_000u128),
+            Error::<Test>::KycVerificationRequired
+        );
+        assert_eq!(crate::BBZDBalances::<Test>::get(sender), 50_000_000_000u128);
+    });
+}
+
+/// Sanctions are checked before KYC, on both parties.
+#[test]
+fn transfer_bbzd_refuses_a_sanctioned_sender() {
+    new_test_ext().execute_with(|| {
+        let sender = 2u64;
+        let recipient = 3u64;
+        crate::BBZDBalances::<Test>::insert(sender, 50_000_000_000u128);
+
+        sanction(sender);
+
+        assert_noop!(
+            Economy::transfer_bbzd(RuntimeOrigin::signed(sender), recipient, 1_000u128),
+            Error::<Test>::SanctionedEntity
+        );
+        assert_eq!(crate::BBZDBalances::<Test>::get(sender), 50_000_000_000u128);
+    });
+}

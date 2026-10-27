@@ -1,0 +1,21 @@
+[package]
+name = "pallet-belize-oracle-rpc"
+version = "0.1.0"
+authors = ["BelizeChain Core Team <dev@belizechain.org>"]
+description = "JSON-RPC server for the BelizeChain oracle"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+codec = { workspace = true }
+jsonrpsee = { workspace = true, features = ["server"] }
+serde = { workspace = true, features = ["derive"] }
+
+# Substrate
+sp-api = { workspace = true }
+sp-blockchain = { workspace = true }
+sp-runtime = { workspace = true }
+
+# BelizeChain pallets
+pallet-belize-oracle = { path = "../" }
+pallet-belize-oracle-rpc-runtime-api = { path = "../rpc-runtime-api" }

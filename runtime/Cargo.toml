@@ -57,14 +57,18 @@ pallet-contracts = { workspace = true, default-features = false }
 pallet-belize-economy = { path = "../pallets/economy", default-features = false }
 pallet-belize-identity = { path = "../pallets/identity", default-features = false }
 pallet-belize-governance = { path = "../pallets/governance", default-features = false }
+pallet-belize-governance-rpc-runtime-api = { path = "../pallets/governance/rpc-runtime-api", default-features = false }
 pallet-belize-compliance = { path = "../pallets/compliance", default-features = false }
 pallet-belize-staking = { path = "../pallets/staking", default-features = false }
+pallet-belize-staking-rpc-runtime-api = { path = "../pallets/staking/rpc-runtime-api", default-features = false }
 pallet-belize-interoperability = { path = "../pallets/interoperability", default-features = false }
+pallet-belize-interoperability-rpc-runtime-api = { path = "../pallets/interoperability/rpc-runtime-api", default-features = false }
 pallet-belize-belizex = { path = "../pallets/belizex", default-features = false }
 pallet-belize-landledger = { path = "../pallets/landledger", default-features = false }
 pallet-belize-consensus = { path = "../pallets/consensus", default-features = false }
 pallet-belize-community = { path = "../pallets/community", default-features = false }
 pallet-belize-oracle = { path = "../pallets/oracle", default-features = false }
+pallet-belize-oracle-rpc-runtime-api = { path = "../pallets/oracle/rpc-runtime-api", default-features = false }
 pallet-belize-payroll = { path = "../pallets/payroll", default-features = false }
 pallet-belize-quantum = { path = "../pallets/quantum", default-features = false }
 pallet-belize-bns = { path = "../pallets/bns", default-features = false }
@@ -125,14 +129,18 @@ std = [
     "pallet-belize-economy/std",
     "pallet-belize-identity/std",
     "pallet-belize-governance/std",
+    "pallet-belize-governance-rpc-runtime-api/std",
     "pallet-belize-compliance/std",
     "pallet-belize-staking/std",
+    "pallet-belize-staking-rpc-runtime-api/std",
     "pallet-belize-interoperability/std",
+    "pallet-belize-interoperability-rpc-runtime-api/std",
     "pallet-belize-belizex/std",
     "pallet-belize-landledger/std",
     "pallet-belize-consensus/std",
     "pallet-belize-community/std",
     "pallet-belize-oracle/std",
+    "pallet-belize-oracle-rpc-runtime-api/std",
     "pallet-belize-payroll/std",
     "pallet-belize-quantum/std",
     "pallet-belize-bns/std",

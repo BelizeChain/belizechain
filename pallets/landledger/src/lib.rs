@@ -172,7 +172,17 @@ pub mod pallet {
     }
 
     /// Zoning classifications
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+    #[derive(
+        Encode,
+        Decode,
+        codec::DecodeWithMemTracking,
+        Clone,
+        PartialEq,
+        Eq,
+        Debug,
+        TypeInfo,
+        MaxEncodedLen,
+    )]
     pub enum ZoningType {
         /// Urban residential
         UrbanResidential,
@@ -438,6 +448,12 @@ pub mod pallet {
         SurveyorRegistered { surveyor: T::AccountId },
         /// LL-4 FIX: Surveyor removed
         SurveyorRemoved { surveyor: T::AccountId },
+        /// Zoning classification set for a map area
+        ZoningUpdated {
+            latitude: i64,
+            longitude: i64,
+            zoning: ZoningType,
+        },
     }
 
     #[pallet::error]
@@ -864,13 +880,8 @@ pub mod pallet {
 
                     if let Some(coords) = updated_coordinates {
                         // AUDIT FIX (HIGH-02): Validate updated coordinates
-                        if coords.0 < 15_000_000
-                            || coords.0 > 19_000_000
-                            || coords.1 < -90_000_000
-                            || coords.1 > -87_000_000
-                        {
-                            return Err(Error::<T>::InvalidCoordinates);
-                        }
+                        Self::ensure_belize_coordinates(coords)
+                            .map_err(|_| Error::<T>::InvalidCoordinates)?;
                         property.coordinates = coords;
                         property.zoning = Self::get_zoning_for_coordinates(coords)
                             .unwrap_or(property.zoning.clone());
@@ -886,6 +897,48 @@ pub mod pallet {
                 property_id,
                 surveyor: who,
                 area_sqm: verified_area_sqm,
+            });
+
+            Ok(())
+        }
+
+        /// Set the zoning classification for a map area (government only).
+        ///
+        /// `ZoningMap` was read by `register_property` and `survey_property` but
+        /// had no writer at all, so every property in the ledger was permanently
+        /// `MixedUse` and no origin — not even government — could change it. That
+        /// is not a cosmetic gap: a title stating `MixedUse` for land that is
+        /// actually `EnvironmentalProtected` is a legally wrong record.
+        ///
+        /// # Why this does not rewrite existing properties
+        ///
+        /// `PropertyRecord::zoning` is a *snapshot* taken at registration or at
+        /// the last survey, and properties are not indexed by coordinates.
+        /// Propagating a change would mean scanning the whole ledger, which is
+        /// unbounded work in one block — the shape of a denial-of-service.
+        ///
+        /// So the map is authoritative and the record is a point-in-time copy.
+        /// Read [`Pallet::effective_zoning`] when the current classification
+        /// matters; it prefers the map and falls back to the snapshot.
+        #[pallet::call_index(9)]
+        #[pallet::weight(T::WeightInfo::set_zoning())]
+        pub fn set_zoning(
+            origin: OriginFor<T>,
+            coordinates: (i64, i64),
+            zoning: ZoningType,
+        ) -> DispatchResult {
+            T::GovernmentOrigin::ensure_origin(origin)?;
+
+            // A zoning entry outside Belize can never be read: no property can
+            // occupy those coordinates. Writing one is silently wasted state.
+            Self::ensure_belize_coordinates(coordinates)?;
+
+            ZoningMap::<T>::insert(coordinates.0, coordinates.1, zoning.clone());
+
+            Self::deposit_event(Event::ZoningUpdated {
+                latitude: coordinates.0,
+                longitude: coordinates.1,
+                zoning,
             });
 
             Ok(())
@@ -1005,6 +1058,35 @@ pub mod pallet {
         /// Get zoning type for given coordinates
         fn get_zoning_for_coordinates(coordinates: (i64, i64)) -> Option<ZoningType> {
             Self::zoning_map(coordinates.0, coordinates.1)
+        }
+
+        /// Reject coordinates outside Belize.
+        ///
+        /// Shared by `survey_property` and `set_zoning` so the two cannot drift.
+        /// Coordinates are fixed-point integers scaled by 1e6, covering roughly
+        /// 15–19°N and 90–87°W — the country's bounding box.
+        pub(crate) fn ensure_belize_coordinates(coordinates: (i64, i64)) -> DispatchResult {
+            let (latitude, longitude) = coordinates;
+            ensure!(
+                (15_000_000..=19_000_000).contains(&latitude)
+                    && (-90_000_000..=-87_000_000).contains(&longitude),
+                Error::<T>::InvalidCoordinates
+            );
+            Ok(())
+        }
+
+        /// Current zoning for a property.
+        ///
+        /// `PropertyRecord::zoning` is a snapshot from registration or the last
+        /// survey, so it goes stale as soon as government updates `ZoningMap`.
+        /// This is the authoritative read: the map wins, the snapshot is the
+        /// fallback for a property registered before its area was zoned.
+        pub fn effective_zoning(property_id: PropertyId) -> Option<ZoningType> {
+            let property = Self::properties(property_id)?;
+            Some(
+                Self::get_zoning_for_coordinates(property.coordinates)
+                    .unwrap_or(property.zoning),
+            )
         }
 
         /// Get properties owned by account
@@ -1173,6 +1255,7 @@ pub trait WeightInfo {
     fn remove_surveyor() -> Weight;
     fn add_encumbrance() -> Weight;
     fn remove_encumbrance() -> Weight;
+    fn set_zoning() -> Weight;
 }
 
 impl WeightInfo for () {
@@ -1198,6 +1281,9 @@ impl WeightInfo for () {
         Weight::from_parts(10_000_000, 512).saturating_add(Weight::from_parts(0, 1500))
     }
     fn remove_encumbrance() -> Weight {
+        Weight::from_parts(10_000_000, 512).saturating_add(Weight::from_parts(0, 1500))
+    }
+    fn set_zoning() -> Weight {
         Weight::from_parts(10_000_000, 512).saturating_add(Weight::from_parts(0, 1500))
     }
 }

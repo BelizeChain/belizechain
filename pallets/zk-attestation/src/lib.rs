@@ -71,6 +71,9 @@ pub use pallet::*;
 pub mod weights;
 pub use weights::WeightInfo;
 
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
 #[cfg(test)]
 mod mock;
 #[cfg(test)]
@@ -292,8 +295,13 @@ pub mod pallet {
         /// fails, which is loud. It is an availability problem, so a version
         /// should be exercised on a testnet before the root that names it goes
         /// live.
+        ///
+        /// The weight is a measured constant rather than a function of `key.len()`.
+        /// The measured op is one database write, and the key is bounded by
+        /// `MaxVerifyingKeyLen`, so the per-byte spread this would model is far
+        /// smaller than the write it accompanies.
         #[pallet::call_index(1)]
-        #[pallet::weight(T::WeightInfo::set_verifying_key(key.len() as u32))]
+        #[pallet::weight(T::WeightInfo::set_verifying_key())]
         pub fn set_verifying_key(
             origin: OriginFor<T>,
             circuit_version: u16,
@@ -317,8 +325,13 @@ pub mod pallet {
         /// supported range, because a proof over the *right* record with a
         /// *wrong* threshold would otherwise be a valid proof of the wrong
         /// statement.
+        ///
+        /// The weight is a measured constant, not a function of `proof.len()`.
+        /// Cost here is four pairings over a fixed-size proof; the buffer is
+        /// bounded by `MaxProofLen` and has to parse exactly anyway, so length
+        /// contributes nothing measurable next to the pairing check.
         #[pallet::call_index(2)]
-        #[pallet::weight(T::WeightInfo::submit_attestation(proof.len() as u32))]
+        #[pallet::weight(T::WeightInfo::submit_attestation())]
         pub fn submit_attestation(
             origin: OriginFor<T>,
             set_id: u32,

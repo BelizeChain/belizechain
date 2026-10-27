@@ -584,9 +584,13 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     //     DALLA/bBZD trade debited and credited DALLA on both legs and bBZD
     //     never moved at all. `T::Assets: AssetLedger` replaces that: DALLA and
     //     TourismDALLA route to `Balances`, bBZD to `Economy::bbzd_balances`
-    //     with the same sanction check the economy pallet applies, and WUSDC
-    //     reports `UnsupportedAsset` rather than silently moving the wrong
-    //     token. New storage `PairOrders` indexes open limit orders by pair and
+    //     with the same sanction check the economy pallet applies, and WUSDC to
+    //     `BelizeX::WusdcBalances` — the pallet's own ledger, minted by the
+    //     governance-gated `issue_wusdc` and burned by `burn_wusdc`. WUSDC
+    //     originally had no ledger at all, which made the WUSDC/bBZD pair
+    //     unseedable and left the pallet's oracle deviation guard unreachable;
+    //     that guard is live now. New storage `PairOrders` indexes open limit
+    //     orders by pair and
     //     side (`bids`/`asks`, bounded by new `MaxOrdersPerPair = 256`), with
     //     `open_orders(pair)` as the reader. Limit orders still do not match —
     //     the index is the prerequisite, not the engine.
@@ -699,23 +703,104 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     //      attested against which registry. The record stays hidden; the link does
     //      not.
     //
-    //   `submit_attestation` is weighted by a **measured constant**, not a
-    //   benchmark: no benchmark can produce a valid proof without linking the
-    //   prover into the runtime. 2,000 verifications of a real three-input proof
-    //   measured 8.0 ms each on the Ryzen 9 5900X reference host; the charge is
-    //   10 ms. Constant weight is sound here because Groth16 verification is
-    //   constant in circuit size and the inputs are fixed-width (192-byte proof,
-    //   536-byte key, exactly three scalars) — there is nothing unbounded to
-    //   inflate.
+    //   `submit_attestation` was originally weighted by a **hand-derived
+    //   constant** (10 ms), on the stated grounds that no benchmark can produce
+    //   a valid proof without linking the prover into the runtime. That premise
+    //   was wrong and the number was replaced in 123 — see below.
     //
     //   `transaction_version` is unchanged: a new pallet adds no call to an
     //   existing one.
-    spec_version: 122,
+    //
+    // - 123: weights corrected from measurement, and four typed RPC runtime APIs
+    //   added. No storage layout changes, no new pallets, so no migration and no
+    //   coordinator entry.
+    //
+    //   `pallet_belize_quantum`'s four NFT-auction extrinsics (`create_auction`,
+    //   `place_bid`, `settle_auction`, `cancel_auction`) had no benchmark run at
+    //   all. They are now generated, and the auction path was charging nothing
+    //   for work it does.
+    //
+    //   `pallet_belize_zk_attestation::submit_attestation` is the correction that
+    //   matters. The 122 note argued a benchmark was impossible because a
+    //   synthetic proof cannot pass verification, so any measurement would time
+    //   the *rejection* path — four orders of magnitude too cheap. The premise is
+    //   true; the conclusion was not. The benchmark embeds a **real Groth16 proof
+    //   and its verifying key**, produced once offline with the `prover` feature
+    //   the runtime does not enable, so verification takes the acceptance path.
+    //   Measured: **22.6 ms** ref_time against the 10 ms that was charged. The
+    //   old constant under-charged by 2.3×, which is the unsafe direction: a
+    //   block full of attestations would have been priced as if it fit.
+    //
+    //   The generated trait also dropped `submit_attestation`'s `key_len` /
+    //   `proof_len` parameters. Both modelled a per-byte cost against inputs
+    //   already bounded by `MaxProofLen` / `MaxVerifyingKeyLen`, while the real
+    //   cost is four fixed pairings — the length term described a dependency that
+    //   does not exist. `set_registry_root` was likewise hand-written and is now
+    //   measured.
+    //
+    //   The four runtime APIs (`GovernanceApi`, `StakingApi`, `BridgeApi`,
+    //   `OracleApi`) are **read-only projections** of existing storage. They add
+    //   no storage and cannot mutate state, so they are inert with respect to
+    //   consensus; their only effect is that `state_call` answers them.
+    //   `transaction_version` is unchanged: no extrinsic was added or reordered,
+    //   and `#[pallet::call]` indices are untouched.
+    //
+    // - 124: `BelizeXOracleProvider` answers both orientations of a bBZD pair and
+    //   falls back to the protocol peg. `pallets/belizex`'s deviation guard now
+    //   covers both directions instead of one.
+    //
+    //   Two defects, one visible from the other. The guard compared a single
+    //   reference rate against `amount_out / amount_in`, which equals bBZD-per-USD
+    //   only for `WUSDC -> BBZD`; in the reverse direction it equals the
+    //   reciprocal, so `BBZD -> WUSDC` could never have matched a reference and
+    //   was therefore simply not checked. The reverse pair does not exist in
+    //   genesis (`TradingPairs` is keyed by an ordered tuple and only
+    //   `(WUSDC, BBZD)` is listed), so nothing was exploitable — but the moment
+    //   governance listed `(BBZD, WUSDC)`, which `create_trading_pair` permits, it
+    //   would have shipped a second market for the same two assets with no price
+    //   guard at all.
+    //
+    //   Widening the condition alone would have been worse than the bug:
+    //   `get_crypto_exchange_rate` answered only when bBZD was the *quote* side
+    //   and returned `None` otherwise, so the reverse direction would have been
+    //   rejected outright by the fail-closed branch — an unchecked market turned
+    //   into a dead one, indistinguishable from the guard working. So the
+    //   provider answers in both orientations first (inverting when bBZD is the
+    //   base), and only then does the guard widen.
+    //
+    //   The second defect is that no rate source could produce a value on Ceiba:
+    //   `OracleOperators` is empty against `MinConsensusOperators = 3`, and the
+    //   admin-written `ManualExchangeRates` expires after `MaxDataStaleness` (100
+    //   blocks, 10 minutes). bBZD is *defined* as 1:1 BZD, so the provider now
+    //   treats `BBZD_USD_PEG` as a fallback. The live Oracle is still preferred —
+    //   only a real feed can detect a depeg — but its absence no longer makes the
+    //   pair untradeable.
+    //
+    //   Storage and extrinsic indices are unchanged, and 124 adds no extrinsic of
+    //   its own. `transaction_version` does move to 3, but not for anything here —
+    //   it corrects 123, which appended two BelizeX calls without the bump. See
+    //   the note on that field.
+    //
+    //   The deviation arithmetic is unchanged (`MaxOracleDeviationBps`, 500 bps);
+    //   it now runs for one more direction and against a reference that always
+    //   exists.
+    spec_version: 124,
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,
     // Adding call indices to a live pallet is additive, but the version
     // advertises that the extrinsics set changed.
-    transaction_version: 2,
+    //
+    // Bumped to 3 to correct an omission in 123. That release appended
+    // `BelizeX::issue_wusdc` (call index 11) and `BelizeX::burn_wusdc` (12) — the
+    // wrapped-USDC mint/burn pair the DEX's WUSDC ledger needs — but shipped with
+    // `transaction_version` still at 2, contrary to the convention above. Verified
+    // against the live chain rather than assumed: spec 123 exposes 13 BelizeX
+    // calls including both, while `state_getRuntimeVersion` reports 2. 124 adds no
+    // extrinsic of its own; this bump covers the ones 123 already shipped.
+    //
+    // The indices were appended, never reordered, so existing call encoding is
+    // unaffected — this is a metadata-accuracy fix, not a breaking change.
+    transaction_version: 3,
     system_version: 1,
 };
 
@@ -726,6 +811,23 @@ pub const DOLLARS: Balance = 1_000_000_000_000; // 1 DALLA = 10^12 base units (1
 /// Smallest indivisible unit of DALLA — the base unit, analogous to wei/planck.
 /// DALLA uses 12 decimals, so 1 DALLA = 1,000,000,000,000 Mahogany.
 pub const MAHOGANY: Balance = 1;
+
+/// Protocol value of the Belize dollar peg: **BZ$2.00 = US$1.00**, unchanged
+/// since 1978. Expressed as bBZD per USD at the 1e6 scale the Oracle uses.
+///
+/// This is a *definition*, not a market observation. bBZD is issued 1:1 against
+/// the Belize dollar, so the peg is what the token is — an oracle feed can only
+/// confirm or contradict it, never establish it. `BelizeXOracleProvider` uses this
+/// as a fallback, which is what stops a missing or stale feed from making a
+/// bBZD-quoted pair untradeable: `pallets/belizex`'s deviation guard fails closed,
+/// so without a fallback it would reject every trade on that pair.
+///
+/// Preferring the live Oracle over this constant is deliberate — a real feed can
+/// detect a depeg, and this value cannot.
+///
+/// Changing it is a monetary-policy decision, not a configuration tweak.
+pub const BBZD_USD_PEG: u128 = 2_000_000;
+
 pub const MINUTES: BlockNumber = 10; // Blocks per minute (6-second block time: 60s ÷ 6s = 10 blocks)
 pub const DAYS: BlockNumber = 14_400; // Blocks per day (assuming 6-second block time: 86400s/day ÷ 6s/block = 14400 blocks)
 
@@ -1339,6 +1441,12 @@ parameter_types! {
     /// the pool account's balance feeds the AMM curve, so escrow held there
     /// would be priced into every swap.
     pub const BelizeXOrderEscrowPalletId: PalletId = PalletId(*b"py/bzord");
+    /// Holds the standing bid of an open NFT auction.
+    ///
+    /// Separate from `TreasuryPalletId` because these funds belong to bidders,
+    /// not to the protocol, and separate from the quantum pallet's job-fee
+    /// account because that balance is not a settlement pot.
+    pub const QuantumAuctionEscrowPalletId: PalletId = PalletId(*b"py/qauct");
     pub const MaxDallaSupply: Balance = 501_000_000_000 * DOLLARS; // 501 billion DALLA (12 decimals)
     pub const MinValidatorStake: Balance = pallet_belize_staking::MIN_VALIDATOR_STAKE; // 1,000 DALLA (12 decimals)
     pub const BaseReward: Balance = DOLLARS; // 1 DALLA per PoUW epoch (not per block)
@@ -2013,6 +2121,7 @@ impl pallet_belize_quantum::Config for Runtime {
     type DallaPerShot = ConstU128<100_000>; // 0.0000001 DALLA per shot
     type NFTMintingFee = ConstU128<500_000_000_000>; // 0.5 DALLA to mint NFT
     type Treasury = TreasuryAccount; // Q-1 FIX: marketplace fees go to treasury
+    type AuctionEscrow = QuantumAuctionEscrowPalletId;
     type WeightInfo = pallet_belize_quantum::weights::SubstrateWeight<Runtime>;
 }
 
@@ -2743,18 +2852,21 @@ impl pallet_belize_landledger::LandLedgerOracleProvider<AccountId> for LandLedge
 pub struct BelizeXOracleProvider;
 
 impl pallet_belize_belizex::BelizeXOracleProvider<AccountId> for BelizeXOracleProvider {
-    fn get_crypto_exchange_rate(_base_asset: u8, quote_asset: u8) -> Option<u128> {
+    fn get_crypto_exchange_rate(base_asset: u8, quote_asset: u8) -> Option<u128> {
         use pallet_belize_oracle::types::{Currency, CurrencyPair};
-        // For BBZD trades, consult USD/BZD rate from Oracle
-        let bbzd_id = pallet_belize_belizex::AssetId::BBZD.as_u8();
-        if quote_asset == bbzd_id {
-            return Oracle::get_exchange_rate(CurrencyPair {
-                base: Currency::USD,
-                quote: Currency::BZD,
-            });
-        }
-        // Otherwise, no crypto rate available via Oracle for this pair
-        None
+        // The Oracle reports USD/BZD, i.e. bBZD per USD. `reference_rate` turns
+        // that into whichever orientation the caller asked about, and substitutes
+        // the protocol peg when the Oracle has nothing fresh to say.
+        let observed = Oracle::get_exchange_rate(CurrencyPair {
+            base: Currency::USD,
+            quote: Currency::BZD,
+        });
+        pallet_belize_belizex::reference_rate(
+            base_asset,
+            quote_asset,
+            observed,
+            Some(BBZD_USD_PEG),
+        )
     }
 
     fn is_tourism_merchant(account: &AccountId) -> bool {
@@ -2797,8 +2909,11 @@ impl pallet_belize_belizex::KycCheck<AccountId> for BelizeXKycProvider {
 /// pallet cannot depend on directly, so the mapping belongs here.
 ///
 /// `TourismDALLA` is a discount flag rather than a separate balance and shares
-/// the DALLA ledger. `WUSDC` has no ledger in this runtime, so it fails closed
-/// with `UnsupportedAsset` instead of inventing a balance.
+/// the DALLA ledger. `WUSDC` settles against `pallet_belize_belizex`'s own
+/// `WusdcBalances`, which is minted by the governance/bridge-gated
+/// `issue_wusdc` and burned by `burn_wusdc`. It used to have no ledger at all,
+/// which made the WUSDC/bBZD pair unseedable and left the pallet's oracle
+/// deviation guard unreachable.
 pub struct BelizeXAssetLedger;
 
 impl pallet_belize_belizex::AssetLedger<AccountId> for BelizeXAssetLedger {
@@ -2807,7 +2922,7 @@ impl pallet_belize_belizex::AssetLedger<AccountId> for BelizeXAssetLedger {
         match asset {
             AssetId::DALLA | AssetId::TourismDALLA => Balances::free_balance(who),
             AssetId::BBZD => Economy::bbzd_balances(who),
-            AssetId::WUSDC => 0,
+            AssetId::WUSDC => BelizeX::wusdc_balances(who),
         }
     }
 
@@ -2855,7 +2970,22 @@ impl pallet_belize_belizex::AssetLedger<AccountId> for BelizeXAssetLedger {
                 });
                 Ok(())
             }
-            AssetId::WUSDC => Err(BelizeXError::<Runtime>::UnsupportedAsset.into()),
+            AssetId::WUSDC => {
+                // bBZD's ledger is re-checked for sanctions because that path
+                // bypasses `transfer_bbzd`'s origin check; WUSDC is not a
+                // regulated instrument, so it only needs the balance check.
+                let balance = BelizeX::wusdc_balances(from);
+                if balance < amount {
+                    return Err(BelizeXError::<Runtime>::InsufficientBalance.into());
+                }
+                pallet_belize_belizex::WusdcBalances::<Runtime>::mutate(from, |b| {
+                    *b = b.saturating_sub(amount)
+                });
+                pallet_belize_belizex::WusdcBalances::<Runtime>::mutate(to, |b| {
+                    *b = b.saturating_add(amount)
+                });
+                Ok(())
+            }
         }
     }
 
@@ -2874,7 +3004,9 @@ impl pallet_belize_belizex::AssetLedger<AccountId> for BelizeXAssetLedger {
             AssetId::BBZD => {
                 pallet_belize_economy::BBZDBalances::<Runtime>::insert(who, amount);
             }
-            AssetId::WUSDC => {}
+            AssetId::WUSDC => {
+                pallet_belize_belizex::WusdcBalances::<Runtime>::insert(who, amount);
+            }
         }
     }
 }
@@ -3074,6 +3206,7 @@ mod benches {
         [pallet_belize_whistleblower, BelizeWhistleblower]
         [pallet_belize_moderation, BelizeModeration]
         [pallet_storage_proof, StorageProof]
+        [pallet_zk_attestation, ZkAttestation]
     );
 }
 
@@ -3104,6 +3237,94 @@ impl_runtime_apis! {
 
         fn metadata_versions() -> sp_std::vec::Vec<u32> {
             Runtime::metadata_versions()
+        }
+    }
+
+    impl pallet_belize_governance_rpc_runtime_api::GovernanceApi<Block, AccountId, BlockNumber>
+        for Runtime
+    {
+        fn council_members() -> Vec<
+            pallet_belize_governance::CouncilMember<AccountId, BlockNumber>,
+        > {
+            pallet_belize_governance::CouncilMembers::<Runtime>::iter()
+                .map(|(_, member)| member)
+                .collect()
+        }
+
+        fn council_term() -> u32 {
+            pallet_belize_governance::CouncilTerm::<Runtime>::get()
+        }
+
+        fn district_elections() -> Vec<(
+            pallet_belize_governance::BelizeDistrict,
+            pallet_belize_governance::Election<BlockNumber>,
+        )> {
+            pallet_belize_governance::DistrictElections::<Runtime>::iter().collect()
+        }
+
+        fn next_proposal_id() -> u32 {
+            pallet_belize_governance::NextProposalId::<Runtime>::get()
+        }
+    }
+
+    impl pallet_belize_staking_rpc_runtime_api::StakingApi<Block, AccountId, Balance, BlockNumber>
+        for Runtime
+    {
+        fn validators() -> Vec<
+            pallet_belize_staking::ValidatorInfo<AccountId, Balance, BlockNumber>,
+        > {
+            pallet_belize_staking::Validators::<Runtime>::iter()
+                .map(|(_, validator)| validator)
+                .collect()
+        }
+
+        fn validator_count() -> u32 {
+            pallet_belize_staking::ValidatorCount::<Runtime>::get()
+        }
+
+        fn current_epoch() -> u32 {
+            pallet_belize_staking::CurrentEpoch::<Runtime>::get()
+        }
+
+        fn last_reward_distribution() -> Option<BlockNumber> {
+            pallet_belize_staking::LastRewardDistribution::<Runtime>::get()
+        }
+    }
+
+    impl pallet_belize_interoperability_rpc_runtime_api::BridgeApi<Block, AccountId, BlockNumber>
+        for Runtime
+    {
+        fn chain_configurations() -> Vec<(
+            pallet_belize_interoperability::BridgeChain,
+            pallet_belize_interoperability::ChainConfig,
+        )> {
+            pallet_belize_interoperability::ChainConfigurations::<Runtime>::iter().collect()
+        }
+
+        fn bridge_transactions() -> Vec<
+            pallet_belize_interoperability::BridgeTransaction<AccountId, BlockNumber>,
+        > {
+            pallet_belize_interoperability::BridgeTransactions::<Runtime>::iter()
+                .map(|(_, transaction)| transaction)
+                .collect()
+        }
+    }
+
+    impl pallet_belize_oracle_rpc_runtime_api::OracleApi<Block, BlockNumber> for Runtime {
+        fn price_feeds() -> Vec<pallet_belize_oracle::types::PriceFeedData<BlockNumber>> {
+            pallet_belize_oracle::PriceFeeds::<Runtime>::iter()
+                .map(|(_, feed)| feed)
+                .collect()
+        }
+
+        fn manual_exchange_rates() -> Vec<(
+            pallet_belize_oracle::types::CurrencyPair,
+            u128,
+            BlockNumber,
+        )> {
+            pallet_belize_oracle::ManualExchangeRates::<Runtime>::iter()
+                .map(|(pair, (price, updated_at))| (pair, price, updated_at))
+                .collect()
         }
     }
 

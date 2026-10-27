@@ -259,5 +259,20 @@ mod benchmarks {
         );
     }
 
+    #[benchmark]
+    fn set_zoning() {
+        // A single unconditional write into `ZoningMap`; the coordinates only
+        // have to be a valid Belize point for the call to reach the write.
+        let coordinates = (17_000_000i64, -88_000_000i64);
+
+        #[extrinsic_call]
+        _(RawOrigin::Root, coordinates, ZoningType::Agricultural);
+
+        assert_eq!(
+            ZoningMap::<T>::get(coordinates.0, coordinates.1),
+            Some(ZoningType::Agricultural)
+        );
+    }
+
     impl_benchmark_test_suite!(Pallet, crate::mock::new_test_ext(), crate::mock::Test);
 }
