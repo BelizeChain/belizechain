@@ -997,16 +997,21 @@ Counts verified 2026-10-22:
 > which has effects. Dismiss those with justification rather than restructuring a test to
 > satisfy the analyzer.
 
-| repo | open | note |
-|---|---|---|
-| `belizechain` | **0** | public, so scanning always worked (132 dismissed / 35 fixed historically) |
-| `infra` | **0** | 11 total, all fixed |
-| `gem` | **0** | 17 total, all fixed |
-| `nawal-ai` | **0** | was 256; the Trivy base-image noise was resolved |
-| `ui` | **3** | 2 `js/trivial-conditional` (`land/page.tsx:183,188`), 1 `js/unused-local-variable` (`documents/page.tsx:152`) |
-| `pakit-storage` | **1** | Trivy `CVE-2024-23342` (`ecdsa`) — **no fixed version exists** |
-| `belizechain.org` | **1** | `js/stored-xss` — see below |
-| `kinich-quantum` | **35** | 25 `py/undefined-export` (known FP) + 10 actionable: 3 `unused-global-variable`, 3 `empty-except`, 2 `multiple-definition`, 2 `ineffectual-statement` |
+| repo | open (CS) | open (Dependabot) | note |
+|---|---|---|---|
+| `belizechain` | **29** | 1 | all 29 are `rust/hard-coded-cryptographic-value` in tests/fixtures/curves: 25 in `tests.rs`, 3 in `zk/attestation/src/circuit.rs` (real curve constants), 1 in `mesh/src/benchmarking.rs`. **No production code.** Dismiss with justification. The 1 Dependabot high is `hickory-resolver`, blocked on `libp2p-dns 0.45` |
+| `infra` | **0** | 2 | 11 total code-scanning, all fixed |
+| `gem` | **0** | 0 | 17 total, all fixed |
+| `nawal-ai` | **29** | 4 | was 256; the Trivy base-image noise was resolved |
+| `ui` | **0** | 6 | 2 `high` + 4 `medium`, all `vite` |
+| `pakit-storage` | **3** | 8 | 3 `high` + 1 `low` + 4 `medium`, all `aiohttp` |
+| `belizechain.org` | **1** | 0 | `js/stored-xss` — see below |
+| `kinich-quantum` | **25** | 0 | 25 `py/undefined-export` (known FP) + 10 actionable: 3 `unused-global-variable`, 3 `empty-except`, 2 `multiple-definition`, 2 `ineffectual-statement` |
+
+Counts above re-measured **2026-10-27** from the GitHub API (`state=open`), not carried
+forward from 2026-10-22. The `belizechain` row moved 0 → 29 because that day's commits
+triggered a re-scan; the alerts had been latent in test and fixture code. A count
+without a date is a bug.
 
 - **`infra` 11 → 0** and **`belizechain.org` 8 → 1**, fixed 2026-10-13/14 by the same two
   moves: workflow-level `permissions: contents: read`, and SHA-pinned third-party actions
@@ -1045,6 +1050,28 @@ Counts verified 2026-10-22:
   `CARGO_FEATURES=testnet-fast-epoch` was passed explicitly and verified in the
   resulting image (`epoch_length 300`) before the pin was changed. Rollback:
   `.env.bak-pre-node-20261027` + `76dea3f-stable2609-20261019`.
+
+  🚨 **A node rollout is not finished at `up -d` — nginx must be reloaded, and the
+  runbook already says so.** `nginx/nginx.conf` declares fixed backends as `upstream
+  rpc_backend { server ceiba-node:9944; }`, which Docker's embedded DNS resolves **once,
+  at worker start**. Recreating `ceiba-node` gives it a new IP (172.20.0.19 this time) and
+  nginx keeps proxying to the old one, so `/rpc` and `/ws` return **502 through the edge
+  while every container reports healthy** — and `curl` from *inside* nginx still succeeds,
+  because the broken resolution is nginx's own cache, not the network. Found 2026-10-27
+  about 45 minutes after this rollout, by chance; fixed with
+  `docker exec ceiba-nginx nginx -s reload`, then verified spec 124 and 13 bridge chains
+  through the public endpoint.
+
+  ⚠️ **This was a procedure failure, not a documentation gap.** `CEIBA_OPERATIONS_RUNBOOK.md`
+  line 75 states the rule and lines 231/301/328 include `restart nginx` after every
+  `up -d ceiba-node`. The step was skipped. Read the runbook's *Restart And Validate*
+  block before any container recreate — including for `kinich`, `pakit`, `nawal`,
+  `api-gateway` and `ipfs`, which use the same static-upstream pattern.
+
+  Durable fix, if the manual step keeps being missed (needs a config change and an nginx
+  rollout): give each fixed backend the treatment `$root_backend` already uses — a
+  `resolver 127.0.0.11 valid=30s` plus a variable `proxy_pass`, which resolves per request
+  and cannot go stale.
 
   **Why the stale image went unnoticed for two days (root-caused 2026-10-27).**
   Three things combined, and only the third is a defect:
@@ -1112,11 +1139,28 @@ Counts verified 2026-10-22:
   ⚠️ Still open and **not** fixed by this: `hickory-resolver 0.24.4` (GHSA-5j98-2g5x-46v6)
   needs `libp2p-dns 0.45` upstream.
 
-#### P1-08 matching engine — built 2026-10-24, committed, NOT yet deployed
+#### P1-08 matching engine — built 2026-10-24, LIVE since spec 119
 
 `pallet-belize-belizex` limit orders went from "written but never matched" to a real
-escrowed price-time book. Committed on branch `belizechain` (spec 119), **not live**; the
-live chain still runs the stub at spec 117.
+escrowed price-time book. The commit (`78a661c`) is an ancestor of the live spec 124
+runtime, so the engine is deployed, and `BelizeX:__STORAGE_VERSION__:` reads **1** on
+chain (`pallet::storage_version` is `new(1)` in this tree; it was `0` at the 2026-09-29
+re-genesis, which predates the commit).
+
+⚠️ **Unresolved, worth checking before the book carries real orders.** The book purge is
+gated on this runtime's own migration counter — `runtime/src/migrations.rs` writes
+`twox128(b"belizechain::migration_version")` via `unhashed::put` — and that key reads
+**absent** on the live chain, while `BelizeX`'s storage version reads 1. Both cannot be
+right if only `CoordinatedUpgrade` drives the pallet migration. Either the counter is not
+persisting (in which case every future upgrade re-runs every pending step, including a
+book purge) or the pallet's version came from somewhere else. `state_getStorage` returned
+`None` for that exact key; the derivation was validated against the well-known `System`
+prefix, so a second look with a different tool is warranted before concluding.
+
+The catch on top of that is **state, not code**: `TradingPairs` and `LiquidityPools` are
+both empty, so no limit order can be placed. The read/write paths below have never executed
+against live state — they are unit- and benchmark-tested only. Listing one pair and
+placing one order is the cheapest way to convert that assumption into evidence.
 
 - Escrow at placement into `OrderEscrowPalletId` (`py/bzord`): bid → quote
   `ceil(amount * price / PRICE_SCALE)`, ask → base `amount`. Refunded on cancel,
