@@ -1075,11 +1075,32 @@ Counts verified 2026-10-22:
   `infra/deploy/ceiba-release-readiness.sh` (`run_node_image_parity`). Verified
   both ways: `76dea3f` is rejected, `01d51bb` passes.
 
-  ⚠️ The residual risk the guard only *partly* covers: a runtime that needs a
-  host function, inherent or digest the old binary does not provide does not
-  fail with a tidy `-32601` - it fails to instantiate, which is a consensus
-  halt. `121`→`124` happened to need no client support; that was luck, not
-  design.
+  ⚠️ Ancestry alone does **not** prove the image can *run* a given blob: a
+  runtime that imports a host function the client never registers does not fail
+  with a tidy `-32601` - it fails at WASM instantiation and stops producing
+  blocks. `121`→`124` happened to need no client support; that was luck, not
+  design. Closed by **`scripts/check-runtime-host-functions.py`**, which parses
+  the blob's WASM import section for `env` `ext_*` names and proves each one is
+  a literal string in the client binary (`strip` removes symbols, not `.rodata`
+  literals). Reach it through
+  `check-node-image-parity.sh --tag <tag> --wasm <blob.wasm>`, which extracts
+  the binary from the image with `docker create` + `docker cp` and leaves no
+  container behind; `--remote ceiba` ships the blob to the host instead. The
+  current pairing proves clean: 39 imported host functions, all registered, in
+  both the local release binary and the deployed image.
+
+  Two practical notes. Pass the **uncompressed** module
+  (`target/release/wbuild/belizechain-runtime/belizechain_runtime.wasm`); the
+  `.compact.compressed.wasm` is the zstd-wrapped envelope that actually goes on
+  chain (byte-identical to Ceiba's 1,609,157-byte `:code`), so it is the file
+  most likely to be reached for and the one the parser must refuse. And set
+  `RUNTIME_WASM` when running `ceiba-release-readiness.sh`; without it the gate
+  reports the pairing as unproven rather than silently passing.
+
+  What this still does not cover: an inherent or digest the *node* must supply
+  fails during block building, not instantiation, so it is only caught by the
+  end-to-end rehearsal (`scripts/rehearse-runtime-upgrade.py`, which accepts
+  `--rpc` and can therefore be pointed at a throwaway container from the image).
 - **Node image rebuilt 2026-10-19** (`76dea3f-stable2609-20261019`) for five new RustSec
   advisories that appeared 2026-10-14: RUSTSEC-2026-0346/-0347/-0348/-0349 (`rustls`
   ≤0.23.45 → **0.23.46**) and RUSTSEC-2026-0363 (`wasmtime` 36.0.16 → **36.0.18**).

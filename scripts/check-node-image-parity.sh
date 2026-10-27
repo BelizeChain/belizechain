@@ -59,6 +59,7 @@ cd "$ROOT_DIR"
 IMAGE_REF=""
 REMOTE_HOST=""
 REMOTE_ENV="/opt/belizechain/.env"
+PROVE_WASM=""
 
 usage() {
     cat <<'USAGE'
@@ -66,6 +67,12 @@ Usage:
   ./scripts/check-node-image-parity.sh --tag 01d51bb-spec124-20261027
   ./scripts/check-node-image-parity.sh --sha 01d51bb
   ./scripts/check-node-image-parity.sh --remote ceiba      # read the live pin
+
+Options:
+  --wasm <blob.wasm>   also prove the image can instantiate this runtime, by
+                       checking every host function it imports is registered in
+                       the image's binary. Uncompressed module, not the
+                       .compact.compressed.wasm envelope.
 USAGE
     exit "${1:-0}"
 }
@@ -91,6 +98,7 @@ while [[ $# -gt 0 ]]; do
         --tag)    IMAGE_REF="${2:?--tag needs a value}"; shift 2 ;;
         --sha)    IMAGE_REF="${2:?--sha needs a value}"; shift 2 ;;
         --remote) REMOTE_HOST="${2:?--remote needs a host}"; shift 2 ;;
+        --wasm)   PROVE_WASM="${2:?--wasm needs a value}"; shift 2 ;;
         -h|--help) usage 0 ;;
         *) echo "unknown argument: $1" >&2; usage 1 ;;
     esac
@@ -178,6 +186,50 @@ else
     echo "   Newest runtime commit is ${RUNTIME_COMMIT}, which the image predates."
     echo "   Harmless on a live chain - execution is WASM-only - but the image"
     echo "   misreports its spec under --dev and would re-genesis at the old one."
+fi
+
+# ---- Prove the image can actually instantiate that runtime -----------------
+#
+# Ancestry says the source is in the image. It does not say the image can RUN a
+# given blob: a runtime that imports a host function the client does not
+# register fails at WASM instantiation and stops producing blocks, which no
+# amount of ancestry checking can see. That check needs both artifacts in one
+# place, so the blob is shipped to wherever the image lives.
+
+if [[ -n "$PROVE_WASM" ]]; then
+    if [[ ! -f "$PROVE_WASM" ]]; then
+        echo "❌ --wasm ${PROVE_WASM}: no such file" >&2
+        exit 1
+    fi
+    CHECKER="${ROOT_DIR}/scripts/check-runtime-host-functions.py"
+
+    if [[ -n "$REMOTE_HOST" ]]; then
+        remote_dir="/tmp/bz-hostfn-$$"
+        if ! ssh -o BatchMode=yes "$REMOTE_HOST" "mkdir -p '$remote_dir'" </dev/null; then
+            echo "❌ could not create ${remote_dir} on ${REMOTE_HOST}" >&2
+            exit 1
+        fi
+        # shellcheck disable=SC2064  # expand remote_dir now, at trap definition
+        trap "ssh -o BatchMode=yes '$REMOTE_HOST' 'rm -rf $remote_dir' </dev/null >/dev/null 2>&1 || true" EXIT
+        scp -q -o BatchMode=yes "$CHECKER" "$PROVE_WASM" "${REMOTE_HOST}:${remote_dir}/" </dev/null
+        if ssh -o BatchMode=yes "$REMOTE_HOST" \
+            "cd '$remote_dir' && python3 $(basename "$CHECKER") \
+                --wasm $(basename "$PROVE_WASM") --image '$IMAGE_REF'" </dev/null; then
+            echo "✅ instantiation: the image registers every host function the runtime imports"
+        else
+            echo "❌ instantiation NOT proven - see the reason above" >&2
+            FAIL=1
+        fi
+    else
+        if python3 "$CHECKER" --wasm "$PROVE_WASM" --image "$IMAGE_REF"; then
+            echo "✅ instantiation: the image registers every host function the runtime imports"
+        else
+            echo "❌ instantiation NOT proven - see the reason above" >&2
+            FAIL=1
+        fi
+    fi
+else
+    echo "⏭️  instantiation: not checked (pass --wasm <blob.wasm> to prove it)"
 fi
 
 # ---- Verdict ---------------------------------------------------------------
