@@ -312,20 +312,69 @@ check_extrinsic_names() {
     return
   fi
 
+  # `m` must be reset per file AND per compose_call. Without the per-file reset a
+  # module name leaks across files, so one file's call gets reported as another
+  # file's pallet — and without the per-call reset a non-literal module
+  # (`call_module=content_record.CONTENT_PALLET`) inherits the previous call's
+  # module. Both produced false findings that named a pallet the file never
+  # mentions.
+  #
+  # A non-literal module is resolved against module-level string constants
+  # (`CONTENT_PALLET = "StorageProof"`), including ones imported from another
+  # file, so `call_module=content_record.CONTENT_PALLET` is still checked
+  # against the right pallet instead of being guessed or dropped.
+  local consts="$map_dir.consts"
   awk '
+    match($0, /^[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=[[:space:]]*"[A-Za-z0-9_]+"[[:space:]]*$/) {
+      eq = index($0, "=")
+      name = substr($0, 1, eq - 1)
+      gsub(/[[:space:]]/, "", name)
+      value = substr($0, eq + 1)
+      gsub(/[[:space:]"]/, "", value)
+      print name " " value
+    }
+  ' "${py_files[@]}" | sort -u > "$consts"
+
+  awk -v constfile="$consts" '
+    BEGIN {
+      while ((getline line < constfile) > 0) {
+        split(line, parts, " ")
+        consts[parts[1]] = parts[2]
+      }
+      close(constfile)
+    }
+    FNR == 1 { m = "" }
+    /compose_call[[:space:]]*\(/ { m = "" }
     /call_module="[A-Za-z0-9_]+"/ {
       match($0, /call_module="[A-Za-z0-9_]+"/)
       m = substr($0, RSTART + 13, RLENGTH - 14)
     }
+    /call_module=/ && $0 !~ /call_module="[A-Za-z0-9_]+"/ {
+      m = ""
+      if (match($0, /call_module=[A-Za-z_][A-Za-z0-9_.]*/)) {
+        ref = substr($0, RSTART + 12, RLENGTH - 12)
+        n = split(ref, seg, ".")
+        if (seg[n] in consts) m = consts[seg[n]]
+      }
+    }
     /call_function="[a-z0-9_]+"/ {
       match($0, /call_function="[a-z0-9_]+"/)
       f = substr($0, RSTART + 15, RLENGTH - 16)
-      if (m != "") print FILENAME ":" FNR " " m " " f
+      if (m != "") { print FILENAME ":" FNR " " m " " f; m = "" }
+      else { print FILENAME ":" FNR " ?? " f }
     }
   ' "${py_files[@]}" | sort -u > "$sites"
+  rm -f "$consts"
 
-  local mod fname line crate_name dir fnlist owner_repo
+  local mod fname line crate_name dir fnlist owner_repo nonliteral=0
   while read -r line mod fname; do
+    # `??` marks a call whose module is a constant or variable rather than a
+    # literal. Resolving it needs evaluation the checker does not do, so it is
+    # reported as unverified instead of being attributed to a guessed pallet.
+    if [ "$mod" = "??" ]; then
+      nonliteral=$((nonliteral + 1))
+      continue
+    fi
     # $line is "<path>:<lineno>" — resolve the owning repo so per-repo
     # .doc-claims-ignore files are consulted for the right repo.
     owner_repo="$WS/$(printf '%s' "$line" | sed -E "s|^$WS/([^/]+)/.*|\1|")"
@@ -356,6 +405,9 @@ check_extrinsic_names() {
   rm -f "$modmap" "$map_dir" "$sites"
   if [ "$unresolved" -gt 0 ]; then
     skip "extrinsic names: $unresolved upstream pallet crate(s) not vendored locally — their call names were not verified"
+  fi
+  if [ "$nonliteral" -gt 0 ]; then
+    skip "extrinsic names: $nonliteral call(s) pass a non-literal call_module — their pallet was not resolved"
   fi
   if [ "$bad" -eq 0 ]; then
     pass "extrinsic names: every call exists in the runtime ($upstream upstream pallet(s) verified)"
