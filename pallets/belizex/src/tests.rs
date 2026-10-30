@@ -345,7 +345,7 @@ fn add_liquidity_rolls_back_when_a_later_leg_fails() {
         let pool = BelizeX::pool_account();
 
         let provider_before = Balances::free_balance(provider);
-        let pool_before = Balances::free_balance(&pool);
+        let pool_before = Balances::free_balance(pool);
         let reserves_before = BelizeX::trading_pairs(pair).expect("default pair must exist");
 
         MockAssetLedger::clear();
@@ -376,7 +376,7 @@ fn add_liquidity_rolls_back_when_a_later_leg_fails() {
             "the base leg was debited and not rolled back"
         );
         assert_eq!(
-            Balances::free_balance(&pool),
+            Balances::free_balance(pool),
             pool_before,
             "the pool kept the base leg of a failed add_liquidity"
         );
@@ -589,8 +589,7 @@ fn settlement_debits_wusdc_against_its_own_ledger() {
     let mut ext = new_test_ext();
     ext.execute_with(|| {
         WusdcBalances::<Test>::insert(1u64, 1_000);
-        let native_before =
-            <Balances as frame_support::traits::Currency<u64>>::free_balance(&1);
+        let native_before = <Balances as frame_support::traits::Currency<u64>>::free_balance(&1);
 
         assert_ok!(MockAssetLedger::transfer(AssetId::WUSDC, &1, &2, 400));
 
@@ -2555,7 +2554,7 @@ fn seed_wusdc_bbzd_pool(who: u64, base: u128, quote: u128, spend: u128) {
 
     // `add_liquidity` moved the whole deposit into the pool.
     WusdcBalances::<Test>::insert(who, spend);
-    assert_eq!(BelizeX::wusdc_balances(&who), spend);
+    assert_eq!(BelizeX::wusdc_balances(who), spend);
 }
 
 #[test]
@@ -2588,14 +2587,7 @@ fn oracle_guard_rejects_a_deviation_beyond_the_cap() {
         MockOracle::set_rate(Some(1_000_000));
 
         assert_noop!(
-            BelizeX::execute_trade(
-                RuntimeOrigin::signed(1),
-                WUSDC,
-                BBZD,
-                1_000_000,
-                0,
-                false,
-            ),
+            BelizeX::execute_trade(RuntimeOrigin::signed(1), WUSDC, BBZD, 1_000_000, 0, false,),
             Error::<Test>::SlippageExceeded
         );
     });
@@ -2609,14 +2601,7 @@ fn oracle_guard_fails_closed_without_an_oracle_rate() {
         MockOracle::set_rate(None);
 
         assert_noop!(
-            BelizeX::execute_trade(
-                RuntimeOrigin::signed(1),
-                WUSDC,
-                BBZD,
-                1_000_000,
-                0,
-                false,
-            ),
+            BelizeX::execute_trade(RuntimeOrigin::signed(1), WUSDC, BBZD, 1_000_000, 0, false,),
             Error::<Test>::OracleRateUnavailable
         );
     });
@@ -2667,7 +2652,12 @@ fn oracle_guard_does_not_gate_dalla_pairs() {
 /// List `(BBZD, WUSDC)` as governance and fund it at the same 2:1 ratio the
 /// canonical pool uses.
 fn seed_reverse_bbzd_wusdc_pool(who: u64) {
-    assert_ok!(BelizeX::create_trading_pair(RuntimeOrigin::root(), BBZD, WUSDC, 30));
+    assert_ok!(BelizeX::create_trading_pair(
+        RuntimeOrigin::root(),
+        BBZD,
+        WUSDC,
+        30
+    ));
 
     WusdcBalances::<Test>::insert(who, 1_000_000_000u128);
     let _ = Balances::make_free_balance_be(&who, 2_000_000_000_000u128);
@@ -2777,8 +2767,14 @@ fn reference_rate_inverts_when_bbzd_is_the_base_side() {
 
 #[test]
 fn reference_rate_falls_back_to_the_peg_only_when_the_observation_is_missing() {
-    assert_eq!(reference_rate(WUSDC, BBZD, None, Some(2_000_000)), Some(2_000_000));
-    assert_eq!(reference_rate(BBZD, WUSDC, None, Some(2_000_000)), Some(500_000));
+    assert_eq!(
+        reference_rate(WUSDC, BBZD, None, Some(2_000_000)),
+        Some(2_000_000)
+    );
+    assert_eq!(
+        reference_rate(BBZD, WUSDC, None, Some(2_000_000)),
+        Some(500_000)
+    );
 }
 
 #[test]
@@ -2795,16 +2791,28 @@ fn reference_rate_prefers_the_observation_over_the_peg() {
 fn reference_rate_treats_a_zero_observation_as_absent() {
     // Zero is not a rate; it would divide by zero on the reverse side.
     assert_eq!(reference_rate(WUSDC, BBZD, Some(0), None), None);
-    assert_eq!(reference_rate(WUSDC, BBZD, Some(0), Some(2_000_000)), Some(2_000_000));
-    assert_eq!(reference_rate(BBZD, WUSDC, Some(0), Some(2_000_000)), Some(500_000));
+    assert_eq!(
+        reference_rate(WUSDC, BBZD, Some(0), Some(2_000_000)),
+        Some(2_000_000)
+    );
+    assert_eq!(
+        reference_rate(BBZD, WUSDC, Some(0), Some(2_000_000)),
+        Some(500_000)
+    );
 }
 
 #[test]
 fn reference_rate_has_no_answer_without_a_bbzd_leg() {
     // DALLA floats. Returning a rate here would let the guard reject every
     // legitimate DALLA trade.
-    assert_eq!(reference_rate(0, WUSDC, Some(2_000_000), Some(2_000_000)), None);
-    assert_eq!(reference_rate(WUSDC, 0, Some(2_000_000), Some(2_000_000)), None);
+    assert_eq!(
+        reference_rate(0, WUSDC, Some(2_000_000), Some(2_000_000)),
+        None
+    );
+    assert_eq!(
+        reference_rate(WUSDC, 0, Some(2_000_000), Some(2_000_000)),
+        None
+    );
 }
 
 #[test]
@@ -2820,4 +2828,3 @@ fn a_peg_only_provider_keeps_the_pair_tradeable() {
         assert_eq!(with_peg, Some(2_000_000));
     });
 }
-

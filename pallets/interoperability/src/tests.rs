@@ -3379,8 +3379,6 @@ fn evm_address_registry_is_empty_at_genesis() {
 
 #[test]
 fn genesis_seeds_every_configured_chain() {
-    use frame_support::traits::Get;
-
     use crate::migrations::SEEDED_CHAINS;
 
     new_test_ext_with_bridge_configs().execute_with(|| {

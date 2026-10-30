@@ -143,7 +143,11 @@ impl SparseTree {
             }
         }
 
-        Ok(Self { depth, leaves, empty })
+        Ok(Self {
+            depth,
+            leaves,
+            empty,
+        })
     }
 
     pub fn depth(&self) -> usize {
@@ -197,7 +201,10 @@ impl SparseTree {
     /// `index` and differs at bit `L` — i.e. the node `index` is hashed against.
     pub fn path(&self, params: &PoseidonConfig<Fr>, index: u64) -> Result<Vec<Fr>, TreeError> {
         if index >= (1u64 << self.depth) {
-            return Err(TreeError::IndexOutOfRange { index, depth: self.depth });
+            return Err(TreeError::IndexOutOfRange {
+                index,
+                depth: self.depth,
+            });
         }
         let mut siblings = Vec::with_capacity(self.depth);
         for level in 0..self.depth {

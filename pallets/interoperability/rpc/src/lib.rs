@@ -42,7 +42,10 @@ pub struct Bridge<C, Block, AccountId, BlockNumber> {
 
 impl<C, Block, AccountId, BlockNumber> Bridge<C, Block, AccountId, BlockNumber> {
     pub fn new(client: Arc<C>) -> Self {
-        Self { client, _marker: PhantomData }
+        Self {
+            client,
+            _marker: PhantomData,
+        }
     }
 }
 
@@ -62,7 +65,8 @@ where
     ) -> RpcResult<Vec<(BridgeChain, ChainConfig)>> {
         let api = self.client.runtime_api();
         let at = at.unwrap_or_else(|| self.client.info().best_hash);
-        api.chain_configurations(at).map_err(runtime_error("chain configurations"))
+        api.chain_configurations(at)
+            .map_err(runtime_error("chain configurations"))
     }
 
     fn bridge_transactions(
@@ -71,7 +75,8 @@ where
     ) -> RpcResult<Vec<BridgeTransaction<AccountId, BlockNumber>>> {
         let api = self.client.runtime_api();
         let at = at.unwrap_or_else(|| self.client.info().best_hash);
-        api.bridge_transactions(at).map_err(runtime_error("bridge transactions"))
+        api.bridge_transactions(at)
+            .map_err(runtime_error("bridge transactions"))
     }
 }
 

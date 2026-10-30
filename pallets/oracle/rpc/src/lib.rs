@@ -38,7 +38,10 @@ pub struct Oracle<C, Block, BlockNumber> {
 
 impl<C, Block, BlockNumber> Oracle<C, Block, BlockNumber> {
     pub fn new(client: Arc<C>) -> Self {
-        Self { client, _marker: PhantomData }
+        Self {
+            client,
+            _marker: PhantomData,
+        }
     }
 }
 
@@ -62,7 +65,8 @@ where
     ) -> RpcResult<Vec<(CurrencyPair, u128, BlockNumber)>> {
         let api = self.client.runtime_api();
         let at = at.unwrap_or_else(|| self.client.info().best_hash);
-        api.manual_exchange_rates(at).map_err(runtime_error("manual exchange rates"))
+        api.manual_exchange_rates(at)
+            .map_err(runtime_error("manual exchange rates"))
     }
 }
 

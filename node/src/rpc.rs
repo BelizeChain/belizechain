@@ -69,10 +69,10 @@ where
     let FullDeps { client, pool } = deps;
 
     module.merge(System::new(client.clone(), pool).into_rpc())?;
+    module.merge(Governance::<C, Block, AccountId, BlockNumber>::new(client.clone()).into_rpc())?;
     module.merge(
-        Governance::<C, Block, AccountId, BlockNumber>::new(client.clone()).into_rpc(),
+        Staking::<C, Block, AccountId, Balance, BlockNumber>::new(client.clone()).into_rpc(),
     )?;
-    module.merge(Staking::<C, Block, AccountId, Balance, BlockNumber>::new(client.clone()).into_rpc())?;
     module.merge(Bridge::<C, Block, AccountId, BlockNumber>::new(client.clone()).into_rpc())?;
     module.merge(Oracle::<C, Block, BlockNumber>::new(client.clone()).into_rpc())?;
     let chain_info_client = client.clone();

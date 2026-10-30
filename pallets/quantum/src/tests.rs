@@ -2883,12 +2883,7 @@ fn create_auction_rejects_a_zero_duration() {
 fn create_auction_rejects_a_listed_nft() {
     new_test_ext().execute_with(|| {
         setup_nft(1);
-        assert_ok!(Quantum::list_nft(
-            RuntimeOrigin::signed(1),
-            0,
-            1_000,
-            100
-        ));
+        assert_ok!(Quantum::list_nft(RuntimeOrigin::signed(1), 0, 1_000, 100));
         assert_noop!(
             Quantum::create_auction(RuntimeOrigin::signed(1), 0, 1_000, AUCTION_DURATION),
             Error::<Test>::NFTAlreadyListed
@@ -3034,10 +3029,7 @@ fn settle_auction_moves_the_nft_and_pays_the_split() {
 
         let nft = Quantum::quantum_achievements(0).expect("nft exists");
         assert_eq!(nft.owner, 2, "the winner receives the NFT");
-        assert!(
-            Quantum::nft_auctions(0).is_none(),
-            "the auction is cleared"
-        );
+        assert!(Quantum::nft_auctions(0).is_none(), "the auction is cleared");
     });
 }
 

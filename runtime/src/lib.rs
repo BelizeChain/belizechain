@@ -2861,12 +2861,7 @@ impl pallet_belize_belizex::BelizeXOracleProvider<AccountId> for BelizeXOraclePr
             base: Currency::USD,
             quote: Currency::BZD,
         });
-        pallet_belize_belizex::reference_rate(
-            base_asset,
-            quote_asset,
-            observed,
-            Some(BBZD_USD_PEG),
-        )
+        pallet_belize_belizex::reference_rate(base_asset, quote_asset, observed, Some(BBZD_USD_PEG))
     }
 
     fn is_tourism_merchant(account: &AccountId) -> bool {

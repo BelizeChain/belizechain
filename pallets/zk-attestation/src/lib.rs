@@ -59,12 +59,10 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+use belizechain_zk_attestation::{verify_attestation_inputs, AttestationInputs, FIELD_BYTES};
 use frame_support::{dispatch::DispatchResult, ensure, pallet_prelude::*, BoundedVec};
 use frame_system::pallet_prelude::*;
 use sp_std::vec::Vec;
-use belizechain_zk_attestation::{
-    verify_attestation_inputs, AttestationInputs, FIELD_BYTES,
-};
 
 pub use pallet::*;
 
@@ -182,8 +180,15 @@ pub mod pallet {
     /// fresh one. The pallet does not need to know what the record is to know it
     /// has been used.
     #[pallet::storage]
-    pub type UsedNullifiers<T: Config> =
-        StorageDoubleMap<_, Blake2_128Concat, u32, Blake2_128Concat, [u8; FIELD_BYTES], (), OptionQuery>;
+    pub type UsedNullifiers<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        u32,
+        Blake2_128Concat,
+        [u8; FIELD_BYTES],
+        (),
+        OptionQuery,
+    >;
 
     /// Total attestations accepted per registry set. Observability only — never
     /// consulted for authorisation.
@@ -309,8 +314,9 @@ pub mod pallet {
         ) -> DispatchResult {
             T::RegistryAuthority::ensure_origin(origin)?;
 
-            let key: BoundedVec<u8, T::MaxVerifyingKeyLen> =
-                key.try_into().map_err(|_| Error::<T>::VerifyingKeyTooLong)?;
+            let key: BoundedVec<u8, T::MaxVerifyingKeyLen> = key
+                .try_into()
+                .map_err(|_| Error::<T>::VerifyingKeyTooLong)?;
 
             VerifyingKeys::<T>::insert(circuit_version, key);
             Self::deposit_event(Event::VerifyingKeySet { circuit_version });
@@ -358,10 +364,7 @@ pub mod pallet {
 
             // The prover must be proving against the registry this pallet holds,
             // not against one of their own choosing.
-            ensure!(
-                inputs.set_root == registry.root,
-                Error::<T>::ProofRejected
-            );
+            ensure!(inputs.set_root == registry.root, Error::<T>::ProofRejected);
             ensure!(
                 inputs.threshold_supported(),
                 Error::<T>::UnsupportedThreshold

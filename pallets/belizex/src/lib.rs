@@ -535,13 +535,8 @@ pub mod pallet {
     /// the bridge mint hook) and leaves through `burn_wusdc`.
     #[pallet::storage]
     #[pallet::getter(fn wusdc_balances)]
-    pub type WusdcBalances<T: Config> = StorageMap<
-        _,
-        Blake2_128Concat,
-        T::AccountId,
-        u128,
-        ValueQuery,
-    >;
+    pub type WusdcBalances<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, u128, ValueQuery>;
 
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
@@ -644,7 +639,9 @@ pub mod pallet {
             let pair_key: (u8, u8) = (AssetId::WUSDC.as_u8(), AssetId::BBZD.as_u8());
             let Some(mut pair) = TradingPairs::<T>::get(pair_key) else {
                 DevSeedDone::<T>::put(true);
-                return T::DbWeight::get().reads(1).saturating_add(T::DbWeight::get().writes(1));
+                return T::DbWeight::get()
+                    .reads(1)
+                    .saturating_add(T::DbWeight::get().writes(1));
             };
 
             // Minimal reserves aligned with integration tests (~2.0 price)
@@ -703,7 +700,6 @@ pub mod pallet {
                 quote_amount,
                 lp_tokens,
             });
-
 
             DevSeedDone::<T>::put(true);
             // DOS-008 FIX: Return actual consumed weight instead of zero.
@@ -803,15 +799,9 @@ pub mod pallet {
             active: bool,
         },
         /// Wrapped USDC minted into a holder's ledger (bridge deposit)
-        WusdcIssued {
-            account: T::AccountId,
-            amount: u128,
-        },
+        WusdcIssued { account: T::AccountId, amount: u128 },
         /// Wrapped USDC burned from a holder's ledger (bridge withdrawal)
-        WusdcBurned {
-            account: T::AccountId,
-            amount: u128,
-        },
+        WusdcBurned { account: T::AccountId, amount: u128 },
     }
 
     #[pallet::error]
@@ -1631,10 +1621,7 @@ pub mod pallet {
                 *balance = balance.saturating_add(amount);
             });
 
-            Self::deposit_event(Event::WusdcIssued {
-                account,
-                amount,
-            });
+            Self::deposit_event(Event::WusdcIssued { account, amount });
 
             Ok(())
         }

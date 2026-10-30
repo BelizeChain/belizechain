@@ -112,7 +112,10 @@ mod tests {
         for seed in 0u64..64 {
             let value = Fr::from(seed.wrapping_mul(0x9e37_79b9_7f4a_7c15).max(1));
             let bytes = field_to_bytes(value);
-            assert!(is_canonical(&bytes), "encoded output must always be canonical");
+            assert!(
+                is_canonical(&bytes),
+                "encoded output must always be canonical"
+            );
             assert_eq!(canonical_field(&bytes), Some(value));
         }
     }

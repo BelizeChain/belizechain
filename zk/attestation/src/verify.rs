@@ -117,10 +117,12 @@ pub fn verify_attestation(
     proof_bytes: &[u8],
     public_inputs: &[[u8; 32]],
 ) -> Result<(), VerifyError> {
-    let vk = VerifyingKey::<Bls12_381>::deserialize_with_mode(vk_bytes, Compress::Yes, Validate::Yes)
-        .map_err(|_| VerifyError::BadVerifyingKey)?;
-    let proof = Proof::<Bls12_381>::deserialize_with_mode(proof_bytes, Compress::Yes, Validate::Yes)
-        .map_err(|_| VerifyError::BadProof)?;
+    let vk =
+        VerifyingKey::<Bls12_381>::deserialize_with_mode(vk_bytes, Compress::Yes, Validate::Yes)
+            .map_err(|_| VerifyError::BadVerifyingKey)?;
+    let proof =
+        Proof::<Bls12_381>::deserialize_with_mode(proof_bytes, Compress::Yes, Validate::Yes)
+            .map_err(|_| VerifyError::BadProof)?;
 
     // `gamma_abc_g1` has one entry per public input plus the constant term.
     let expected = vk.gamma_abc_g1.len().saturating_sub(1);
@@ -133,8 +135,11 @@ pub fn verify_attestation(
         inputs.push(canonical_field(raw).ok_or(VerifyError::NonCanonicalInput)?);
     }
 
-    match Groth16::<Bls12_381>::verify_proof(&ark_groth16::prepare_verifying_key(&vk), &proof, &inputs)
-    {
+    match Groth16::<Bls12_381>::verify_proof(
+        &ark_groth16::prepare_verifying_key(&vk),
+        &proof,
+        &inputs,
+    ) {
         Ok(true) => Ok(()),
         // `false` is a well-formed but false statement. An `Err` here means the
         // arithmetic could not even be evaluated; from a caller's point of view
@@ -148,8 +153,9 @@ pub fn verify_attestation(
 /// Lets the pallet reject an arity mismatch before paying for a decode of the
 /// proof, and lets the prover CLI check its own output.
 pub fn expected_input_count(vk_bytes: &[u8]) -> Option<usize> {
-    let vk = VerifyingKey::<Bls12_381>::deserialize_with_mode(vk_bytes, Compress::Yes, Validate::Yes)
-        .ok()?;
+    let vk =
+        VerifyingKey::<Bls12_381>::deserialize_with_mode(vk_bytes, Compress::Yes, Validate::Yes)
+            .ok()?;
     Some(vk.gamma_abc_g1.len().saturating_sub(1))
 }
 
@@ -167,7 +173,10 @@ mod tests {
 
     #[test]
     fn an_empty_verifying_key_is_refused() {
-        assert_eq!(verify_attestation(&[], &[], &[]), Err(VerifyError::BadVerifyingKey));
+        assert_eq!(
+            verify_attestation(&[], &[], &[]),
+            Err(VerifyError::BadVerifyingKey)
+        );
     }
 
     #[test]
@@ -222,7 +231,10 @@ mod tests {
             threshold: [0u8; FIELD_BYTES],
             nullifier: [9u8; FIELD_BYTES],
         };
-        assert_eq!(AttestationInputs::from_slice(&inputs.to_array()), Some(inputs));
+        assert_eq!(
+            AttestationInputs::from_slice(&inputs.to_array()),
+            Some(inputs)
+        );
         assert_eq!(AttestationInputs::from_slice(&[[0u8; 32]; 2]), None);
     }
 }

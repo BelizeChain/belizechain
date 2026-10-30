@@ -73,8 +73,7 @@ fn register_content_stores_record_and_reserves_deposit() {
             meta(br#"{"size":1024,"mime":"text/plain"}"#),
         ));
 
-        let record =
-            crate::ContentMetadata::<Runtime>::get(content_id).expect("record must exist");
+        let record = crate::ContentMetadata::<Runtime>::get(content_id).expect("record must exist");
         assert_eq!(record.owner, 1u64);
         assert_eq!(record.ipfs_cid.as_slice(), b"bafybeigdyrzt");
         assert_eq!(
@@ -113,8 +112,7 @@ fn register_content_rejects_an_existing_record() {
         );
 
         // The original owner's row is untouched by the rejected attempt.
-        let record =
-            crate::ContentMetadata::<Runtime>::get(content_id).expect("record must exist");
+        let record = crate::ContentMetadata::<Runtime>::get(content_id).expect("record must exist");
         assert_eq!(record.owner, 1u64);
         assert_eq!(record.ipfs_cid.as_slice(), b"cid-one");
     });
@@ -141,8 +139,7 @@ fn update_content_metadata_is_owner_only() {
             Error::<Runtime>::NotContentOwner
         );
 
-        let record =
-            crate::ContentMetadata::<Runtime>::get(content_id).expect("record must exist");
+        let record = crate::ContentMetadata::<Runtime>::get(content_id).expect("record must exist");
         assert_eq!(record.ipfs_cid.as_slice(), b"cid-one");
 
         advance(5);
@@ -153,8 +150,7 @@ fn update_content_metadata_is_owner_only() {
             meta(b"updated"),
         ));
 
-        let record =
-            crate::ContentMetadata::<Runtime>::get(content_id).expect("record must exist");
+        let record = crate::ContentMetadata::<Runtime>::get(content_id).expect("record must exist");
         assert_eq!(record.ipfs_cid.as_slice(), b"cid-updated");
         assert_eq!(record.metadata.as_slice(), b"updated");
         assert!(record.updated_at > record.registered_at);
@@ -189,10 +185,7 @@ fn deregister_content_returns_the_deposit() {
             content_id
         ));
         assert!(!crate::ContentMetadata::<Runtime>::contains_key(content_id));
-        assert_eq!(
-            pallet_balances::Pallet::<Runtime>::reserved_balance(1),
-            0
-        );
+        assert_eq!(pallet_balances::Pallet::<Runtime>::reserved_balance(1), 0);
     });
 }
 

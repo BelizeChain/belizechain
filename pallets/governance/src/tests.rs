@@ -4386,10 +4386,9 @@ fn elections_opened_in_the_same_block_have_separate_candidate_pools() {
             b"Cayo platform".to_vec(),
         ));
 
-        let belize_candidates: Vec<u64> =
-            crate::ElectionCandidates::<Test>::iter_prefix(belize.id)
-                .map(|(account, _)| account)
-                .collect();
+        let belize_candidates: Vec<u64> = crate::ElectionCandidates::<Test>::iter_prefix(belize.id)
+            .map(|(account, _)| account)
+            .collect();
         let cayo_candidates: Vec<u64> = crate::ElectionCandidates::<Test>::iter_prefix(cayo.id)
             .map(|(account, _)| account)
             .collect();

@@ -187,7 +187,12 @@ fn publishing_a_root_records_it_and_emits() {
             ZkAttestation::current_root(SET_ID),
             Some(fixture().inputs.set_root)
         );
-        assert_eq!(RegistryRoots::<Test>::get(SET_ID).expect("stored").leaf_count, 2);
+        assert_eq!(
+            RegistryRoots::<Test>::get(SET_ID)
+                .expect("stored")
+                .leaf_count,
+            2
+        );
         assert!(System::events().iter().any(|record| matches!(
             record.event,
             RuntimeEvent::ZkAttestation(Event::RegistryRootSet { set_id: SET_ID, .. })
@@ -216,11 +221,18 @@ fn an_honest_proof_is_accepted_and_consumes_its_nullifier() {
 
         assert_ok!(submit(1, fixture.proof.clone(), &fixture.inputs.to_array()));
 
-        assert!(ZkAttestation::is_nullifier_used(SET_ID, &fixture.inputs.nullifier));
+        assert!(ZkAttestation::is_nullifier_used(
+            SET_ID,
+            &fixture.inputs.nullifier
+        ));
         assert_eq!(crate::AttestationCount::<Test>::get(SET_ID), 1);
         assert!(System::events().iter().any(|record| matches!(
             record.event,
-            RuntimeEvent::ZkAttestation(Event::AttestationAccepted { set_id: SET_ID, whose: 1, .. })
+            RuntimeEvent::ZkAttestation(Event::AttestationAccepted {
+                set_id: SET_ID,
+                whose: 1,
+                ..
+            })
         )));
     });
 }
@@ -397,7 +409,10 @@ fn a_rejected_proof_leaves_no_trace() {
         );
 
         // The honest nullifier is still free, and the counter did not move.
-        assert!(!ZkAttestation::is_nullifier_used(SET_ID, &fixture.inputs.nullifier));
+        assert!(!ZkAttestation::is_nullifier_used(
+            SET_ID,
+            &fixture.inputs.nullifier
+        ));
         assert_eq!(crate::AttestationCount::<Test>::get(SET_ID), 0);
     });
 }

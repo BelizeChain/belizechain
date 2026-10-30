@@ -157,15 +157,22 @@ fn load_records(path: &str) -> Result<Vec<Record>, String> {
             ));
         }
         let parse_u64 = |text: &str, what: &str| -> Result<u64, String> {
-            text.parse()
-                .map_err(|_| format!("{path}:{}: `{what}` must be a decimal u64, found `{text}`", line_number + 1))
+            text.parse().map_err(|_| {
+                format!(
+                    "{path}:{}: `{what}` must be a decimal u64, found `{text}`",
+                    line_number + 1
+                )
+            })
         };
         records.push(Record {
             index: parse_u64(fields[0], "index")?,
-            subject: read_field(fields[1]).map_err(|error| format!("{path}:{}: {error}", line_number + 1))?,
+            subject: read_field(fields[1])
+                .map_err(|error| format!("{path}:{}: {error}", line_number + 1))?,
             value: parse_u64(fields[2], "value")?,
-            tag: read_field(fields[3]).map_err(|error| format!("{path}:{}: {error}", line_number + 1))?,
-            salt: read_field(fields[4]).map_err(|error| format!("{path}:{}: {error}", line_number + 1))?,
+            tag: read_field(fields[3])
+                .map_err(|error| format!("{path}:{}: {error}", line_number + 1))?,
+            salt: read_field(fields[4])
+                .map_err(|error| format!("{path}:{}: {error}", line_number + 1))?,
         });
     }
     if records.is_empty() {
@@ -181,7 +188,12 @@ fn build_tree(records: &[Record]) -> Result<(SparseTree, Fr), String> {
         .map(|record| {
             let leaf = belizechain_zk_attestation::leaf_hash(
                 &params,
-                belizechain_zk_attestation::record_hash(&params, record.subject, Fr::from(record.value), record.tag),
+                belizechain_zk_attestation::record_hash(
+                    &params,
+                    record.subject,
+                    Fr::from(record.value),
+                    record.tag,
+                ),
                 record.salt,
             );
             (record.index, leaf)
@@ -201,16 +213,21 @@ fn cmd_setup(flags: &Flags) -> Result<(), String> {
     // Any shape works for key generation; the witness values are irrelevant to
     // the CRS, only the circuit's structure matters.
     let circuit = AttestationCircuit::empty();
-    let setup: Setup =
-        belizechain_zk_attestation::setup_for_testing(&circuit).map_err(describe)?;
+    let setup: Setup = belizechain_zk_attestation::setup_for_testing(&circuit).map_err(describe)?;
 
     std::fs::write(format!("{out}/vk.bin"), &setup.verifying_key)
         .map_err(|error| format!("{out}/vk.bin: {error}"))?;
     std::fs::write(format!("{out}/pk.bin"), &setup.proving_key)
         .map_err(|error| format!("{out}/pk.bin: {error}"))?;
 
-    println!("verifying key: {out}/vk.bin ({} bytes)", setup.verifying_key.len());
-    println!("proving key:   {out}/pk.bin ({} bytes)", setup.proving_key.len());
+    println!(
+        "verifying key: {out}/vk.bin ({} bytes)",
+        setup.verifying_key.len()
+    );
+    println!(
+        "proving key:   {out}/pk.bin ({} bytes)",
+        setup.proving_key.len()
+    );
     eprintln!(
         "WARNING: this CRS came from a local, single-party setup. Its toxic waste is\n\
          in this process's memory. Anyone who ran this can forge proofs. Do not use\n\
@@ -223,7 +240,10 @@ fn cmd_root(flags: &Flags) -> Result<(), String> {
     let records = load_records(flags.get("records")?)?;
     let (_, root) = build_tree(&records)?;
     println!("{} records", records.len());
-    println!("root: 0x{}", hex(&belizechain_zk_attestation::field_to_public_bytes(root)));
+    println!(
+        "root: 0x{}",
+        hex(&belizechain_zk_attestation::field_to_public_bytes(root))
+    );
     Ok(())
 }
 
@@ -239,7 +259,12 @@ fn cmd_prove(flags: &Flags) -> Result<(), String> {
         .ok_or_else(|| format!("no record at index {index}"))?;
 
     let difference_bits = belizechain_zk_attestation::difference_bits(record.value, threshold)
-        .ok_or_else(|| format!("value {} is below threshold {threshold}; no valid proof exists", record.value))?;
+        .ok_or_else(|| {
+            format!(
+                "value {} is below threshold {threshold}; no valid proof exists",
+                record.value
+            )
+        })?;
 
     let (tree, root) = build_tree(&records)?;
     let path = tree

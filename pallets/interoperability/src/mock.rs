@@ -271,8 +271,6 @@ pub fn run_to_block(n: u64) {
 /// Separate from [`new_test_ext`] on purpose: most tests insert only the one
 /// chain they need, and a pre-seeded registry would hide a wrong key.
 pub fn new_test_ext_with_bridge_configs() -> sp_io::TestExternalities {
-    use frame_support::traits::Get;
-
     let mut t = frame_system::GenesisConfig::<Test>::default()
         .build_storage()
         .unwrap();

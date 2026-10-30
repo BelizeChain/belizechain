@@ -18,8 +18,8 @@ use frame_support::{
 };
 use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
-use sp_runtime::traits::{SaturatedConversion, Saturating, Zero};
 use sp_runtime::traits::AccountIdConversion;
+use sp_runtime::traits::{SaturatedConversion, Saturating, Zero};
 
 pub use pallet::*;
 
@@ -1630,14 +1630,8 @@ pub mod pallet {
                 !NFTAuctions::<T>::contains_key(nft_id),
                 Error::<T>::NFTAlreadyListed
             );
-            ensure!(
-                start_price > Zero::zero(),
-                Error::<T>::InvalidAmount
-            );
-            ensure!(
-                duration > Zero::zero(),
-                Error::<T>::InvalidDuration
-            );
+            ensure!(start_price > Zero::zero(), Error::<T>::InvalidAmount);
+            ensure!(duration > Zero::zero(), Error::<T>::InvalidDuration);
 
             let started_at = frame_system::Pallet::<T>::block_number();
             let end_block = started_at.saturating_add(duration);
@@ -1699,12 +1693,7 @@ pub mod pallet {
 
             // Take the new bid first. If the bidder cannot pay, nothing has been
             // refunded yet and the call aborts cleanly.
-            T::Currency::transfer(
-                &bidder,
-                &escrow,
-                amount,
-                ExistenceRequirement::KeepAlive,
-            )?;
+            T::Currency::transfer(&bidder, &escrow, amount, ExistenceRequirement::KeepAlive)?;
 
             // Refund the outbid bidder. `AllowDeath` because the escrow still
             // holds the new bid afterwards — it only "dies" in the sense of
@@ -1839,10 +1828,7 @@ pub mod pallet {
 
             let auction = NFTAuctions::<T>::get(nft_id).ok_or(Error::<T>::AuctionNotFound)?;
             ensure!(auction.seller == seller, Error::<T>::NotAuthorized);
-            ensure!(
-                auction.current_bidder.is_none(),
-                Error::<T>::AuctionHasBids
-            );
+            ensure!(auction.current_bidder.is_none(), Error::<T>::AuctionHasBids);
 
             NFTAuctions::<T>::remove(nft_id);
 

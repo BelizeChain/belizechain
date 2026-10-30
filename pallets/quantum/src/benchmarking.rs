@@ -498,7 +498,9 @@ mod benchmarks {
         place_bid(RawOrigin::Signed(bidder.clone()), nft_id, amount);
 
         assert_eq!(
-            NFTAuctions::<T>::get(nft_id).expect("auction exists").current_bidder,
+            NFTAuctions::<T>::get(nft_id)
+                .expect("auction exists")
+                .current_bidder,
             Some(bidder)
         );
     }
@@ -539,9 +541,10 @@ mod benchmarks {
         #[extrinsic_call]
         settle_auction(RawOrigin::Signed(caller), nft_id);
 
-
         assert_eq!(
-            QuantumAchievements::<T>::get(nft_id).expect("nft exists").owner,
+            QuantumAchievements::<T>::get(nft_id)
+                .expect("nft exists")
+                .owner,
             bidder
         );
     }

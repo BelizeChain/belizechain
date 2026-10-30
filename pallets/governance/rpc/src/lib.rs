@@ -55,7 +55,10 @@ pub struct Governance<C, Block, AccountId, BlockNumber> {
 
 impl<C, Block, AccountId, BlockNumber> Governance<C, Block, AccountId, BlockNumber> {
     pub fn new(client: Arc<C>) -> Self {
-        Self { client, _marker: PhantomData }
+        Self {
+            client,
+            _marker: PhantomData,
+        }
     }
 }
 
@@ -75,7 +78,8 @@ where
     ) -> RpcResult<Vec<CouncilMember<AccountId, BlockNumber>>> {
         let api = self.client.runtime_api();
         let at = at.unwrap_or_else(|| self.client.info().best_hash);
-        api.council_members(at).map_err(runtime_error("council members"))
+        api.council_members(at)
+            .map_err(runtime_error("council members"))
     }
 
     fn council_term(&self, at: Option<Block::Hash>) -> RpcResult<u32> {
@@ -90,13 +94,15 @@ where
     ) -> RpcResult<Vec<(BelizeDistrict, Election<BlockNumber>)>> {
         let api = self.client.runtime_api();
         let at = at.unwrap_or_else(|| self.client.info().best_hash);
-        api.district_elections(at).map_err(runtime_error("district elections"))
+        api.district_elections(at)
+            .map_err(runtime_error("district elections"))
     }
 
     fn next_proposal_id(&self, at: Option<Block::Hash>) -> RpcResult<u32> {
         let api = self.client.runtime_api();
         let at = at.unwrap_or_else(|| self.client.info().best_hash);
-        api.next_proposal_id(at).map_err(runtime_error("next proposal id"))
+        api.next_proposal_id(at)
+            .map_err(runtime_error("next proposal id"))
     }
 }
 

@@ -1083,10 +1083,7 @@ pub mod pallet {
         /// fallback for a property registered before its area was zoned.
         pub fn effective_zoning(property_id: PropertyId) -> Option<ZoningType> {
             let property = Self::properties(property_id)?;
-            Some(
-                Self::get_zoning_for_coordinates(property.coordinates)
-                    .unwrap_or(property.zoning),
-            )
+            Some(Self::get_zoning_for_coordinates(property.coordinates).unwrap_or(property.zoning))
         }
 
         /// Get properties owned by account

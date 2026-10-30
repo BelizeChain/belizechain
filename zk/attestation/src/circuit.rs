@@ -171,15 +171,22 @@ fn alloc_fields(
         .collect()
 }
 
-fn alloc_public(cs: &ConstraintSystemRef<Fr>, value: Option<Fr>) -> Result<FpVar<Fr>, SynthesisError> {
-    FpVar::new_input(cs.clone(), || value.ok_or(SynthesisError::AssignmentMissing))
+fn alloc_public(
+    cs: &ConstraintSystemRef<Fr>,
+    value: Option<Fr>,
+) -> Result<FpVar<Fr>, SynthesisError> {
+    FpVar::new_input(cs.clone(), || {
+        value.ok_or(SynthesisError::AssignmentMissing)
+    })
 }
 
 fn alloc_witness(
     cs: &ConstraintSystemRef<Fr>,
     value: Option<Fr>,
 ) -> Result<FpVar<Fr>, SynthesisError> {
-    FpVar::new_witness(cs.clone(), || value.ok_or(SynthesisError::AssignmentMissing))
+    FpVar::new_witness(cs.clone(), || {
+        value.ok_or(SynthesisError::AssignmentMissing)
+    })
 }
 
 fn generate_constraints_impl(
@@ -266,7 +273,11 @@ pub fn public_bytes_to_field(bytes: &[u8; 32]) -> Option<Fr> {
 /// `value < threshold` (no valid proof exists in that case).
 pub fn difference_bits(value: u64, threshold: u64) -> Option<Vec<bool>> {
     let difference = value.checked_sub(threshold)?;
-    Some((0..VALUE_BITS).map(|i| (difference >> i) & 1 == 1).collect())
+    Some(
+        (0..VALUE_BITS)
+            .map(|i| (difference >> i) & 1 == 1)
+            .collect(),
+    )
 }
 
 /// Little-endian bits of a `u64`, padded to `VALUE_BITS`.
@@ -318,7 +329,9 @@ impl core::fmt::Display for ProverError {
         let message = match self {
             Self::MissingWitness => "the witness is incomplete",
             Self::SetupFailed => "parameter generation failed",
-            Self::ProveFailed => "proof construction failed; the witness does not satisfy the circuit",
+            Self::ProveFailed => {
+                "proof construction failed; the witness does not satisfy the circuit"
+            }
             Self::SerializationFailed => "a key or proof could not be encoded",
         };
         f.write_str(message)
@@ -354,8 +367,8 @@ pub fn setup_for_testing(circuit: &AttestationCircuit) -> Result<Setup, ProverEr
     use ark_snark::SNARK;
     use ark_std::rand::{rngs::StdRng, SeedableRng};
 
-    let mut rng = StdRng::from_rng(ark_std::rand::thread_rng())
-        .map_err(|_| ProverError::SetupFailed)?;
+    let mut rng =
+        StdRng::from_rng(ark_std::rand::thread_rng()).map_err(|_| ProverError::SetupFailed)?;
     let (proving_key, verifying_key) =
         Groth16::<Bls12_381>::circuit_specific_setup(circuit.clone(), &mut rng)
             .map_err(|_| ProverError::SetupFailed)?;
@@ -380,7 +393,10 @@ pub fn setup_for_testing(circuit: &AttestationCircuit) -> Result<Setup, ProverEr
 /// The returned inputs are read from the circuit itself rather than passed
 /// alongside, so a caller cannot publish a proof next to inputs it does not
 /// match.
-pub fn prove(circuit: &AttestationCircuit, setup: &Setup) -> Result<AttestationMaterial, ProverError> {
+pub fn prove(
+    circuit: &AttestationCircuit,
+    setup: &Setup,
+) -> Result<AttestationMaterial, ProverError> {
     use ark_bls12_381::Bls12_381;
     use ark_groth16::{Groth16, ProvingKey};
     use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Compress, Validate};
@@ -396,8 +412,8 @@ pub fn prove(circuit: &AttestationCircuit, setup: &Setup) -> Result<AttestationM
     )
     .map_err(|_| ProverError::SetupFailed)?;
 
-    let mut rng = StdRng::from_rng(ark_std::rand::thread_rng())
-        .map_err(|_| ProverError::ProveFailed)?;
+    let mut rng =
+        StdRng::from_rng(ark_std::rand::thread_rng()).map_err(|_| ProverError::ProveFailed)?;
     let proof = Groth16::<Bls12_381>::prove(&proving_key, circuit.clone(), &mut rng)
         .map_err(|_| ProverError::ProveFailed)?;
 
@@ -415,14 +431,16 @@ pub fn prove(circuit: &AttestationCircuit, setup: &Setup) -> Result<AttestationM
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tree::{hash_two, leaf_hash, poseidon_config, record_hash, root_from_path, SparseTree};
+    use crate::tree::{
+        hash_two, leaf_hash, poseidon_config, record_hash, root_from_path, SparseTree,
+    };
     use crate::verify::verify_attestation;
     use crate::verify::{PUBLIC_INPUT_BYTES, PUBLIC_INPUT_COUNT};
     use ark_bls12_381::Bls12_381;
     use ark_groth16::{Groth16, Proof, VerifyingKey};
+    use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
     use ark_serialize::{CanonicalDeserialize, Compress, Validate};
     use ark_snark::SNARK;
-    use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
 
     const HONEST_VALUE: u64 = 5_000;
     const HONEST_THRESHOLD: u64 = 1_000;
@@ -455,12 +473,16 @@ mod tests {
         );
 
         let index = 3u64;
-        let tree = SparseTree::new(&params, [(index, my_leaf), (0, decoy_a), (9, decoy_b)]).unwrap();
+        let tree =
+            SparseTree::new(&params, [(index, my_leaf), (0, decoy_a), (9, decoy_b)]).unwrap();
         let root = tree.root(&params);
         let path = tree.path(&params, index).unwrap();
 
         // The native walk must agree with the tree, or every circuit proof fails.
-        assert_eq!(root_from_path(&params, my_leaf, index, &path).unwrap(), root);
+        assert_eq!(
+            root_from_path(&params, my_leaf, index, &path).unwrap(),
+            root
+        );
 
         let index_bits = (0..TREE_DEPTH).map(|i| (index >> i) & 1 == 1).collect();
         let nullifier = hash_two(&params, salt, mine);
@@ -514,10 +536,15 @@ mod tests {
             Validate::Yes,
         )
         .unwrap();
-        let proof =
-            Proof::<Bls12_381>::deserialize_with_mode(&material.proof[..], Compress::Yes, Validate::Yes)
-                .unwrap();
-        assert!(Groth16::<Bls12_381>::verify(&vk, &public_scalars(&fixture.circuit), &proof).unwrap());
+        let proof = Proof::<Bls12_381>::deserialize_with_mode(
+            &material.proof[..],
+            Compress::Yes,
+            Validate::Yes,
+        )
+        .unwrap();
+        assert!(
+            Groth16::<Bls12_381>::verify(&vk, &public_scalars(&fixture.circuit), &proof).unwrap()
+        );
 
         assert_eq!(
             material.inputs,
@@ -534,16 +561,21 @@ mod tests {
         let (vk_bytes, proof_bytes) = prove_fixture(&fixture);
 
         // Confirm the serialized round trip is faithful before trusting it.
-        let proof =
-            Proof::<Bls12_381>::deserialize_with_mode(&proof_bytes[..], Compress::Yes, Validate::Yes)
-                .unwrap();
+        let proof = Proof::<Bls12_381>::deserialize_with_mode(
+            &proof_bytes[..],
+            Compress::Yes,
+            Validate::Yes,
+        )
+        .unwrap();
         let vk = VerifyingKey::<Bls12_381>::deserialize_with_mode(
             &vk_bytes[..],
             Compress::Yes,
             Validate::Yes,
         )
         .unwrap();
-        assert!(Groth16::<Bls12_381>::verify(&vk, &public_scalars(&fixture.circuit), &proof).unwrap());
+        assert!(
+            Groth16::<Bls12_381>::verify(&vk, &public_scalars(&fixture.circuit), &proof).unwrap()
+        );
 
         // And through the exact path the chain uses.
         verify_attestation(&vk_bytes, &proof_bytes, &public_inputs(&fixture.circuit))
@@ -620,7 +652,10 @@ mod tests {
         // The honest prover cannot even assemble a witness: there is no
         // non-negative difference to decompose.
         assert!(difference_bits(999, 1_000).is_none());
-        assert!(difference_bits(1_000, 1_000).is_some(), "the threshold is inclusive");
+        assert!(
+            difference_bits(1_000, 1_000).is_some(),
+            "the threshold is inclusive"
+        );
     }
 
     #[test]

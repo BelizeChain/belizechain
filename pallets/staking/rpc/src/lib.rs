@@ -48,7 +48,10 @@ pub struct Staking<C, Block, AccountId, Balance, BlockNumber> {
 
 impl<C, Block, AccountId, Balance, BlockNumber> Staking<C, Block, AccountId, Balance, BlockNumber> {
     pub fn new(client: Arc<C>) -> Self {
-        Self { client, _marker: PhantomData }
+        Self {
+            client,
+            _marker: PhantomData,
+        }
     }
 }
 
@@ -75,19 +78,22 @@ where
     fn validator_count(&self, at: Option<Block::Hash>) -> RpcResult<u32> {
         let api = self.client.runtime_api();
         let at = at.unwrap_or_else(|| self.client.info().best_hash);
-        api.validator_count(at).map_err(runtime_error("validator count"))
+        api.validator_count(at)
+            .map_err(runtime_error("validator count"))
     }
 
     fn current_epoch(&self, at: Option<Block::Hash>) -> RpcResult<u32> {
         let api = self.client.runtime_api();
         let at = at.unwrap_or_else(|| self.client.info().best_hash);
-        api.current_epoch(at).map_err(runtime_error("current epoch"))
+        api.current_epoch(at)
+            .map_err(runtime_error("current epoch"))
     }
 
     fn last_reward_distribution(&self, at: Option<Block::Hash>) -> RpcResult<Option<BlockNumber>> {
         let api = self.client.runtime_api();
         let at = at.unwrap_or_else(|| self.client.info().best_hash);
-        api.last_reward_distribution(at).map_err(runtime_error("last reward distribution"))
+        api.last_reward_distribution(at)
+            .map_err(runtime_error("last reward distribution"))
     }
 }
 
