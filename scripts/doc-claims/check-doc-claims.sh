@@ -127,11 +127,20 @@ md_files() { # $1 = dir
   # checker walks its own source repo and reports belizechain's workspace-relative
   # links as dead in whatever repo happens to be calling it — which is exactly what
   # happened on the first run, in all seven fetching repos.
+  #
+  # .github/skills/ is excluded for the same class of reason as the archives: a
+  # skill is a third-party instruction bundle whose markdown uses deliberate
+  # placeholder links — `path/to/filename.ext` in an example invocation, and bare
+  # identifiers such as `COMMENT_URL` inside fenced code samples that happen to
+  # sit inside a link. None is a claim about this repository. Verified 2026-11-07:
+  # all 22 dead-link findings came from `.github/skills/`, and removing only that
+  # directory turned the run from FAILED to PASSED with no other finding moving.
   find "$1" -name '*.md' \
     -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/.next/*' \
     -not -path '*/.venv/*' -not -path '*/venv/*' -not -path '*/site-packages/*' \
     -not -path '*/target/*' -not -path '*/dist/*' -not -path '*/build/*' \
     -not -path '*/.doc-claims-src/*' \
+    -not -path '*/.github/skills/*' \
     -not -path '*/old_audits/*' -not -path '*/audit/*' -not -path '*/audits/*' \
     -not -path '*/docs/archive/*' -not -path '*/ui-docs-archive/*' \
     2>/dev/null

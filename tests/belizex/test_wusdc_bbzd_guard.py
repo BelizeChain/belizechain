@@ -167,6 +167,14 @@ class TestWusdcBbzdOracleGuard:
         order-dependent rather than chain-dependent, so the test carries
         `pristine_oracle_rate`: the CI job runs it as its own first step and the
         shared run excludes it, instead of it silently skipping there.
+
+        The pool MUST be seeded before trading. `execute_trade` computes
+        `amount_out` via `get_amount_out` and only then hands it to
+        `enforce_oracle_deviation`, so a pair with no reserves fails with
+        `InsufficientLiquidity` first and never reaches the guard. That ordering is
+        correct — the guard validates a quote, and an uncomputable quote cannot be
+        validated — so the setup seeds liquidity rather than the assertion
+        accepting the upstream error.
         """
         substrate = blockchain_connection
 
@@ -184,6 +192,30 @@ class TestWusdcBbzdOracleGuard:
         verify_kyc(alice_keypair, 1)
         fund_wusdc(alice_keypair, 10 * ONE_DALLA)
         fund_bbzd(alice_keypair, 20 * ONE_DALLA)
+
+        # Genesis lists WUSDC/BBZD with zero reserves, so seed the pool first.
+        # `add_liquidity` deliberately does not consult the Oracle (there is no
+        # pool to drain), which is what makes seeding possible on a chain that has
+        # no rate yet.
+        add_liquidity = substrate.compose_call(
+            call_module="BelizeX",
+            call_function="add_liquidity",
+            call_params={
+                "base_asset": WUSDC_ASSET,
+                "quote_asset": BBZD_ASSET,
+                "base_amount": 10 * ONE_DALLA,
+                "quote_amount": 20 * ONE_DALLA,
+                "min_lp_tokens": 1,
+            },
+        )
+        seeded = substrate.submit_extrinsic(
+            substrate.create_signed_extrinsic(call=add_liquidity, keypair=alice_keypair),
+            wait_for_inclusion=True,
+        )
+        assert seeded.is_success, (
+            "seeding the WUSDC/BBZD pool must succeed without an Oracle rate, "
+            f"got: {getattr(seeded, 'error_message', None)}"
+        )
 
         receipt = _execute_trade(
             substrate, alice_keypair, WUSDC_ASSET, BBZD_ASSET, ONE_DALLA
