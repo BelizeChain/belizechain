@@ -310,9 +310,13 @@ holds Root.
 - Treat anything written to this chain **before 2026-11-07** as attacker-controlled. In
   particular the `WUSDC/bBZD` reserves were never backed by a minted bBZD, and `//Alice`
   held the mint path.
-- `scripts/bootstrap-dex.js` may now be run against Ceiba, because it mints bBZD and writes
-  a `CentralBankReserves` figure — it could not be, while `//Alice` could overwrite both in
-  one extrinsic.
+- `scripts/bootstrap-dex.js` is no longer *blocked* by this: while `//Alice` held `Sudo` it
+  could overwrite the minted bBZD and the `CentralBankReserves` figure in one extrinsic, so
+  seeding reserves was pointless. **It is still not pre-approved.** Running it mints roughly
+  100,000 DALLA of liquidity and ~200,000 bBZD, and the sudo account holds ~3,050 DALLA, so
+  the funding step needs either a large transfer or another `forceSetBalance` — i.e. **more
+  minting on a live chain**. That is an owner decision, a different class of action from
+  rotating a key.
 - The RPC still has no authentication. Exposure of the *key* is fixed; exposure of *reads*
   is not.
 
