@@ -282,14 +282,22 @@ history matters because it explains what is still untrusted.
 | Fact | Was (until 2026-11-07) | Now |
 |---|---|---|
 | `Sudo.Key` | `0xd43593c7…da27d` = **`//Alice`**, the public Substrate dev key | `0x32967ce9…3fb017`, SS58 `r1T7BYVAQEF6GVZJFuvCqaHQt7tfdw8zdHyaNwjeHYmbdkYaP`. Secret generated on Ceiba, stored 600 at `/opt/belizechain/keys/sudo-new.json`, never transmitted |
-| Authority | same `//Alice` key, sole BABE authority at weight 1 | replacement validator account, keys inserted into the node keystore — see blocker #13 for the verified end state |
+| Authority | same `//Alice` key, sole BABE authority at weight 1 | `r1UTSENDje4c5CkcoFaudXWqQu1bCEMBLag4JgvH8ydKSk9vX`, BABE `0x6e451283…cc981e`. Enacted at **block 461281, epoch 1538** — `pallet_session` delays a set change by one session, so the queue was populated a boundary earlier and that is expected, not a failure |
 | Identity issuers (all three lists) | same `//Alice` key was the sole entry in `SsnIssuers`, `PassportIssuers` **and** `BiometricIssuers` | `r1T7BYVAQ…`, one bond per attribute (1000 DALLA each). Rotated 2026-11-07 by `scripts/rotate-identity-issuer.js`, which adds the replacement *before* removing the old entry so no list is ever empty |
 | RPC authentication | **none** — `system_health` and `state_getStorage` answer unauthenticated over `https://testnet.belizechain.org/rpc` | **unchanged.** Nothing was added in front of the RPC, so a *future* key mistake is still world-readable in one request |
 
-Measured proof that the demotion took effect, taken from the **public** endpoint:
-`//Alice` calling `sudo.sudo(…)` is now rejected with `sudo.RequireSudo`
-(`{"module":{"index":6,"error":"0x00000000"}}`), and the replacement key returns
-`ExtrinsicSuccess`.
+Measured proof that the demotion took effect, taken from the **public** endpoint
+(`wss://testnet.belizechain.org/ws`), all six readings at block 461312 / epoch 1538:
+`//Alice` calling `sudo.sudo(…)` is rejected `sudo.RequireSudo`
+(`{"module":{"index":6,"error":"0x00000000"}}`); the replacement key returns
+`ExtrinsicSuccess`; `Session.Validators` is the single new account; `Babe.Authorities`
+is `0x6e451283…`; and all three issuer lists name the new account.
+
+A sweep of **every** non-map storage entry whose name suggests held privilege
+(`operator|admin|authorit|issuer|committee|member|council|owner|signer|approv|trusted|manager|officer|registrar|moderat|arbiter|witness|relay|provider`)
+returns **zero** references to the old account. Maps were skipped because their keys
+are unknown — that is a real blind spot, not full coverage, and is stated so nobody
+reads "zero hits" as a proof over map-typed storage.
 
 Why this was done rather than left as a note: `pallet_sudo` is only as private as
 `Sudo.Key`, so a published dev key meant anyone could call
