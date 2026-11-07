@@ -87,11 +87,11 @@ Storage engine, DAG and merkle proofs are independently testable; **web hosting 
 dead by data** (`bns.totalDomains = 0`), and payments are off. Do not tune hosting
 before names exist.
 
-### 3.3 `kinich-quantum` — one alert rule, 25 occurrences
+### 3.3 `kinich-quantum` — 25 alerts, all one rule, proven false positives, **dismissal blocked**
 
 Measured 2026-11-07 with `gh api …/code-scanning/alerts?state=open&per_page=100`:
-**25 open alerts, and every one is the same rule — `py/undefined-export`.** None carries a
-security severity, so this is a code-correctness backlog rather than a vulnerability one.
+**25 open alerts, and every one is the same rule — `py/undefined-export`**, all in
+`blockchain/__init__.py`. None carries a security severity.
 
 The audit that opened this workstream said "10 actionable alerts against ~40 dismissals";
 that number had drifted. Re-measure rather than trusting either figure:
@@ -100,6 +100,30 @@ that number had drifted. Re-measure rather than trusting either figure:
 gh api "repos/BelizeChain/kinich-quantum/code-scanning/alerts?state=open&per_page=100" \
   --jq 'length'
 ```
+
+**The alerts are false positives, and that is now proven rather than asserted.**
+`blockchain/__init__.py` resolves all 25 exports through a module-level `__getattr__`
+(PEP 562) so that importing the package does not pull in `substrateinterface`, `eth_*`,
+`pydantic` and 25 other third-party modules. `py/undefined-export` does not model that
+pattern.
+
+`tests/test_blockchain_exports.py` (kinich `73656a9`) now holds the contract the rule was
+reaching for: every `__all__` name resolves, `__all__` and `_EXPORTS` agree in both
+directions, `from … import X` matches `getattr`, and a **fresh interpreter** importing the
+package loads zero third-party modules. All three properties were falsified before being
+trusted — a typo'd attribute name fails two tests, drifting `__all__` fails the agreement
+test, and an eager import makes the subprocess test name all 28 third-party modules.
+
+**Dismissal is blocked on access, not on evidence.** `kinich-quantum` has *delegated alert
+dismissal* enabled, so `PATCH …/alerts/{n}` with `state=dismissed` returns
+`Delegated alert dismissal is enabled… when the create_request parameter is false`, and the
+`create_request=true` path answers `An alert dismissal request already exists` and asks for
+the `admin:repo_hook` scope — while the `gh` token holds only
+`gist, read:org, repo, workflow`. Clearing these 25 needs either a repo admin approving
+requests in the Security tab, or `gh auth refresh` with the extra scope.
+
+That is the whole of the remaining kinich work package: the code is correct, the evidence
+exists, and only a permission stands between the two.
 
 ### 3.4 `gem` — one real bug, plus CI that cannot run
 
