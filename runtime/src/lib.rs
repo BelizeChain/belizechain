@@ -1618,9 +1618,13 @@ impl Get<AccountId> for WellbeingTreasuryAccount {
 //   GovernanceCouncil (Instance2) — max 32 members, maps to on-chain CouncilMembers;
 //     controls democratic governance origins (Community, LandLedger, BNS, Mesh, BelizeX).
 //
-// SetMembersOrigin for both collectives remains EnsureRoot to allow bootstrapping
-// the initial member sets via Sudo during testnet. The Sudo scheduled-removal plan
-// (Phase 1, Step 1A) will restrict this path before mainnet via on_initialize enforcement.
+// SetMembersOrigin for both collectives is each house's own supermajority
+// (see the Sudo-removal note on `pallet_collective::Config` below). It is no
+// longer `EnsureRoot`-only: that was fine while genesis plus Sudo seeded the
+// rosters, but once `Sudo` is deleted an `EnsureRoot`-only `SetMembersOrigin`
+// would freeze both houses permanently, because this SDK's `set_members` has no
+// collective-self fallback. Keeping members changeable is a precondition for
+// removing Sudo at all.
 
 parameter_types! {
     /// How long a motion stays open for voting before it expires.
@@ -1651,13 +1655,21 @@ impl pallet_collective::Config<TechnicalCouncilInstance> for Runtime {
     type MaxMembers = TechnicalMaxMembers;
     type DefaultVote = pallet_collective::PrimeDefaultVote;
     type WeightInfo = pallet_collective::weights::SubstrateWeight<Runtime>;
-    /// EnsureRoot is allowed here ONLY for bootstrapping initial members via Sudo.
-    /// Sudo scheduled-removal (Phase 0, Step 0.4) restricts this path before mainnet.
-    type SetMembersOrigin = EnsureRoot<Self::AccountId>;
-    /// EnsureRoot can disapprove proposals during bootstrap; replaced by governance post-launch.
-    type DisapproveOrigin = EnsureRoot<Self::AccountId>;
-    /// EnsureRoot can kill proposals during bootstrap; replaced by governance post-launch.
-    type KillOrigin = EnsureRoot<Self::AccountId>;
+    // ── Sudo-removal readiness (P1-02) ───────────────────────────────────────
+    // These three were `EnsureRoot`, which after `Sudo` is removed would leave
+    // membership permanently frozen: this SDK's `pallet_collective::set_members`
+    // requires `SetMembersOrigin` ONLY (frame/collective/src/lib.rs), with no
+    // collective-self fallback, so Root would be the sole route forever.
+    //
+    // The alias keeps `EnsureRoot` inside its `EitherOfDiverse`, so this change is
+    // strictly ADDITIVE: Root still works today, and the council path survives the
+    // day Sudo is deleted. Each house renews its own roster rather than one house
+    // controlling the other's composition.
+    type SetMembersOrigin = TechnicalCouncilSuperMajority;
+    /// A house may disapprove its own proposals once the bootstrap window closes.
+    type DisapproveOrigin = TechnicalCouncilSuperMajority;
+    /// As above: killing a proposal is a same-house action.
+    type KillOrigin = TechnicalCouncilSuperMajority;
     /// No deposit/consideration required for collective proposals.
     type Consideration = ();
     type MaxProposalWeight = TechnicalMaxProposalWeight;
@@ -1672,12 +1684,12 @@ impl pallet_collective::Config<GovernanceCouncilInstance> for Runtime {
     type MaxMembers = GovernanceMaxMembers;
     type DefaultVote = pallet_collective::PrimeDefaultVote;
     type WeightInfo = pallet_collective::weights::SubstrateWeight<Runtime>;
-    /// EnsureRoot allowed ONLY for bootstrapping initial members via Sudo.
-    type SetMembersOrigin = EnsureRoot<Self::AccountId>;
-    /// EnsureRoot can disapprove proposals during bootstrap; replaced by governance post-launch.
-    type DisapproveOrigin = EnsureRoot<Self::AccountId>;
-    /// EnsureRoot can kill proposals during bootstrap; replaced by governance post-launch.
-    type KillOrigin = EnsureRoot<Self::AccountId>;
+    // ── Sudo-removal readiness (P1-02) — see the note on TechnicalCouncil above.
+    type SetMembersOrigin = GovernanceCouncilSuperMajority;
+    /// A house may disapprove its own proposals once the bootstrap window closes.
+    type DisapproveOrigin = GovernanceCouncilSuperMajority;
+    /// As above: killing a proposal is a same-house action.
+    type KillOrigin = GovernanceCouncilSuperMajority;
     /// No deposit/consideration required for collective proposals.
     type Consideration = ();
     type MaxProposalWeight = GovernanceMaxProposalWeight;
@@ -2340,8 +2352,12 @@ parameter_types! {
 }
 
 impl pallet_storage_proof::Config for Runtime {
-    /// Root/sudo may revoke a proof (byzantine storage provider dispute path).
-    type RevocationOrigin = EnsureRoot<Self::AccountId>;
+    /// Revoking a proof is a byzantine-storage-provider dispute action, so it is a
+    /// protocol/security decision and belongs with the technical house.
+    ///
+    /// Was `EnsureRoot`. After `Sudo` is removed that would have made revocation
+    /// permanently unreachable. The alias still accepts Root, so this is additive.
+    type RevocationOrigin = TechnicalCouncilSuperMajority;
     type Currency = Balances;
     /// Refundable deposit per stored proof — prevents free permanent state growth.
     type StorageDeposit = ConstU128<DOLLARS>;
@@ -2364,12 +2380,11 @@ parameter_types! {
 }
 
 impl pallet_zk_attestation::Config for Runtime {
-    /// ⚠️ POLICY PLACEHOLDER — needs product sign-off before mainnet.
-    /// Publishing a registry root asserts a fact about an entire ministry's
-    /// records, so it starts at root rather than any signed origin. The intended
-    /// production shape is a supermajority of `GovernanceCouncil`, mirroring how
-    /// other whole-population claims are approved.
-    type RegistryAuthority = EnsureRoot<Self::AccountId>;
+    // Publishing a registry root asserts a fact about an entire ministry's records,
+    // so it is a whole-population claim. That is the democratic house's call — this
+    // matches the intent already recorded here — and it survives `Sudo` removal,
+    // which the previous `EnsureRoot` would not have.
+    type RegistryAuthority = GovernanceCouncilSuperMajority;
     type MaxProofLen = MaxAttestationProofLen;
     type MaxVerifyingKeyLen = MaxAttestationVerifyingKeyLen;
     type WeightInfo = pallet_zk_attestation::weights::SubstrateWeight<Runtime>;
