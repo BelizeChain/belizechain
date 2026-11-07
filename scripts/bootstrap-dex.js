@@ -390,13 +390,18 @@ async function main() {
       );
     }
 
+    // Sealing needs the same quorum the DEX steps used; reuse the seated set
+    // rather than requiring a second list of operator keys.
+    const kycQuorum = operators.slice(0, args.minAgreement);
+
     for (const [i, seed] of args.bridgeValidators.entries()) {
       const validator = keyring.addFromUri(seed);
       const label = `${validator.address.slice(0, 10)}…`;
+      const evmAddress = args.evmAddresses[i];
 
       // The Identity pallet is not consulted for this gate, so only the Oracle
       // store is seeded — no SSN or passport attestation is needed.
-      await seedOracleKyc(api, run, validator, operators.slice(0, args.minAgreement), BRIDGE_KYC_LEVEL);
+      await seedOracleKyc(api, run, validator, kycQuorum, BRIDGE_KYC_LEVEL);
 
       const existingValidator = await api.query.interoperability.bridgeValidators(validator.address);
       if (existingValidator.isSome) {
@@ -411,10 +416,15 @@ async function main() {
         ), validator);
       }
 
-      // Independent of registration: `set_evm_address` requires it to be done
-      // first, and it is the field the contract's validator set must match.
-      await run(`set evm address ${label}`,
-        api.tx.interoperability.setEvmAddress(args.evmAddresses[i]), validator);
+      // `set_evm_address` requires registration first, and this is the field the
+      // contract's validator set is reconciled against. Skipping when it already
+      // matches keeps a re-run genuinely converged instead of re-writing it.
+      const currentEvm = await api.query.interoperability.evmAddressOf(validator.address);
+      if (currentEvm.isSome && u8aToHex(currentEvm.unwrap().toU8a(true)).toLowerCase() === evmAddress.toLowerCase()) {
+        log(`${label}: evm address already set`);
+        continue;
+      }
+      await run(`set evm address ${label}`, api.tx.interoperability.setEvmAddress(evmAddress), validator);
     }
   }
 
