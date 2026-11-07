@@ -28,6 +28,22 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # See the note on the identical step in `test`. clippy compiles every
+      # crate in the workspace, so it fills the same ~14 GB just like a test run.
+      - name: Free disk space
+        run: |
+          echo "disk before:"; df -h / | tail -1
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost \
+            /usr/share/swift \
+            /usr/local/graalvm
+          sudo apt-get clean
+          echo "disk after:"; df -h / | tail -1
+
       - name: Install Rust toolchain
         # The @1.90.0 ref itself pins the toolchain. This action has NO
         # `toolchain` input — passing one is silently ignored.
@@ -68,6 +84,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+
+      # ubuntu-latest arrives with ~14 GB free because ~30 GB of preinstalled
+      # toolchains sit in paths the Rust build never touches. Measured on
+      # 2026-11-02: this job died with "No space left on device" while building
+      # the release node, which reads exactly like a test failure but is not.
+      # Reclaims ~25 GB in seconds. Deliberately plain `rm` rather than a
+      # third-party reclaim action, so nothing new executes on the runner.
+      # Removes only toolchain dirs; /opt/hostedtoolcache stays whole because
+      # setup-python and setup-node live there.
+      - name: Free disk space
+        run: |
+          echo "disk before:"; df -h / | tail -1
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost \
+            /usr/share/swift \
+            /usr/local/graalvm
+          sudo apt-get clean
+          echo "disk after:"; df -h / | tail -1
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.90.0
@@ -174,6 +212,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+
+      # See the note on the identical step in `test` — this job also builds the
+      # node and additionally needs room for the Python environment.
+      - name: Free disk space
+        run: |
+          echo "disk before:"; df -h / | tail -1
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost \
+            /usr/share/swift \
+            /usr/local/graalvm
+          sudo apt-get clean
+          echo "disk after:"; df -h / | tail -1
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.90.0
@@ -297,6 +351,22 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # See the note on the identical step in `test`. tarpaulin re-instruments
+      # every crate and needs more room than a plain test run.
+      - name: Free disk space
+        run: |
+          echo "disk before:"; df -h / | tail -1
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost \
+            /usr/share/swift \
+            /usr/local/graalvm
+          sudo apt-get clean
+          echo "disk after:"; df -h / | tail -1
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.90.0
         with:
@@ -359,6 +429,23 @@ jobs:
         run: |
           chmod +x ./scripts/check_weights_freshness.sh
           ./scripts/check_weights_freshness.sh
+
+      # See the note on the identical step in `test`. The runtime-benchmarks
+      # build is the largest artifact set of any job here, so it needs the room
+      # most. Placed after the freshness check so a stale tree still fails fast.
+      - name: Free disk space
+        run: |
+          echo "disk before:"; df -h / | tail -1
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost \
+            /usr/share/swift \
+            /usr/local/graalvm
+          sudo apt-get clean
+          echo "disk after:"; df -h / | tail -1
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.90.0

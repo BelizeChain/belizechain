@@ -92,6 +92,39 @@ jobs:
           # never sees it, so it is deliberately absent from deny.toml.
           # That "never compiled" claim is load-bearing, so a later step checks
           # it instead of trusting it.
+          #
+          # ── Added 2026-11-07: the last two reachable advisories ────────────
+          # Both are pinned by polkadot-sdk 7a8daa68 (stable2609) and neither has
+          # a local upgrade path. Reachability was measured per advisory, because
+          # "it is only an indirect dependency" is not a justification on its own.
+          #
+          # RUSTSEC-2026-0387 — crypto-bigint 0.5.5, timing variability in
+          # operations intended to be constant-time (patched >= 0.7.6).
+          # Path: crypto-bigint <- elliptic-curve 0.13.8 <- ecdsa 0.16.9
+          #       <- k256 0.13.4 <- frame-support 49.0.0.
+          # REACHABLE, but its only use is `frame_support::crypto::ecdsa`
+          # (`ToEncodedPoint` / `ecdsa_recover`) — recovering an address FROM a
+          # public key. The advisory concerns *secret*-dependent branches leaking
+          # secret integers; that path handles only public data. No crate in this
+          # workspace calls k256 directly (grep: comments only).
+          # Cannot be bumped: crypto-bigint 0.7 needs elliptic-curve 0.14, which
+          # needs k256 0.14, which is polkadot-sdk's dependency to move.
+          #
+          # RUSTSEC-2026-0403 — zstd-safe 6.0.6, uninitialized memory exposed when
+          # streaming decompression of a legacy frame fails (patched ^7.4.0).
+          # Path: zstd-safe <- zstd 0.12.4 <- sp-maybe-compressed-blob
+          #       <- sc-executor-common <- sc-executor <- belizechain-node.
+          # REACHABLE IN PRODUCTION and on the affected function: that crate uses
+          # `zstd::Decoder::new(...)` + `read_to_end`, i.e. the streaming decoder
+          # that calls `DCtx::decompress_stream`. Not a lockfile-only entry, and
+          # not benchmark-gated — this one is genuinely in the node binary.
+          # Exposure is bounded by input provenance: the decompressed data is a
+          # WASM blob from a local path (`--wasm-runtime`, build-spec) or from
+          # chain state written by sudo/governance. There is no path by which a
+          # remote peer supplies a compressed legacy frame to this decoder.
+          # Cannot be bumped: sp-maybe-compressed-blob takes `zstd` from the SDK
+          # workspace, pinned at 0.12.x; zstd-safe 7.4 arrives only when that
+          # moves. Tripwired by the "zstd 0.13" step below.
           cargo audit \
             --ignore RUSTSEC-2025-0009 \
             --ignore RUSTSEC-2025-0010 \
@@ -136,6 +169,9 @@ jobs:
             --ignore RUSTSEC-2026-0344 \
             --ignore RUSTSEC-2026-0381 \
             --ignore RUSTSEC-2026-0382 \
+            --ignore RUSTSEC-2026-0387 \
+            --ignore RUSTSEC-2026-0403 \
+            --ignore RUSTSEC-2026-0441 \
             2>&1 | tee cargo_audit_output.txt
         continue-on-error: false
 
@@ -155,6 +191,55 @@ jobs:
           fi
           echo "OK: node build graph has no rustls-webpki 0.101.x"
           printf '%s\n' "$graph" | grep -oE 'rustls-webpki v[0-9.]+' | sort -u
+
+      - name: Assert no fix is available for the two SDK-pinned advisories
+        # RUSTSEC-2026-0387 (crypto-bigint) and RUSTSEC-2026-0403 (zstd-safe) are
+        # ignored above on the grounds that no upgrade path exists from this
+        # repo. That justification expires the moment polkadot-sdk moves, and a
+        # suppression that outlives its reason is how an advisory is forgotten.
+        # So rather than trusting the prose, fail when a patched version becomes
+        # resolvable — the ignore then has to be deleted and the upgrade taken.
+        run: |
+          set -o pipefail
+          failed=0
+
+          # Grep the whole graph rather than `cargo tree -i <pkg>`: when a crate
+          # has more than one version in the tree, `-i <pkg>` refuses with
+          # "specification is ambiguous" and prints no versions at all — which
+          # silently looks like "absent". Measured on zstd-safe, which has both
+          # 6.0.6 and 7.4.0 here.
+          graph="$(cargo tree --locked -e normal --prefix none 2>/dev/null)"
+
+          # crypto-bigint: patched >= 0.7.6. Trip on anything from 0.7 upward so
+          # a future 0.10 or 1.x is still caught — a regex that only listed
+          # 7.6-7.9 / 8.x / 9.x would silently pass those.
+          cb="$(printf '%s\n' "$graph" | grep -oE 'crypto-bigint v[0-9.]+' | sort -u || true)"
+          echo "crypto-bigint in graph: ${cb:-<none>}"
+          if printf '%s\n' "$cb" | grep -qE 'v(0\.([7-9]|[1-9][0-9])|[1-9]\.)'; then
+            echo "::error::RUSTSEC-2026-0387 is ignored, but a patched crypto-bigint (>=0.7.6) now resolves: $cb"
+            failed=1
+          fi
+
+          # zstd-safe: patched ^7.4.0 / >=8.2.0, i.e. the 6.x line is the last
+          # affected one. The ignore stays justified for exactly as long as the
+          # SDK's decompression path still resolves to zstd-safe 6.x.
+          #
+          # Do NOT trip on "a 7.4 copy exists": wasmtime already ships
+          # zstd-safe 7.4.0 via its own cache crate, and that copy was never the
+          # problem. The path that matters is
+          #   zstd-safe 6.x <- zstd 0.12.x <- sp-maybe-compressed-blob.
+          # A first version of this step failed on a healthy tree for that
+          # reason. One rule instead: 6.x present => ignore still needed.
+          zs="$(printf '%s\n' "$graph" | grep -oE 'zstd-safe v[0-9.]+' | sort -u || true)"
+          echo "zstd-safe in graph: ${zs:-<none>}"
+          if printf '%s\n' "$zs" | grep -q 'v6\.'; then
+            echo "OK: zstd-safe 6.x still present — RUSTSEC-2026-0403's ignore is still justified"
+          else
+            echo "::error::RUSTSEC-2026-0403 is ignored, but zstd-safe 6.x is gone. The SDK now pulls a different line — re-triage and delete the ignore."
+            failed=1
+          fi
+
+          exit "$failed"
 
       - name: Upload audit results
         if: always()
@@ -267,6 +352,9 @@ jobs:
             --ignore RUSTSEC-2026-0344 \
             --ignore RUSTSEC-2026-0381 \
             --ignore RUSTSEC-2026-0382 \
+            --ignore RUSTSEC-2026-0387 \
+            --ignore RUSTSEC-2026-0403 \
+            --ignore RUSTSEC-2026-0441 \
             2>&1
 
   # ── 4. Dependabot alerts — the advisories RustSec does not carry ──────────

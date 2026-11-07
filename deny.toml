@@ -91,6 +91,54 @@ ignore = [
     # This entry is self-cleaning: once a bump moves webpki-roots past the fix,
     # cargo-deny reports advisory-not-detected and the ignore must be removed.
     "RUSTSEC-2026-0381",
+
+    # ── Added 2026-11-07 ─────────────────────────────────────────────────────
+    # Two vulnerabilities cargo-deny reports that the `audit` job also ignores
+    # (see .github/workflows/security-audit.yml for the full reachability notes
+    # and for the compensating check that fails if a fix ever becomes
+    # resolvable). Both are pinned by polkadot-sdk, so neither can be fixed by
+    # editing this repo, and neither is fixable by a runtime upgrade.
+
+    # crypto-bigint 0.5.5 — timing variability in constant-time ops. Patched in
+    # >= 0.7.6; frame-support 49.0.0 requires `^0.5`, a major the 0.5 line
+    # cannot reach.
+    #   crypto-bigint 0.5.5 <- elliptic-curve 0.13.8 <- ecdsa 0.16.9
+    #                       <- k256 0.13.4 <- frame-support 49.0.0
+    # Only use in-reach is frame_support/src/crypto/ecdsa.rs
+    # (`ToEncodedPoint` / `ecdsa_recover`), which recovers an address FROM a
+    # public key: public data in, public data out, no secret-dependent path.
+    # Nothing in this workspace calls k256 directly.
+    "RUSTSEC-2026-0387",
+
+    # zstd-safe 6.0.6 — uninitialized memory when streaming decompression of a
+    # legacy frame fails. Patched in ^7.4.0.
+    #   zstd-safe 6.0.6 <- zstd 0.12.4 <- sp-maybe-compressed-blob 11.1.0
+    #                   <- sc-executor-common <- sc-executor <- belizechain-node
+    # This one IS reachable and IS on the affected function:
+    # sp-maybe-compressed-blob/src/lib.rs:68 uses `zstd::Decoder::new(blob)`
+    # plus `read_to_end`, i.e. the streaming decoder that goes through
+    # `DCtx::decompress_stream`. Accepted because the input provenance is
+    # local/trusted and never remote: the WASM blobs come from
+    # `--wasm-runtime` / build-spec on disk, or from the chain `:code` key that
+    # only sudo or governance can write. A malformed blob is a self-inflicted
+    # local fault, not a peer-triggerable one.
+    # NOTE: this crate is node-level, so clearing it needs a NODE image rebuild
+    # when an SDK bump finally moves `sp-maybe-compressed-blob` off zstd 0.12 —
+    # not a `set_code` upgrade.
+    "RUSTSEC-2026-0403",
+
+    # Unmaintained (no CVE, no exploit path) transitive crates, same class as
+    # the block above. Both clear only on an SDK or arkworks upgrade.
+
+    # derivative 2.2.0 — a build-time proc-macro, so it has zero runtime
+    # footprint in the shipped wasm or the node binary. Reached from OUR OWN
+    # crate, which is why it is worth naming:
+    #   derivative <- ark-crypto-primitives 0.5.0 <- ark-groth16 0.5.0
+    #              <- belizechain-zk-attestation <- pallet-zk-attestation
+    "RUSTSEC-2024-0388",
+    # pin-utils 0.1.0, reached via wasm-timer 0.2.5 <- sc-network. Advisory
+    # published 2026-10-01; no patched version exists upstream.
+    "RUSTSEC-2026-0441",
 ]
 
 # Present in the graph but NOT listed above, because cargo-deny does not report
