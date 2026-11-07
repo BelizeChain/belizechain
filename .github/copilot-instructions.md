@@ -63,7 +63,7 @@ rather than only passing on the new.
 | `BelizeChain/infra` | Compose + host infrastructure manifests | Ceiba/self-hosted plan |
 | `BelizeChain/kinich-quantum` | Hybrid quantum-classical compute | Ceiba/self-hosted plan |
 | `BelizeChain/nawal-ai` | Federated learning + privacy ML | Ceiba/self-hosted plan |
-| `BelizeChain/gem` | Smart contracts (ink! 4.0) | Ceiba/self-hosted plan |
+| `BelizeChain/gem` | Smart contracts (ink! 5.1.1) | Ceiba/self-hosted plan |
 | `BelizeChain/pakit-storage` | DAG-based decentralized storage | Ceiba/self-hosted plan |
 
 ## Current Task Context
