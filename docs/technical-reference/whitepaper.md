@@ -592,11 +592,18 @@ Carbon Reduction: 99.99%
 3. **Economic Model Analysis**: Game theory and incentive analysis
 4. **Formal Verification**: Mathematical proof of critical properties
 
-**Audit Partners:**
+**Planned Audit Partners — none engaged as of 2026-11-06:**
 - Trail of Bits (blockchain security)
 - Quantstamp (smart contract auditing)
 - CertiK (formal verification)
 - OpenZeppelin (security frameworks)
+
+> ⚠️ **Correction (2026-11-06).** This list names firms whose scope would fit the
+> platform; it is **not** a record of completed or contracted work. No external audit
+> has been performed — see `docs/security/security-audit-results.md`, which states
+> "A professional third-party audit has NOT been completed." Do not cite this section
+> as evidence of an audit. P0-22 of the internal audit is exactly this claim, and it
+> is closed only by keeping the two documents consistent.
 
 ### 14.2 Compliance Certification
 

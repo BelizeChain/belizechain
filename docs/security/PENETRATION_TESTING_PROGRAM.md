@@ -24,6 +24,13 @@
 
 This document defines the comprehensive penetration testing requirements for BelizeChain's infrastructure, applications, and blockchain network. The testing will simulate real-world attacks to identify vulnerabilities before mainnet launch, complementing our formal security audit (Trail of Bits) and bug bounty program.
 
+> ⚠️ **Correction (2026-11-06).** No Trail of Bits engagement exists and there is no
+> live bug bounty program. The sentence above is a statement of intent, not of fact —
+> read it as "complementing the formal security audit that must be commissioned
+> before mainnet." `docs/security/security-audit-results.md` records the true state:
+> no external professional audit has been completed. Do not cite this document as
+> evidence that one has been scoped, booked, or paid for. (P0-22.)
+
 **Objectives:**
 1. **Identify Exploitable Vulnerabilities:** Find weaknesses attackers could leverage
 2. **Validate Security Controls:** Test defense mechanisms (rate limiting, multi-sig, etc.)

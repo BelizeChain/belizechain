@@ -108,7 +108,8 @@ pub fn register_property(
     assessed_value: u128,
 ) -> DispatchResult;
 
-// call_index(1) — transfer ownership
+// call_index(1) — REQUEST a transfer. Does not move ownership.
+// Creates a pending transfer, takes the transfer tax, emits TransferInitiated.
 pub fn transfer_property(
     origin: OriginFor<T>,
     property_id: PropertyId,
@@ -116,6 +117,16 @@ pub fn transfer_property(
     transfer_price: u128,
     transfer_type_index: u8,
 ) -> DispatchResult;
+
+// call_index(10) — APPROVE a pending transfer (GovernmentOrigin). This is the
+// only call that changes `Properties::owner`. Re-checks verification,
+// survey status and active encumbrances, since any of them can change while
+// the request waits. Emits PropertyTransferred.
+pub fn approve_transfer(origin: OriginFor<T>, transfer_id: u32) -> DispatchResult;
+
+// call_index(11) — REJECT a pending transfer (GovernmentOrigin). Ownership is
+// unchanged and the transfer tax is refunded. Emits TransferRejected.
+pub fn reject_transfer(origin: OriginFor<T>, transfer_id: u32) -> DispatchResult;
 
 // call_index(2) — governance verifies a property
 pub fn verify_property(origin: OriginFor<T>, property_id: PropertyId) -> DispatchResult;

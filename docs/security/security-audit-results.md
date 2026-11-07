@@ -54,8 +54,17 @@ updated).
   Fixed by enforcing the pre-existing but unread `EpochDuration`.
 - **P0-12 is genuinely closed** — `RealPqVerifier` / `MLDsaVerifier`
   (`fips204::ml_dsa_87`) are wired in all non-benchmark runtime builds.
-- P0-19 and P0-21 verified closed (benchmark-generated weights; 40% coverage gate
-  over all pallet packages).
+- P0-21 verified closed (40% coverage gate over all pallet packages).
+- **P0-19 verified closed 2026-11-07 by measurement, not inspection.** The earlier
+  "benchmark-generated weights" verdict was true but incomplete: two `belizex` functions
+  (`issue_wusdc`, `burn_wusdc`) were hand-written at a flat `12_000_000` with
+  `Measured: 3`, and seven files predated their pallet source. All **20** pallet weight
+  sets are now regenerated on one host (`ceiba`, Ryzen 9 5900X, `BENCH_MUL=1.25`,
+  `DATE: 2026-11-07`), `check_weights_freshness.sh` passes, and the hand-written entries
+  were replaced with measurements that came out **1.25× / 1.58× higher** — they had been
+  under-charged. Two further hand-set values (landledger's new `approve_transfer` /
+  `reject_transfer`) were **1.94× / 2.34× too low**. Full numbers and the two remaining
+  caveats are in `MAINNET_READINESS.md` §1.2b.
 - **P1-07 closed (2026-10-23).** `submit_mesh_transaction` only required
   `signature_hash != H256::zero()`, so any non-zero value was accepted and a gateway
   could bridge an arbitrary transfer attributed to any compact sender. The field was
@@ -78,10 +87,11 @@ Each row was checked against the source, not against the checklist.
 
 | Status | Items |
 |---|---|
-| **Already fixed, never ticked** | P1-03 (nginx `limit_req` on `/ws`, `/rpc`, `/api/*` — in `infra/nginx/snippets/stack-paths.conf`, not `nginx.conf`), P1-09 (`transfer_property` requires `government_verified` + `surveyed` + KYC 2 + no active encumbrance), P1-10 (median aggregation with `MaxPriceDeviation` and variance), P1-12 (zero hardcoded numeric weights), P1-13, P1-14, P1-16, P1-25, P1-27, P1-28 (`tests/cross_pallet`, `e2e`, `oracle`, `governance`, `belizex`, `economic`), P1-26 (162 governance tests) |
+| **Already fixed, never ticked** | P1-03 (nginx `limit_req` on `/ws`, `/rpc`, `/api/*` — in `infra/nginx/snippets/stack-paths.conf`, not `nginx.conf`), P1-10 (median aggregation with `MaxPriceDeviation` and variance), P1-12 (zero hardcoded numeric weights), P1-13, P1-14, P1-16, P1-25, P1-27, P1-28 (`tests/cross_pallet`, `e2e`, `oracle`, `governance`, `belizex`, `economic`), P1-26 (162 governance tests) |
+| **Fixed 2026-11-07** | **P1-09.** This row previously listed P1-09 as "already fixed" because `transfer_property` gated on `government_verified` + `surveyed` + KYC 2 + no active encumbrance. Those checks were real, but they answered a different question: ownership still moved in the same call, so no *approval* was ever required. `approve_transfer` did not exist, `government_approved` could never become `true`, and `Error::TransferNotApproved` was unreachable. Now a two-call flow: `transfer_property` (call_index 1) creates a pending transfer and moves nothing, `approve_transfer` (10) moves title under `GovernmentOrigin`, `reject_transfer` (11) refunds the tax. Regression test `transfer_property_does_not_move_title_until_approved` was verified to fail on the pre-fix code. |
 | **Fixed 2026-10-23** | P1-05, P1-07, **P1-15** (approved proposal no longer forfeits its deposit when the treasury cannot pay), **P1-30** (removed the unsupported "544% APY" and "3-6% APY inflation" claims; derived ceiling is ~16% APY at full PoUW weight and 1,000 DALLA stake, and emissions are ~0.003% of `MaxDallaSupply` per year) |
 | **Obsolete — AKS removed** | P1-04, P1-20, P1-21, P1-22, P1-23 |
-| **False positive** | P1-11 (`LongestChain` is the standard BABE+GRANDPA pattern, CONS-035), P1-19 (only `dtolnay/rust-toolchain@1.90.0`, a version tag) |
+| **False positive** | P1-11 (`LongestChain` is the standard BABE+GRANDPA pattern, CONS-035), P1-19 (major tags such as `@v4` are idiomatic; 6 mutable branch refs remain — see `MAINNET_READINESS.md` §2) |
 | **False positive, and its stated reason has since expired** | P1-17 — it was dismissed on the grounds that "no order matching exists, so a maker/taker self-trade cannot occur". That was true when it was written and is not true now: P1-08 added a matching engine. Self-trade is still not an exploit, but for a different reason — `match_order` **skips** an account's own orders instead of filling them, so a self-crossing order simply rests. `SelfTradeNotAllowed` therefore remains unraised, now deliberately rather than incidentally; the variant is annotated as such in `pallets/belizex/src/lib.rs`. Re-read that annotation before assuming the finding is still moot |
 | **Fixed 2026-10-23 (second pass)** | P1-06 (`verify_merchant` now requires `T::MerchantVerificationOrigin` = `TechnicalCouncilMajority`; it was a single `OracleOperators` member), P1-08 **settlement half** (the DEX moved no bBZD at all — see below) |
 | **Fixed 2026-10-24** | P1-08 **matching half** — limit orders now escrow at placement and fill against each other in price-time order (see below) |
