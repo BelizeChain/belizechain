@@ -24,7 +24,7 @@
 | 1.2 | **Re-genesis key precondition** | `testnet-spec.json` — the Ceiba copy *and* the repo copy — still pins `//Alice` as `sudo.key` and as the sole `session.keys` entry. A re-genesis from that file restores the whole exposure closed today. | Six months of the same bug, on a new chain, with nothing in the docs looking wrong. |
 | 1.3 | **`BELIECHAIN_CI_TOKEN`** | Needs a fine-grained PAT with `Contents: read` on the six private sibling repos. Without it, `docs-check.yml` fails on every scheduled run by design. | Docs drift stops being detectable in CI. |
 | 1.4 | **Genesis council seats** (`ECOSYSTEM_STATE.md` §4.0a) | Genesis stamps all three council seats `Founder`, contradicting `max_count() = 1`. Fix in genesis (correct for mainnet, no-op on testnet) or write a migration. | Founder role is over-assigned at chain birth. |
-| 1.5 | **Faucet is unusable by a brand-new account** (see §3.4) | `claim()` is a plain `#[ink(message)]`, so the caller pays the fee — measured **0.001197 DALLA**, against an existential deposit of **0.001 DALLA**. An account holding 0 cannot pay it, and an account holding exactly the ED cannot either. The fix is a design choice: add `claim_for(account)` so a funded relayer can pay the fee and the drip lands on the newcomer, or seed test accounts out of band and document the two-step. | Testnet onboarding needs a manual step forever |
+| 1.5 | **Redeploy the faucet** (see §3.4) | The code fix is written, tested and committed (`gem` `0d54ee2`), but the **live** faucet still has only `claim()`. Making it useful means reinstantiating it, which changes its on-chain address and requires repinning `CEIBA_GEM_DEPLOYMENT` in `ui/shared/src/lib/runtime-config.ts` plus the `gem/deployment-*.json` manifest. | A brand-new account stays unable to onboard without a manual transfer |
 
 **Verification for 1.2** (the one most likely to be forgotten):
 
@@ -76,7 +76,7 @@ are marked DONE, and finding 15 was closed on the live host on 2026-11-01:
 
 | Item | State |
 |---|---|
-| Uncommitted: `AUDIT-OF-RECORD.md` §10 deployment record, `tests/test_dockerignore.py`, `pyproject.toml` isort config, one import move in `integration/oracle_pipeline.py` | **Not committed** — the work is done, the record of it is not |
+| Audit record: `AUDIT-OF-RECORD.md` §10 deployment record, `tests/test_dockerignore.py`, `pyproject.toml` isort config, one import move in `integration/oracle_pipeline.py` | **Committed** `92d71a3` (unpushed). 4/4 dockerignore tests pass |
 | Local commit `30d937b` ("remove AKS-era k8s manifests") | Not pushed |
 | The served model is the **bounded bootstrap checkpoint** (1.7M params, `bounded_run: true`) | Proves the pipeline, not model quality. No doc may claim otherwise |
 | `/model/info` serves absolute workstation paths (`/home/wicked/Projects/...`) to an unauthenticated endpoint | Accepted deliberately; revisit if the endpoint stays public |
@@ -120,7 +120,18 @@ dismissal* enabled, so `PATCH …/alerts/{n}` with `state=dismissed` returns
 `create_request=true` path answers `An alert dismissal request already exists` and asks for
 the `admin:repo_hook` scope — while the `gh` token holds only
 `gist, read:org, repo, workflow`. Clearing these 25 needs either a repo admin approving
-requests in the Security tab, or `gh auth refresh` with the extra scope.
+requests in the Security tab, or `gh auth refresh -h github.com -s admin:repo_hook`.
+
+**The false positives are now structurally unreachable, not just excused.** A plain
+`gh auth refresh` does **not** add scopes — check before assuming it worked:
+
+```bash
+gh auth status 2>&1 | grep -o 'gist, read:org, repo, workflow\|admin:repo_hook'
+```
+
+Also note the repo's CodeQL workflow last ran 2026-10-11 with every job at `steps=0`, so no
+future scan will auto-close these. The 25 dismissal requests must be approved by a human;
+waiting for a scan will wait forever.
 
 That is the whole of the remaining kinich work package: the code is correct, the evidence
 exists, and only a permission stands between the two.
@@ -129,9 +140,10 @@ exists, and only a permission stands between the two.
 
 | Item | State |
 |---|---|
-| **Faucet cannot serve a fresh account** | `faucet/lib.rs::claim` is a non-payable `#[ink(message)]` that transfers `drip_amount` to the caller — so the **caller pays the fee**, because the contract has no way to pay on their behalf. Measured 2026-11-07 on `wss://testnet.belizechain.org/ws`: a `contracts.call` costs **0.001197 DALLA** (`partialFee 1,196,589,257` wei) and the existential deposit is **0.001 DALLA** (`1,000,000,000` wei). The faucet itself is deployed at `r1Wcf2YSz…` and funded with **10,000 DALLA**, so the contract is healthy — the barrier is entirely on the caller's side. Decision required — see 1.5 |
+| **Faucet could not serve a fresh account** | **FIXED in source** (`gem` `0d54ee2`), **not deployed**. `claim()` was a non-payable `#[ink(message)]` that transfers to the caller, so the **caller pays the fee**: a `contracts.call` costs **0.001197 DALLA** (`partialFee 1,196,589,257` wei) against a **0.001 DALLA** existential deposit (`1,000,000,000` wei), so an account holding 0 — or exactly the ED — cannot claim. Both `claim()` and the new `claim_for(account)` now delegate to one private `dispense()`, and the cooldown is keyed on the **recipient**, so relaying in a loop cannot drain the faucet. 14 tests pass; release wasm 11,878 B with zero `memory.copy`/`memory.fill`; end-to-end on a dev contracts node a keypair holding **0 wei** received exactly 1 DALLA relayed by a different signer, and a second relayer in the same block got `TooSoon`. The live contract at `r1Wcf2YSz…` is untouched until it is reinstantiated — see 1.5 |
+| SDK ABI was stale | `sdk/contracts/faucet.json` advertised **17** messages against the contract's 23. Refreshed, and `faucetClaimFor()` added with a type declaration. Note `sdk.transfer` **does not exist** — the funded-transfer helper is `dallaTransfer` |
 | GitHub Actions | Unrecoverable on billing (minutes exhausted; owner will not buy more). **Local verification is the substitute and it works**: 10 contracts, 213 tests, ~13s total, measured 2026-10-15. Use `-j 2` *before* `--` |
-| e2e tests | Type-checked but **never executed** — `substrate-contracts-node` is not installed. A real gap, not a pass |
+| e2e tests | Type-checked in CI, and **now executed manually** against `substrate-contracts-node --dev --tmp` (v0.41.0, present on this workstation). Keep running them by hand before a faucet redeploy |
 
 ### 3.5 `infra` — decisions, then cleanup
 
@@ -172,7 +184,13 @@ re-discovers them as bugs and "fixes" them into regressions.
 2. **2.3 → 2.1 → 2.2** — seat oracles, then register `.bz` names, then seed DALLA
    pools. Names and pools are both governance acts and both need operators for
    their price/attestation gates to mean anything.
-3. **3.1** — commit nawal's record; it costs minutes and the work is already done.
+3. **Push the three finished repos** — `nawal-ai` (`30d937b`, `92d71a3`),
+   `kinich-quantum` (`73656a9`, `e60ae87` + one earlier) and `gem` (`0d54ee2`)
+   all hold committed work that exists only on this workstation. Nothing below
+   is blocked on them, but they are one disk failure from being lost.
 4. **2.4** — grow the validator set before anything that assumes >1 authority.
 5. **1.1** — DEX bootstrap, once funded deliberately.
-6. **3.3 → 3.4 → 3.5 → 3.6** — kinich, gem, infra, then UI last.
+6. **1.5** — redeploy the faucet after the address repin is planned; it is
+   self-contained and unblocks onboarding on its own.
+7. **3.3 → 3.5 → 3.6** — approve kinich's dismissals, then infra decisions, then
+   UI last. `gem` 3.4 is already done pending the push.
