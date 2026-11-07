@@ -3,6 +3,16 @@
 **Status:** Executed and verified. Chain progressing; Sudo operational; Nawal FL
 round opened on-chain.
 
+> **⚠️ Superseded in part, 2026-11-07.** This document's own precondition —
+> "Production cutover requires replacing `//Alice` with a real, hardware-backed seed
+> before opening to external peers" — was breached for ~6 months: the endpoint was
+> public while `//Alice` still held `Sudo` and was the sole BABE authority. The
+> rotation has now been performed. Current key state, the exact commands, and the
+> five traps encountered are recorded in
+> [`docs/security/MAINNET_READINESS.md`](../security/MAINNET_READINESS.md) blocker #13
+> and [`docs/ECOSYSTEM_STATE.md`](../ECOSYSTEM_STATE.md) §2.4. **Read those for the
+> live values; do not treat the `//Alice` references below as current.**
+
 ## Context
 
 The `testnet-spec.json` tracked in git at the time referenced a sudo SS58

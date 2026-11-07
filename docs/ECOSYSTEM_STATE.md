@@ -276,47 +276,49 @@ internal `ws://100.119.97.38:9944` needs tailnet access.
 
 ### 2.4 🔴 Live chain authority keys — verified 2026-11-07, OPEN
 
-**The live chain is writable by anyone on the internet.** Read this before touching
-anything on Ceiba.
+**The live chain used to be writable by anyone on the internet.** Rotated 2026-11-07; the
+history matters because it explains what is still untrusted.
 
-| Fact | Value | How |
+| Fact | Was (until 2026-11-07) | Now |
 |---|---|---|
-| `Sudo.Key` | `0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d` | `state_getStorage` at twox128(`Sudo`)+twox128(`Key`) |
-| What that key is | **`//Alice`** — the public Substrate dev key, SS58 `5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY` | `//Alice` derives that exact public key |
-| Sole BABE authority | same key, weight 1 | `Session.Validators` / `Babe.Authorities` |
-| Sole SSN issuer | same key | `Identity.SsnIssuers` |
-| RPC authentication | **none** | `system_health` and `state_getStorage` both answer unauthenticated over `https://testnet.belizechain.org/rpc` at #460257 |
+| `Sudo.Key` | `0xd43593c7…da27d` = **`//Alice`**, the public Substrate dev key | `0x32967ce9…3fb017`, SS58 `r1T7BYVAQEF6GVZJFuvCqaHQt7tfdw8zdHyaNwjeHYmbdkYaP`. Secret generated on Ceiba, stored 600 at `/opt/belizechain/keys/sudo-new.json`, never transmitted |
+| Authority | same `//Alice` key, sole BABE authority at weight 1 | replacement validator account, keys inserted into the node keystore — see blocker #13 for the verified end state |
+| Sole SSN issuer | same `//Alice` key | unchanged — `Identity.SsnIssuers` still lists the `//Alice` account. It can no longer use `Sudo`, but it can still attest SSNs; that is a governance decision, not a key compromise |
+| RPC authentication | **none** — `system_health` and `state_getStorage` answer unauthenticated over `https://testnet.belizechain.org/rpc` | **unchanged.** Nothing was added in front of the RPC, so a *future* key mistake is still world-readable in one request |
 
-Consequences, stated plainly: whoever holds the publicly-documented `//Alice` mnemonic can
-call `sudo.sudo(System::set_code(…))` (replace the whole runtime),
-`sudo.sudo(System::set_storage(…))` (rewrite balances, KYC, land titles, anything), and
-`sudo.sudo(System::kill_prefix(…))` (delete storage wholesale). Because the same key is the
-only authority, that actor can also author and finalize blocks.
+Measured proof that the demotion took effect, taken from the **public** endpoint:
+`//Alice` calling `sudo.sudo(…)` is now rejected with `sudo.RequireSudo`
+(`{"module":{"index":6,"error":"0x00000000"}}`), and the replacement key returns
+`ExtrinsicSuccess`.
 
-`docs/operations/ALICE_SUDO_RESET_2026-05-11.md` records the key as intentional and
-temporary, with the cutover required **before the endpoint was opened to external peers**.
-That precondition is breached.
+Why this was done rather than left as a note: `pallet_sudo` is only as private as
+`Sudo.Key`, so a published dev key meant anyone could call
+`sudo.sudo(System::set_code(…))` (replace the runtime),
+`sudo.sudo(System::set_storage(…))` (rewrite balances, KYC, land titles) or
+`sudo.sudo(System::kill_prefix(…))`. No amount of pallet hardening survives an attacker who
+holds Root.
 
-**Therefore:**
-- Nothing of value may be placed on this chain, and its state must be treated as
-  attacker-controlled.
-- `scripts/bootstrap-dex.js` **must not** be pointed at Ceiba. It would mint bBZD and write
-  a `CentralBankReserves` figure that the same actor can overwrite in one extrinsic — so the
-  numbers would be meaningless rather than merely unbacked.
-- Migrations that assume stored state persists are unsound until the key is rotated.
+**Therefore, still true:**
+- Treat anything written to this chain **before 2026-11-07** as attacker-controlled. In
+  particular the `WUSDC/bBZD` reserves were never backed by a minted bBZD, and `//Alice`
+  held the mint path.
+- `scripts/bootstrap-dex.js` may now be run against Ceiba, because it mints bBZD and writes
+  a `CentralBankReserves` figure — it could not be, while `//Alice` could overwrite both in
+  one extrinsic.
+- The RPC still has no authentication. Exposure of the *key* is fixed; exposure of *reads*
+  is not.
 
-Remediation is owner-gated (rotating the sole authority can stall the chain — Chain C
-precedent — and the new keys must be generated and stored on the host, not on a
-workstation). Recorded as blocker #13 in
-[`docs/security/MAINNET_READINESS.md`](security/MAINNET_READINESS.md), which carries the
-ordered steps. Re-verify with:
+Full record, ordered remediation steps, and the five traps hit during execution:
+[`docs/security/MAINNET_READINESS.md`](security/MAINNET_READINESS.md) blocker #13. Verify the
+current key rather than trusting this table:
 
 ```bash
 R=https://testnet.belizechain.org/rpc
 KEY=0x5c0d1176a568c1f92944340dbfed9e9c530ebca703c85910e7164cb7d1c9e47b
 curl -s -H 'Content-Type: application/json' \
   -d "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"state_getStorage\",\"params\":[\"$KEY\"]}" $R
-# 0xd43593c7…da27d  => still //Alice
+# 0x32967ce9…3fb017  => rotated
+# 0xd43593c7…da27d  => STILL //Alice, exposure open
 ```
 
 ---
