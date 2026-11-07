@@ -67,6 +67,15 @@ require_binary() {
     [[ -x $NODE ]] || die "node binary not executable: $NODE (set NODE=, or run cargo build --release)"
 }
 
+# build-spec echoes the entire genesis blob into its error text, so dump only the
+# head of the log — otherwise the actionable message scrolls out of view.
+fail_with_log() {
+    printf 'error: %s\n' "$1" >&2
+    head -c 1200 "$2" | sed 's/^/  /' >&2
+    printf '\n  (full log: %s)\n' "$2" >&2
+    exit 1
+}
+
 # ---------------------------------------------------------------- key material
 
 generate_keys() {
@@ -105,25 +114,11 @@ build_spec() {
     raw=$WORK/spec-raw.json
     errlog=$WORK/spec.err
 
-    # Never discard build-spec stderr: a malformed patch (bad SS58 padding,
-    # wrong scheme) fails here with the only actionable message in the run.
-    build_spec_step() {
-        local out=$1
-        shift
-        if ! BELIZECHAIN_ALLOW_DEV_SEEDS=1 "$NODE" build-spec "$@" \
-            --disable-default-bootnode >"$out" 2>"$errlog"; then
-            # build-spec echoes the entire genesis blob into its error text, so
-            # cap the dump or the real message scrolls away.
-            printf 'error: build-spec failed:\n' >&2
-            head -c 1200 "$errlog" | sed 's/^/  /' >&2
-            printf '\n  (full log: %s)\n' "$errlog" >&2
-            exit 1
-        fi
-    }
-
     # testnet-template refuses to build without the dev-seed acknowledgement;
     # the seeds are replaced below, so this only unlocks the template.
-    build_spec_step "$plain" --chain testnet-template
+    BELIZECHAIN_ALLOW_DEV_SEEDS=1 "$NODE" build-spec --chain testnet-template \
+        --disable-default-bootnode >"$plain" 2>"$errlog" \
+        || fail_with_log "build-spec (testnet-template) failed" "$errlog"
 
     python3 - "$plain" "$patched" "$wasm" "$CHAIN_ID" "$FUND" "$WORK/keytable.tsv" <<'PY'
 import json
@@ -172,12 +167,8 @@ print('  authorities: %d  sudo: %s  balances: %d'
 PY
 
     BELIZECHAIN_ALLOW_DEV_SEEDS=1 "$NODE" build-spec --chain "$patched" \
-        --disable-default-bootnode --raw >"$raw" 2>"$errlog" || {
-        printf 'error: building the raw spec failed:\n' >&2
-        head -c 1200 "$errlog" | sed 's/^/  /' >&2
-        printf '\n  (full log: %s)\n' "$errlog" >&2
-        exit 1
-    }
+        --disable-default-bootnode --raw >"$raw" 2>"$errlog" \
+        || fail_with_log "building the raw spec failed" "$errlog"
     note "raw spec: $raw ($(du -h "$raw" | cut -f1), chain id $CHAIN_ID)"
 }
 
