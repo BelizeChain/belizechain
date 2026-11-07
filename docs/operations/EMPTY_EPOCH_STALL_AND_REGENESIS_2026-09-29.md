@@ -532,3 +532,51 @@ Written to be accurate rather than persuasive: it states that `pallet_session`
 that the halt is not self-reporting. **Not filed** — that is the operator's call.
 
 
+
+---
+
+## 11. A re-genesis silently restores the old privileged keys
+
+Added 2026-11-07, after blocker #13 was closed. This section exists because the
+fix for #13 lives in **chain state**, and a re-genesis is the one routine
+operation that discards chain state and rebuilds it from a file that still
+contains the original, compromised keys.
+
+### The trap
+
+`testnet-spec.json` — both the live copy at `/data/chain/testnet-spec.json` on
+Ceiba and the copy in this repo — carries a genesis patch that pins:
+
+- `sudo.key` = `5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY` (`//Alice`)
+- the sole `session.keys` entry = the same `//Alice` account
+
+Those were the values in force before 2026-11-07. **Re-genesis from that file
+would restore `Sudo`, the sole BABE authority and the SSN issuer to the public
+dev key in one step**, and because the resulting chain is new, nothing in
+`docs/ECOSYSTEM_STATE.md` §2.4 would look wrong until someone re-read
+`Sudo.Key` — which is exactly how the exposure survived six months the first
+time.
+
+The genesis hash would also change, so the existing chain backups could not be
+used to notice the regression by comparison.
+
+### What a re-genesis must therefore do
+
+1. Generate the spec, then **rewrite** `sudo.key` and the `session.keys` entry to
+   the operational accounts before booting. The secrets already exist on Ceiba at
+   `/opt/belizechain/keys/` (`sudo-new.json`, `validator-new.json`,
+   `validator-gran.json`); public values are in `ECOSYSTEM_STATE.md` §2.4.
+2. Boot, then confirm **from the public endpoint**, not from the spec file:
+   `Sudo.Key` is not `0xd43593c7…da27d`, `Session.Validators` is the intended
+   account, `Identity.SsnIssuers` is the intended account.
+3. Only then re-run `scripts/bootstrap-dex.js`. A DEX bootstrap against a chain
+   whose sudo is the public dev key writes reserves that anyone can rewrite.
+
+### Why this was not fixed here
+
+Editing the live spec is not a no-op: the genesis patch feeds the genesis hash,
+and whether a node with an existing database re-reads genesis from the spec was
+**not established** — testing it on the only live chain, to fix a file that only
+matters at the next re-genesis, is the wrong trade. The precondition is recorded
+instead, in blocker #13 and here, so the step cannot be skipped by someone
+following this document as a checklist.
