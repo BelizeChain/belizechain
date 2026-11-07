@@ -313,10 +313,11 @@ holds Root.
 - `scripts/bootstrap-dex.js` is no longer *blocked* by this: while `//Alice` held `Sudo` it
   could overwrite the minted bBZD and the `CentralBankReserves` figure in one extrinsic, so
   seeding reserves was pointless. **It is still not pre-approved.** Running it mints roughly
-  100,000 DALLA of liquidity and ~200,000 bBZD, and the sudo account holds ~3,050 DALLA, so
-  the funding step needs either a large transfer or another `forceSetBalance` — i.e. **more
-  minting on a live chain**. That is an owner decision, a different class of action from
-  rotating a key.
+  100,000 DALLA of liquidity and ~200,000 bBZD, and the sudo account holds ~1,050 DALLA
+  free (the rest of what it was funded with is locked in three 1,000-DALLA issuer bonds),
+  so the funding step needs either a large transfer or another `forceSetBalance` — i.e.
+  **more minting on a live chain**. That is an owner decision, a different class of action
+  from rotating a key.
 - The RPC still has no authentication. Exposure of the *key* is fixed; exposure of *reads*
   is not.
 
