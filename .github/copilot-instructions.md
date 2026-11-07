@@ -54,7 +54,17 @@ rather than only passing on the new.
 - **Runtime Ports**: `30333` (P2P), `9944` (RPC), `9615` (Prometheus)
 
 ## GitHub Secrets (on this repo)
-`POSTGRES_HOST`, `POSTGRES_PASSWORD`, `POSTGRES_USER`, `REDIS_HOST`, `REDIS_PASSWORD`, `REDIS_PORT`, `VM_HOST`, `VM_SSH_KEY`, `VM_USER`
+Do not maintain a list here. Secret names are configuration, they drift, and a
+stale list is how the Azure/ACR set survived a cleanup that was supposed to
+remove them.
+
+- Query the truth: `gh secret list`.
+- The one secret this repo's CI actually needs and does **not** have is
+  `BELIECHAIN_CI_TOKEN` (a fine-grained PAT with `Contents: read` on the six
+  private sibling repos). Without it `docs-check.yml` fails on every scheduled
+  run by design rather than reporting SKIP.
+- 42 dead Azure/AKS secrets were deleted across all eight repos on 2026-11-07,
+  and no workflow referenced any of them.
 
 ## Sibling Repos
 | Repo | Role | Runtime Target |
