@@ -24,7 +24,7 @@
 | 1.2 | **Re-genesis key precondition** | `testnet-spec.json` — the Ceiba copy *and* the repo copy — still pins `//Alice` as `sudo.key` and as the sole `session.keys` entry. A re-genesis from that file restores the whole exposure closed today. | Six months of the same bug, on a new chain, with nothing in the docs looking wrong. |
 | 1.3 | **`BELIECHAIN_CI_TOKEN`** | Needs a fine-grained PAT with `Contents: read` on the six private sibling repos. Without it, `docs-check.yml` fails on every scheduled run by design. | Docs drift stops being detectable in CI. |
 | 1.4 | **Genesis council seats** (`ECOSYSTEM_STATE.md` §4.0a) | Genesis stamps all three council seats `Founder`, contradicting `max_count() = 1`. Fix in genesis (correct for mainnet, no-op on testnet) or write a migration. | Founder role is over-assigned at chain birth. |
-| 1.5 | **Faucet is unusable by a brand-new account** (see §3.4) | `claim()` is a plain `#[ink(message)]`, so the caller pays gas. An account with zero DALLA cannot pay it — which is exactly the user a faucet exists for. Fixing it properly means a decision (meta-tx relayer vs. seeding accounts vs. documenting a two-step). | Testnet onboarding needs a manual step forever. |
+| 1.5 | **Faucet is unusable by a brand-new account** (see §3.4) | `claim()` is a plain `#[ink(message)]`, so the caller pays the fee — measured **0.001197 DALLA**, against an existential deposit of **0.001 DALLA**. An account holding 0 cannot pay it, and an account holding exactly the ED cannot either. The fix is a design choice: add `claim_for(account)` so a funded relayer can pay the fee and the drip lands on the newcomer, or seed test accounts out of band and document the two-step. | Testnet onboarding needs a manual step forever |
 
 **Verification for 1.2** (the one most likely to be forgotten):
 
@@ -129,7 +129,7 @@ exists, and only a permission stands between the two.
 
 | Item | State |
 |---|---|
-| **Faucet cannot serve a fresh account** | `faucet/lib.rs::claim` is a non-payable `#[ink(message)]` that transfers `drip_amount` to the caller. The caller still pays **gas**, and an account holding 0 DALLA cannot. Confirmed by reading the message; the drip never reaches the people it targets. Decision required — see 1.5 |
+| **Faucet cannot serve a fresh account** | `faucet/lib.rs::claim` is a non-payable `#[ink(message)]` that transfers `drip_amount` to the caller — so the **caller pays the fee**, because the contract has no way to pay on their behalf. Measured 2026-11-07 on `wss://testnet.belizechain.org/ws`: a `contracts.call` costs **0.001197 DALLA** (`partialFee 1,196,589,257` wei) and the existential deposit is **0.001 DALLA** (`1,000,000,000` wei). The faucet itself is deployed at `r1Wcf2YSz…` and funded with **10,000 DALLA**, so the contract is healthy — the barrier is entirely on the caller's side. Decision required — see 1.5 |
 | GitHub Actions | Unrecoverable on billing (minutes exhausted; owner will not buy more). **Local verification is the substitute and it works**: 10 contracts, 213 tests, ~13s total, measured 2026-10-15. Use `-j 2` *before* `--` |
 | e2e tests | Type-checked but **never executed** — `substrate-contracts-node` is not installed. A real gap, not a pass |
 
