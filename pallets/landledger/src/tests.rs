@@ -3,6 +3,37 @@ use crate::mock::*;
 use frame_support::{assert_noop, assert_ok};
 
 // ============================================================================
+// P1-09: a completed transfer is now TWO calls
+// ============================================================================
+
+/// Initiate a transfer and then approve it, i.e. produce a *completed* transfer.
+///
+/// Before P1-09 `transfer_property` moved title on its own, so every test that cared
+/// about the end state called it once. That is no longer true by design: ownership
+/// moves only in `approve_transfer`, which requires `GovernmentOrigin`. This helper
+/// keeps the two-phase rule defined in one place instead of restated in ~20 tests.
+fn transfer_and_approve(
+    origin: RuntimeOrigin,
+    property_id: u32,
+    new_owner: u64,
+    price: u128,
+    transfer_type: u8,
+) {
+    assert_ok!(LandLedger::transfer_property(
+        origin,
+        property_id,
+        new_owner,
+        price,
+        transfer_type
+    ));
+    let transfer_id = LandLedger::next_transfer_id().saturating_sub(1);
+    assert_ok!(LandLedger::approve_transfer(
+        RuntimeOrigin::root(),
+        transfer_id
+    ));
+}
+
+// ============================================================================
 // Property Registration Tests
 // ============================================================================
 
@@ -214,13 +245,13 @@ fn transfer_property_works() {
         Properties::<Test>::insert(1, property);
 
         // Transfer to EVE (who has Level 2 KYC)
-        assert_ok!(LandLedger::transfer_property(
+        transfer_and_approve(
             RuntimeOrigin::signed(ALICE),
             1, // Property ID
             EVE,
             500_000, // Transfer price
             0,       // Sale
-        ));
+        );
 
         // Verify ownership changed
         let property = LandLedger::properties(1).unwrap();
@@ -813,13 +844,13 @@ fn setup_verified_property(owner: u64, property_id: u32) {
 fn transfer_property_gift_type() {
     new_test_ext().execute_with(|| {
         setup_verified_property(ALICE, 1);
-        assert_ok!(LandLedger::transfer_property(
+        transfer_and_approve(
             RuntimeOrigin::signed(ALICE),
             1,
             EVE,
             0, // Gift - zero price
             1, // Gift type
-        ));
+        );
         let prop = LandLedger::properties(1).unwrap();
         assert_eq!(prop.owner, EVE);
         let transfer = LandLedger::transfer_records(0).unwrap();
@@ -833,13 +864,13 @@ fn transfer_property_gift_type() {
 fn transfer_property_inheritance_type() {
     new_test_ext().execute_with(|| {
         setup_verified_property(ALICE, 1);
-        assert_ok!(LandLedger::transfer_property(
+        transfer_and_approve(
             RuntimeOrigin::signed(ALICE),
             1,
             EVE,
             200_000,
             2, // Inheritance
-        ));
+        );
         let transfer = LandLedger::transfer_records(0).unwrap();
         assert_eq!(transfer.transfer_type, TransferType::Inheritance);
     });
@@ -849,13 +880,13 @@ fn transfer_property_inheritance_type() {
 fn transfer_property_government_acquisition_type() {
     new_test_ext().execute_with(|| {
         setup_verified_property(ALICE, 1);
-        assert_ok!(LandLedger::transfer_property(
+        transfer_and_approve(
             RuntimeOrigin::signed(ALICE),
             1,
             EVE,
             1_000_000,
             3, // GovernmentAcquisition
-        ));
+        );
         let transfer = LandLedger::transfer_records(0).unwrap();
         assert_eq!(transfer.transfer_type, TransferType::GovernmentAcquisition);
     });
@@ -865,13 +896,13 @@ fn transfer_property_government_acquisition_type() {
 fn transfer_property_foreclosure_type() {
     new_test_ext().execute_with(|| {
         setup_verified_property(ALICE, 1);
-        assert_ok!(LandLedger::transfer_property(
+        transfer_and_approve(
             RuntimeOrigin::signed(ALICE),
             1,
             EVE,
             300_000,
             4, // Foreclosure
-        ));
+        );
         let transfer = LandLedger::transfer_records(0).unwrap();
         assert_eq!(transfer.transfer_type, TransferType::Foreclosure);
     });
@@ -881,13 +912,13 @@ fn transfer_property_foreclosure_type() {
 fn transfer_property_court_order_type() {
     new_test_ext().execute_with(|| {
         setup_verified_property(ALICE, 1);
-        assert_ok!(LandLedger::transfer_property(
+        transfer_and_approve(
             RuntimeOrigin::signed(ALICE),
             1,
             EVE,
             0,
             5, // CourtOrder
-        ));
+        );
         let transfer = LandLedger::transfer_records(0).unwrap();
         assert_eq!(transfer.transfer_type, TransferType::CourtOrder);
     });
@@ -897,13 +928,13 @@ fn transfer_property_court_order_type() {
 fn invalid_transfer_type_defaults_to_sale() {
     new_test_ext().execute_with(|| {
         setup_verified_property(ALICE, 1);
-        assert_ok!(LandLedger::transfer_property(
+        transfer_and_approve(
             RuntimeOrigin::signed(ALICE),
             1,
             EVE,
             100_000,
             99, // Invalid - defaults to Sale
-        ));
+        );
         let transfer = LandLedger::transfer_records(0).unwrap();
         assert_eq!(transfer.transfer_type, TransferType::Sale);
     });
@@ -947,13 +978,13 @@ fn transfer_property_zero_price_no_tax() {
     new_test_ext().execute_with(|| {
         setup_verified_property(ALICE, 1);
         let alice_before = Balances::free_balance(ALICE);
-        assert_ok!(LandLedger::transfer_property(
+        transfer_and_approve(
             RuntimeOrigin::signed(ALICE),
             1,
             EVE,
             0, // Zero price
             0,
-        ));
+        );
         // No tax should be deducted
         assert_eq!(Balances::free_balance(ALICE), alice_before);
         let transfer = LandLedger::transfer_records(0).unwrap();
@@ -969,13 +1000,7 @@ fn transfer_property_updates_ownership_lists() {
         assert_eq!(LandLedger::get_owned_properties(&ALICE), vec![1]);
         assert_eq!(LandLedger::get_owned_properties(&EVE), Vec::<u32>::new());
 
-        assert_ok!(LandLedger::transfer_property(
-            RuntimeOrigin::signed(ALICE),
-            1,
-            EVE,
-            100_000,
-            0,
-        ));
+        transfer_and_approve(RuntimeOrigin::signed(ALICE), 1, EVE, 100_000, 0);
 
         // Verify ownership after: ALICE loses property, EVE gains it
         assert_eq!(LandLedger::get_owned_properties(&ALICE), Vec::<u32>::new());
@@ -993,25 +1018,13 @@ fn sequential_transfers_chain() {
         setup_verified_property(ALICE, 1);
 
         // A → B (BOB has KYC L3, account 2)
-        assert_ok!(LandLedger::transfer_property(
-            RuntimeOrigin::signed(ALICE),
-            1,
-            BOB,
-            500_000,
-            0,
-        ));
+        transfer_and_approve(RuntimeOrigin::signed(ALICE), 1, BOB, 500_000, 0);
         assert_eq!(LandLedger::properties(1).unwrap().owner, BOB);
         assert_eq!(LandLedger::next_transfer_id(), 1);
 
         // B → C (CHARLIE has KYC L3, account 3)
         // Oracle verifies property 1 for account 2 (BOB)
-        assert_ok!(LandLedger::transfer_property(
-            RuntimeOrigin::signed(BOB),
-            1,
-            CHARLIE,
-            600_000,
-            0,
-        ));
+        transfer_and_approve(RuntimeOrigin::signed(BOB), 1, CHARLIE, 600_000, 0);
         assert_eq!(LandLedger::properties(1).unwrap().owner, CHARLIE);
         assert_eq!(LandLedger::next_transfer_id(), 2);
 
@@ -1037,13 +1050,7 @@ fn transfer_tax_computed_correctly_for_large_price() {
         let price: u128 = 10_000_000; // 10M
         let expected_tax = price * 250 / 10000; // 2.5% = 250,000
 
-        assert_ok!(LandLedger::transfer_property(
-            RuntimeOrigin::signed(ALICE),
-            1,
-            EVE,
-            price,
-            0,
-        ));
+        transfer_and_approve(RuntimeOrigin::signed(ALICE), 1, EVE, price, 0);
 
         let transfer = LandLedger::transfer_records(0).unwrap();
         assert_eq!(transfer.tax_paid, expected_tax);
@@ -1503,13 +1510,7 @@ fn transfer_property_emits_event() {
     new_test_ext().execute_with(|| {
         System::set_block_number(1);
         setup_verified_property(ALICE, 1);
-        assert_ok!(LandLedger::transfer_property(
-            RuntimeOrigin::signed(ALICE),
-            1,
-            EVE,
-            200_000,
-            0,
-        ));
+        transfer_and_approve(RuntimeOrigin::signed(ALICE), 1, EVE, 200_000, 0);
         System::assert_has_event(
             Event::PropertyTransferred {
                 property_id: 1,
@@ -1656,13 +1657,7 @@ fn transfer_updates_temporal_anchor_chain() {
             100,
             None
         ));
-        assert_ok!(LandLedger::transfer_property(
-            RuntimeOrigin::signed(ALICE),
-            1,
-            EVE,
-            100_000,
-            0,
-        ));
+        transfer_and_approve(RuntimeOrigin::signed(ALICE), 1, EVE, 100_000, 0);
 
         // Anchor chain should be updated
         let new_hash = PropertyAnchorChain::<Test>::get(1).unwrap();
@@ -1703,13 +1698,7 @@ fn anchor_chain_structure_is_consistent() {
         ));
 
         // Transfer creates second anchor in chain
-        assert_ok!(LandLedger::transfer_property(
-            RuntimeOrigin::signed(ALICE),
-            1,
-            EVE,
-            50_000,
-            0,
-        ));
+        transfer_and_approve(RuntimeOrigin::signed(ALICE), 1, EVE, 50_000, 0);
 
         let latest_hash = PropertyAnchorChain::<Test>::get(1).unwrap();
         let latest = LandAnchors::<Test>::get(latest_hash).unwrap();
@@ -1753,24 +1742,12 @@ fn anchor_chain_grows_with_multiple_transfers() {
         let hash0 = PropertyAnchorChain::<Test>::get(1).unwrap();
 
         // Transfer A → B
-        assert_ok!(LandLedger::transfer_property(
-            RuntimeOrigin::signed(ALICE),
-            1,
-            BOB,
-            100_000,
-            0,
-        ));
+        transfer_and_approve(RuntimeOrigin::signed(ALICE), 1, BOB, 100_000, 0);
         let hash1 = PropertyAnchorChain::<Test>::get(1).unwrap();
         assert_ne!(hash0, hash1);
 
         // Transfer B → C
-        assert_ok!(LandLedger::transfer_property(
-            RuntimeOrigin::signed(BOB),
-            1,
-            CHARLIE,
-            200_000,
-            0,
-        ));
+        transfer_and_approve(RuntimeOrigin::signed(BOB), 1, CHARLIE, 200_000, 0);
         let hash2 = PropertyAnchorChain::<Test>::get(1).unwrap();
         assert_ne!(hash1, hash2);
 
@@ -1815,13 +1792,7 @@ fn get_latest_anchor_resolves_any_content_hash_to_the_chain_tip() {
             Some(genesis_anchor),
         );
 
-        assert_ok!(LandLedger::transfer_property(
-            RuntimeOrigin::signed(ALICE),
-            1,
-            EVE,
-            100_000,
-            0,
-        ));
+        transfer_and_approve(RuntimeOrigin::signed(ALICE), 1, EVE, 100_000, 0);
 
         let head_anchor = PropertyAnchorChain::<Test>::get(1).unwrap();
         let head_content = LandAnchors::<Test>::get(head_anchor).unwrap().content_hash;
@@ -1956,13 +1927,7 @@ fn transfer_one_of_many_leaves_rest() {
             }
         });
 
-        assert_ok!(LandLedger::transfer_property(
-            RuntimeOrigin::signed(ALICE),
-            1,
-            EVE,
-            100_000,
-            0,
-        ));
+        transfer_and_approve(RuntimeOrigin::signed(ALICE), 1, EVE, 100_000, 0);
 
         // ALICE still owns 0 and 2
         let alice_owned = LandLedger::get_owned_properties(&ALICE);
@@ -2009,13 +1974,7 @@ fn next_transfer_id_increments_correctly() {
         }
 
         for i in 1..=3u32 {
-            assert_ok!(LandLedger::transfer_property(
-                RuntimeOrigin::signed(ALICE),
-                i,
-                EVE,
-                100_000,
-                0,
-            ));
+            transfer_and_approve(RuntimeOrigin::signed(ALICE), i, EVE, 100_000, 0);
             assert_eq!(LandLedger::next_transfer_id(), i);
         }
     });
@@ -2274,5 +2233,192 @@ fn set_zoning_does_not_rewrite_existing_property_snapshots() {
 fn effective_zoning_is_none_for_an_unknown_property() {
     new_test_ext().execute_with(|| {
         assert_eq!(LandLedger::effective_zoning(9_999), None);
+    });
+}
+
+// ============================================================================
+// P1-09 regression tests — land title must not move without approval
+//
+// These are the tests that must FAIL on the pre-fix code. Before P1-09
+// `transfer_property` rewrote `Properties::owner` in the same call, so
+// `transfer_property_does_not_move_title_until_approved` would have seen
+// EVE as the owner and failed.
+// ============================================================================
+
+/// Build property 1 owned by ALICE, pre-verified and surveyed so every transfer
+/// precondition passes.
+fn seed_transferable_property() {
+    let property = PropertyRecord {
+        property_id: 1,
+        owner: ALICE,
+        title_number: test_title(1).try_into().unwrap(),
+        description: test_description("Property for sale").try_into().unwrap(),
+        coordinates: test_coordinates(0, 0),
+        area_sqm: 1000,
+        property_type: PropertyType::Residential,
+        assessed_value: 500_000,
+        registered_at: 1,
+        last_transferred: None,
+        government_verified: true,
+        surveyed: true,
+        environmental_clearance: false,
+        is_tourism_property: false,
+        zoning: ZoningType::UrbanResidential,
+        encumbrances: BoundedVec::default(),
+    };
+    Properties::<Test>::insert(1, property);
+}
+
+#[test]
+fn transfer_property_does_not_move_title_until_approved() {
+    new_test_ext().execute_with(|| {
+        seed_transferable_property();
+
+        assert_ok!(LandLedger::transfer_property(
+            RuntimeOrigin::signed(ALICE),
+            1,
+            EVE,
+            500_000,
+            0,
+        ));
+
+        // THE REGRESSION: title must still be ALICE's...
+        assert_eq!(
+            LandLedger::properties(1).unwrap().owner,
+            ALICE,
+            "P1-09: ownership must not change on the initiating call"
+        );
+        // ...and the transfer must exist as *pending*, not as history.
+        assert_eq!(LandLedger::pending_transfers(0).unwrap().to_owner, EVE);
+        assert!(
+            LandLedger::transfer_records(0).is_none(),
+            "P1-09: an unapproved transfer must not enter the completed-transfer history"
+        );
+        // The buyer must not be credited with the property yet.
+        assert!(!LandLedger::get_owned_properties(&EVE).contains(&1));
+
+        // Only approval moves it.
+        assert_ok!(LandLedger::approve_transfer(RuntimeOrigin::root(), 0));
+        assert_eq!(LandLedger::properties(1).unwrap().owner, EVE);
+        assert!(LandLedger::get_owned_properties(&EVE).contains(&1));
+        assert!(!LandLedger::get_owned_properties(&ALICE).contains(&1));
+        assert!(LandLedger::pending_transfers(0).is_none());
+    });
+}
+
+#[test]
+fn approve_transfer_requires_government_origin() {
+    new_test_ext().execute_with(|| {
+        seed_transferable_property();
+        assert_ok!(LandLedger::transfer_property(
+            RuntimeOrigin::signed(ALICE),
+            1,
+            EVE,
+            500_000,
+            0,
+        ));
+
+        // The seller must not be able to approve their own transfer.
+        assert_noop!(
+            LandLedger::approve_transfer(RuntimeOrigin::signed(ALICE), 0),
+            sp_runtime::DispatchError::BadOrigin
+        );
+        assert_noop!(
+            LandLedger::approve_transfer(RuntimeOrigin::signed(EVE), 0),
+            sp_runtime::DispatchError::BadOrigin
+        );
+        assert_eq!(LandLedger::properties(1).unwrap().owner, ALICE);
+    });
+}
+
+#[test]
+fn approve_transfer_rejects_unknown_id() {
+    new_test_ext().execute_with(|| {
+        assert_noop!(
+            LandLedger::approve_transfer(RuntimeOrigin::root(), 42),
+            Error::<Test>::TransferNotFound
+        );
+    });
+}
+
+#[test]
+fn approve_transfer_refuses_when_encumbrance_added_after_initiation() {
+    new_test_ext().execute_with(|| {
+        seed_transferable_property();
+        assert_ok!(LandLedger::transfer_property(
+            RuntimeOrigin::signed(ALICE),
+            1,
+            EVE,
+            500_000,
+            0,
+        ));
+
+        // An encumbrance registered while the transfer sat in the queue must block it.
+        Properties::<Test>::mutate(1, |maybe| {
+            if let Some(p) = maybe {
+                p.encumbrances
+                    .try_push(Encumbrance {
+                        encumbrance_type: EncumbranceType::Mortgage,
+                        holder: BOB,
+                        amount: Some(1_000),
+                        description: test_description("mortgage").try_into().unwrap(),
+                        active: true,
+                    })
+                    .unwrap();
+            }
+        });
+
+        assert_noop!(
+            LandLedger::approve_transfer(RuntimeOrigin::root(), 0),
+            Error::<Test>::EncumbranceExists
+        );
+        assert_eq!(LandLedger::properties(1).unwrap().owner, ALICE);
+    });
+}
+
+#[test]
+fn reject_transfer_keeps_owner_and_refunds_tax() {
+    new_test_ext().execute_with(|| {
+        seed_transferable_property();
+
+        let before = Balances::free_balance(ALICE);
+        assert_ok!(LandLedger::transfer_property(
+            RuntimeOrigin::signed(ALICE),
+            1,
+            EVE,
+            500_000,
+            0,
+        ));
+        // 2.5% tax was taken at initiation.
+        let tax = 500_000u128 * 250 / 10_000;
+        assert_eq!(Balances::free_balance(ALICE), before - tax);
+
+        assert_ok!(LandLedger::reject_transfer(RuntimeOrigin::root(), 0));
+
+        // Ownership unchanged, tax returned, pending gone, no history entry.
+        assert_eq!(LandLedger::properties(1).unwrap().owner, ALICE);
+        assert_eq!(Balances::free_balance(ALICE), before);
+        assert!(LandLedger::pending_transfers(0).is_none());
+        assert!(LandLedger::transfer_records(0).is_none());
+    });
+}
+
+#[test]
+fn reject_transfer_requires_government_origin() {
+    new_test_ext().execute_with(|| {
+        seed_transferable_property();
+        assert_ok!(LandLedger::transfer_property(
+            RuntimeOrigin::signed(ALICE),
+            1,
+            EVE,
+            500_000,
+            0,
+        ));
+
+        assert_noop!(
+            LandLedger::reject_transfer(RuntimeOrigin::signed(ALICE), 0),
+            sp_runtime::DispatchError::BadOrigin
+        );
+        assert!(LandLedger::pending_transfers(0).is_some());
     });
 }

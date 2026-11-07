@@ -137,6 +137,68 @@ mod benchmarks {
         );
     }
 
+    /// P1-09 FIX: seed a property plus a pending transfer, returning its id.
+    ///
+    /// Shared by `approve_transfer` and `reject_transfer` so both measure the real
+    /// verification path rather than a hand-built storage state that skips it.
+    fn seed_pending_transfer<T: Config>() -> u32 {
+        let caller: T::AccountId = whitelisted_caller();
+        let new_owner: T::AccountId = account("new_owner", 0, 0);
+        let deposit = T::RegistrationDeposit::get();
+        let _ = T::Currency::make_free_balance_be(&caller, deposit * 10u32.into());
+        grant_kyc::<T>(&caller);
+        grant_kyc::<T>(&new_owner);
+
+        let pallet_account = Pallet::<T>::account_id();
+        let min_balance = T::Currency::minimum_balance();
+        let _ = T::Currency::make_free_balance_be(&pallet_account, min_balance * 10u32.into());
+
+        let _ = Pallet::<T>::register_property(
+            RawOrigin::Signed(caller.clone()).into(),
+            b"BZ-PROP-XFER-002".to_vec(),
+            b"Pending transfer property".to_vec(),
+            (17_000_000, -88_000_000),
+            1000,
+            0,
+            100_000,
+        );
+
+        let property_id: u32 = 0;
+        let _ = Pallet::<T>::verify_property(RawOrigin::Root.into(), property_id);
+        Properties::<T>::mutate(property_id, |maybe_prop| {
+            if let Some(prop) = maybe_prop {
+                prop.surveyed = true;
+            }
+        });
+
+        let _ = Pallet::<T>::transfer_property(
+            RawOrigin::Signed(caller).into(),
+            property_id,
+            new_owner,
+            150_000u128,
+            0u8,
+        );
+
+        // `transfer_property` consumed id 0 and bumped the counter.
+        NextTransferId::<T>::get().saturating_sub(1)
+    }
+
+    #[benchmark]
+    fn approve_transfer() {
+        let transfer_id = seed_pending_transfer::<T>();
+
+        #[extrinsic_call]
+        _(RawOrigin::Root, transfer_id);
+    }
+
+    #[benchmark]
+    fn reject_transfer() {
+        let transfer_id = seed_pending_transfer::<T>();
+
+        #[extrinsic_call]
+        _(RawOrigin::Root, transfer_id);
+    }
+
     #[benchmark]
     fn verify_property() {
         let caller: T::AccountId = whitelisted_caller();

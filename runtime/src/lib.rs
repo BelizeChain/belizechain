@@ -784,7 +784,15 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     //   The deviation arithmetic is unchanged (`MaxOracleDeviationBps`, 500 bps);
     //   it now runs for one more direction and against a reference that always
     //   exists.
-    spec_version: 124,
+    //
+    //   125: P1-09 — `landledger::approve_transfer` (10) and
+    //   `landledger::reject_transfer` (11) appended. `transfer_property` (1) now
+    //   only creates a pending request instead of moving title, so this is the
+    //   release that makes the government-approval gate real rather than nominal.
+    //   Additive only: no existing call index was removed, reordered or
+    //   reinterpreted, and `PendingTransfers` starts empty so no migration is
+    //   needed. `transaction_version` moves because the extrinsic set grew.
+    spec_version: 125,
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,
     // Adding call indices to a live pallet is additive, but the version
@@ -800,7 +808,12 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     //
     // The indices were appended, never reordered, so existing call encoding is
     // unaffected — this is a metadata-accuracy fix, not a breaking change.
-    transaction_version: 3,
+    //
+    // Bumped to 4 for 125: `LandLedger::approve_transfer` (10) and
+    // `LandLedger::reject_transfer` (11) were appended after the previous
+    // maximum (9). Additive, so existing call encoding still decodes; the bump
+    // advertises that the extrinsic set changed, per the convention above.
+    transaction_version: 4,
     system_version: 1,
 };
 

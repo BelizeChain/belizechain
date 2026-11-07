@@ -320,6 +320,22 @@ pub mod pallet {
     >;
 
     #[pallet::storage]
+    #[pallet::getter(fn pending_transfers)]
+    /// P1-09 FIX: transfers awaiting government approval.
+    ///
+    /// A transfer created by `transfer_property` lands here and **does not** change
+    /// `Properties::owner`. Ownership moves only when `approve_transfer` runs, and
+    /// `reject_transfer` refunds the tax instead. Kept separate from
+    /// `TransferRecords` (the immutable history of completed transfers) so a pending
+    /// entry can be removed without leaving a hole in the audit trail.
+    pub type PendingTransfers<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u32, // Transfer ID
+        TransferRecord<T::AccountId, u64>,
+    >;
+
+    #[pallet::storage]
     #[pallet::getter(fn property_by_title)]
     /// Property lookup by title number hash
     pub type PropertyByTitle<T: Config> = StorageMap<
@@ -454,6 +470,22 @@ pub mod pallet {
             longitude: i64,
             zoning: ZoningType,
         },
+        /// P1-09 FIX: a transfer was requested and is now awaiting government
+        /// approval. Ownership has NOT changed yet.
+        TransferInitiated {
+            property_id: PropertyId,
+            from_owner: T::AccountId,
+            to_owner: T::AccountId,
+            transfer_id: u32,
+        },
+        /// P1-09 FIX: a pending transfer was rejected by the government authority;
+        /// ownership is unchanged and the transfer tax was refunded.
+        TransferRejected {
+            property_id: PropertyId,
+            from_owner: T::AccountId,
+            to_owner: T::AccountId,
+            transfer_id: u32,
+        },
     }
 
     #[pallet::error]
@@ -504,6 +536,11 @@ pub mod pallet {
         EncumbranceNotFound,
         /// Area must be greater than zero
         InvalidArea,
+        /// P1-09 FIX: no pending transfer with that id (never created, or already
+        /// approved/rejected). Appended last so existing error indices do not shift.
+        TransferNotFound,
+        /// P1-09 FIX: the transfer exists in history but is no longer pending.
+        TransferNotPending,
     }
 
     #[pallet::call]
@@ -662,7 +699,8 @@ pub mod pallet {
                 _ => TransferType::Sale,
             };
 
-            let mut property = Self::properties(property_id).ok_or(Error::<T>::PropertyNotFound)?;
+            // P1-09: read-only here — ownership moves in `approve_transfer`.
+            let property = Self::properties(property_id).ok_or(Error::<T>::PropertyNotFound)?;
 
             // Verify current ownership
             ensure!(property.owner == who, Error::<T>::NotOwner);
@@ -735,63 +773,160 @@ pub mod pallet {
             // SAFETY(saturated_into): BlockNumber → u64 — lossless for BelizeChain's u32 blocks.
             let now = frame_system::Pallet::<T>::block_number().saturated_into::<u64>();
 
-            // Create transfer record
-            let transfer_record = TransferRecord {
+            // P1-09 FIX: this extrinsic now only *requests* a transfer. Ownership is NOT
+            // touched here — `approve_transfer` performs it, and only a
+            // `GovernmentOrigin` can call that. Before this change the owner was
+            // rewritten in the same call while `government_approved` was recorded as
+            // `false` afterwards, so the flag could never become `true` and the
+            // approval it described did not exist. On a land-title registry that makes
+            // the record advisory rather than authoritative.
+            PendingTransfers::<T>::insert(
                 transfer_id,
-                property_id,
-                from_owner: who.clone(),
-                to_owner: new_owner.clone(),
-                transfer_price,
-                // SAFETY(saturated_into): u64 → u64 is identity; the `now` value is
-                // already u64 from the block number conversion above.
-                transferred_at: now.saturated_into(),
-                government_approved: false, // Requires separate government approval via approve_transfer
-                tax_paid: transfer_tax,
-                transfer_type: transfer_type.clone(),
-            };
-
-            // Update property ownership
-            property.owner = new_owner.clone();
-            property.last_transferred = Some(now);
-
-            // Update storage
-            Properties::<T>::insert(property_id, property);
-            TransferRecords::<T>::insert(transfer_id, transfer_record);
-
-            // Update property ownership lists
-            PropertyOwners::<T>::mutate(&who, |properties| {
-                properties.retain(|&x| x != property_id);
-            });
-            PropertyOwners::<T>::try_mutate(&new_owner, |properties| {
-                properties
-                    .try_push(property_id)
-                    .map_err(|_| Error::<T>::MaxPropertiesReached)
-            })?;
+                TransferRecord {
+                    transfer_id,
+                    property_id,
+                    from_owner: who.clone(),
+                    to_owner: new_owner.clone(),
+                    transfer_price,
+                    // Overwritten at approval: the timestamp that matters for a title is
+                    // when the transfer became effective, not when it was requested.
+                    transferred_at: now,
+                    government_approved: false,
+                    tax_paid: transfer_tax,
+                    transfer_type,
+                },
+            );
 
             NextTransferId::<T>::put(transfer_id.saturating_add(1));
 
-            // Update temporal anchor chain with new ownership record
-            if let Some(previous_anchor_hash) = PropertyAnchorChain::<T>::get(property_id) {
-                // Create content hash from transfer record
+            Self::deposit_event(Event::TransferInitiated {
+                property_id,
+                from_owner: who,
+                to_owner: new_owner,
+                transfer_id,
+            });
+
+            Ok(())
+        }
+
+        /// P1-09 FIX: approve a pending property transfer as a government authority.
+        ///
+        /// This is the only path that changes `Properties::owner`. It is separate from
+        /// [`Call::transfer_property`] by design: a land registry that lets the seller
+        /// move title in one call is not a registry, it is a log.
+        #[pallet::call_index(10)]
+        #[pallet::weight(T::WeightInfo::approve_transfer())]
+        pub fn approve_transfer(origin: OriginFor<T>, transfer_id: u32) -> DispatchResult {
+            T::GovernmentOrigin::ensure_origin(origin)?;
+
+            let pending =
+                PendingTransfers::<T>::get(transfer_id).ok_or(Error::<T>::TransferNotFound)?;
+
+            // Re-read the property rather than trusting the pending record: anything may
+            // have changed while the transfer sat in the approval queue.
+            let mut property =
+                Self::properties(pending.property_id).ok_or(Error::<T>::PropertyNotFound)?;
+
+            // The seller must still own it. Without this an approval landing after some
+            // other transfer would move title from the wrong party.
+            ensure!(property.owner == pending.from_owner, Error::<T>::NotOwner);
+            // Encumbrances and verification may have changed since initiation, and both
+            // are grounds to refuse a transfer.
+            ensure!(
+                property.government_verified,
+                Error::<T>::PropertyNotVerified
+            );
+            ensure!(
+                !property.encumbrances.iter().any(|e| e.active),
+                Error::<T>::EncumbranceExists
+            );
+            ensure!(property.surveyed, Error::<T>::PropertyNotSurveyed);
+            ensure!(
+                !T::Oracle::is_sanctioned(&pending.to_owner),
+                Error::<T>::AccountSanctioned
+            );
+
+            let now = frame_system::Pallet::<T>::block_number().saturated_into::<u64>();
+            property.owner = pending.to_owner.clone();
+            property.last_transferred = Some(now);
+            Properties::<T>::insert(pending.property_id, property);
+
+            PropertyOwners::<T>::mutate(&pending.from_owner, |properties| {
+                properties.retain(|&x| x != pending.property_id);
+            });
+            PropertyOwners::<T>::try_mutate(&pending.to_owner, |properties| {
+                properties
+                    .try_push(pending.property_id)
+                    .map_err(|_| Error::<T>::MaxPropertiesReached)
+            })?;
+
+            // Append the temporal anchor now, so the chain records the moment title
+            // actually moved rather than the moment it was requested.
+            if let Some(previous_anchor_hash) = PropertyAnchorChain::<T>::get(pending.property_id) {
                 let mut content = Vec::new();
-                content.extend_from_slice(&property_id.to_le_bytes());
+                content.extend_from_slice(&pending.property_id.to_le_bytes());
                 content.extend_from_slice(&transfer_id.to_le_bytes());
-                content.extend_from_slice(new_owner.encode().as_slice());
+                content.extend_from_slice(pending.to_owner.encode().as_slice());
                 let content_hash = sp_io::hashing::blake2_256(&content);
 
                 if let Ok(new_anchor_hash) = Self::update_anchor(previous_anchor_hash, content_hash)
                 {
-                    PropertyAnchorChain::<T>::insert(property_id, new_anchor_hash);
+                    PropertyAnchorChain::<T>::insert(pending.property_id, new_anchor_hash);
                 }
             }
 
+            // Completed transfers move into the immutable history with the flag set.
+            TransferRecords::<T>::insert(
+                transfer_id,
+                TransferRecord {
+                    government_approved: true,
+                    transferred_at: now,
+                    ..pending.clone()
+                },
+            );
+            PendingTransfers::<T>::remove(transfer_id);
+
             Self::deposit_event(Event::PropertyTransferred {
-                property_id,
-                from_owner: who,
-                to_owner: new_owner,
-                // SAFETY(saturated_into): u128 → Balance event field. The transfer_price
-                // is user-supplied and has been validated through the tax calculation above.
-                transfer_price: transfer_price.saturated_into(),
+                property_id: pending.property_id,
+                from_owner: pending.from_owner,
+                to_owner: pending.to_owner,
+                // SAFETY(saturated_into): u128 → Balance event field. Validated by the
+                // tax calculation at initiation.
+                transfer_price: pending.transfer_price.saturated_into(),
+                transfer_id,
+            });
+
+            Ok(())
+        }
+
+        /// P1-09 FIX: reject a pending transfer as a government authority, refunding the
+        /// transfer tax. Without this, a refusal would have no on-chain representation and
+        /// the initiator's tax would be stranded.
+        #[pallet::call_index(11)]
+        #[pallet::weight(T::WeightInfo::reject_transfer())]
+        pub fn reject_transfer(origin: OriginFor<T>, transfer_id: u32) -> DispatchResult {
+            T::GovernmentOrigin::ensure_origin(origin)?;
+
+            let pending =
+                PendingTransfers::<T>::get(transfer_id).ok_or(Error::<T>::TransferNotFound)?;
+
+            // Refund the tax the initiator paid. It is zero for a gift, so guard against a
+            // pointless zero-value transfer.
+            if pending.tax_paid > 0 {
+                T::Currency::transfer(
+                    &Self::account_id(),
+                    &pending.from_owner,
+                    pending.tax_paid.saturated_into(),
+                    frame_support::traits::ExistenceRequirement::AllowDeath,
+                )?;
+            }
+
+            PendingTransfers::<T>::remove(transfer_id);
+
+            Self::deposit_event(Event::TransferRejected {
+                property_id: pending.property_id,
+                from_owner: pending.from_owner,
+                to_owner: pending.to_owner,
                 transfer_id,
             });
 
@@ -1253,6 +1388,11 @@ pub trait WeightInfo {
     fn add_encumbrance() -> Weight;
     fn remove_encumbrance() -> Weight;
     fn set_zoning() -> Weight;
+    // P1-09 FIX: approving a transfer re-reads the property, checks encumbrances and
+    // moves an ownership-list entry in each direction, so it is heavier than
+    // `transfer_property`, which now only writes one pending record.
+    fn approve_transfer() -> Weight;
+    fn reject_transfer() -> Weight;
 }
 
 impl WeightInfo for () {
@@ -1282,6 +1422,12 @@ impl WeightInfo for () {
     }
     fn set_zoning() -> Weight {
         Weight::from_parts(10_000_000, 512).saturating_add(Weight::from_parts(0, 1500))
+    }
+    fn approve_transfer() -> Weight {
+        Weight::from_parts(45_000_000, 512).saturating_add(Weight::from_parts(0, 7000))
+    }
+    fn reject_transfer() -> Weight {
+        Weight::from_parts(30_000_000, 512).saturating_add(Weight::from_parts(0, 3000))
     }
 }
 
