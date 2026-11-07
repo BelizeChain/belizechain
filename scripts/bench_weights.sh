@@ -123,13 +123,75 @@ PY
 # comes out 40-80% inflated (measured 2026-10-13). Checking per pallet means a
 # cable being unplugged mid-run fails loudly instead of writing a set whose
 # pallets were measured under two different performance regimes.
+#
+# WEIGHT-1 (2026-11-07): AC state alone is NOT sufficient, and relying on it
+# silently produced a bad set. On the development laptop ADP1/online read 1
+# while the cpufreq governor was `powersave`, which capped every core at
+# ~2.5 GHz against a 4,500 MHz ceiling. A full regeneration measured every
+# extrinsic ~1.70x higher than the 2026-10-24 run - a uniform factor across
+# seven unrelated pallets, which is the signature of a clock change rather than
+# a code change. Those weights were reverted. The tell is easy to miss because
+# 1.70x is the "safe" direction (over-charging), so nothing fails; the chain
+# simply loses ~40% of its block capacity with no error anywhere.
+#
+# That laptop additionally THERMAL-THROTTLES: under 8 busy cores it reaches
+# 100 C and settles at 3.3-3.75 GHz even with AC and EPP=performance, so it
+# cannot reproduce its own committed set. Prefer a desktop-class host and
+# record which one produced a file - the generated header prints CPU/HOSTNAME.
+#
+# Hence: check the clock policy too, and record the observed clock so a future
+# reader can tell which regime a file came from.
+#
+# Two independent signals, both required on hosts that expose them:
+#   scaling_governor              must be `performance`
+#   energy_performance_preference must be `performance` on intel_pstate / amd-pstate-epp
+# The second matters because EPP is a bias applied *within* the governor: a
+# `performance` governor with EPP=power still parks cores at low clocks.
 require_ac_power() {
     local node=/sys/class/power_supply/ADP1/online
-    [[ -r "$node" ]] || return 0   # not a laptop, or no AC node: do not block
-    if [[ "$(cat "$node")" != "1" ]]; then
+    if [[ -r "$node" && "$(cat "$node")" != "1" ]]; then
         echo ">>> ABORT: not on AC power (ADP1/online != 1); refusing to write weights." >&2
         echo "    Battery-measured weights are inflated 40-80% - see this file's header." >&2
         exit 1
+    fi
+
+    local gov_file=/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+    [[ -r "$gov_file" ]] || return 0   # no cpufreq node: cannot check, do not block
+    local gov
+    gov=$(cat "$gov_file")
+    if [[ "$gov" != "performance" && "${ALLOW_NON_PERFORMANCE_GOVERNOR:-0}" != "1" ]]; then
+        local max_khz cur_khz
+        max_khz=$(cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq 2>/dev/null || echo 0)
+        cur_khz=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null || echo 0)
+        echo ">>> ABORT: cpufreq governor is '$gov', not 'performance'." >&2
+        echo "    Measured at $((cur_khz/1000)) MHz of a $((max_khz/1000)) MHz ceiling." >&2
+        echo "    On this host 'powersave' caps cores at ~2.5 GHz and inflates every" >&2
+        echo "    weight by ~1.7x - uniformly, so it looks like a real change." >&2
+        echo "    Fix:  sudo cpupower frequency-set -g performance   (or equivalent)" >&2
+        echo "    Override only if you know the clock regime: ALLOW_NON_PERFORMANCE_GOVERNOR=1" >&2
+        exit 1
+    fi
+
+    # EPP is a bias applied *within* the governor, so a `performance` governor with
+    # EPP=power still parks cores low. Only the explicitly power-biased values are
+    # treated as fatal - some hosts report `default` and are fine, and blocking on
+    # that would make the guard unusable rather than useful.
+    local epp_file=/sys/devices/system/cpu/cpu0/cpufreq/energy_performance_preference
+    if [[ -r "$epp_file" && "${ALLOW_NON_PERFORMANCE_GOVERNOR:-0}" != "1" ]]; then
+        local epp
+        epp=$(cat "$epp_file" 2>/dev/null || echo "")
+        case "$epp" in
+            power|balance_power)
+                echo ">>> ABORT: energy_performance_preference is '$epp'." >&2
+                echo "    The governor is '$gov', but EPP biases clocks DOWN within it," >&2
+                echo "    so the measured clock is still not the ceiling. Setting both:" >&2
+                echo "      sudo cpupower frequency-set -g performance" >&2
+                echo "      for f in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; \\" >&2
+                echo "        do echo performance | sudo tee \"\$f\" >/dev/null; done" >&2
+                echo "    Override only if you know the clock regime: ALLOW_NON_PERFORMANCE_GOVERNOR=1" >&2
+                exit 1
+                ;;
+        esac
     fi
 }
 if [[ ! -x "$NODE_BIN" ]]; then
@@ -229,9 +291,16 @@ TARGETS=()
 if [[ "${1:-}" == "--all" ]]; then
     # Every entry in runtime/src/lib.rs `define_benchmarks!` that is a Belize
     # pallet. Read from the runtime so the list cannot drift from the runtime.
+    #
+    # Match every `[pallet_*` entry rather than enumerating name prefixes, then
+    # keep the ones that actually live in this repo. Matching prefixes was how
+    # `pallet_zk_attestation` was silently left out of `--all` - it is neither
+    # `pallet_belize_*` nor `pallet_storage_proof`, so it kept stale weights
+    # through a full regeneration that reported success.
     while read -r pallet; do
+        [[ -f "${ROOT_DIR}/pallets/$(pallet_dir "$pallet")/src/weights.rs" ]] || continue
         TARGETS+=("$pallet")
-    done < <(grep -oE '\[pallet_belize_[a-z_]+|\[pallet_storage_proof' \
+    done < <(grep -oE '\[pallet_[a-z_0-9]+' \
         "${ROOT_DIR}/runtime/src/lib.rs" | tr -d '[' | sort -u)
 elif [[ $# -gt 0 ]]; then
     TARGETS=("$@")
