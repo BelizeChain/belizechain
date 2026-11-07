@@ -368,6 +368,31 @@ fn belizechain_mainnet_config_with_councils(
 }
 
 /// Configure initial storage state for BelizeChain.
+/// Genesis patch for the BelizeX DEX.
+///
+/// The pallet's own `GenesisConfig::default()` sets `enable_default_pairs`, but a
+/// pallet's defaults only apply when the genesis patch actually *contains* that
+/// pallet. Omitting the key skips `genesis_build` entirely, so the chain starts
+/// with an empty `TradingPairs` map, no `DevSeedEnabled` value, and
+/// `create_trading_pair` (technical-council majority) as the only way to add a
+/// market. That is precisely how the live Ceiba chain ended up with zero markets:
+/// trading was made *safe* by an earlier change but never made *possible*.
+///
+/// `seed_liquidity` is separate because the seed spends real bBZD out of the
+/// treasury. On a testnet that is free rehearsal money; on mainnet it is a
+/// treasury policy decision, so it stays off there until the owner signs it off
+/// rather than being switched on implicitly by a field named "dev".
+fn belizex_genesis_patch(seed_liquidity: bool) -> serde_json::Value {
+    serde_json::json!({
+        // DALLA/bBZD, TourismDALLA/bBZD (0.15% fee) and WUSDC/bBZD, all opened
+        // with zero reserves — reserves are added by `add_liquidity` or the seed.
+        "enableDefaultPairs": true,
+        // No bootstrap providers: the seed below credits the treasury itself.
+        "initialProviders": Vec::<AccountId>::new(),
+        "devSeedDefaultLiquidity": seed_liquidity,
+    })
+}
+
 fn testnet_genesis(
     initial_authorities: Vec<(AccountId, BabeId, GrandpaId)>,
     root_key: AccountId,
@@ -420,6 +445,11 @@ fn testnet_genesis(
 
         // BelizeChain custom pallet configurations
         // Note: Economy pallet doesn't have genesis config yet
+
+        // Open the DEX markets. Seeding is on for testnet: the bBZD comes from
+        // the treasury, which is rehearsal money here, and it is what turns
+        // "trading is safe" into "trading works".
+        "belizeX": belizex_genesis_patch(true),
 
         "identity": {
             "operationFee": Some(10u128 * 1_000_000_000_000u128), // 10 DALLA with 12 decimals
@@ -728,6 +758,12 @@ fn mainnet_genesis_with_councils(
 
         // BelizeChain custom pallet configurations
         // Note: Economy pallet doesn't have genesis config yet
+
+        // Open the DEX markets. Liquidity seeding is OFF on mainnet: it would
+        // spend Government treasury bBZD, which is a policy decision for the
+        // owner, not something genesis should do by default. The pairs still
+        // exist, so `add_liquidity` can open them the moment that is decided.
+        "belizeX": belizex_genesis_patch(false),
 
         "identity": {
             "operationFee": Some(50u128 * 1_000_000_000_000u128), // 50 DALLA for mainnet
