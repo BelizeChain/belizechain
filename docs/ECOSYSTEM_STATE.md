@@ -283,7 +283,7 @@ history matters because it explains what is still untrusted.
 |---|---|---|
 | `Sudo.Key` | `0xd43593c7…da27d` = **`//Alice`**, the public Substrate dev key | `0x32967ce9…3fb017`, SS58 `r1T7BYVAQEF6GVZJFuvCqaHQt7tfdw8zdHyaNwjeHYmbdkYaP`. Secret generated on Ceiba, stored 600 at `/opt/belizechain/keys/sudo-new.json`, never transmitted |
 | Authority | same `//Alice` key, sole BABE authority at weight 1 | replacement validator account, keys inserted into the node keystore — see blocker #13 for the verified end state |
-| Sole SSN issuer | same `//Alice` key | `r1T7BYVAQ…`, bonded 1000 DALLA. Rotated 2026-11-07 by `scripts/rotate-ssn-issuer.js`, which adds the replacement *before* removing the old entry so the list is never empty |
+| Identity issuers (all three lists) | same `//Alice` key was the sole entry in `SsnIssuers`, `PassportIssuers` **and** `BiometricIssuers` | `r1T7BYVAQ…`, one bond per attribute (1000 DALLA each). Rotated 2026-11-07 by `scripts/rotate-identity-issuer.js`, which adds the replacement *before* removing the old entry so no list is ever empty |
 | RPC authentication | **none** — `system_health` and `state_getStorage` answer unauthenticated over `https://testnet.belizechain.org/rpc` | **unchanged.** Nothing was added in front of the RPC, so a *future* key mistake is still world-readable in one request |
 
 Measured proof that the demotion took effect, taken from the **public** endpoint:
