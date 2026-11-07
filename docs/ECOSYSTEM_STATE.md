@@ -352,6 +352,12 @@ source.** A doc claiming a value that the code contradicts is drift, and the cod
 
 ## 4. Open workstreams
 
+> **Looking for what is still *outstanding*?** This section records workstreams that
+> have a narrative and an evidence trail. For a flat list of everything still open
+> — including the items that are blocked on an owner decision rather than on code —
+> read [`plans/REMAINING_WORK.md`](plans/REMAINING_WORK.md). It is the tracker; this
+> section is the detail behind some of its entries.
+
 ### 4.0 ✅ Fixed and deployed — the WUSDC/BBZD oracle guard was one-sided, and its rate source was empty
 
 Found 2026-10-27 while verifying the 123 upgrade. **Not a live outage** — see

@@ -110,6 +110,11 @@ this file does not restate them.
 
 ## Remaining Engineering Gaps (as of 2026-10-26)
 
+> **This table is the history of gaps that were closed.** For what is still open
+> today — across this repo *and* the seven siblings — read
+> [`plans/REMAINING_WORK.md`](plans/REMAINING_WORK.md), which is kept current and
+> names what blocks each item.
+
 Tracked because "the pallets are all in the runtime" is not the same as "the
 platform is finished". Each item below was verified by reading the source, not
 inferred from a planning document.
