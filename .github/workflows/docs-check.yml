@@ -85,6 +85,18 @@ jobs:
           message="$message exist — is NOT gating this commit."
           echo "::warning title=Cross-repo checks did not run::$message"
 
+      # `belizechain` and `ui` are public, so the default token could clone them;
+      # the other seven are private and cannot be reached with GITHUB_TOKEN at all.
+      # Measured 2026-11-07: 6 of the 7 siblings are private (infra, kinich-quantum,
+      # nawal-ai, pakit-storage, gem, belizechain.org). A fine-grained PAT with
+      # Contents: read on those repos is therefore the only way to close this, which
+      # is why the scheduled run fails rather than silently reporting SKIP — an
+      # unmonitored gap is how the previous one survived.
+      #
+      # Until the secret exists, the same coverage is available locally from the
+      # multi-root workspace root (measured 2026-11-07: PASSED, 0 failures):
+      #   ./belizechain/scripts/doc-claims/check-doc-claims.sh belizechain
+
       # All repos land as siblings under $GITHUB_WORKSPACE, which is exactly the
       # layout the checker's workspace-mode detection expects.
       - name: Check out this repo
@@ -157,5 +169,5 @@ jobs:
       - name: Fail the nightly run when cross-repo checks could not run
         if: steps.token.outputs.present != 'true' && github.event_name == 'schedule'
         run: |
-          echo "::error title=Cross-repo doc-claims never ran::Add a BELIECHAIN_CI_TOKEN secret with read access to the BelizeChain repos."
+          echo "::error title=Cross-repo doc-claims never ran::Add a BELIECHAIN_CI_TOKEN secret — a fine-grained PAT with Contents: read on the six private sibling repos (infra, kinich-quantum, nawal-ai, pakit-storage, gem, belizechain.org). Until then run ./belizechain/scripts/doc-claims/check-doc-claims.sh belizechain locally from the workspace root."
           exit 1
