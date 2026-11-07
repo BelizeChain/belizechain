@@ -34,6 +34,8 @@
  *              minter/liquidity provider. Required.
  *   --dalla    DALLA leg of the bootstrap liquidity (whole DALLA, default 100000)
  *   --bbzd     bBZD leg (whole bBZD, default 200000)
+ *   --bridge-validators  secrets of accounts to register as bridge validators
+ *   --evm-addresses      matching 0x secp256k1 addresses, same order and length
  *   --dry-run  run every precondition check and skip the extrinsics
  *
  * Testnet only: it mints a stablecoin, so it must never be pointed at mainnet.
@@ -53,6 +55,16 @@ const BBZD = 1;
 // `pallet_belize_identity::AttributeType::Ssn`.
 const ATTR_SSN = 0;
 
+// `pallet_belize_interoperability::BridgeChain::Ethereum`.
+const BRIDGE_CHAIN_ETHEREUM = 1;
+
+// Bridge validator registration requires Full (L3) KYC.
+const BRIDGE_KYC_LEVEL = 3;
+
+// ML-DSA-87 public keys are a fixed 2592 bytes; the pallet bounds the field to
+// exactly this size, so a shorter placeholder is rejected outright.
+const ML_DSA_87_PUBLIC_KEY_BYTES = 2592;
+
 // Mirrors the runtime's `MinOracleAgreement`: one KYC verification only
 // finalises once this many distinct oracle operators submit the same vote.
 const DEFAULT_MIN_ORACLE_AGREEMENT = 3;
@@ -60,12 +72,15 @@ const DEFAULT_MIN_ORACLE_AGREEMENT = 3;
 const PAIR_FEE_BPS = 30;
 
 function parseArgs(argv) {
-  const args = { rpc: 'ws://127.0.0.1:9944', dalla: 100000n, bbzd: 200000n, dryRun: false, seed: null, oracleSeeds: [], minAgreement: DEFAULT_MIN_ORACLE_AGREEMENT, mintKycLevel: 2 };
+  const args = { rpc: 'ws://127.0.0.1:9944', dalla: 100000n, bbzd: 200000n, dryRun: false, seed: null, oracleSeeds: [], minAgreement: DEFAULT_MIN_ORACLE_AGREEMENT, mintKycLevel: 2, bridgeValidators: [], evmAddresses: [] };
+  const list = (value) => value.split(',').map((s) => s.trim()).filter(Boolean);
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--rpc') args.rpc = argv[++i];
     else if (a === '--seed') args.seed = argv[++i];
-    else if (a === '--oracle-seeds') args.oracleSeeds = argv[++i].split(',').map((s) => s.trim()).filter(Boolean);
+    else if (a === '--oracle-seeds') args.oracleSeeds = list(argv[++i]);
+    else if (a === '--bridge-validators') args.bridgeValidators = list(argv[++i]);
+    else if (a === '--evm-addresses') args.evmAddresses = list(argv[++i]);
     else if (a === '--min-agreement') args.minAgreement = Number(argv[++i]);
     else if (a === '--mint-kyc-level') args.mintKycLevel = Number(argv[++i]);
     else if (a === '--dalla') args.dalla = BigInt(argv[++i]);
@@ -99,6 +114,98 @@ async function kycLevel(api, address) {
   if (!api.query.identity.verifiedKycLevel) return 0;
   const level = await api.query.identity.verifiedKycLevel(address);
   return Number(level.toString());
+}
+
+/**
+ * Record an SSN attestation for `subject` in the **Identity** pallet's store.
+ *
+ * `issue_ssn` must be signed by an authorized issuer, and genesis seeds that
+ * list from the chain spec's root_key *argument* — not from `sudo.key`. So a
+ * chain whose sudo key was patched (every generated spec, including the swarm)
+ * has a sudo holder that is NOT an issuer. Authorize `issuer` explicitly instead
+ * of assuming the two are the same account.
+ */
+async function seedSsnAttestation(api, run, subject, issuer) {
+  const address = subject.address;
+  const issuers = await api.query.identity.ssnIssuers();
+  const issuerKey = u8aToHex(issuer.publicKey);
+  const alreadyIssuer = issuers.some(
+    (a) => a.toString() === issuer.address || u8aToHex(a.toU8a()) === issuerKey,
+  );
+  log(`ssn issuer: ${alreadyIssuer}`);
+  if (!alreadyIssuer) {
+    await run('bond issuer', api.tx.identity.issuerDepositBond(ATTR_SSN), issuer);
+    await run('authorize issuer', api.tx.sudo.sudo(api.tx.identity.addIssuer(ATTR_SSN, issuer.address)), issuer);
+  }
+
+  // Re-running must converge: the second call reports AlreadyAttested once an
+  // SSN exists, which means the goal is already met.
+  try {
+    await run('issue ssn', api.tx.identity.issueSsn(
+      address,
+      api.createType('H256', randomAsU8a(32)),
+      bytes('BZD-SSN-PLACEHOLDER'),
+      true,
+    ), issuer);
+  } catch (e) {
+    if (!/AlreadyAttested/.test(e.message)) throw e;
+    log('issue ssn: already attested');
+  }
+}
+
+/**
+ * Seal KYC level `required` for `subject` in the **Oracle** pallet's store.
+ *
+ * This is a second, unsynchronised store. The Economy pallet does NOT read the
+ * Identity pallet: its `Oracle` shim routes to `pallet_belize_oracle`, which
+ * trusts only its own `IdentityVerifications` map. So a fresh chain needs KYC
+ * recorded twice and a mint fails with `KycVerificationRequired` until this one
+ * exists. `Interoperability::verify_bridge_operator` falls back to this store
+ * too, which is why bridge validators are seeded here and nowhere else.
+ *
+ * Sealing needs `MinOracleAgreement` distinct operators to submit the same vote,
+ * and `verify_identity` requires each voter to be a seated operator — seated by
+ * `OracleAdminOrigin`, which includes Root, so sudo can do it.
+ */
+async function seedOracleKyc(api, run, subject, operators, required) {
+  const address = subject.address;
+  const recorded = await api.query.oracle.identityVerifications(address);
+  const recordedLevel = recorded.isSome ? Number(recorded.unwrap().kycLevel.index) : 0;
+  log(`oracle kyc level: ${recordedLevel} (need ${required})`);
+  if (recordedLevel >= required) {
+    log('already sufficient');
+    return;
+  }
+
+  // Every operator must submit the SAME (level, id_hash) pair for the votes to
+  // tally; a differing hash becomes a competing leader and never reaches
+  // agreement. An operator that already voted can change its vote.
+  const idHash = randomAsU8a(32);
+  for (const op of operators) {
+    await run(`oracle kyc vote L${required} ${op.address.slice(0, 10)}…`,
+      api.tx.oracle.verifyIdentity(address, required, idHash, bytes('kyc-seed'), false, true),
+      op);
+  }
+
+  const after = await api.query.oracle.identityVerifications(address);
+  const afterLevel = after.isSome ? Number(after.unwrap().kycLevel.index) : 0;
+  if (afterLevel < required) {
+    throw new Error(`oracle KYC reached L${afterLevel}, need L${required}`);
+  }
+  log(`oracle KYC recorded at L${afterLevel}`);
+}
+
+/** Seat every operator that is not already seated. Idempotent. */
+async function seatOracleOperators(api, run, operators) {
+  for (const op of operators) {
+    const seated = await api.query.oracle.oracleOperators(op.address);
+    if (seated.isTrue) {
+      log(`operator ${op.address.slice(0, 10)}…: already seated`);
+      continue;
+    }
+    await run(`seat operator ${op.address.slice(0, 10)}…`,
+      api.tx.sudo.sudo(api.tx.oracle.addOperator(op.address)));
+  }
 }
 
 async function main() {
@@ -187,48 +294,12 @@ async function main() {
   const level = await kycLevel(api, address);
   log(`kyc level: ${level}`);
   if (level < 1) {
-    // `issue_ssn` must be signed by an authorized issuer, and genesis seeds that
-    // list from the chain spec's root_key *argument* — not from `sudo.key`. So a
-    // chain whose sudo key was patched (every generated spec, including the
-    // swarm) has a sudo holder that is NOT an issuer. Authorize explicitly
-    // instead of assuming the two are the same account.
-    const issuers = await api.query.identity.ssnIssuers();
-    const myKey = u8aToHex(who.publicKey);
-    const alreadyIssuer = issuers.some(
-      (a) => a.toString() === address || u8aToHex(a.toU8a()) === myKey,
-    );
-    log(`ssn issuer: ${alreadyIssuer}`);
-    if (!alreadyIssuer) {
-      await run('bond issuer', api.tx.identity.issuerDepositBond(ATTR_SSN));
-      await run('authorize issuer', api.tx.sudo.sudo(api.tx.identity.addIssuer(ATTR_SSN, address)));
-    }
-
-    // Re-running must converge: the second call reports AlreadyAttested once an
-    // SSN exists, which means the goal is already met.
-    try {
-      await run('issue ssn', api.tx.identity.issueSsn(
-        address,
-        api.createType('H256', randomAsU8a(32)),
-        bytes('BZD-SSN-PLACEHOLDER'),
-        true,
-      ));
-    } catch (e) {
-      if (!/AlreadyAttested/.test(e.message)) throw e;
-      log('issue ssn: already attested');
-    }
+    await seedSsnAttestation(api, run, who, who);
   } else {
     log('already KYC level 1+');
   }
 
   // ── 3b. Oracle KYC ──────────────────────────────────────────────────────
-  // The Economy pallet does NOT read the Identity pallet. Its `Oracle` shim
-  // routes to `pallet_belize_oracle`, which trusts only its own
-  // `IdentityVerifications` map. So a fresh chain needs KYC recorded twice, in
-  // two stores, and `mint_bbzd` fails with `KycVerificationRequired` until the
-  // second one exists. Sealing the oracle record needs
-  // `MinOracleAgreement` (3) distinct operators to submit the same vote, and
-  // `verify_identity` requires each voter to be a seated operator — seated by
-  // `OracleAdminOrigin`, which includes Root, so sudo can do it.
   step('3b. Oracle KYC (separate store from Identity)');
   if (args.oracleSeeds.length < args.minAgreement) {
     throw new Error(
@@ -238,39 +309,8 @@ async function main() {
   }
 
   const operators = args.oracleSeeds.map((s) => keyring.addFromUri(s));
-  for (const op of operators) {
-    const seated = await api.query.oracle.oracleOperators(op.address);
-    if (seated.isTrue) {
-      log(`operator ${op.address.slice(0, 10)}…: already seated`);
-      continue;
-    }
-    await run(`seat operator ${op.address.slice(0, 10)}…`,
-      api.tx.sudo.sudo(api.tx.oracle.addOperator(op.address)));
-  }
-
-  const required = args.mintKycLevel;
-  const recorded = await api.query.oracle.identityVerifications(address);
-  const recordedLevel = recorded.isSome ? Number(recorded.unwrap().kycLevel.index) : 0;
-  log(`oracle kyc level: ${recordedLevel} (a mint this size needs ${required})`);
-  if (recordedLevel < required) {
-    // Every operator must submit the SAME (level, id_hash) pair for the votes to
-    // tally; a differing hash becomes a competing leader and never reaches
-    // agreement. An operator that already voted can change its vote.
-    const idHash = randomAsU8a(32);
-    for (const op of operators.slice(0, args.minAgreement)) {
-      await run(`oracle kyc vote L${required} ${op.address.slice(0, 10)}…`,
-        api.tx.oracle.verifyIdentity(address, required, idHash, bytes('dex-bootstrap'), false, true),
-        op);
-    }
-    const after = await api.query.oracle.identityVerifications(address);
-    const afterLevel = after.isSome ? Number(after.unwrap().kycLevel.index) : 0;
-    if (afterLevel < required) {
-      throw new Error(`oracle KYC reached L${afterLevel}, need L${required}`);
-    }
-    log(`oracle KYC recorded at L${afterLevel}`);
-  } else {
-    log('already sufficient');
-  }
+  await seatOracleOperators(api, run, operators);
+  await seedOracleKyc(api, run, who, operators.slice(0, args.minAgreement), args.mintKycLevel);
 
   // ── 4. Mint bBZD ────────────────────────────────────────────────────────
   // This is the step that does not exist on a fresh chain: bBZD has no genesis
@@ -333,6 +373,49 @@ async function main() {
     if (dallaAfter >= dallaBefore) throw new Error('settlement failed: DALLA did not leave the trader');
     if (bBzdAfter <= bBzdBefore) throw new Error('settlement failed: bBZD did not reach the trader');
     console.log('\nPASS: a swap settled against real balances on both ledgers.');
+  }
+
+  // ── 8. Bridge validators ────────────────────────────────────────────────
+  // Blocker #7 is the foreign-chain leg. Its two halves are the receiver
+  // contract (deployed by `infra/relayer/scripts/deploy-receiver.mjs`) and this
+  // pallet's validator set. Registration is the producer side: without it the
+  // contract's secp256k1 set has nothing to reconcile against, and
+  // `check-validator-sets.mjs` compares three addresses to zero.
+  if (args.bridgeValidators.length > 0) {
+    step('8. Bridge validators');
+    if (args.evmAddresses.length !== args.bridgeValidators.length) {
+      throw new Error(
+        `--bridge-validators and --evm-addresses must pair up `
+        + `(got ${args.bridgeValidators.length} and ${args.evmAddresses.length})`,
+      );
+    }
+
+    for (const [i, seed] of args.bridgeValidators.entries()) {
+      const validator = keyring.addFromUri(seed);
+      const label = `${validator.address.slice(0, 10)}…`;
+
+      // The Identity pallet is not consulted for this gate, so only the Oracle
+      // store is seeded — no SSN or passport attestation is needed.
+      await seedOracleKyc(api, run, validator, operators.slice(0, args.minAgreement), BRIDGE_KYC_LEVEL);
+
+      const existingValidator = await api.query.interoperability.bridgeValidators(validator.address);
+      if (existingValidator.isSome) {
+        log(`${label}: already registered`);
+      } else {
+        // A placeholder PQ key: this rehearsal proves the extrinsic path and the
+        // set reconciliation, not ML-DSA signing. The real key is inserted with
+        // `author_insertKey` on a host that holds validator secrets.
+        await run(`register validator ${label}`, api.tx.interoperability.registerBridgeValidator(
+          u8aToHex(randomAsU8a(ML_DSA_87_PUBLIC_KEY_BYTES)),
+          [BRIDGE_CHAIN_ETHEREUM],
+        ), validator);
+      }
+
+      // Independent of registration: `set_evm_address` requires it to be done
+      // first, and it is the field the contract's validator set must match.
+      await run(`set evm address ${label}`,
+        api.tx.interoperability.setEvmAddress(args.evmAddresses[i]), validator);
+    }
   }
 
   await api.disconnect();

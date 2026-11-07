@@ -274,6 +274,51 @@ defect when the deployed bytes differ.
 ⚠️ From the workstation, chain RPC is reachable at `https://belizechain.org/rpc`. The
 internal `ws://100.119.97.38:9944` needs tailnet access.
 
+### 2.4 🔴 Live chain authority keys — verified 2026-11-07, OPEN
+
+**The live chain is writable by anyone on the internet.** Read this before touching
+anything on Ceiba.
+
+| Fact | Value | How |
+|---|---|---|
+| `Sudo.Key` | `0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d` | `state_getStorage` at twox128(`Sudo`)+twox128(`Key`) |
+| What that key is | **`//Alice`** — the public Substrate dev key, SS58 `5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY` | `//Alice` derives that exact public key |
+| Sole BABE authority | same key, weight 1 | `Session.Validators` / `Babe.Authorities` |
+| Sole SSN issuer | same key | `Identity.SsnIssuers` |
+| RPC authentication | **none** | `system_health` and `state_getStorage` both answer unauthenticated over `https://testnet.belizechain.org/rpc` at #460257 |
+
+Consequences, stated plainly: whoever holds the publicly-documented `//Alice` mnemonic can
+call `sudo.sudo(System::set_code(…))` (replace the whole runtime),
+`sudo.sudo(System::set_storage(…))` (rewrite balances, KYC, land titles, anything), and
+`sudo.sudo(System::kill_prefix(…))` (delete storage wholesale). Because the same key is the
+only authority, that actor can also author and finalize blocks.
+
+`docs/operations/ALICE_SUDO_RESET_2026-05-11.md` records the key as intentional and
+temporary, with the cutover required **before the endpoint was opened to external peers**.
+That precondition is breached.
+
+**Therefore:**
+- Nothing of value may be placed on this chain, and its state must be treated as
+  attacker-controlled.
+- `scripts/bootstrap-dex.js` **must not** be pointed at Ceiba. It would mint bBZD and write
+  a `CentralBankReserves` figure that the same actor can overwrite in one extrinsic — so the
+  numbers would be meaningless rather than merely unbacked.
+- Migrations that assume stored state persists are unsound until the key is rotated.
+
+Remediation is owner-gated (rotating the sole authority can stall the chain — Chain C
+precedent — and the new keys must be generated and stored on the host, not on a
+workstation). Recorded as blocker #13 in
+[`docs/security/MAINNET_READINESS.md`](security/MAINNET_READINESS.md), which carries the
+ordered steps. Re-verify with:
+
+```bash
+R=https://testnet.belizechain.org/rpc
+KEY=0x5c0d1176a568c1f92944340dbfed9e9c530ebca703c85910e7164cb7d1c9e47b
+curl -s -H 'Content-Type: application/json' \
+  -d "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"state_getStorage\",\"params\":[\"$KEY\"]}" $R
+# 0xd43593c7…da27d  => still //Alice
+```
+
 ---
 
 ## 3. Authority order — when documents disagree
