@@ -114,32 +114,31 @@ package loads zero third-party modules. All three properties were falsified befo
 trusted — a typo'd attribute name fails two tests, drifting `__all__` fails the agreement
 test, and an eager import makes the subprocess test name all 28 third-party modules.
 
-**Dismissal is blocked on access, not on evidence.** `kinich-quantum` has *delegated alert
-dismissal* enabled, so `PATCH …/alerts/{n}` with `state=dismissed` returns
-`Delegated alert dismissal is enabled… when the create_request parameter is false`. Passing
-`create_request=true` works — it queues a request — but **approving** a request needs either a
-click in the repo's Security tab or the `delete_repo` scope, which is what the API asks for:
+**✅ CLOSED 2026-11-07 — by fixing the code, not by dismissing anything.**
 
+The `__all__` derivation (`__all__ = sorted(_EXPORTS)`, kinich `e60ae87`) removed the pattern
+the rule was matching. CodeQL re-analysed the pushed commit and marked the alerts **fixed**:
+`state=all` now returns 100 alerts and every one is `fixed`, with **0 open**. Re-check:
+
+```bash
+gh api "repos/BelizeChain/kinich-quantum/code-scanning/alerts?state=open&per_page=100" --jq 'length'
 ```
-This API operation needs the "delete_repo" scope.
-```
 
-`delete_repo` can delete repositories, so it is not a scope to request for cosmetic cleanup.
-The 25 requests are queued with their justification and only need approval:
-`https://github.com/BelizeChain/kinich-quantum/security/code-scanning`.
+This is a better outcome than the dismissal path, which is recorded here only so nobody
+retries it: `kinich-quantum` has *delegated alert dismissal* enabled, so
+`PATCH …/alerts/{n}` with `state=dismissed` returns
+`Delegated alert dismissal is enabled… when the create_request parameter is false`.
+`create_request=true` queues a request successfully, but **approving** one needs the
+`delete_repo` scope (the API asks for it explicitly) — a scope that can delete repositories,
+so it is not worth requesting for cosmetic cleanup. A bare `gh auth refresh` adds no scopes;
+verify with `gh auth status`.
 
-**The false positives are now structurally unreachable, not just excused.** `__all__` is
-derived (`__all__ = sorted(_EXPORTS)`) rather than hand-written, and
-`tests/test_blockchain_exports.py` (5 tests, passing) pins the contract: every `__all__` name
-resolves, `__all__` and `_EXPORTS` agree in both directions, `from … import X` matches
-`getattr`, and a subprocess import of the package loads zero third-party modules.
+The contract the rule was reaching for is now pinned by tests rather than by the analyzer:
+`tests/test_blockchain_exports.py` (5 tests, passing) asserts every `__all__` name resolves,
+`__all__` and `_EXPORTS` agree in both directions, `from … import X` matches `getattr`, and a
+subprocess import of the package loads zero third-party modules.
 
-Note the repo's CodeQL workflow last ran 2026-10-11 with every job at `steps=0`, and default
-setup is not analyzing this repo, so no future scan will auto-close these either way. The
-dismissal requests need a human, not a scan.
-
-That is the whole of the remaining kinich work package: the code is correct, the evidence
-exists, and only a permission stands between the two.
+That is the whole of the kinich work package: done.
 
 ### 3.4 `gem` — one real bug, plus CI that cannot run
 
@@ -181,7 +180,7 @@ recorded here with the evidence rather than dismissed silently.
 |---|---|---|
 | `belizechain` | #187 `rust/hard-coded-cryptographic-value` at `zk/attestation/src/circuit.rs:472` | **False positive.** The value is a test salt/decoy (`Fr::from(99u64)` et al.) in a unit test that walks a sparse tree. No secret |
 | `infra` | #12 `js/http-to-file-access` at `relayer/scripts/deploy-receiver.mjs:221` | **Accepted as designed.** A deploy script writing a JSON record to the `--out` path the operator passed on the command line. Not unattended, and the relayer is not deployed |
-| `pakit-storage` | #1239 `CVE-2026-114613` (msgpack DoS) | **Already fixed.** Advisory covers `< 1.2.3`; `pakit_requirements.txt` pins `1.2.4` (bumped in `5eb9d3e`, and 1.2.4 is the newest release on PyPI). The alert reflects a pre-fix SBOM |
+| `pakit-storage` | #1239 `CVE-2026-114613` (msgpack DoS) | **✅ Fixed 2026-11-07T23:49Z.** The advisory covers `< 1.2.3`, and `pakit_requirements.txt` has pinned **1.2.4** since `5eb9d3e`, so the source was never vulnerable. Trivy's instance at that same commit reported `Installed Version: 1.1.2` — it had scanned an image built before the bump. A later analysis cleared it. The lesson is the stale-image one: a Trivy alert can describe an image that predates the pin it appears to be about |
 | `pakit-storage` | #1207 `CVE-2024-23342` (ecdsa Minerva) | **No fix exists.** `python-ecdsa` is unmaintained, so there is no patched release. Transitive via `substrate-interface==1.8.1`, which the chain integration needs. Accepted residual |
 | `pakit-storage` | #1236 `GHSA-xmj3-9gf7-h52w` (setuptools, note) | **Not applicable.** Windows-only path escape during legacy wheel installation; pakit ships a Linux container |
 | `belizechain.org` | #9 `js/stored-xss` at `sidebar.tsx:70` | **False positive, and it survives a code change designed to silence it** — see below |
