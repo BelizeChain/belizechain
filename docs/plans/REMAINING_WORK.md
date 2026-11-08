@@ -200,6 +200,28 @@ The only ways to clear it are the two already listed: approve the queued dismiss
 the Security tab, or grant `delete_repo` to the token. Neither is worth the cost of a broad
 scope for a proven false positive.
 
+### 3.5c `belizechain.org` — content drift fixed, build verified by CI
+
+Not in the original tracker, and it should have been: the site documents the ecosystem, so
+every number on it is a live claim.
+
+| Item | State |
+|---|---|
+| Pallet count | **Fixed 2026-11-07** (`bb5ecb1`). The site said **19** pallets; `construct_runtime!` has **20** (ZkAttestation, index 39). `RUNTIME_FACTS.PALLET_COUNT` fed the footer, home stats and technology pages, so one stale constant was wrong in five places; ten prose strings in six pages hardcoded it separately |
+| `PALLET_TEST_COUNT` | **Fixed.** Claimed 1343, measured **1498** across the 20 crates (lines matching `^\s*#\[test\]` under each pallet's `src`, excluding `pallets/common`). Flat and recursive counts agree |
+| Build verification | **✅ Verified by CI, not locally.** `bb5ecb1` triggered "Build belizechain.org image": `Lint & Typecheck`, `Build App` and `Build Docker Image` all succeeded. The Dockerfile runs `RUN npm run build` (line 21), so that success *is* a real Next.js production build. The commit message for `bb5ecb1` says the build was skipped for memory reasons — that was written before the CI run finished, and **CI closed the gap**. No local build is needed |
+
+Re-verify the content claims before deploying anything that restates them:
+
+```bash
+# from the belizechain repo root — prints 20
+python3 -c 'import re;src=open("runtime/src/lib.rs").read();rows=re.findall(r"^\s*(\w+):\s*(\w+)(?:\s*::<[^>]*>)?\s*=\s*(\d+)",src,re.M);print(len([1 for _,_,i in rows if 20<=int(i)<=39]))'
+```
+
+Quote it with single quotes as shown: an outer double-quoted `-c` string containing
+`construct_runtime!` triggers bash history expansion and the command dies with
+`!\s: event not found`.
+
 ### 3.6 `ui` — last, by design
 
 Wiring depends on chain behaviour, so it follows §2. The audit series
