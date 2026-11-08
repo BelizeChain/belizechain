@@ -572,11 +572,55 @@ used to notice the regression by comparison.
 3. Only then re-run `scripts/bootstrap-dex.js`. A DEX bootstrap against a chain
    whose sudo is the public dev key writes reserves that anyone can rewrite.
 
-### Why this was not fixed here
+### ✅ Fixed 2026-11-07 — a hardened spec now exists
 
-Editing the live spec is not a no-op: the genesis patch feeds the genesis hash,
-and whether a node with an existing database re-reads genesis from the spec was
-**not established** — testing it on the only live chain, to fix a file that only
-matters at the next re-genesis, is the wrong trade. The precondition is recorded
-instead, in blocker #13 and here, so the step cannot be skipped by someone
-following this document as a checklist.
+The precondition is no longer something a future operator has to remember to do
+by hand. Two artefacts close it:
+
+- **`chain-specs/genesis-hardened-2026-11-07.json`** — the same genesis with every
+  privileged slot moved onto the operational accounts. Verified at the **raw
+  genesis storage** layer, not just in the patch JSON: `substrate build-spec
+  --raw` succeeds, and decoding each dev address to hex and searching the raw
+  `top` map finds **zero** occurrences of `//Alice`, `//Bob`, `//Charlie` or
+  `//Alice`'s ed25519 key, while the new sudo, BABE and GRANDPA keys are present.
+- **`scripts/harden-genesis-spec.js`** — regenerates that file from any base spec,
+  and **refuses to write** unless every publicly-known dev key is absent from the
+  output. It derives all `//Name` dev addresses (sr25519 *and* ed25519, so the
+  grandpa key is covered) and refuses on any match. Re-verify any spec with
+  `--check-only`.
+
+It also fixed two things beyond sudo and session keys:
+
+| Slot | Was | Now |
+|---|---|---|
+| `identity` issuers (all three) | `//Alice` | the root account — blocker #13 rotated these on-chain, and a re-genesis would have re-armed them |
+| `governance.councilMembers` | `//Alice`, `//Bob`, `//Charlie` | one seat, root account |
+| `balances` | 1,000,000 DALLA to `//Alice` | moved to the root account |
+
+The council seats mattered on their own: `//Bob` and `//Charlie` are published
+seeds, so a re-genesis would have created a council in which **anyone could cast
+two of three votes**. They were also all stamped `BoardRole::Founder` against
+`max_count() == 1`; that is fixed in the pallet — see
+`REMAINING_WORK.md` §1.4.
+
+### ⚠️ Never copy the hardened spec over the live boot spec
+
+`testnet-spec.json` in this repo is **byte-identical** to
+`/data/chain/testnet-spec.json` on Ceiba (both were md5 `31171e10…` when
+measured on 2026-11-07). That file describes the genesis that *already happened*.
+Changing it changes the genesis hash under the same chain id, and the node then
+refuses the chain data it has been running on — an outage, not a hardening.
+
+So: `testnet-spec.json` stays as-is and is the **operational** spec.
+`chain-specs/genesis-hardened-2026-11-07.json` is the **re-genesis** spec. They
+serve different purposes and must not be swapped. `harden-genesis-spec.js`
+enforces this by rejecting `--out` equal to `--spec`.
+
+### What a re-genesis must still do
+
+1. Boot from the hardened spec, **not** from `testnet-spec.json`.
+2. Confirm **from the public endpoint**, not from the spec file: `Sudo.Key` is not
+   `0xd43593c7…da27d`, `Session.Validators` is the intended account,
+   `Identity.SsnIssuers` is the intended account.
+3. Only then re-run `scripts/bootstrap-dex.js`. A DEX bootstrap against a chain
+   whose sudo is the public dev key writes reserves that anyone can rewrite.

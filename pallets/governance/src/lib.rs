@@ -722,6 +722,32 @@ impl BoardRole {
     }
 }
 
+/// Fixed order in which genesis council seats are handed out.
+///
+/// `GenesisConfig::council_members` is `Vec<(AccountId, community_rank,
+/// pouw_contribution)>` with no role field, so a genesis member's role has to be
+/// derived from its seat index. This ladder is what makes that derivation
+/// respect [`BoardRole::max_count`]: `Founder` is first and appears once, then the
+/// permanent technical/regulatory seats, then the rotating citizen delegates.
+///
+/// It has nine seats, which is more than any genesis is expected to use, and an
+/// over-long `council_members` list is rejected rather than silently clamped.
+///
+/// **Keep in step with `BoardRole::max_count`.** If a cap is lowered below the
+/// number of times its role appears here, genesis will seat more members of that
+/// role than the runtime allows.
+const GENESIS_SEAT_LADDER: &[BoardRole] = &[
+    BoardRole::Founder,
+    BoardRole::TechnicalSteward,
+    BoardRole::FSCRepresentative,
+    BoardRole::BTBDelegate,
+    BoardRole::SecurityAuditor,
+    BoardRole::CultureEthicsAdvisor,
+    BoardRole::CitizenDelegate,
+    BoardRole::CitizenDelegate,
+    BoardRole::CitizenDelegate,
+];
+
 /// Belize's 6 administrative districts (Phase 6)
 #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
@@ -2396,7 +2422,25 @@ pub mod pallet {
     #[pallet::genesis_build]
     impl<T: Config> BuildGenesisConfig for GenesisConfig<T> {
         fn build(&self) {
-            for (member, community_rank, pouw_contribution) in &self.council_members {
+            // Genesis seats are handed out along a fixed ladder, in order.
+            //
+            // `council_members` carries no role field, so each member's role has
+            // to be derived. Stamping them all `BoardRole::Founder` — the old
+            // behaviour — contradicted `Founder.max_count() == 1`: a three-member
+            // genesis produced three Founders. Because genesis also never wrote
+            // `BoardComposition`, and `add_board_member` reads that map as the
+            // count, a fourth Founder could then be appointed. The invariant held
+            // in storage while being false in `CouncilMembers`.
+            assert!(
+                self.council_members.len() <= GENESIS_SEAT_LADDER.len(),
+                "governance genesis: {} council members exceeds the {} seats the genesis ladder provides; extend GENESIS_SEAT_LADDER or seat fewer members",
+                self.council_members.len(),
+                GENESIS_SEAT_LADDER.len(),
+            );
+
+            for (seat, (member, community_rank, pouw_contribution)) in
+                self.council_members.iter().enumerate()
+            {
                 let voting_weight = community_rank + pouw_contribution;
 
                 // Calculate 2-year term (default for genesis members)
@@ -2407,9 +2451,16 @@ pub mod pallet {
                 // SAFETY: value derived from u32 block number arithmetic in u64; fits in BlockNumberFor<T> (runtime uses u32 block numbers)
                 let term_end: BlockNumberFor<T> = term_end_u64.saturated_into();
 
+                // Bounded above by the assert, so `unwrap_or` is only a total-function
+                // formality rather than a silent clamp in practice.
+                let role = GENESIS_SEAT_LADDER
+                    .get(seat)
+                    .copied()
+                    .unwrap_or(BoardRole::CitizenDelegate);
+
                 let council_member = CouncilMember {
                     account: member.clone(),
-                    role: BoardRole::Founder, // Genesis members default to Founder role
+                    role,
                     term_end,
                     is_rotating: false,
                     community_rank: *community_rank,
@@ -2425,6 +2476,26 @@ pub mod pallet {
                 CouncilMembers::<T>::insert(member, council_member);
                 CommunityRanks::<T>::insert(member, *community_rank);
                 PoUWContributions::<T>::insert(member, *pouw_contribution);
+            }
+
+            // Recompute the per-role counters from the seats actually written.
+            // `add_board_member` and `remove_board_member` are the only other
+            // writers, so without this the counters described a board with no
+            // members while `CouncilMembers` held seats whose roles were capped.
+            let mut composition: Vec<(BoardRole, u32)> = Vec::new();
+            for (_, member) in CouncilMembers::<T>::iter() {
+                match composition
+                    .iter()
+                    .position(|(role, _)| *role == member.role)
+                {
+                    Some(index) => {
+                        composition[index].1 = composition[index].1.saturating_add(1);
+                    }
+                    None => composition.push((member.role, 1)),
+                }
+            }
+            for (role, count) in composition {
+                BoardComposition::<T>::insert(role, count);
             }
 
             // Start with term 1

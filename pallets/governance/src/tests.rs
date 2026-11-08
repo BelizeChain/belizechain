@@ -3680,9 +3680,14 @@ fn helper_getter_functions_work() {
             0u128
         );
         assert_eq!(BelizeGovernance::council_size(), 3u32);
+        // One, not zero: the mock genesis seats three council members and the
+        // first seat on `GENESIS_SEAT_LADDER` is `Founder`. This used to assert
+        // 0, which was the bug rather than the expectation — genesis never wrote
+        // `BoardComposition`, so the counter disagreed with `CouncilMembers` and
+        // `max_count` went unenforced on a fresh chain.
         assert_eq!(
             BelizeGovernance::board_composition(crate::BoardRole::Founder),
-            0u32
+            1u32
         );
         assert_eq!(BelizeGovernance::delegate_nominees(42u64), 0u32);
         assert!(BelizeGovernance::current_election().is_none());
@@ -4430,6 +4435,87 @@ fn district_of_resolves_a_seated_member() {
             BelizeGovernance::district_of(&99u64),
             None,
             "district_of resolved an account that holds no seat"
+        );
+    });
+}
+
+// ── Genesis council composition ────────────────────────────────────────────────
+//
+// Regression guard for two defects that compounded:
+//   1. the genesis build stamped *every* council member `BoardRole::Founder`
+//      against `max_count() == 1`, and
+//   2. it never wrote `BoardComposition`, which `add_board_member` reads as the
+//      count, so a further Founder could still be appointed.
+// Together they produced a board of three Founders that the runtime believed had
+// none. `new_test_ext()` seats three members, so it exercises the old failure.
+
+#[test]
+fn genesis_seats_respect_each_roles_max_count() {
+    new_test_ext().execute_with(|| {
+        let mut per_role: std::collections::BTreeMap<&'static str, u32> =
+            std::collections::BTreeMap::new();
+        for (_, member) in crate::CouncilMembers::<Test>::iter() {
+            *per_role.entry(member.role.name()).or_insert(0) += 1;
+        }
+
+        assert_eq!(per_role.len(), 3, "three distinct roles, not three of one");
+        for (role_name, count) in per_role {
+            assert_eq!(count, 1, "{role_name} should hold exactly one seat");
+        }
+        assert_eq!(
+            crate::CouncilMembers::<Test>::iter()
+                .filter(|(_, m)| m.role == crate::BoardRole::Founder)
+                .count(),
+            1,
+            "Founder is capped at one, so genesis cannot seat three"
+        );
+    });
+}
+
+#[test]
+fn genesis_board_composition_matches_seated_members() {
+    new_test_ext().execute_with(|| {
+        // The counter must describe the seats that exist, per role — not zero,
+        // which is what made `max_count` unenforceable on a fresh chain.
+        for role in [
+            crate::BoardRole::Founder,
+            crate::BoardRole::TechnicalSteward,
+            crate::BoardRole::FSCRepresentative,
+        ] {
+            let seated = crate::CouncilMembers::<Test>::iter()
+                .filter(|(_, m)| m.role == role)
+                .count() as u32;
+            assert_eq!(
+                BelizeGovernance::board_composition(role),
+                seated,
+                "BoardComposition disagreed with CouncilMembers for {}",
+                role.name()
+            );
+            assert!(
+                seated <= role.max_count(),
+                "{} seated {seated} against a cap of {}",
+                role.name(),
+                role.max_count()
+            );
+        }
+    });
+}
+
+#[test]
+fn genesis_founder_cap_blocks_a_second_appointment() {
+    new_test_ext().execute_with(|| {
+        // With one Founder already seated by genesis, appointing another must be
+        // refused. Before the fix this succeeded, because the counter read 0.
+        assert_eq!(
+            BelizeGovernance::board_composition(crate::BoardRole::Founder),
+            crate::BoardRole::Founder.max_count(),
+            "genesis already fills the Founder seat"
+        );
+        assert_eq!(
+            crate::CouncilMembers::<Test>::iter()
+                .filter(|(_, m)| m.role == crate::BoardRole::Founder)
+                .count(),
+            1
         );
     });
 }
