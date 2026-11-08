@@ -109,5 +109,64 @@ Notes and risks:
 - **Do the DALLA token first.** `mint` needs no timelock, so the inflation ceiling
   is the largest irreversible exposure.
 
-No command in this document has been run. It is written so the work is a
-checklist, not a re-investigation.
+---
+
+## REMEDIATED 2026-11-08 — `scripts/transfer-contract-ownership.js`
+
+Everything above was executed. New owner: `r1T7BYVAQEF6GVZJFuvCqaHQt7tfdw8zdHyaNwjeHYmbdkYaP`
+(the rotated sudo account, `0x32967ce9…3fb017`).
+
+The script takes **two seeds**, never an address, so a typo in an SS58 string
+cannot hand control to the wrong account: the new owner is whatever
+`NEW_OWNER_SEED` derives. It refuses to touch a contract whose current owner is
+not the outgoing key, and it does propose+accept back-to-back per role so no
+pending proposal is ever left open.
+
+| Role | Before | After |
+|---|---|---|
+| `dalla.owner` | `//Alice` | `r1T7BYVAQEF6…` |
+| `faucet.owner` | `//Alice` | `r1T7BYVAQEF6…` |
+| `belinft.contract_owner` | `//Alice` | `r1T7BYVAQEF6…` |
+| `dao.admin` | `//Alice` | `r1T7BYVAQEF6…` |
+| `psp37.owner` | `//Alice` | `r1T7BYVAQEF6…` |
+| `dex_factory.admin` | `//Alice` | `r1T7BYVAQEF6…` |
+| `dex_factory.fee_to_setter` | `//Alice` | `r1T7BYVAQEF6…` |
+
+`pending_*` is `None` on every contract, so no transfer is half-open.
+
+### Proof the exposure is gone, not just reassigned
+
+Both exploits were re-run as a **query** from the compromised key, which executes
+the call without committing it:
+
+```
+compromised key mint(1 DALLA)        -> OK({"err":"MissingRole"})
+compromised key emergency_withdraw   -> OK({"err":"NotOwner"})
+faucet balance                       -> OK(10000000000000000)   # 10,000 DALLA, untouched
+```
+
+`accept_ownership` on DALLA migrates `ADMIN_ROLE` and `MINTER_ROLE` from the
+previous owner to the caller, which is why the mint ceiling closed with the
+transfer rather than needing a separate `revoke_role`:
+
+```
+ADMIN_ROLE    old: false   new: true
+MINTER_ROLE   old: false   new: true
+```
+
+### Recurrence is now blocked in the tooling
+
+`gem/scripts/lib/dev-accounts.js` derives the six published dev accounts (plus
+`//stash` variants) and refuses to sign with any of them when the endpoint is not
+localhost. It is wired into `deploy.js`, `deploy-testnet.sh` (which no longer
+defaults to `//Alice`), `seed-dex-liquidity.js`, `test-e2e-live.js` and
+`verify-deployable.js`. Checked on the derived AccountId rather than the URI, so
+it catches `//Alice`, the full mnemonic, an SS58 address, or `0xd43593c7…`
+equally. Verified: `deploy.js --network=testnet --account='//Alice'` exits 1
+before uploading anything.
+
+### Still not closed
+
+The **genesis** still names `//Alice` in `sudo.key`. That is blocker #15 in
+`MAINNET_READINESS.md` — it only takes effect on a re-genesis, which is a new
+chain, so it is an owner decision rather than a repair.
