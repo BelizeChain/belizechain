@@ -221,6 +221,8 @@ re-discovers them as bugs and "fixes" them into regressions.
 | Two RustSec advisories suppressed (`RUSTSEC-2026-0381`, `-0382`) | Both live in `libp2p`, pinned by polkadot-sdk; no reachable fix. Suppressed in both `security-audit.yml` ignore lists; only 0381 appears in `deny.toml` because 0382 is not in any resolved graph |
 | Coverage 56% against a 40% CI gate | Measured. The mainnet bar should be higher than the testnet gate — a decision, not a chore |
 | `tests/` in `nawal-ai` runs 4,447 tests in ~5 min | Memory-constrained host; heavy suites have crashed this workstation four times. Run targeted, not wholesale |
+| `ui` Dependabot alert: minimatch ReDoS (`>= 7.0.0, < 11.0.1`) | **Upstream-blocked, not fixable here.** The reachable path is `@typescript-eslint/typescript-estree` → `minimatch ^10.2.2` → 10.2.6. Checked the registry on 2026-11-07: even the newest release (8.72.1) still requires `^10.2.2`, and **no published version requires 11+**, so the advisory cannot be cleared by any update available today. It is a devDependency used by lint tooling, never in the production bundle, and ReDoS needs an attacker-controlled glob pattern — none exists in the lint config. This is also why Dependabot's own run fails with *"the available update path still resolves it to 10.2.6"*. Re-check when `@typescript-eslint` moves to `^11` |
+| `ui` root `minimatch: ^9.0.7` | **Dead dependency.** Declared directly in `ui/package.json` but imported by **zero** files. Safe to delete — but it does *not* clear the alert above, because the transitive 10.2.6 path is the one flagged. Remove it with the next dependency update rather than as a standalone lockfile rewrite |
 
 ---
 
