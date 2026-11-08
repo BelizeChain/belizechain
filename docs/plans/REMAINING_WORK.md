@@ -209,7 +209,30 @@ every number on it is a live claim.
 |---|---|
 | Pallet count | **Fixed 2026-11-07** (`bb5ecb1`). The site said **19** pallets; `construct_runtime!` has **20** (ZkAttestation, index 39). `RUNTIME_FACTS.PALLET_COUNT` fed the footer, home stats and technology pages, so one stale constant was wrong in five places; ten prose strings in six pages hardcoded it separately |
 | `PALLET_TEST_COUNT` | **Fixed.** Claimed 1343, measured **1498** across the 20 crates (lines matching `^\s*#\[test\]` under each pallet's `src`, excluding `pallets/common`). Flat and recursive counts agree |
-| Build verification | **✅ Verified by CI, not locally.** `bb5ecb1` triggered "Build belizechain.org image": `Lint & Typecheck`, `Build App` and `Build Docker Image` all succeeded. The Dockerfile runs `RUN npm run build` (line 21), so that success *is* a real Next.js production build. The commit message for `bb5ecb1` says the build was skipped for memory reasons — that was written before the CI run finished, and **CI closed the gap**. No local build is needed |
+| Build verification | **✅ Verified by CI, not locally.** `bb5ecb1` triggered "Build belizechain.org image": `Lint & Typecheck`, `Build App` and `Build Docker Image` all succeeded. The Dockerfile runs `RUN npm run build` (line 21), so that success *is* a real Next.js production build. The commit message for `bb5ecb1` says the build was skipped for memory reasons — that was written before the CI run finished, and **CI closed the gap** |
+| **Deployed 2026-11-07** | `ORG_IMAGE=belizechain/org-site:c55997c-org-20261107` in `/opt/belizechain/.env`; `ceiba-org` recreated and nginx reloaded. Live `https://belizechain.org/` now renders `20 Runtime Pallets`, `20 custom runtime pallets` ×6, `consensus, 20`, with **zero** occurrences of `19`. Rollback target is `belizechain/org-site:698b2be-org-20261021` — still present on the host; revert the `ORG_IMAGE` line and `up -d org` |
+
+**Where the image is built, and why:** `belizechain.org/.github/workflows/deploy.yml`
+builds with `push: false, load: false` — no registry push and no host rollout, and it says so
+in its own job summary. So CI proves the build but never delivers it. The image for this deploy
+was therefore **built on Ceiba** from a `git archive` of the exact commit:
+
+```bash
+git -C belizechain.org archive <sha> | ssh wicked@ceiba 'rm -rf /tmp/org-build && mkdir -p /tmp/org-build && tar -x -C /tmp/org-build'
+ssh wicked@ceiba 'cd /tmp/org-build && nice -n 10 docker build -t belizechain/org-site:<sha>-org-<date> .'
+```
+
+Ceiba is the right host for this: 30 GB RAM with ~25 GB free and load ~0.04, against this
+workstation's 15 GB with under 5 GB free and swap fully consumed. Build there, never here.
+
+**Two content traps worth remembering:**
+1. A line-based grep cannot see a claim wrapped across source lines. `"…consensus, 19` / `custom
+   runtime pallets"` survived three passes for exactly that reason. Use a multiline regex.
+2. React SSR inserts `<!-- -->` between adjacent text nodes, so `grep '[0-9]* Runtime Pallets'`
+   misses `20<!-- --> Runtime Pallets`. Strip comments before matching rendered HTML.
+
+The only reliable check is **rendering**: source grep said clean while the built page still
+said 19 in four places.
 
 Re-verify the content claims before deploying anything that restates them:
 
