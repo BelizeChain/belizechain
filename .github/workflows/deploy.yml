@@ -64,8 +64,16 @@ jobs:
           sudo apt-get install -y protobuf-compiler libclang-18-dev llvm-18-dev
 
       - name: Configure portable LLVM paths
+        # `llvm-18-dev` installs `llvm-config-18` and does NOT provide the
+        # unversioned `llvm-config` symlink that `llvm-dev` does, so resolving
+        # only the bare name fails the step on a pinned runner. Try both, and
+        # fail with the reason rather than a bare exit 1 from `command -v`.
         run: |
-          LLVM_CONFIG_BIN="$(command -v llvm-config)"
+          LLVM_CONFIG_BIN="$(command -v llvm-config || command -v llvm-config-18 || true)"
+          if [[ -z "${LLVM_CONFIG_BIN}" ]]; then
+            echo "::error::no llvm-config on PATH; is llvm-18-dev installed?" >&2
+            exit 1
+          fi
           echo "LLVM_CONFIG_PATH=${LLVM_CONFIG_BIN}" >> "$GITHUB_ENV"
           echo "LIBCLANG_PATH=$(${LLVM_CONFIG_BIN} --libdir)" >> "$GITHUB_ENV"
 
@@ -131,8 +139,16 @@ jobs:
           sudo apt-get install -y protobuf-compiler libclang-18-dev llvm-18-dev
 
       - name: Configure portable LLVM paths
+        # `llvm-18-dev` installs `llvm-config-18` and does NOT provide the
+        # unversioned `llvm-config` symlink that `llvm-dev` does, so resolving
+        # only the bare name fails the step on a pinned runner. Try both, and
+        # fail with the reason rather than a bare exit 1 from `command -v`.
         run: |
-          LLVM_CONFIG_BIN="$(command -v llvm-config)"
+          LLVM_CONFIG_BIN="$(command -v llvm-config || command -v llvm-config-18 || true)"
+          if [[ -z "${LLVM_CONFIG_BIN}" ]]; then
+            echo "::error::no llvm-config on PATH; is llvm-18-dev installed?" >&2
+            exit 1
+          fi
           echo "LLVM_CONFIG_PATH=${LLVM_CONFIG_BIN}" >> "$GITHUB_ENV"
           echo "LIBCLANG_PATH=$(${LLVM_CONFIG_BIN} --libdir)" >> "$GITHUB_ENV"
 
@@ -259,8 +275,16 @@ jobs:
           sudo apt-get install -y protobuf-compiler libclang-18-dev llvm-18-dev
 
       - name: Configure portable LLVM paths
+        # `llvm-18-dev` installs `llvm-config-18` and does NOT provide the
+        # unversioned `llvm-config` symlink that `llvm-dev` does, so resolving
+        # only the bare name fails the step on a pinned runner. Try both, and
+        # fail with the reason rather than a bare exit 1 from `command -v`.
         run: |
-          LLVM_CONFIG_BIN="$(command -v llvm-config)"
+          LLVM_CONFIG_BIN="$(command -v llvm-config || command -v llvm-config-18 || true)"
+          if [[ -z "${LLVM_CONFIG_BIN}" ]]; then
+            echo "::error::no llvm-config on PATH; is llvm-18-dev installed?" >&2
+            exit 1
+          fi
           echo "LLVM_CONFIG_PATH=${LLVM_CONFIG_BIN}" >> "$GITHUB_ENV"
           echo "LIBCLANG_PATH=$(${LLVM_CONFIG_BIN} --libdir)" >> "$GITHUB_ENV"
 
@@ -403,8 +427,16 @@ jobs:
           sudo apt-get install -y protobuf-compiler libclang-18-dev llvm-18-dev
 
       - name: Configure portable LLVM paths
+        # `llvm-18-dev` installs `llvm-config-18` and does NOT provide the
+        # unversioned `llvm-config` symlink that `llvm-dev` does, so resolving
+        # only the bare name fails the step on a pinned runner. Try both, and
+        # fail with the reason rather than a bare exit 1 from `command -v`.
         run: |
-          LLVM_CONFIG_BIN="$(command -v llvm-config)"
+          LLVM_CONFIG_BIN="$(command -v llvm-config || command -v llvm-config-18 || true)"
+          if [[ -z "${LLVM_CONFIG_BIN}" ]]; then
+            echo "::error::no llvm-config on PATH; is llvm-18-dev installed?" >&2
+            exit 1
+          fi
           echo "LLVM_CONFIG_PATH=${LLVM_CONFIG_BIN}" >> "$GITHUB_ENV"
           echo "LIBCLANG_PATH=$(${LLVM_CONFIG_BIN} --libdir)" >> "$GITHUB_ENV"
 
@@ -489,8 +521,16 @@ jobs:
           sudo apt-get install -y protobuf-compiler libclang-18-dev llvm-18-dev
 
       - name: Configure portable LLVM paths
+        # `llvm-18-dev` installs `llvm-config-18` and does NOT provide the
+        # unversioned `llvm-config` symlink that `llvm-dev` does, so resolving
+        # only the bare name fails the step on a pinned runner. Try both, and
+        # fail with the reason rather than a bare exit 1 from `command -v`.
         run: |
-          LLVM_CONFIG_BIN="$(command -v llvm-config)"
+          LLVM_CONFIG_BIN="$(command -v llvm-config || command -v llvm-config-18 || true)"
+          if [[ -z "${LLVM_CONFIG_BIN}" ]]; then
+            echo "::error::no llvm-config on PATH; is llvm-18-dev installed?" >&2
+            exit 1
+          fi
           echo "LLVM_CONFIG_PATH=${LLVM_CONFIG_BIN}" >> "$GITHUB_ENV"
           echo "LIBCLANG_PATH=$(${LLVM_CONFIG_BIN} --libdir)" >> "$GITHUB_ENV"
 
