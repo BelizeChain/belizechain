@@ -1,9 +1,11 @@
 # Ceiba host isolation — Intel I226-V PCIe detach, 2026-11-09
 
-**Status: resolved by manual reboot. Root cause confirmed. Recurrence mitigation NOT yet applied.**
+**Status: resolved. All four mitigations applied and verified through a reboot
+(2026-11-09 21:26 UTC, 51 s of downtime). See §7.**
 
-**Written 2026-11-09 20:55 UTC from the host's own journal, the edge monitor's log,
-and the chain.** Every figure below was measured; nothing is inferred.
+**First written 2026-11-09 20:55 UTC from the host's own journal, the edge monitor's
+log, and the chain; updated after the remediation reboot.** Every figure below was
+measured; nothing is inferred.
 
 ---
 
@@ -17,7 +19,7 @@ and the chain.** Every figure below was measured; nothing is inferred.
 | Detected | 2026-11-09 **18:07:12 UTC** by the edge uptime monitor (38 s after the NIC detached); Telegram alert sent 18:07:43 |
 | Recovered | 2026-11-09 **20:47:13 UTC**, after a **manual reboot** |
 | MTTR | 2 h 40 m — every minute of it waiting for a human, not for a fix |
-| Recurrence | **Possible.** This is a known defect of this NIC. No mitigation applied yet (§5) |
+| Recurrence | **Possible** — this is a known defect of this NIC. Now mitigated three ways: bridges pinned out of D3hot, ASPM disabled in the kernel cmdline, and a watchdog that power-cycles the host in ≤10 min (§7) |
 
 ## 2. Timeline (UTC)
 
@@ -113,14 +115,14 @@ was never the problem — **recovery was**.
 
 ## 7. Remediation
 
-Applied and verified 2026-11-09 20:55 UTC, **without a reboot**. #4 was not applied.
+All four applied. #1, #3 and #4 needed no reboot; #2 took one and was verified through it.
 
 | # | Action | Status | Reboot? | Rollback |
 |---|---|---|---|---|
-| 1 | Pin every PCIe **bridge** to `power/control=on`, removing D3hot as a reachable state | ✅ applied, persisted via udev | no | `echo auto > /sys/bus/pci/devices/<addr>/power/control`, delete the rule |
-| 2 | Persist `pcie_aspm=off` in the GRUB cmdline | ⬜ **not applied** — needs a reboot | **yes** | — |
-| 3 | Local watchdog: reboot when the NIC leaves the PCI bus or has no carrier | ✅ applied, timer armed | no | `systemctl disable --now ceiba-nic-watchdog.timer` |
-| 4 | `node-exporter` + NIC/host alerts in Prometheus | ⬜ **not applied** | no | — |
+| 1 | Pin every PCIe **bridge** to `power/control=on`, removing D3hot as a reachable state | ✅ applied, persisted via udev, **survived the reboot** | no | `echo auto > /sys/bus/pci/devices/<addr>/power/control`, delete the rule |
+| 2 | Persist `pcie_aspm=off` in the GRUB cmdline | ✅ applied, active in `/proc/cmdline` | **yes** | `/etc/default/grub.bak-20261109-nic`, then `update-grub` |
+| 3 | Local watchdog: reboot when the NIC leaves the PCI bus or has no carrier | ✅ applied, timer re-armed after boot | no | `systemctl disable --now ceiba-nic-watchdog.timer` |
+| 4 | `node-exporter` + `CeibaNicLinkDown` / `CeibaHostMetricsMissing` alerts | ✅ applied, 11/11 targets up, rule tests pass | no | remove the service and the two rules |
 
 ### Why #1 is `power/control` and not ASPM
 
@@ -167,12 +169,64 @@ silently.
 
 ### Still open
 
-- **#2** — until the cmdline is set, the mitigation survives reboots only because of udev.
-  That is a real mechanism, not a placeholder, but `pcie_aspm=off` is the belt to that
-  braces. Batch it with the pending 125/126 runtime upgrade so the chain halts once.
-- **#4** — the host still has no `node-exporter`, so the next detach will again present as
-  a 504 rather than as "the NIC went away". Worth doing; not done here because it edits the
-  shared compose stack and CI-validated config for no gain in recovery time.
+Nothing from the original four. Two follow-ups this incident surfaced but did not need:
+
+- **`node-exporter` cannot see PCIe events.** It exposes link state, thermals, disk and
+  pressure — enough to know the host is sick — but `PCIe link lost` lives only in the
+  kernel journal. A `node_textfile` collector fed by the watchdog would close that, and is
+  the natural next step if this recurs.
+- **Alertmanager cannot fire during a full host outage**, because it runs on Ceiba too.
+  `CeibaNicLinkDown` helps only while the host is still reachable. The edge monitor stays
+  the sole detector for total isolation — that is architectural, not a gap to patch here.
+
+### Correction: the reboot could not have been batched
+
+An earlier revision of this document said #2's reboot should be batched with the pending
+125/126 runtime upgrade "so the chain halts once". **That was wrong.** Runtime upgrades on
+this chain ship hot via `sudo.sudo(System::set_code)` and never restart the node — 124 was
+applied that way with no downtime. There was no second halt to avoid, so waiting would only
+have left the host unprotected for longer. The reboot was taken on its own.
+
+Measured cost of doing so: **51 seconds**, not the 1–2 minutes estimated.
+
+| | |
+|---|---|
+| Reboot issued | 21:26:27 UTC |
+| Host back (SSH) | 21:27:16 UTC — **49 s** |
+| `ceiba-node` container started | 21:27:13 |
+| First block imported | 21:27:18 — `#489287` |
+| Pre-reboot head | `#489283` at 21:26:27 |
+| **Production lost** | **4 blocks ≈ 24 s**; total unreachability 51 s |
+
+All 21 containers returned on their own (`restart: unless-stopped` plus
+`belizechain-compose.service`), and both new mitigations came back without intervention:
+the udev rule still pinned all nine bridges, and `ceiba-nic-watchdog.timer` re-armed.
+
+### The two new alerts, and why they were tested rather than assumed
+
+A rule that parses is not a rule that fires. `#4` shipped with
+`infra/deploy/prometheus-alerts_test.yml`, and CI runs `promtool test rules` on it:
+
+| Test | Asserts |
+|---|---|
+| `node_network_up` = 0 from t=0 | `CeibaNicLinkDown` is **pending** at 1 m and **firing** at 3 m |
+| `node_network_up` = 1 for 5 m | it does **not** fire |
+| `docker0` down while `enp6s0` is up | it does **not** fire — the rule is pinned to the one physical uplink, or every container churn would page |
+| `up{job="node"}` = 0 | `CeibaHostMetricsMissing` fires, and is a distinct condition |
+
+Live evidence after deploy: `node_network_up{device="enp6s0"} = 1`, 11/11 targets up, both
+rules `health=ok state=inactive`.
+
+### A trap worth knowing: `install` breaks bind mounts
+
+The first attempt to reload Prometheus did nothing. `install`/`mv` replace the file's
+**inode**, and a running container's bind mount still points at the old one — so Prometheus
+read the pre-change `prometheus.yml` and reported no `node` target while the host copy
+plainly had one. `promtool` validated the new file; the container never saw it.
+
+`docker compose restart prometheus` fixed it. For a file that is bind-mounted into a
+running container, write **in place** (`cat >`) or restart the consumer. This is also why
+the Prometheus service is restarted, not reloaded, after config changes in `deploy/`.
 
 ## 8. Verification after recovery (2026-11-09 20:52 UTC)
 

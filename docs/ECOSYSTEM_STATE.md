@@ -35,14 +35,14 @@ value inline, so the next agent can see what moved.
 
 ## 2. Live state
 
-### 2.1 Chain — verified 2026-11-09 20:52 UTC
+### 2.1 Chain — verified 2026-11-09 21:31 UTC
 
 | | |
 |---|---|
 | Chain name | **Jade** (Chain D) |
 | Genesis | `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef` |
 | Runtime | **spec_version 124 live** · transaction 3. Repo is at 126 — **125 and 126 are undeployed** |
-| Head (2026-11-09 20:52) | **#488,938**, advancing at 6.1 s/block |
+| Head (2026-11-09 21:31) | **#489,327**, advancing at 6.1 s/block after the remediation reboot |
 | Epoch | **duration 300 slots** — unchanged across the 117 → 121 → 122 → 123 → 124 upgrades |
 | Peers | 0 (`shouldHavePeers: false` — single node, expected) |
 | Repo agreement | ⚠️ repo is **two releases ahead** of the live spec: `runtime/src/lib.rs` reads 126, the chain runs 124. Not a defect — 125/126 are awaiting a `sudo.sudo(System::set_code)` deploy. |
@@ -55,6 +55,11 @@ Recovery required a manual reboot. Full record:
 [`operations/CEIBA_NIC_PCIE_DETACH_2026-11-09.md`](operations/CEIBA_NIC_PCIE_DETACH_2026-11-09.md).
 This is why the figures above could not be read between those times — not because
 the chain had stopped.
+
+**A second, planned reboot at 21:26 UTC applied `pcie_aspm=off` and cost 51 s**
+(4 blocks, `#489283` → `#489287`). All 21 containers and both host mitigations came
+back unattended. The host now exposes `node-exporter` metrics to Prometheus, which it
+did not before — see the incident record for why that mattered.
 
 **124 is live (2026-10-27).** Applied hot from 123 via `sudo.sudo(System::set_code)`;
 no node restart. Blob 1,609,157 bytes, blake2b-256
