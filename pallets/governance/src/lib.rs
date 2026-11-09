@@ -715,7 +715,11 @@ impl BoardRole {
             Self::TechnicalSteward => 2,
             Self::FSCRepresentative => 1,
             Self::BTBDelegate => 1,
-            Self::CitizenDelegate => 3, // Up to 3 rotating delegates
+            // Five, not three: the district roster seats twelve delegates
+            // (3+2+1+2+2+2 across the six districts), so a cap of three made
+            // that roster unrepresentable. Five keeps a spare seat above the
+            // twelve `GENESIS_SEAT_LADDER` can hand out.
+            Self::CitizenDelegate => 5,
             Self::SecurityAuditor => 2,
             Self::CultureEthicsAdvisor => 1,
         }
@@ -730,19 +734,31 @@ impl BoardRole {
 /// respect [`BoardRole::max_count`]: `Founder` is first and appears once, then the
 /// permanent technical/regulatory seats, then the rotating citizen delegates.
 ///
-/// It has nine seats, which is more than any genesis is expected to use, and an
-/// over-long `council_members` list is rejected rather than silently clamped.
+/// It has twelve seats, one per delegate the six districts can seat
+/// (3+2+1+2+2+2), and an over-long `council_members` list is rejected rather
+/// than silently clamped.
 ///
 /// **Keep in step with `BoardRole::max_count`.** If a cap is lowered below the
 /// number of times its role appears here, genesis will seat more members of that
-/// role than the runtime allows.
+/// role than the runtime allows. `seat_ladder_respects_every_role_cap` is the
+/// test that enforces it, so the two cannot drift apart silently again.
+///
+/// The order matters beyond `.len()`. Seats are handed out from the start of this
+/// slice, so the leading entries are what a *small* genesis gets: a three-seat
+/// board takes the first three and must end up with three distinct roles, not
+/// one role counted three times. Only the trailing rotating delegates are put
+/// back-to-back, because `CitizenDelegate` is the one role whose cap exceeds two
+/// and therefore the only role that can absorb the remaining seats.
 const GENESIS_SEAT_LADDER: &[BoardRole] = &[
     BoardRole::Founder,
     BoardRole::TechnicalSteward,
     BoardRole::FSCRepresentative,
+    BoardRole::TechnicalSteward,
     BoardRole::BTBDelegate,
     BoardRole::SecurityAuditor,
+    BoardRole::SecurityAuditor,
     BoardRole::CultureEthicsAdvisor,
+    BoardRole::CitizenDelegate,
     BoardRole::CitizenDelegate,
     BoardRole::CitizenDelegate,
     BoardRole::CitizenDelegate,

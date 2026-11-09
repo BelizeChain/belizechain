@@ -3483,10 +3483,59 @@ fn board_role_enum_methods_work() {
         assert_eq!(BoardRole::TechnicalSteward.max_count(), 2);
         assert_eq!(BoardRole::FSCRepresentative.max_count(), 1);
         assert_eq!(BoardRole::BTBDelegate.max_count(), 1);
-        assert_eq!(BoardRole::CitizenDelegate.max_count(), 3);
+        assert_eq!(BoardRole::CitizenDelegate.max_count(), 5);
         assert_eq!(BoardRole::SecurityAuditor.max_count(), 2);
         assert_eq!(BoardRole::CultureEthicsAdvisor.max_count(), 1);
     });
+}
+
+/// The genesis ladder and the role caps have to describe the same board.
+///
+/// A 12-seat district roster against a 9-seat ladder is what turned the build
+/// red: genesis panicked with "12 council members exceeds the 9 seats". Neither
+/// number is wrong on its own, so only a test that compares them catches it.
+#[test]
+fn seat_ladder_respects_every_role_cap() {
+    use crate::BoardRole;
+
+    let ladder = crate::GENESIS_SEAT_LADDER;
+    let roster: u32 = [
+        crate::BelizeDistrict::Belize,
+        crate::BelizeDistrict::Cayo,
+        crate::BelizeDistrict::Corozal,
+        crate::BelizeDistrict::OrangeWalk,
+        crate::BelizeDistrict::StannCreek,
+        crate::BelizeDistrict::Toledo,
+    ]
+    .iter()
+    .map(|district| district.seat_allocation())
+    .sum();
+
+    assert_eq!(
+        ladder.len() as u32,
+        roster,
+        "the genesis ladder must seat exactly the delegates the six districts allocate"
+    );
+
+    for role in [
+        BoardRole::Founder,
+        BoardRole::TechnicalSteward,
+        BoardRole::FSCRepresentative,
+        BoardRole::BTBDelegate,
+        BoardRole::CitizenDelegate,
+        BoardRole::SecurityAuditor,
+        BoardRole::CultureEthicsAdvisor,
+    ] {
+        let seated = ladder
+            .iter()
+            .filter(|candidate| **candidate == role)
+            .count() as u32;
+        assert!(
+            seated <= role.max_count(),
+            "genesis seats {seated} {role:?} but the role allows {}",
+            role.max_count()
+        );
+    }
 }
 
 #[test]
@@ -4206,29 +4255,33 @@ fn district_cannot_open_a_second_election_while_one_is_running() {
 // Regression: district elections ignored the CitizenDelegate role cap
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Six districts seating up to five members each would put 30 delegates on a
-/// council whose `CitizenDelegate` role is capped at 3.
-///
-/// The overflow is *across* districts, not within one: `start_district_election`
-/// already refuses `seats > district.seat_allocation()`, and the largest
-/// allocation (Belize, 3) equals the role cap exactly. So one district can fill
-/// the council and the next district must be refused.
+/// One district can no longer fill the `CitizenDelegate` role on its own: the
+/// largest allocation is Belize's three against a cap of five. The overflow is
+/// therefore *across* districts, and it is the last district that must be
+/// refused once the cap is full.
 #[test]
 fn finalize_refuses_to_seat_more_delegates_than_the_role_allows() {
     new_test_ext().execute_with(|| {
-        // Belize seats 3, which fills the CitizenDelegate role exactly.
+        // Belize seats 3 and Cayo seats 2, which fills the five-delegate cap.
         assert_ok!(BelizeGovernance::start_district_election(
             RuntimeOrigin::root(),
             0,
-            crate::BoardRole::CitizenDelegate.max_count(),
+            3,
             100,
             200,
         ));
-        // Corpus Christi/Cayo (index 1) seats 2 and would push past the cap.
         assert_ok!(BelizeGovernance::start_district_election(
             RuntimeOrigin::root(),
             1,
             2,
+            100,
+            200,
+        ));
+        // Corozal seats 1 and would push past the cap.
+        assert_ok!(BelizeGovernance::start_district_election(
+            RuntimeOrigin::root(),
+            2,
+            1,
             100,
             200,
         ));
@@ -4247,21 +4300,30 @@ fn finalize_refuses_to_seat_more_delegates_than_the_role_allows() {
                 b"platform".to_vec(),
             ));
         }
+        assert_ok!(BelizeGovernance::register_candidate(
+            RuntimeOrigin::signed(6u64),
+            2u8,
+            b"platform".to_vec(),
+        ));
 
         System::set_block_number(302);
         assert_ok!(BelizeGovernance::finalize_district_election(
             RuntimeOrigin::root(),
             0u8
         ));
+        assert_ok!(BelizeGovernance::finalize_district_election(
+            RuntimeOrigin::root(),
+            1u8
+        ));
 
-        // The role is full, so the second district cannot add its two seats.
+        // The role is full, so the third district cannot add its single seat.
         assert_noop!(
-            BelizeGovernance::finalize_district_election(RuntimeOrigin::root(), 1u8),
+            BelizeGovernance::finalize_district_election(RuntimeOrigin::root(), 2u8),
             Error::<Test>::BoardRoleLimitExceeded
         );
 
         assert_eq!(
-            crate::DistrictRepresentation::<Test>::get(crate::BelizeDistrict::Cayo).len(),
+            crate::DistrictRepresentation::<Test>::get(crate::BelizeDistrict::Corozal).len(),
             0,
             "a rejected finalize still wrote the district representation"
         );
