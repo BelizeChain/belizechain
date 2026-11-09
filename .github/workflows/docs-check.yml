@@ -69,29 +69,61 @@ jobs:
     name: 📄 Docs claims vs reality (all repos)
     runs-on: ubuntu-latest
     steps:
-      - name: Check for the cross-repo token
+      - name: Check the cross-repo token is present AND still valid
         id: token
         env:
           TOKEN: ${{ secrets.BELIECHAIN_CI_TOKEN }}
         run: |
-          if [ -n "$TOKEN" ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
+          if [ -z "$TOKEN" ]; then
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            message="BELIECHAIN_CI_TOKEN is not set, so the sibling repos could not"
+            message="$message be checked out. The cross-repo half of this check — the"
+            message="$message half that catches a call to an extrinsic that does not"
+            message="$message exist — is NOT gating this commit."
+            echo "::warning title=Cross-repo checks did not run::$message"
             exit 0
           fi
-          echo "present=false" >> "$GITHUB_OUTPUT"
-          message="BELIECHAIN_CI_TOKEN is not set, so the sibling repos could not"
-          message="$message be checked out. The cross-repo half of this check — the"
-          message="$message half that catches a call to an extrinsic that does not"
-          message="$message exist — is NOT gating this commit."
-          echo "::warning title=Cross-repo checks did not run::$message"
 
-      # `belizechain` and `ui` are public, so the default token could clone them;
-      # the other seven are private and cannot be reached with GITHUB_TOKEN at all.
-      # Measured 2026-11-07: 6 of the 7 siblings are private (infra, kinich-quantum,
-      # nawal-ai, pakit-storage, gem, belizechain.org). A fine-grained PAT with
-      # Contents: read on those repos is therefore the only way to close this, which
-      # is why the scheduled run fails rather than silently reporting SKIP — an
-      # unmonitored gap is how the previous one survived.
+          # A secret is an opaque stored string: when the PAT expires, GitHub does
+          # not blank it. `present` would stay true and every checkout below would
+          # fail with a bare 404 — which reads as "the repo was deleted" instead of
+          # "rotate the token". Probe the credential so the failure names the cause.
+          # `gem` is private, so HTTP 200 here also proves access to the private set.
+          url="https://api.github.com/repos/${GITHUB_REPOSITORY_OWNER}/gem"
+          status=$(curl -sS -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "$url" || echo 000)
+
+          case "$status" in
+            200)
+              echo "present=true" >> "$GITHUB_OUTPUT"
+              ;;
+            401)
+              echo "::error title=BELIECHAIN_CI_TOKEN has expired::The secret exists but GitHub rejected it (HTTP 401). Fine-grained PATs expire on a fixed date. Mint a replacement with Contents: read-only on infra, kinich-quantum, nawal-ai, pakit-storage, gem and belizechain.org, then run: gh secret set BELIECHAIN_CI_TOKEN -R ${GITHUB_REPOSITORY}"
+              exit 1
+              ;;
+            404)
+              echo "::error title=BELIECHAIN_CI_TOKEN cannot read the private siblings::HTTP 404 for ${url}. The token itself is valid but is not scoped to it — under Repository access the six private repos must be selected: infra, kinich-quantum, nawal-ai, pakit-storage, gem, belizechain.org."
+              exit 1
+              ;;
+            *)
+              echo "::error title=Could not verify BELIECHAIN_CI_TOKEN::Unexpected HTTP ${status} from ${url}."
+              exit 1
+              ;;
+          esac
+
+      # Measured 2026-11-09: exactly two of the eight repos are public
+      # (`belizechain`, `ui`) and six are private (`infra`, `kinich-quantum`,
+      # `nawal-ai`, `pakit-storage`, `gem`, `belizechain.org`).
+      #
+      # So a fine-grained PAT with Contents: read needs the SIX private repos and
+      # nothing else. This repo is checked out with the workflow's own token, and
+      # `ui` is public, so neither belongs in the PAT — a PAT scoped only to the
+      # private six returns 404 for `ui`, which is why the `ui` checkout below must
+      # NOT pass the token. Passing it anyway was a latent break: it worked only
+      # because the PAT used to be scoped to everything.
       #
       # Until the secret exists, the same coverage is available locally from the
       # multi-root workspace root (measured 2026-11-07: PASSED, 0 failures):
@@ -108,8 +140,9 @@ jobs:
         if: steps.token.outputs.present == 'true'
         uses: actions/checkout@v7
         with:
+          # No `token:` — `ui` is public, and the PAT is scoped to the private six
+          # only, so passing it here would 404 once the token is correctly scoped.
           repository: ${{ github.repository_owner }}/ui
-          token: ${{ secrets.BELIECHAIN_CI_TOKEN }}
           path: ui
 
       - name: Check out infrastructure
