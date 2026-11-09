@@ -36,6 +36,10 @@
  *   --bbzd     bBZD leg (whole bBZD, default 200000)
  *   --bridge-validators  secrets of accounts to register as bridge validators
  *   --evm-addresses      matching 0x secp256k1 addresses, same order and length
+ *   --pq-keys            ML-DSA-87 public keys (hex files from
+ *                        generate-bridge-pq-keys.sh), same order and length.
+ *                        Required with --bridge-validators: a registration is
+ *                        only meaningful if somebody holds the private key.
  *   --dry-run  run every precondition check and skip the extrinsics
  *
  * Environment
@@ -51,6 +55,16 @@
 const { ApiPromise, WsProvider, Keyring } = require('@polkadot/api');
 const { cryptoWaitReady, randomAsU8a } = require('@polkadot/util-crypto');
 const { u8aToHex } = require('@polkadot/util');
+const { assertKeypairMatches, readPqPublicKey } = require('./lib/mldsa');
+const {
+  log,
+  step,
+  bytes,
+  describeDispatchError,
+  oracleKycLevel,
+  seatOracleOperators,
+  seedOracleKyc,
+} = require('./lib/oracle-kyc');
 
 const DECIMALS = 12;
 const UNIT = 10n ** BigInt(DECIMALS);
@@ -67,10 +81,6 @@ const BRIDGE_CHAIN_ETHEREUM = 1;
 
 // Bridge validator registration requires Full (L3) KYC.
 const BRIDGE_KYC_LEVEL = 3;
-
-// ML-DSA-87 public keys are a fixed 2592 bytes; the pallet bounds the field to
-// exactly this size, so a shorter placeholder is rejected outright.
-const ML_DSA_87_PUBLIC_KEY_BYTES = 2592;
 
 // Mirrors the runtime's `MinOracleAgreement`: one KYC verification only
 // finalises once this many distinct oracle operators submit the same vote.
@@ -92,6 +102,7 @@ function parseArgs(argv) {
     mintKycLevel: 2,
     bridgeValidators: [],
     evmAddresses: [],
+    pqKeys: [],
   };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -100,7 +111,7 @@ function parseArgs(argv) {
     else if (a === '--oracle-seeds') args.oracleSeeds = list(argv[++i]);
     else if (a === '--bridge-validators') args.bridgeValidators = list(argv[++i]);
     else if (a === '--evm-addresses') args.evmAddresses = list(argv[++i]);
-    else if (a === '--min-agreement') args.minAgreement = Number(argv[++i]);
+    else if (a === '--pq-keys') args.pqKeys = list(argv[++i]).map(readPqPublicKey);    else if (a === '--min-agreement') args.minAgreement = Number(argv[++i]);
     else if (a === '--mint-kyc-level') args.mintKycLevel = Number(argv[++i]);
     else if (a === '--dalla') args.dalla = BigInt(argv[++i]);
     else if (a === '--bbzd') args.bbzd = BigInt(argv[++i]);
@@ -116,19 +127,6 @@ function usage() {
   console.log('         node scripts/bootstrap-dex.js [--rpc ws://...] [--dry-run]');
 }
 
-const log = (msg) => console.log(`  ${msg}`);
-const step = (msg) => console.log(`\n${msg}`);
-
-/** `BoundedVec<u8, _>` args must go in as hex, not as a Buffer. */
-const bytes = (text) => `0x${Buffer.from(text, 'utf8').toString('hex')}`;
-
-/** Turn a dispatch error into the pallet's own name and doc string. */
-function describeDispatchError(dispatchError) {
-  if (!dispatchError.isModule) return dispatchError.toString();
-  const meta = dispatchError.asModule.registry.findMetaError(dispatchError.asModule);
-  return `${meta.section}.${meta.name}: ${meta.docs.join(' ').trim()}`;
-}
-
 /**
  * Current KYC level, or `null` when the runtime exposes no RPC getter for it.
  *
@@ -142,12 +140,6 @@ async function kycLevel(api, address) {
   if (!api.query.identity.verifiedKycLevel) return null;
   const level = await api.query.identity.verifiedKycLevel(address);
   return Number(level.toString());
-}
-
-/** KYC as recorded in the Oracle pallet — the one store readable over RPC. */
-async function oracleKycLevel(api, address) {
-  const recorded = await api.query.oracle.identityVerifications(address);
-  return recorded.isSome ? Number(recorded.unwrap().kycLevel.index) : 0;
 }
 
 /**
@@ -184,68 +176,6 @@ async function seedSsnAttestation(api, run, subject, issuer) {
   } catch (e) {
     if (!/AlreadyAttested/.test(e.message)) throw e;
     log('issue ssn: already attested');
-  }
-}
-
-/**
- * Seal KYC level `required` for `subject` in the **Oracle** pallet's store.
- *
- * This is a second, unsynchronised store. The Economy pallet does NOT read the
- * Identity pallet: its `Oracle` shim routes to `pallet_belize_oracle`, which
- * trusts only its own `IdentityVerifications` map. So a fresh chain needs KYC
- * recorded twice and a mint fails with `KycVerificationRequired` until this one
- * exists. `Interoperability::verify_bridge_operator` falls back to this store
- * too, which is why bridge validators are seeded here and nowhere else.
- *
- * Sealing needs `MinOracleAgreement` distinct operators to submit the same vote,
- * and `verify_identity` requires each voter to be a seated operator — seated by
- * `OracleAdminOrigin`, which includes Root, so sudo can do it.
- */
-async function seedOracleKyc(api, run, subject, operators, required, dryRun) {
-  const address = subject.address;
-  const recorded = await api.query.oracle.identityVerifications(address);
-  const recordedLevel = recorded.isSome ? Number(recorded.unwrap().kycLevel.index) : 0;
-  log(`oracle kyc level: ${recordedLevel} (need ${required})`);
-  if (recordedLevel >= required) {
-    log('already sufficient');
-    return;
-  }
-
-  // Every operator must submit the SAME (level, id_hash) pair for the votes to
-  // tally; a differing hash becomes a competing leader and never reaches
-  // agreement. An operator that already voted can change its vote.
-  const idHash = randomAsU8a(32);
-  for (const op of operators) {
-    await run(`oracle kyc vote L${required} ${op.address.slice(0, 10)}…`,
-      api.tx.oracle.verifyIdentity(address, required, idHash, bytes('kyc-seed'), false, true),
-      op);
-  }
-
-  const after = await api.query.oracle.identityVerifications(address);
-  const afterLevel = after.isSome ? Number(after.unwrap().kycLevel.index) : 0;
-  // A dry run submitted nothing, so asserting the outcome would always fail.
-  // Reporting what the votes WOULD produce is the point of the flag; the real
-  // assertion stays below for a live run.
-  if (dryRun) {
-    log(`oracle KYC would reach L${required} (dry run)`);
-    return;
-  }
-  if (afterLevel < required) {
-    throw new Error(`oracle KYC reached L${afterLevel}, need L${required}`);
-  }
-  log(`oracle KYC recorded at L${afterLevel}`);
-}
-
-/** Seat every operator that is not already seated. Idempotent. */
-async function seatOracleOperators(api, run, operators) {
-  for (const op of operators) {
-    const seated = await api.query.oracle.oracleOperators(op.address);
-    if (seated.isTrue) {
-      log(`operator ${op.address.slice(0, 10)}…: already seated`);
-      continue;
-    }
-    await run(`seat operator ${op.address.slice(0, 10)}…`,
-      api.tx.sudo.sudo(api.tx.oracle.addOperator(op.address)));
   }
 }
 
@@ -436,6 +366,13 @@ async function main() {
         + `(got ${args.bridgeValidators.length} and ${args.evmAddresses.length})`,
       );
     }
+    if (args.pqKeys.length !== args.bridgeValidators.length) {
+      throw new Error(
+        `--bridge-validators and --pq-keys must pair up `
+        + `(got ${args.bridgeValidators.length} and ${args.pqKeys.length}); `
+        + `generate keys with scripts/generate-bridge-pq-keys.sh`,
+      );
+    }
 
     // Sealing needs the same quorum the DEX steps used; reuse the seated set
     // rather than requiring a second list of operator keys.
@@ -445,6 +382,12 @@ async function main() {
       const validator = keyring.addFromUri(seed);
       const label = `${validator.address.slice(0, 10)}…`;
       const evmAddress = args.evmAddresses[i];
+      const pqKey = args.pqKeys[i];
+
+      // A public key without its private key cannot sign, so registering it
+      // would recreate the placeholder defect this replaced. Checked here, per
+      // validator, so the failure names the file rather than the account.
+      assertKeypairMatches(pqKey.path, pqKey.hex);
 
       // The Identity pallet is not consulted for this gate, so only the Oracle
       // store is seeded — no SSN or passport attestation is needed.
@@ -454,11 +397,13 @@ async function main() {
       if (existingValidator.isSome) {
         log(`${label}: already registered`);
       } else {
-        // A placeholder PQ key: this rehearsal proves the extrinsic path and the
-        // set reconciliation, not ML-DSA signing. The real key is inserted with
-        // `author_insertKey` on a host that holds validator secrets.
+        // A registered key nobody holds cannot sign, so a registration is only
+        // worth writing if the matching private key exists. `author_insertKey`
+        // is NOT the path: the runtime's `SessionKeys` is `{ babe, grandpa }`,
+        // so there is no ML-DSA session key to insert. The pallet verifies
+        // signatures directly against this stored public key.
         await run(`register validator ${label}`, api.tx.interoperability.registerBridgeValidator(
-          u8aToHex(randomAsU8a(ML_DSA_87_PUBLIC_KEY_BYTES)),
+          pqKey.hex,
           [BRIDGE_CHAIN_ETHEREUM],
         ), validator);
       }
