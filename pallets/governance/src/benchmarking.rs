@@ -406,6 +406,13 @@ mod benchmarks {
         _(RawOrigin::Signed(approver), proposal_id, 3u8);
     }
 
+    // `role_index` 4 is `CitizenDelegate` (cap 5). It cannot be 0: genesis hands
+    // seats out along `GENESIS_SEAT_LADDER`, whose first three entries are
+    // `Founder`, `TechnicalSteward` and `FSCRepresentative` — all capped at 1 or
+    // 2 — and genesis now writes `BoardComposition`, so those counters start at
+    // their cap and the appointment is rejected with `BoardRoleLimitExceeded`.
+    const OPEN_BOARD_ROLE: u8 = 4;
+
     #[benchmark]
     fn add_board_member() {
         let member = kyc_account::<T>("board-member", 0);
@@ -413,7 +420,7 @@ mod benchmarks {
             .expect("CouncilOrigin exposes a successful origin for benchmarks");
 
         #[extrinsic_call]
-        _(origin, member, 0u8, 1u8);
+        _(origin, member, OPEN_BOARD_ROLE, 1u8);
     }
 
     #[benchmark]
@@ -421,7 +428,7 @@ mod benchmarks {
         let member = kyc_account::<T>("board-member", 0);
         let origin = T::CouncilOrigin::try_successful_origin()
             .expect("CouncilOrigin exposes a successful origin for benchmarks");
-        Pallet::<T>::add_board_member(origin.clone(), member.clone(), 0u8, 1u8)
+        Pallet::<T>::add_board_member(origin.clone(), member.clone(), OPEN_BOARD_ROLE, 1u8)
             .expect("add_board_member should succeed");
 
         let reason: Vec<u8> = b"Term ended".to_vec();
