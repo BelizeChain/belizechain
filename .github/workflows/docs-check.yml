@@ -105,7 +105,7 @@ jobs:
               exit 1
               ;;
             404)
-              echo "::error title=BELIECHAIN_CI_TOKEN cannot read the private siblings::HTTP 404 for ${url}. The token itself is valid but is not scoped to it — under Repository access the six private repos must be selected: infra, kinich-quantum, nawal-ai, pakit-storage, gem, belizechain.org."
+              echo "::error title=BELIECHAIN_CI_TOKEN is valid but cannot read the private siblings::HTTP 404 for ${url}. Two causes, both worth checking: (a) under Repository access the six private repos must be explicitly selected — infra, kinich-quantum, nawal-ai, pakit-storage, gem, belizechain.org; (b) if the org requires approval for fine-grained PATs, the token sits pending until an org owner approves it. Check pending requests at https://github.com/organizations/BelizeChain/settings/personal-access-tokens."
               exit 1
               ;;
             *)
