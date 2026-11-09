@@ -354,6 +354,18 @@ jobs:
 
       - name: Run every chain-only suite
         run: |
+          # tests/test_probe.py is NOT listed here and does not exist. It was named
+          # in 01d51bb when the suite was repaired, but the file was never created —
+          # so pytest exited 4 ("file or directory not found") before running a
+          # single test, and this job reported red for every run since 2026-10-27
+          # while looking like a test failure. Naming a file is not the same as
+          # having one; the guard below fails the step if any path goes missing
+          # again, which is the check that should have existed then.
+          for p in \
+            tests/economic tests/belizex tests/governance tests/oracle \
+            tests/cross_pallet tests/blockchain tests/test_chain_spec_guard.py; do
+            [ -e "$p" ] || { echo "::error::pytest path does not exist: $p"; exit 1; }
+          done
           python -m pytest \
             tests/economic \
             tests/belizex \
@@ -361,7 +373,6 @@ jobs:
             tests/oracle \
             tests/cross_pallet \
             tests/blockchain \
-            tests/test_probe.py \
             tests/test_chain_spec_guard.py \
             -m "not pristine_oracle_rate" \
             -q -rs --timeout=180 -p no:cacheprovider

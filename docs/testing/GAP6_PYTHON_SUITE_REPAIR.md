@@ -433,7 +433,7 @@ Two store types, and the distinction matters:
 # every chain-only suite, one process (order matters: test_council seeds seats)
 .venv-pytest/bin/python -m pytest \
   tests/economic tests/belizex tests/governance tests/oracle \
-  tests/cross_pallet tests/blockchain tests/test_probe.py \
+  tests/cross_pallet tests/blockchain \
   -q -rs --timeout=300 -p no:cacheprovider
 ```
 
