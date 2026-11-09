@@ -14,7 +14,7 @@ and the chain.** Every figure below was measured; nothing is inferred.
 | What failed | The onboard **Intel I226-V** NIC (`igc`, `0000:06:00.0`, `enp6s0`) detached from the PCIe bus |
 | Effect | Host lost all networking — no route, no DNS — for **2 h 41 m** |
 | Chain impact | **None.** Block production continued the entire time |
-| Detected | 2026-11-09 **18:07:12 UTC** by the edge uptime monitor → Telegram |
+| Detected | 2026-11-09 **18:07:12 UTC** by the edge uptime monitor (38 s after the NIC detached); Telegram alert sent 18:07:43 |
 | Recovered | 2026-11-09 **20:47:13 UTC**, after a **manual reboot** |
 | MTTR | 2 h 40 m — every minute of it waiting for a human, not for a fix |
 | Recurrence | **Possible.** This is a known defect of this NIC. No mitigation applied yet (§5) |
@@ -98,7 +98,7 @@ machine is power-cycled. That is why MTTR was 2 h 40 m.
 
 ## 6. The real gap this exposed
 
-The failure was detected in **40 seconds** and still took 2 h 40 m to resolve. Detection
+The failure was detected in **38 seconds** and still took 2 h 40 m to resolve. Detection
 was never the problem — **recovery was**.
 
 1. **No automatic recovery.** A device that detaches from PCIe cannot be re-enumerated
