@@ -31,12 +31,19 @@
  * Options
  *   --rpc      WebSocket RPC endpoint (default ws://127.0.0.1:9944)
  *   --seed     secret seed of an account that can satisfy sudo AND act as the
- *              minter/liquidity provider. Required.
+ *              minter/liquidity provider. Required. Prefer BOOTSTRAP_SEED.
  *   --dalla    DALLA leg of the bootstrap liquidity (whole DALLA, default 100000)
  *   --bbzd     bBZD leg (whole bBZD, default 200000)
  *   --bridge-validators  secrets of accounts to register as bridge validators
  *   --evm-addresses      matching 0x secp256k1 addresses, same order and length
  *   --dry-run  run every precondition check and skip the extrinsics
+ *
+ * Environment
+ *   BOOTSTRAP_SEED           same as --seed. An argument is visible in `ps` and
+ *                            lands in shell history; an env var does not. This
+ *                            mirrors `rotate-validator.js`, which takes every
+ *                            secret the same way.
+ *   BOOTSTRAP_ORACLE_SEEDS   comma-separated, same as --oracle-seeds.
  *
  * Testnet only: it mints a stablecoin, so it must never be pointed at mainnet.
  */
@@ -72,8 +79,20 @@ const DEFAULT_MIN_ORACLE_AGREEMENT = 3;
 const PAIR_FEE_BPS = 30;
 
 function parseArgs(argv) {
-  const args = { rpc: 'ws://127.0.0.1:9944', dalla: 100000n, bbzd: 200000n, dryRun: false, seed: null, oracleSeeds: [], minAgreement: DEFAULT_MIN_ORACLE_AGREEMENT, mintKycLevel: 2, bridgeValidators: [], evmAddresses: [] };
   const list = (value) => value.split(',').map((s) => s.trim()).filter(Boolean);
+  const args = {
+    rpc: 'ws://127.0.0.1:9944',
+    dalla: 100000n,
+    bbzd: 200000n,
+    dryRun: false,
+    // Secrets come from the environment by default; see the header.
+    seed: process.env.BOOTSTRAP_SEED || null,
+    oracleSeeds: list(process.env.BOOTSTRAP_ORACLE_SEEDS || ''),
+    minAgreement: DEFAULT_MIN_ORACLE_AGREEMENT,
+    mintKycLevel: 2,
+    bridgeValidators: [],
+    evmAddresses: [],
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--rpc') args.rpc = argv[++i];
@@ -93,7 +112,8 @@ function parseArgs(argv) {
 }
 
 function usage() {
-  console.log('usage: node scripts/bootstrap-dex.js --seed 0x<hex> [--rpc ws://...] [--dry-run]');
+  console.log('usage: BOOTSTRAP_SEED=<seed> BOOTSTRAP_ORACLE_SEEDS=<s1>,<s2>,<s3> \\');
+  console.log('         node scripts/bootstrap-dex.js [--rpc ws://...] [--dry-run]');
 }
 
 const log = (msg) => console.log(`  ${msg}`);
@@ -109,11 +129,25 @@ function describeDispatchError(dispatchError) {
   return `${meta.section}.${meta.name}: ${meta.docs.join(' ').trim()}`;
 }
 
-/** Current KYC level, tolerant of runtimes without the convenience getter. */
+/**
+ * Current KYC level, or `null` when the runtime exposes no RPC getter for it.
+ *
+ * `get_verified_kyc_level` is a pallet TRAIT method, not a storage item, so on
+ * this runtime there is no `api.query.identity.*` entry to read. Returning 0 in
+ * that case claims "this account is unverified", which is a different statement
+ * from "this node cannot tell me" — and the difference matters when the whole
+ * point of the step is to decide whether KYC has to be seeded.
+ */
 async function kycLevel(api, address) {
-  if (!api.query.identity.verifiedKycLevel) return 0;
+  if (!api.query.identity.verifiedKycLevel) return null;
   const level = await api.query.identity.verifiedKycLevel(address);
   return Number(level.toString());
+}
+
+/** KYC as recorded in the Oracle pallet — the one store readable over RPC. */
+async function oracleKycLevel(api, address) {
+  const recorded = await api.query.oracle.identityVerifications(address);
+  return recorded.isSome ? Number(recorded.unwrap().kycLevel.index) : 0;
 }
 
 /**
@@ -167,7 +201,7 @@ async function seedSsnAttestation(api, run, subject, issuer) {
  * and `verify_identity` requires each voter to be a seated operator — seated by
  * `OracleAdminOrigin`, which includes Root, so sudo can do it.
  */
-async function seedOracleKyc(api, run, subject, operators, required) {
+async function seedOracleKyc(api, run, subject, operators, required, dryRun) {
   const address = subject.address;
   const recorded = await api.query.oracle.identityVerifications(address);
   const recordedLevel = recorded.isSome ? Number(recorded.unwrap().kycLevel.index) : 0;
@@ -189,6 +223,13 @@ async function seedOracleKyc(api, run, subject, operators, required) {
 
   const after = await api.query.oracle.identityVerifications(address);
   const afterLevel = after.isSome ? Number(after.unwrap().kycLevel.index) : 0;
+  // A dry run submitted nothing, so asserting the outcome would always fail.
+  // Reporting what the votes WOULD produce is the point of the flag; the real
+  // assertion stays below for a live run.
+  if (dryRun) {
+    log(`oracle KYC would reach L${required} (dry run)`);
+    return;
+  }
   if (afterLevel < required) {
     throw new Error(`oracle KYC reached L${afterLevel}, need L${required}`);
   }
@@ -292,8 +333,14 @@ async function main() {
   }
 
   const level = await kycLevel(api, address);
-  log(`kyc level: ${level}`);
-  if (level < 1) {
+  if (level === null) {
+    // Report what is actually known rather than printing a 0 that means "unread".
+    log(`kyc level: not readable via RPC (trait-only getter)`);
+    log(`kyc level: oracle store holds L${await oracleKycLevel(api, address)}`);
+  } else {
+    log(`kyc level: ${level}`);
+  }
+  if (level === null || level < 1) {
     await seedSsnAttestation(api, run, who, who);
   } else {
     log('already KYC level 1+');
@@ -310,7 +357,7 @@ async function main() {
 
   const operators = args.oracleSeeds.map((s) => keyring.addFromUri(s));
   await seatOracleOperators(api, run, operators);
-  await seedOracleKyc(api, run, who, operators.slice(0, args.minAgreement), args.mintKycLevel);
+  await seedOracleKyc(api, run, who, operators.slice(0, args.minAgreement), args.mintKycLevel, args.dryRun);
 
   // ── 4. Mint bBZD ────────────────────────────────────────────────────────
   // This is the step that does not exist on a fresh chain: bBZD has no genesis
@@ -401,7 +448,7 @@ async function main() {
 
       // The Identity pallet is not consulted for this gate, so only the Oracle
       // store is seeded — no SSN or passport attestation is needed.
-      await seedOracleKyc(api, run, validator, kycQuorum, BRIDGE_KYC_LEVEL);
+      await seedOracleKyc(api, run, validator, kycQuorum, BRIDGE_KYC_LEVEL, args.dryRun);
 
       const existingValidator = await api.query.interoperability.bridgeValidators(validator.address);
       if (existingValidator.isSome) {
