@@ -35,17 +35,26 @@ value inline, so the next agent can see what moved.
 
 ## 2. Live state
 
-### 2.1 Chain — verified 2026-10-25
+### 2.1 Chain — verified 2026-11-09 20:52 UTC
 
 | | |
 |---|---|
 | Chain name | **Jade** (Chain D) |
 | Genesis | `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef` |
-| Runtime | repo `spec_version` **126**, `transaction_version` 4 · **124** was the last value verified live (2026-10-27); 125 and 126 are undeployed |
-| Head (2026-10-27) | **299,684+** — verified still advancing after the 124 upgrade |
+| Runtime | **spec_version 124 live** · transaction 3. Repo is at 126 — **125 and 126 are undeployed** |
+| Head (2026-11-09 20:52) | **#488,938**, advancing at 6.1 s/block |
 | Epoch | **duration 300 slots** — unchanged across the 117 → 121 → 122 → 123 → 124 upgrades |
 | Peers | 0 (`shouldHavePeers: false` — single node, expected) |
-| Repo agreement | ⚠️ repo is **two releases ahead** of the last verified live spec. Re-verification attempted 2026-11-09 and **not possible**: `ceiba` was offline in Tailscale (`last seen 2h ago`), SSH and port 9944 timed out, and `https://testnet.belizechain.org/rpc` returned 504. Every live figure on this page therefore still describes 124. |
+| Repo agreement | ⚠️ repo is **two releases ahead** of the live spec: `runtime/src/lib.rs` reads 126, the chain runs 124. Not a defect — 125/126 are awaiting a `sudo.sudo(System::set_code)` deploy. |
+
+**Host outage 2026-11-09 18:06 → 20:47 UTC — the chain was never down.** The Intel
+I226-V NIC fell off the PCIe bus, isolating the host from the network for 2h 41m.
+Block production continued throughout on the isolated host (#487,353 at 18:11 →
+#488,895 at 20:46, 6.04 s/block, no gap); only *external reachability* was lost.
+Recovery required a manual reboot. Full record:
+[`operations/CEIBA_NIC_PCIE_DETACH_2026-11-09.md`](operations/CEIBA_NIC_PCIE_DETACH_2026-11-09.md).
+This is why the figures above could not be read between those times — not because
+the chain had stopped.
 
 **124 is live (2026-10-27).** Applied hot from 123 via `sudo.sudo(System::set_code)`;
 no node restart. Blob 1,609,157 bytes, blake2b-256
