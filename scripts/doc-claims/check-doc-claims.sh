@@ -551,15 +551,23 @@ readonly HONEST_RE='planned|not published|not resolve|does not exist|not live|NX
 readonly HONEST_WINDOW=10
 
 host_is_flagged_honest() { # $1 = repo root, $2 = hostname
-  local repo="$1" host="$2" file lineno first last
+  local repo="$1" host="$2" file lineno first last excerpt
 
-  md_files "$repo" | xargs -r grep -nE "$host" 2>/dev/null \
-    | while IFS=: read -r file lineno _; do
-        first=$(( lineno > HONEST_WINDOW ? lineno - HONEST_WINDOW : 1 ))
-        last=$(( lineno + HONEST_WINDOW ))
-        sed -n "${first},${last}p" "$file"
-      done \
-    | grep -qiE "$HONEST_RE"
+  # Collect the context windows first, then match. Piping the sed loop straight
+  # into `grep -q` looks tighter but `grep -q` exits on its first hit, which
+  # closes the pipe while sed still has lines to write — sed then prints
+  # "couldn't flush stdout: Broken pipe" to stderr once per remaining file. That
+  # noise is not a failure, but it buries the stderr of any check that really
+  # did break.
+  excerpt="$(
+    md_files "$repo" | xargs -r grep -nE "$host" 2>/dev/null \
+      | while IFS=: read -r file lineno _; do
+          first=$(( lineno > HONEST_WINDOW ? lineno - HONEST_WINDOW : 1 ))
+          last=$(( lineno + HONEST_WINDOW ))
+          sed -n "${first},${last}p" "$file"
+        done
+  )"
+  grep -qiE "$HONEST_RE" <<<"$excerpt"
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -639,9 +647,19 @@ check_doc_hostnames() { # $1 = repo root, $2 = repo label
 # ═══════════════════════════════════════════════════════════════════════════
 label_for() { basename "$1"; }
 
+# The repos the workspace check covers — ONE list.
+#
+# There used to be three hardcoded copies with different contents, and they had
+# already drifted: `belizechain.org` was checked for hostnames but silently
+# skipped by the link check (10 markdown files never validated) and by the Node
+# alignment check (it has an `.nvmrc` and pins node:24 everywhere). A repo that
+# is missing from a list is not reported as skipped — it simply never runs, so
+# the omission was invisible.
+readonly WS_REPOS="belizechain ui infra kinich-quantum nawal-ai pakit-storage gem belizechain.org"
+
 section "Markdown links (all reachable repos)"
 if [ -n "$WS" ]; then
-  for r in belizechain ui infra kinich-quantum nawal-ai pakit-storage gem; do
+  for r in $WS_REPOS; do
     [ -d "$WS/$r" ] && check_dead_links "$WS/$r" "$r"
   done
 else
@@ -653,7 +671,7 @@ check_extrinsic_names
 
 section "Documented hostnames"
 if [ -n "$WS" ]; then
-  for r in belizechain ui infra kinich-quantum nawal-ai pakit-storage gem belizechain.org; do
+  for r in $WS_REPOS; do
     [ -d "$WS/$r" ] && check_doc_hostnames "$WS/$r" "$r"
   done
 else
@@ -662,7 +680,7 @@ fi
 
 section "Version alignment"
 if [ -n "$WS" ]; then
-  for r in ui infra kinich-quantum nawal-ai pakit-storage gem belizechain; do
+  for r in $WS_REPOS; do
     [ -d "$WS/$r" ] && check_node_alignment "$WS/$r" "$r"
   done
 else
