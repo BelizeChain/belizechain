@@ -27,10 +27,10 @@ and the chain.** Every figure below was measured; nothing is inferred.
 | **18:06:33** | `pcieport 0000:03:00.0: Unable to change power state from D3hot to D0, device inaccessible` | kernel |
 | **18:06:34** | `igc 0000:06:00.0 enp6s0: PCIe link lost, device now detached` | kernel |
 | 18:07:11 | First DNS failure (`dockerd` resolver: i/o timeout) — *after* the detach | `dockerd` |
-| 18:07:35 | `tailscaled`: log upload failed, `context deadline exceeded` | `tailscaled` |
 | 18:07:12 | Edge monitor: `FAIL public_https … HTTP 504`, `FAIL public_rpc`, `FAIL wallet_host`, `FAIL chain_advancing` | edge journal |
-| 18:08:07 | `tailscaled`: `no-derp-connection`, "Internet connection might be down" | `tailscaled` |
+| 18:07:35 | `tailscaled`: log upload failed, `context deadline exceeded` | `tailscaled` |
 | 18:07:43 | `ALERT sent (first failure)` → Telegram | edge journal |
+| 18:08:07 | `tailscaled`: `no-derp-connection`, "Internet connection might be down" | `tailscaled` |
 | 18:11:54 | Node still importing: `Imported #487353` — **host is healthy, only unreachable** | `docker logs ceiba-node` |
 | 20:44:00 | Node still importing: `#488874` | `docker logs ceiba-node` |
 | 20:45:46 | Final journal entry of the previous boot | `journalctl --list-boots` |
