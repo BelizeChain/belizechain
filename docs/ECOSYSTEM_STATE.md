@@ -41,11 +41,11 @@ value inline, so the next agent can see what moved.
 |---|---|
 | Chain name | **Jade** (Chain D) |
 | Genesis | `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef` |
-| Runtime | **spec_version 124** live · impl 1 · transaction 3 |
+| Runtime | repo `spec_version` **126**, `transaction_version` 4 · **124** was the last value verified live (2026-10-27); 125 and 126 are undeployed |
 | Head (2026-10-27) | **299,684+** — verified still advancing after the 124 upgrade |
 | Epoch | **duration 300 slots** — unchanged across the 117 → 121 → 122 → 123 → 124 upgrades |
 | Peers | 0 (`shouldHavePeers: false` — single node, expected) |
-| Repo agreement | ✅ `runtime/src/lib.rs` reads `spec_version: 124` — repo and chain agree |
+| Repo agreement | ⚠️ repo is **two releases ahead** of the last verified live spec. Re-verification attempted 2026-11-09 and **not possible**: `ceiba` was offline in Tailscale (`last seen 2h ago`), SSH and port 9944 timed out, and `https://testnet.belizechain.org/rpc` returned 504. Every live figure on this page therefore still describes 124. |
 
 **124 is live (2026-10-27).** Applied hot from 123 via `sudo.sudo(System::set_code)`;
 no node restart. Blob 1,609,157 bytes, blake2b-256
@@ -466,6 +466,35 @@ capture-rollback → rehearse → dry-run → deploy → verify sequence as 123.
 the chain: spec 124, epoch still 300, `:code` hash matching the submitted blob,
 blocks still importing at 6 s. Rollback target is
 `artifacts/runtime-spec123-live.wasm`.
+
+#### Corrected in spec 126 (not yet deployed) — the peg is not a price source
+
+124 gave the provider `BBZD_USD_PEG` as a fallback so an empty Oracle could not
+dead-end the pair. That fixed the symptom by disabling the guarantee: `execute_trade`
+rejects a guarded trade **only** when the provider answers `None`, so a constant on
+that path made `enforce_oracle_deviation`'s rejection unreachable on this runtime.
+The guard was written to fail closed and, for guarded pairs, could not.
+
+The unit tests did not catch it because `pallets/belizex/src/mock.rs` passes `None`
+as the peg — the pallet was tested against the behaviour the runtime did not have.
+
+126 passes `None` on that path. A dark feed now halts `WUSDC ↔ bBZD` instead of
+pricing it at the peg.
+
+**Why 124's premise no longer holds.** It assumed no rate could ever exist, because
+`OracleOperators` was empty against `MinConsensusOperators = 3`. Three operators are
+seated now, so a real observation is obtainable — the fallback is no longer needed to
+keep the pair alive.
+
+**Operational consequence, stated plainly.** While no operator publishes `USD/BZD`,
+`WUSDC/bBZD` trades are rejected with `OracleRateUnavailable` and deposit that event.
+That is the guard working, not a regression — but the pair's liveness now depends on a
+live feed. DALLA markets are unaffected: `is_oracle_guarded` covers `WUSDC ↔ bBZD`
+only, both orientations.
+
+**Falsified, not just passing.** Restoring `Some(BBZD_USD_PEG)` makes the runtime test
+`dex_oracle_provider_reports_a_dark_feed_as_no_rate` fail with
+`left: Some(2000000), right: None`; passing `None` makes it pass. Neither is cosmetic.
 
 ### 4.0a OPEN — genesis stamps every council seat as `Founder`, which contradicts the role's own cap
 

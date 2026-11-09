@@ -121,6 +121,43 @@ mod tests {
         sp_io::TestExternalities::new(storage)
     }
 
+    /// Spec 124 handed the DEX provider `BBZD_USD_PEG` as a fallback, which made
+    /// the deviation guard satisfiable unconditionally: `execute_trade` rejects a
+    /// guarded trade only when the provider answers `None`, so a constant on this
+    /// path made that rejection unreachable. With nothing in Oracle storage the
+    /// provider must now report the absence — in both orientations — so a dark
+    /// feed halts the pair instead of pricing it at the peg.
+    #[test]
+    fn dex_oracle_provider_reports_a_dark_feed_as_no_rate() {
+        let mut ext = sp_io::TestExternalities::new(
+            frame_system::GenesisConfig::<Runtime>::default()
+                .build_storage()
+                .expect("system genesis storage builds"),
+        );
+
+        ext.execute_with(|| {
+            use pallet_belize_belizex::{AssetId, BelizeXOracleProvider as OracleProvider};
+
+            let wusdc = AssetId::WUSDC.as_u8();
+            let bbzd = AssetId::BBZD.as_u8();
+
+            assert_eq!(
+                <BelizeXOracleProvider as OracleProvider<AccountId>>::get_crypto_exchange_rate(
+                    wusdc, bbzd
+                ),
+                None,
+                "WUSDC/bBZD must not be priced from the protocol peg"
+            );
+            assert_eq!(
+                <BelizeXOracleProvider as OracleProvider<AccountId>>::get_crypto_exchange_rate(
+                    bbzd, wusdc
+                ),
+                None,
+                "bBZD/WUSDC must not be priced from the protocol peg either"
+            );
+        });
+    }
+
     fn babe_secondary_plain_digest(slot: u64) -> Digest {
         let pre_digest = sp_consensus_babe::digests::PreDigest::SecondaryPlain(
             sp_consensus_babe::digests::SecondaryPlainPreDigest {
@@ -792,7 +829,26 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     //   Additive only: no existing call index was removed, reordered or
     //   reinterpreted, and `PendingTransfers` starts empty so no migration is
     //   needed. `transaction_version` moves because the extrinsic set grew.
-    spec_version: 125,
+    //
+    //   126: the BelizeX deviation guard is fail-closed again. 124 gave
+    //   `BelizeXOracleProvider` `BBZD_USD_PEG` as a fallback so a bBZD pair
+    //   stayed tradeable while nothing was writing a USD/BZD observation. That
+    //   was a defect, not a tradeoff: `execute_trade` rejects a guarded trade
+    //   only when the provider answers `None`, so a constant on this path made
+    //   `enforce_oracle_deviation`'s rejection unreachable — the documented
+    //   "fails closed" guarantee could not fire, and a depegged market would
+    //   have been priced at the peg instead of halted. The provider now reports
+    //   only what the Oracle actually observed.
+    //
+    //   124's premise has also expired. It assumed no rate could ever exist
+    //   because `OracleOperators` was empty against `MinConsensusOperators = 3`;
+    //   three operators are seated now, so a real observation is obtainable.
+    //   DALLA markets are untouched — `is_oracle_guarded` covers WUSDC/bBZD
+    //   only, both orientations.
+    //
+    //   No storage, extrinsic index or `transaction_version` change: the guard
+    //   logic itself is unchanged, only the input it can no longer be fed.
+    spec_version: 126,
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,
     // Adding call indices to a live pallet is additive, but the version
@@ -830,13 +886,14 @@ pub const MAHOGANY: Balance = 1;
 ///
 /// This is a *definition*, not a market observation. bBZD is issued 1:1 against
 /// the Belize dollar, so the peg is what the token is — an oracle feed can only
-/// confirm or contradict it, never establish it. `BelizeXOracleProvider` uses this
-/// as a fallback, which is what stops a missing or stale feed from making a
-/// bBZD-quoted pair untradeable: `pallets/belizex`'s deviation guard fails closed,
-/// so without a fallback it would reject every trade on that pair.
+/// confirm or contradict it, never establish it.
 ///
-/// Preferring the live Oracle over this constant is deliberate — a real feed can
-/// detect a depeg, and this value cannot.
+/// It is deliberately **not** a price source for `BelizeXOracleProvider`. That
+/// provider feeds `pallets/belizex`'s deviation guard, which rejects a trade
+/// exactly when it is handed `None`; substituting this constant on that path
+/// satisfies the guard unconditionally and makes its fail-closed branch
+/// unreachable, pricing a depegged market at the peg instead of halting it.
+/// Spec 124 did that and spec 126 undoes it — see the `VERSION` note.
 ///
 /// Changing it is a monetary-policy decision, not a configuration tweak.
 pub const BBZD_USD_PEG: u128 = 2_000_000;
@@ -2883,13 +2940,18 @@ impl pallet_belize_belizex::BelizeXOracleProvider<AccountId> for BelizeXOraclePr
     fn get_crypto_exchange_rate(base_asset: u8, quote_asset: u8) -> Option<u128> {
         use pallet_belize_oracle::types::{Currency, CurrencyPair};
         // The Oracle reports USD/BZD, i.e. bBZD per USD. `reference_rate` turns
-        // that into whichever orientation the caller asked about, and substitutes
-        // the protocol peg when the Oracle has nothing fresh to say.
+        // that into whichever orientation the caller asked about.
+        //
+        // The `peg_bzd_per_usd` argument stays `None`: this is the price source
+        // for the deviation guard, and that guard fails closed by rejecting the
+        // trade when it is handed `None`. Handing it `BBZD_USD_PEG` would make
+        // the rejection unreachable, so a dark feed would price the pair at the
+        // peg rather than halt it. Do not pass the peg here.
         let observed = Oracle::get_exchange_rate(CurrencyPair {
             base: Currency::USD,
             quote: Currency::BZD,
         });
-        pallet_belize_belizex::reference_rate(base_asset, quote_asset, observed, Some(BBZD_USD_PEG))
+        pallet_belize_belizex::reference_rate(base_asset, quote_asset, observed, None)
     }
 
     fn is_tourism_merchant(account: &AccountId) -> bool {

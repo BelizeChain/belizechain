@@ -129,7 +129,7 @@ inferred from a planning document.
 | 4 | No custom runtime APIs; `node/src/rpc.rs:117` still returns typed stubs | **Closed** — four runtime APIs implemented and served; see below |
 | 5 | No vesting, account-recovery or scheduler pallet | **Scope decision, not a defect** — see below; the previously-stated provenance was wrong |
 | — | Runtime source claimed spec 122 while holding undeployed changes | **Closed** — spec 123 built, rehearsed, deployed and verified live 2026-10-27 |
-| — | `WUSDC/BBZD` oracle guard checked one direction; its rate source was empty | **Closed — live in spec 124** (2026-10-27). Bilateral guard + peg fallback; 11 new tests, both halves falsified |
+| — | `WUSDC/BBZD` oracle guard checked one direction; its rate source was empty | **Closed** — live 124 (2026-10-27), corrected in repo 126. Bilateral guard + 11 tests, both halves falsified. 124's peg fallback **disabled the fail-closed branch**; 126 removes it (see below). Not deployed |
 
 **Oracle guard detail — live in spec 124.** The BEX deviation guard compared
 one reference rate against `amount_out / amount_in`, which equals bBZD-per-USD only
@@ -146,20 +146,36 @@ The fix had to run in a specific order. Widening the guard first would have been
 *worse* than the bug: `get_crypto_exchange_rate` answered only when bBZD was the
 quote side and returned `None` otherwise, and the guard fails closed, so the reverse
 direction would have become permanently untradeable — indistinguishable from the
-guard working. So `reference_rate()` now answers both orientations (inverting when
-bBZD is the base) and prefers the live oracle while falling back to `BBZD_USD_PEG`
-(`2_000_000`; BZ$2.00 = US$1.00 since 1978 — a *definition*, not an observation, and
-the reason a missing feed no longer dead-ends the pair given that `OracleOperators`
-is empty against `MinConsensusOperators = 3`).
+guard working. So `reference_rate()` now answers both orientations, inverting when
+bBZD is the base.
 
 Two duplicated ~35-line inline blocks collapsed into `enforce_oracle_deviation()`.
 11 tests added. **Falsified:** reverting the gate fails 3 reverse-direction tests;
 removing the reciprocal fails 4 more, including the one that *accepts* a correctly
 priced reverse trade — so neither half is decorative.
 
-Deployed 2026-10-27 via `sudo.sudo(System::set_code)` and verified by reading the
+**124 overshot, and 126 corrects it.** To keep the pair tradeable with no rate source,
+124 also passed `BBZD_USD_PEG` (`2_000_000`; BZ$2.00 = US$1.00 since 1978) as a
+fallback. That made the guard unsatisfiable in the other direction: `execute_trade`
+rejects a guarded trade only when the provider answers `None`, so a constant made the
+rejection unreachable and a depegged market would have been priced at the peg instead
+of halted. The pallet's own tests could not see it — `pallets/belizex/src/mock.rs`
+passes `None` as the peg, so the fail-closed path they exercise is the one the runtime
+never took.
+
+126 passes `None` on that path. 124's premise has also expired: `OracleOperators` was
+empty against `MinConsensusOperators = 3`, and three operators are seated now, so a
+real observation is obtainable. While no operator publishes `USD/BZD`, `WUSDC/bBZD`
+trades are rejected with `OracleRateUnavailable` — the guard doing its job. DALLA
+markets are unaffected; `is_oracle_guarded` covers `WUSDC ↔ bBZD` only.
+
+**Deployed 2026-10-27** via `sudo.sudo(System::set_code)` and verified by reading the
 chain: spec 124, epoch still 300, `:code` blake2b matching the submitted blob, tx
 version 3, and 10 blocks in 60 s. Rollback target `artifacts/runtime-spec123-live.wasm`.
+
+**Not deployed:** 125 (landledger approval) and 126 (this correction). Live
+re-verification was impossible on 2026-11-09 — `ceiba` was offline in Tailscale, SSH
+and port 9944 timed out, and the public `/rpc` returned 504.
 
 **`transaction_version` 2 → 3 was 123's omission, not 124's change.** 123 appended
 `BelizeX::issue_wusdc` and `burn_wusdc` without the bump its own convention requires —
