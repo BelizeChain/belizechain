@@ -111,23 +111,68 @@ was never the problem — **recovery was**.
    without touching Ceiba. Its own header says this exact reason. That design decision is
    the reason this outage was noticed at all.
 
-## 7. Recommended remediation — NOT applied, awaiting approval
+## 7. Remediation
 
-Requires an explicit decision because (a) it touches host power management and (b) the
-durable form needs a reboot, which halts the chain for ~1–2 minutes.
+Applied and verified 2026-11-09 20:55 UTC, **without a reboot**. #4 was not applied.
 
-| # | Action | Reboot? | Blast radius | Rollback |
+| # | Action | Status | Reboot? | Rollback |
 |---|---|---|---|---|
-| 1 | `echo performance > /sys/module/pcie_aspm/parameters/policy` — disables ASPM L0s/L1 on all PCIe devices | no | Higher idle power draw; no functional change | Echo `default` back |
-| 2 | Persist `pcie_aspm=off` in the GRUB cmdline | **yes** | One ~1–2 min chain halt | Remove the parameter, `update-grub`, reboot |
-| 3 | Local watchdog: if `enp6s0` is absent from `lspci` **or** has no carrier for ≥5 min, `systemctl reboot` | no | A bad rule could reboot-loop the host | Disable the timer — this is the one to test carefully |
-| 4 | Add `node-exporter` + a `CeibaNicLinkDown` / `CeibaHostUnreachable` alert | no | One more container | Remove from compose |
+| 1 | Pin every PCIe **bridge** to `power/control=on`, removing D3hot as a reachable state | ✅ applied, persisted via udev | no | `echo auto > /sys/bus/pci/devices/<addr>/power/control`, delete the rule |
+| 2 | Persist `pcie_aspm=off` in the GRUB cmdline | ⬜ **not applied** — needs a reboot | **yes** | — |
+| 3 | Local watchdog: reboot when the NIC leaves the PCI bus or has no carrier | ✅ applied, timer armed | no | `systemctl disable --now ceiba-nic-watchdog.timer` |
+| 4 | `node-exporter` + NIC/host alerts in Prometheus | ⬜ **not applied** | no | — |
 
-**Ordering.** #3 is what converts a 2 h 40 m outage into ≤5 min and is the highest value.
-It must key on **NIC absence or carrier loss**, never on internet reachability, or an ISP
-outage would reboot a perfectly healthy chain host. #1 and #2 reduce the probability of the
-event; #4 makes the next occurrence legible. #2's reboot should be batched with the next
-runtime upgrade (125/126 are pending), not taken on its own.
+### Why #1 is `power/control` and not ASPM
+
+The kernel's own message names the mechanism: `pcieport 0000:03:00.0: Unable to change
+power state from **D3hot** to D0, device inaccessible`. That is a **device power state**,
+not an ASPM link state, so disabling ASPM would have addressed a neighbouring problem.
+`pcie_aspm=off` is the commonly-cited fix for *i225/i226 link loss*, and it may well help,
+but the recorded failure was D3hot specifically.
+
+Nine bridges were runtime-suspendable. All nine — including `00:01.2`, `02:00.2` and
+`03:09.0`, the three on the NIC's own path (`00:01.2 → 02:00.2 → 03:09.0 → 06:00.0`) — are
+now pinned to D0 by `/etc/udev/rules.d/99-belizechain-pci-d0.rules`, so the setting survives
+a reboot without a kernel cmdline change. The NIC itself was already `on`; it was the
+bridge above it that could sleep.
+
+### The watchdog, and the line it will not cross
+
+`ceiba-nic-watchdog.timer` runs every 5 minutes and reboots only when the NIC has been
+**absent from the PCI bus**, or **carrier-down**, for **two consecutive checks** (10 min).
+It never consults internet reachability: an ISP outage or a switch reboot leaves the PCI
+device present and the chain healthy, and rebooting for that would be worse than the outage
+it exists to fix.
+
+Rails: 2 strikes before acting, at most one reboot per 2 h, and it defers if a backup is
+running. Worst case is therefore one extra reboot per 2 h, and only while the host is
+already disconnected and unable to serve anyone.
+
+**Proven, not assumed** — every branch was exercised against a throwaway state directory
+with the address pointed at a non-existent device, so the real NIC was never involved:
+
+| Scenario | Result |
+|---|---|
+| Device absent, 1st check | `strike 1/2`, no action |
+| Device absent, 2nd check | `would reboot now` |
+| Device returns | `recovered … clearing 3 strike(s)`, counter → 0 |
+| Device absent, rebooted 60 s ago | `would reboot but rate-limited (60s since last, limit 7200s)` |
+| Device absent, rebooted 3 h ago | `would reboot now` |
+| Interface missing (carrier path) | `unhealthy (carrier down on …)`, escalates the same way |
+
+Artifacts live in `infra/deploy/` (`host-sbin/ceiba-nic-watchdog.sh`,
+`ceiba-nic-watchdog.{service,timer}`, `99-belizechain-pci-d0.rules`) and are byte-identical
+to the host — `check-host-drift.sh` maps all four, so a host rebuild cannot lose them
+silently.
+
+### Still open
+
+- **#2** — until the cmdline is set, the mitigation survives reboots only because of udev.
+  That is a real mechanism, not a placeholder, but `pcie_aspm=off` is the belt to that
+  braces. Batch it with the pending 125/126 runtime upgrade so the chain halts once.
+- **#4** — the host still has no `node-exporter`, so the next detach will again present as
+  a 504 rather than as "the NIC went away". Worth doing; not done here because it edits the
+  shared compose stack and CI-validated config for no gain in recovery time.
 
 ## 8. Verification after recovery (2026-11-09 20:52 UTC)
 
