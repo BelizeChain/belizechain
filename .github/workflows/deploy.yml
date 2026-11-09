@@ -24,7 +24,7 @@ env:
 jobs:
   lint:
     name: Formatting and Lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -55,7 +55,13 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y protobuf-compiler libclang-dev llvm-dev
+          # Pinned, not floating: `libclang-dev` alone installs whatever clang the image
+          # prefers, and bindgen then requests the exact soname it detected (for
+          # example `-lclang-18.1.3`). When the versioned library is absent the link
+          # fails with `unable to find library -lclang-18.1.3`, which is an image
+          # change rather than a code defect. Both packages are pinned so the runner
+          # and the toolchain move only when this line changes.
+          sudo apt-get install -y protobuf-compiler libclang-18-dev llvm-18-dev
 
       - name: Configure portable LLVM paths
         run: |
@@ -81,14 +87,15 @@ jobs:
 
   test:
     name: Rust Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
-      # ubuntu-latest arrives with ~14 GB free because ~30 GB of preinstalled
-      # toolchains sit in paths the Rust build never touches. Measured on
-      # 2026-11-02: this job died with "No space left on device" while building
-      # the release node, which reads exactly like a test failure but is not.
+      # The GitHub runner image arrives with ~14 GB free because ~30 GB of
+      # preinstalled toolchains sit in paths the Rust build never touches.
+      # Measured on 2026-11-02: this job died with "No space left on device"
+      # while building the release node, which reads exactly like a test failure
+      # but is not.
       # Reclaims ~25 GB in seconds. Deliberately plain `rm` rather than a
       # third-party reclaim action, so nothing new executes on the runner.
       # Removes only toolchain dirs; /opt/hostedtoolcache stays whole because
@@ -115,7 +122,13 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y protobuf-compiler libclang-dev llvm-dev
+          # Pinned, not floating: `libclang-dev` alone installs whatever clang the image
+          # prefers, and bindgen then requests the exact soname it detected (for
+          # example `-lclang-18.1.3`). When the versioned library is absent the link
+          # fails with `unable to find library -lclang-18.1.3`, which is an image
+          # change rather than a code defect. Both packages are pinned so the runner
+          # and the toolchain move only when this line changes.
+          sudo apt-get install -y protobuf-compiler libclang-18-dev llvm-18-dev
 
       - name: Configure portable LLVM paths
         run: |
@@ -209,7 +222,7 @@ jobs:
   # skip themselves at fixture level and are reported as SKIPPED, not passed.
   python-tests:
     name: Python Integration Suites
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -237,7 +250,13 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y protobuf-compiler libclang-dev llvm-dev
+          # Pinned, not floating: `libclang-dev` alone installs whatever clang the image
+          # prefers, and bindgen then requests the exact soname it detected (for
+          # example `-lclang-18.1.3`). When the versioned library is absent the link
+          # fails with `unable to find library -lclang-18.1.3`, which is an image
+          # change rather than a code defect. Both packages are pinned so the runner
+          # and the toolchain move only when this line changes.
+          sudo apt-get install -y protobuf-compiler libclang-18-dev llvm-18-dev
 
       - name: Configure portable LLVM paths
         run: |
@@ -347,7 +366,7 @@ jobs:
 
   coverage:
     name: Coverage Gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -375,7 +394,13 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y protobuf-compiler libclang-dev llvm-dev
+          # Pinned, not floating: `libclang-dev` alone installs whatever clang the image
+          # prefers, and bindgen then requests the exact soname it detected (for
+          # example `-lclang-18.1.3`). When the versioned library is absent the link
+          # fails with `unable to find library -lclang-18.1.3`, which is an image
+          # change rather than a code defect. Both packages are pinned so the runner
+          # and the toolchain move only when this line changes.
+          sudo apt-get install -y protobuf-compiler libclang-18-dev llvm-18-dev
 
       - name: Configure portable LLVM paths
         run: |
@@ -407,7 +432,7 @@ jobs:
 
   benchmark:
     name: Benchmark Smoke Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Runs on pull requests too: every benchmark must execute against the real
     # runtime config before weights are regenerated from it. Mock-level
     # `bench_*` tests are not sufficient — they use permissive pallet mocks
@@ -455,7 +480,13 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y protobuf-compiler libclang-dev llvm-dev
+          # Pinned, not floating: `libclang-dev` alone installs whatever clang the image
+          # prefers, and bindgen then requests the exact soname it detected (for
+          # example `-lclang-18.1.3`). When the versioned library is absent the link
+          # fails with `unable to find library -lclang-18.1.3`, which is an image
+          # change rather than a code defect. Both packages are pinned so the runner
+          # and the toolchain move only when this line changes.
+          sudo apt-get install -y protobuf-compiler libclang-18-dev llvm-18-dev
 
       - name: Configure portable LLVM paths
         run: |
