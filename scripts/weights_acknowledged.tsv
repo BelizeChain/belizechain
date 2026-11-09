@@ -19,3 +19,4 @@ community	b9a92f8	removed the unused FeeDiscountProvider impl and its FeeExempti
 economy	0784465	transfer_bbzd self-transfer guard changed its error variant (InsufficientBbzdBalance -> CannotTransferToSelf) and gained tests; no storage access, no call signature, no benchmarked path moved
 belizex	1fb7639	added a doc comment to place_limit_order stating that limit orders are a stub and are never matched; no storage access, no call signature and no benchmarked path moved
 governance	933f641	raised CitizenDelegate max_count 3->5 and extended GENESIS_SEAT_LADDER to 12 seats; both are constants read by BoardRole::max_count and the genesis builder, neither is reachable from a dispatchable, and no storage access or call signature moved
+governance	b55ff9d	benchmark target role Founder->CitizenDelegate; identical storage reads/writes, generated weights unchanged
