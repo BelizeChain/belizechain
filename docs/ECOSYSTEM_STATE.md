@@ -41,11 +41,11 @@ value inline, so the next agent can see what moved.
 |---|---|
 | Chain name | **Jade** (Chain D) |
 | Genesis | `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef` |
-| Runtime | **spec_version 124 live** · transaction 3. Repo is at 126 — **125 and 126 are undeployed** |
-| Head (2026-11-09 21:31) | **#489,327**, advancing at 6.1 s/block after the remediation reboot |
-| Epoch | **duration 300 slots** — unchanged across the 117 → 121 → 122 → 123 → 124 upgrades |
+| Runtime | **spec_version 126 live** · transaction 4. Deployed 2026-11-10; repo and chain agree |
+| Head (2026-11-10 11:10) | **#500,567**, advancing at ~6 s/block |
+| Epoch | **duration 300 slots** — unchanged across the 117 → 121 → 122 → 123 → 124 → 126 upgrades |
 | Peers | 0 (`shouldHavePeers: false` — single node, expected) |
-| Repo agreement | ⚠️ repo is **two releases ahead** of the live spec: `runtime/src/lib.rs` reads 126, the chain runs 124. Not a defect — 125/126 are awaiting a `sudo.sudo(System::set_code)` deploy. |
+| Repo agreement | ✅ repo 126 = chain 126. `transaction_version` moved 3 → 4 with 125, so clients must re-read metadata |
 
 **Host outage 2026-11-09 18:06 → 20:47 UTC — the chain was never down.** The Intel
 I226-V NIC fell off the PCIe bus, isolating the host from the network for 2h 41m.
@@ -481,7 +481,7 @@ the chain: spec 124, epoch still 300, `:code` hash matching the submitted blob,
 blocks still importing at 6 s. Rollback target is
 `artifacts/runtime-spec123-live.wasm`.
 
-#### Corrected in spec 126 (not yet deployed) — the peg is not a price source
+#### Corrected in spec 126 — **live since 2026-11-10**
 
 124 gave the provider `BBZD_USD_PEG` as a fallback so an empty Oracle could not
 dead-end the pair. That fixed the symptom by disabling the guarantee: `execute_trade`
@@ -509,6 +509,29 @@ only, both orientations.
 **Falsified, not just passing.** Restoring `Some(BBZD_USD_PEG)` makes the runtime test
 `dex_oracle_provider_reports_a_dark_feed_as_no_rate` fail with
 `left: Some(2000000), right: None`; passing `None` makes it pass. Neither is cosmetic.
+
+**Deployed 2026-11-10.** 125 and 126 shipped together in one `sudo.sudo(System::set_code)`
+— 125's landledger approval change had never been deployed either, so the chain had been
+running without it since it merged. Blob 1,606,598 bytes, blake2b
+`83fcd0f41150669f89045d44e27625235f77ba14fcbc89821250e8ac5690e47f`, built with
+`--features testnet-fast-epoch`. Read back from the chain afterwards: `specVersion 126`,
+`transactionVersion 4`, on-chain `:code` byte-identical to the submitted blob, epoch
+duration still **300 slots** before and after, blocks still advancing.
+
+Two things worth carrying forward:
+
+- **`transaction_version` moved 3 → 4**, and that came from 125 (`6af53e3`), not 126. Signed
+  extrinsics built against v3 are no longer valid; clients must re-read metadata. Anything
+  holding a pre-signed transaction from before 2026-11-10 will be rejected.
+- **No migration was required** and none was registered (`type Migrations = ()`): no pallet
+  bumped its `storage_version` between 124 and 126, and no pallet index changed. Verified
+  by diffing `storage_version` lines across `fc8aae7..HEAD` before submitting.
+
+The blob for the previous version was **not** kept as an artifact before this upgrade —
+`artifacts/*.wasm` is gitignored, and only specs 117/121/122/123 were on disk. The live 124
+`:code` was extracted from chain state and saved to `artifacts/runtime-spec124-live.wasm`
+**before** submitting, which is the rollback path. It exists only on one workstation; no
+copy has been placed on Ceiba.
 
 ### 4.0a OPEN — genesis stamps every council seat as `Founder`, which contradicts the role's own cap
 
