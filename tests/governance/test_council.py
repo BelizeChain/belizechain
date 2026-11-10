@@ -3,8 +3,9 @@
 Real surface used here:
 
 - `start_district_election(district_index, seats, registration_blocks, voting_blocks)`
-  — root only; **refuses any district that already has a `DistrictElections`
-  entry, and nothing ever removes that entry** (see the test below).
+  — root only; **refuses a district whose current election is still in
+  `Registration` or `Voting`**. A `Finalized`/`Cancelled` record is history and
+  may be replaced (see `TestDistrictElectionLimits`).
 - `register_candidate(district_index, platform)` — signed
 - `vote_in_district_election(district_index, candidate)` — signed
 - `finalize_district_election(district_index)` — root; needs `block >= voting_end`
@@ -30,21 +31,29 @@ DISTRICT_NAMES = ("Belize", "Cayo", "Corozal", "OrangeWalk", "StannCreek", "Tole
 REGISTRATION_BLOCKS = 5
 VOTING_BLOCKS = 8
 
-# `Governance` error index 49, as `submit_sudo_extrinsic` reports the inner
-# error still SCALE-encoded rather than decoded.
-ELECTION_ALREADY_ACTIVE = "0x31000000"
+#: Election statuses that keep a district's slot locked. `Finalized` and
+#: `Cancelled` are history, not a lock — see `_districts_without_active_election`.
+ACTIVE_STATUSES = ("Registration", "Voting")
 
 
-def _unused_districts(substrate):
-    """District indices that have never held an election.
+def _district_election(substrate, district_name):
+    """Current `DistrictElections` record for a district, or `None`."""
+    return substrate.query("Governance", "DistrictElections", [district_name]).value
 
-    `start_district_election` refuses a district whose `DistrictElections` entry
-    exists, and finalization does not clear it, so each district is single-use.
-    On a chain that has already held all six there is nothing left to open.
+
+def _districts_without_active_election(substrate):
+    """District indices whose election slot is currently free.
+
+    `start_district_election` rejects only an election still in `Registration` or
+    `Voting`. It used to require `!DistrictElections::contains_key(district)` and
+    nothing ever removed the entry, which made all six districts single-use and
+    the council un-re-electable; that rule was removed, so a district whose
+    election finished is available again.
     """
     free = []
     for index, name in enumerate(DISTRICT_NAMES):
-        if substrate.query("Governance", "DistrictElections", [name]).value is None:
+        election = _district_election(substrate, name)
+        if election is None or election.get("status") not in ACTIVE_STATUSES:
             free.append((index, name))
     return free
 
@@ -109,14 +118,11 @@ class TestDistrictElectionLifecycle:
         substrate = blockchain_connection
 
         candidates = [alice_keypair, bob_keypair]
-        free = _unused_districts(substrate)
+        free = _districts_without_active_election(substrate)
         if not free:
             pytest.skip(
-                "all six districts have already held an election on this chain. "
-                "`start_district_election` refuses a district with an existing "
-                "`DistrictElections` entry and finalization never clears it, so "
-                "the council cannot be re-elected — see "
-                "test_a_district_can_only_hold_one_election"
+                "all six districts already have an election in Registration or "
+                "Voting on this chain, so there is no free slot to open one in"
             )
         district_index, district_name = free[0]
 
@@ -248,29 +254,39 @@ class TestDistrictElectionLifecycle:
 @pytest.mark.requires_blockchain
 @pytest.mark.governance
 class TestDistrictElectionLimits:
-    """The one-shot-per-district limitation, asserted rather than assumed."""
+    """The district election-slot guard, asserted rather than assumed.
 
-    def test_a_district_can_only_hold_one_election(
+    `start_district_election` originally required that `DistrictElections` held no
+    entry at all, and nothing ever removed one — so each of the six districts was
+    single-use, the chain allowed six elections in total, and the council could
+    never be re-elected. That rule was removed: the guard now rejects only an
+    election still in `Registration` or `Voting`.
+
+    Both halves are asserted, because a regression in either direction is silent.
+    This class previously asserted the limitation itself still held, which is how
+    it failed — loudly, as designed — once the rule was fixed.
+    """
+
+    def test_a_finished_election_can_be_reopened(
         self, submit_sudo_extrinsic, blockchain_connection
     ):
-        """Re-opening a used district is rejected with `ElectionAlreadyActive`.
+        """A district whose election finished accepts a new one.
 
-        This is a real limitation, not a test artefact: `start_district_election`
-        requires `!DistrictElections::contains_key(district)` and
-        `finalize_district_election` only updates `status`, so a district holds
-        at most one election for the life of the chain and a term can never be
-        re-run. Captured here so the behaviour is visible instead of surfacing
-        as a mysterious skip elsewhere.
+        Note this consumes a free slot: the district is left in `Registration`,
+        which locks it until `finalize_district_election` runs.
         """
         substrate = blockchain_connection
 
-        used = [name for name in DISTRICT_NAMES
-                if substrate.query("Governance", "DistrictElections", [name]).value]
-        if not used:
-            pytest.skip("no district has held an election yet on this chain")
+        finished = [
+            (index, name)
+            for index, name in enumerate(DISTRICT_NAMES)
+            if (_district_election(substrate, name) or {}).get("status")
+            in ("Finalized", "Cancelled")
+        ]
+        if not finished:
+            pytest.skip("no district has finished an election yet on this chain")
 
-        district_name = used[0]
-        district_index = DISTRICT_NAMES.index(district_name)
+        district_index, district_name = finished[0]
 
         res = submit_sudo_extrinsic(
             pallet="Governance",
@@ -278,19 +294,56 @@ class TestDistrictElectionLimits:
             params={
                 "district_index": district_index,
                 "seats": 1,
-                "registration_period_blocks": 10,
-                "voting_period_blocks": 10,
+                "registration_period_blocks": REGISTRATION_BLOCKS,
+                "voting_period_blocks": VOTING_BLOCKS,
+            },
+        )
+        assert res["success"], (
+            f"{district_name} already finished an election, so re-opening it must be "
+            f"allowed — the one-shot-per-district rule was removed. Got: "
+            f"{res.get('error')}"
+        )
+
+        reopened = _district_election(substrate, district_name)
+        assert reopened is not None and reopened["status"] == "Registration", (
+            "start_district_election succeeded but left the district in "
+            f"{reopened and reopened.get('status')!r}, not Registration"
+        )
+
+    def test_an_active_election_blocks_a_second_one(
+        self, submit_sudo_extrinsic, blockchain_connection
+    ):
+        """A district with an election in flight refuses a second one."""
+        substrate = blockchain_connection
+
+        active = [
+            (index, name)
+            for index, name in enumerate(DISTRICT_NAMES)
+            if (_district_election(substrate, name) or {}).get("status")
+            in ACTIVE_STATUSES
+        ]
+        if not active:
+            pytest.skip("no district has an election in flight on this chain")
+
+        district_index, district_name = active[0]
+
+        res = submit_sudo_extrinsic(
+            pallet="Governance",
+            call="start_district_election",
+            params={
+                "district_index": district_index,
+                "seats": 1,
+                "registration_period_blocks": REGISTRATION_BLOCKS,
+                "voting_period_blocks": VOTING_BLOCKS,
             },
         )
         assert not res["success"], (
-            "re-opening a district that already held an election must be "
-            "refused; if this now succeeds the one-shot limitation was fixed "
-            "and the skip in test_full_election_cycle can go"
+            f"{district_name} has an election in flight; starting a second one must "
+            "be refused"
         )
-        assert (
-            "ElectionAlreadyActive" in str(res.get("error"))
-            or ELECTION_ALREADY_ACTIVE in str(res.get("error"))
-        ), f"expected ElectionAlreadyActive (index 49), got: {res.get('error')}"
+        assert "ElectionAlreadyActive" in str(res.get("error")), (
+            f"expected ElectionAlreadyActive, got: {res.get('error')}"
+        )
 
 
 @pytest.mark.requires_blockchain

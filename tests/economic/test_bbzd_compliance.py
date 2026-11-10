@@ -17,7 +17,6 @@ class TestBbzdCompliance:
 
         # 2) Governance: set reserves
         set_reserves(10_000_000_000_000)
-        assert res["success"], f"Set reserves failed: {res.get('error')}"
 
         # 3) Attempt mint to recipient WITHOUT KYC -> should fail
         call = substrate.compose_call(

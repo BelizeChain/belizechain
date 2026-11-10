@@ -25,7 +25,6 @@ class TestBbzdMinimalIntegration:
 
         # Set reserves sufficiently high
         set_reserves(10_000_000_000_000)
-        assert res["success"], f"Set reserves failed: {res.get('error')}"
 
         # Ensure Bob has KYC level 1
         verify_kyc(user, 1)

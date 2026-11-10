@@ -1445,20 +1445,35 @@ def verify_kyc(blockchain_connection, sudo_keypair):
     return _verify_kyc
 
 
+#: Reserves granted on top of current bBZD supply by `set_reserves`.
+#:
+#: `mint_bbzd` requires `total_supply + amount <= central_bank_reserves`
+#: (`pallets/economy/src/lib.rs`), so clamping reserves to exactly the current
+#: supply leaves zero room to mint: every later mint in the session fails
+#: `InsufficientReserves` and the test reads that as its own bug. 10,000 bBZD at
+#: 12 decimals is far above any single test mint. A test that wants to *observe*
+#: the guard passes `headroom=0`.
+DEFAULT_RESERVE_HEADROOM = 10_000_000_000_000_000
+
+
 @pytest.fixture
 def set_reserves(blockchain_connection, sudo_keypair):
-    """Return `set_reserves(desired)` that raises central-bank reserves safely.
+    """Return `set_reserves(desired, headroom=DEFAULT)` that raises reserves safely.
 
     `Economy.update_reserves` refuses a value below circulating bBZD supply
     (`InsufficientReserves`) — reserves may never under-collateralize. Tests
     share one chain, so a later test's smaller literal would fail even though
-    its own logic is fine. Clamp to the current supply instead.
+    its own logic is fine. Clamp to the current supply instead, plus `headroom`
+    so the mint the caller is about to make can actually succeed.
+
+    Raises `AssertionError` on failure, so callers do not need to inspect a
+    receipt — asserting on an earlier call's result proves nothing about this one.
     """
     substrate = blockchain_connection
 
-    def _set_reserves(desired: int) -> int:
-        supply = substrate.query("Economy", "TotalBbzdSupply").value or 0
-        target = max(desired, int(supply))
+    def _set_reserves(desired: int, headroom: int = DEFAULT_RESERVE_HEADROOM) -> int:
+        supply = int(substrate.query("Economy", "TotalBbzdSupply").value or 0)
+        target = max(desired, supply + headroom)
 
         inner = substrate.compose_call(
             call_module="Economy",

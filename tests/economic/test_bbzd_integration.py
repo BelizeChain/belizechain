@@ -56,7 +56,6 @@ class TestBbzdMinting:
         # Governance: set Central Bank reserves
         initial_reserves = 10_000_000_000_000
         set_reserves(initial_reserves)
-        assert res["success"], f"Set reserves failed: {res.get('error')}"
 
         # Ensure Bob is not sanctioned in dev runtime
         submit_sudo_extrinsic(
@@ -153,10 +152,10 @@ class TestBbzdMinting:
         )
         assert res["success"]
 
-        # Governance: set low reserves (only 100 BZD)
+        # Governance: set low reserves (only 100 BZD). `headroom=0` is the point of
+        # this test — the default headroom would fund the mint it expects to fail.
         low_reserves = 100_000_000_000
-        set_reserves(low_reserves)
-        assert res["success"]
+        set_reserves(low_reserves, headroom=0)
         
         # Ensure Bob has KYC and funds
         assert fund_account(substrate, alice, bob.ss58_address, 1_000_000_000_000)
@@ -209,7 +208,6 @@ class TestBbzdRedemption:
         )
         assert res["success"]
         set_reserves(10_000_000_000_000)
-        assert res["success"]
         
         # Ensure Bob is not sanctioned in dev runtime
         submit_sudo_extrinsic(
@@ -394,7 +392,6 @@ class TestRedemptionProcessing:
         )
         assert res["success"]
         set_reserves(10_000_000_000_000)
-        assert res["success"]
         
         call = substrate.compose_call(
             call_module='Economy',
@@ -406,13 +403,15 @@ class TestRedemptionProcessing:
             }
         )
         extrinsic = substrate.create_signed_extrinsic(call=call, keypair=alice)
-        substrate.submit_extrinsic(extrinsic, wait_for_inclusion=True)
-        
-        # Get next redemption ID
-        next_id_query = substrate.query(
-            module='Economy',
-            storage_function='NextRedemptionId'
+        mint_receipt = substrate.submit_extrinsic(extrinsic, wait_for_inclusion=True)
+        # Checked here, not ignored: a failed mint leaves Bob with no bBZD, so the
+        # redemption below is rejected and the next assertion reports a `None`
+        # storage entry instead of the actual cause.
+        assert mint_receipt.is_success, (
+            f"minting 3 bBZD for the redemption setup failed: "
+            f"{getattr(mint_receipt, 'error_message', None)}"
         )
+
         redemption_id = next_id_query.value if next_id_query.value else 1
         
         # Ensure Bob is not sanctioned in dev runtime
@@ -436,9 +435,12 @@ class TestRedemptionProcessing:
             }
         )
         extrinsic = substrate.create_signed_extrinsic(call=call, keypair=bob)
-        substrate.submit_extrinsic(extrinsic, wait_for_inclusion=True)
-        
-        # Verify redemption is pending
+        redeem_receipt = substrate.submit_extrinsic(extrinsic, wait_for_inclusion=True)
+        assert redeem_receipt.is_success, (
+            f"redeem_bbzd failed, so there is no pending request to process: "
+            f"{getattr(redeem_receipt, 'error_message', None)}"
+        )
+
         request_before = substrate.query(
             module='Economy',
             storage_function='RedemptionRequests',
@@ -525,7 +527,6 @@ class TestReserveInvariants:
         assert res["success"]
         reserves_amount = 5_000_000_000_000
         set_reserves(reserves_amount)
-        assert res["success"]
         
         # Ensure Bob has KYC and fund
         assert fund_account(substrate, alice, bob.ss58_address, 1_000_000_000_000)

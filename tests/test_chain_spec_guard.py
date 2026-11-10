@@ -27,6 +27,21 @@ import pytest
 
 SPEC_PATH = Path(__file__).resolve().parent.parent / "testnet-spec.json"
 
+#: `testnet-spec.json` is gitignored on purpose — it is the live Ceiba boot spec
+#: and carries real session keys — so CI has no copy of it. Without this guard the
+#: module errors at fixture setup with `chain spec is missing`, which reads as a
+#: broken test rather than a file the runner never had. Skipping says so plainly;
+#: it also means a green CI run is **not** evidence the live spec is unmodified.
+#: Only a run on a machine that holds the file proves that. Run this module there.
+pytestmark = pytest.mark.skipif(
+    not SPEC_PATH.exists(),
+    reason=(
+        f"{SPEC_PATH.name} is gitignored (it holds live session keys), so this "
+        "runner has no spec to check. Skipped rather than errored; run this module "
+        "on a host that holds the live spec to actually verify it."
+    ),
+)
+
 #: sha256 of the canonicalised `genesis` section of `testnet-spec.json`.
 #:
 #: Only `genesis` is hashed, so editing `name`, `bootNodes` or telemetry endpoints

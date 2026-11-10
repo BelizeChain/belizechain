@@ -366,6 +366,9 @@ jobs:
             tests/cross_pallet tests/blockchain tests/test_chain_spec_guard.py; do
             [ -e "$p" ] || { echo "::error::pytest path does not exist: $p"; exit 1; }
           done
+          # `-ra`, not `-rs`: the short summary then lists FAILED tests by name.
+          # With `-rs` it listed only skips, so a red run was a wall of tracebacks
+          # with no index — reading this step's first real run took a log grep.
           python -m pytest \
             tests/economic \
             tests/belizex \
@@ -375,7 +378,7 @@ jobs:
             tests/blockchain \
             tests/test_chain_spec_guard.py \
             -m "not pristine_oracle_rate" \
-            -q -rs --timeout=180 -p no:cacheprovider
+            -q -ra --timeout=180 -p no:cacheprovider
 
       # Two suites need infrastructure the dev chain does not provide:
       #   tests/e2e             -> Pakit/IPFS, Nawal FL server, Kinich API
