@@ -826,16 +826,11 @@ fn expired_identity_returns_none() {
         let id_hash = [5u8; 32];
         let provider: BoundedVec<u8, ConstU32<64>> = b"Jumio".to_vec().try_into().unwrap();
 
-        // Verify identity
-        assert_ok!(Oracle::verify_identity(
-            RuntimeOrigin::signed(ALICE),
-            account,
-            kyc_level.to_u8(),
-            id_hash,
-            provider,
-            false,
-            true,
-        ));
+        // Verify identity to quorum. A single vote would stage without finalising
+        // at any threshold above 1, and asserting `None` after expiry would then
+        // pass whether or not KYC was ever written — the test would prove nothing.
+        verify_identity_with_quorum(account, kyc_level.to_u8(), id_hash, provider, false, true);
+        assert_eq!(Oracle::get_kyc_level(&account), Some(kyc_level));
 
         // Identity verified at block 1, expires at 1 + 5_256_000 = 5_256_001
         // Advance past expiry
@@ -1227,5 +1222,261 @@ fn add_operator_exceeds_max_operators_fails() {
         assert_eq!(Oracle::operator_count(), 9);
         assert_ok!(Oracle::add_operator(RuntimeOrigin::root(), 13u64));
         assert_eq!(Oracle::operator_count(), 10);
+    });
+}
+
+// ================================
+// Phase 5A: Behavior flags
+// ================================
+//
+// Two live extrinsics — `submit_behavior_flag` (call_index 14) and
+// `clear_behavior_flag` (15) — had no test coverage at all before this block.
+// Every branch below is reachable only because the mock's `MinOracleAgreement`
+// is above 1; at 1 the first vote satisfies the threshold, `PendingBehaviorFlags`
+// is always empty and the plurality logic is unobservable.
+//
+// Flag types: 0 = CompulsiveActivity, 1 = RewardLoopDetected, 2 = AutomatedActingPattern.
+
+const COMPULSIVE: u8 = 0;
+const REWARD_LOOP: u8 = 1;
+
+#[test]
+fn submit_behavior_flag_requires_operator() {
+    new_test_ext().execute_with(|| {
+        // DAVE is not an oracle operator.
+        assert_noop!(
+            Oracle::submit_behavior_flag(RuntimeOrigin::signed(DAVE), DAVE, COMPULSIVE),
+            Error::<Test>::NotAuthorizedOperator
+        );
+
+        assert_eq!(crate::BehaviorFlags::<Test>::get(DAVE), None);
+        assert_eq!(crate::PendingBehaviorFlags::<Test>::get(DAVE, DAVE), None);
+    });
+}
+
+#[test]
+fn submit_behavior_flag_rejects_invalid_type() {
+    new_test_ext().execute_with(|| {
+        // Only 0, 1 and 2 name a BehaviorFlag variant.
+        assert_noop!(
+            Oracle::submit_behavior_flag(RuntimeOrigin::signed(ALICE), DAVE, 3),
+            Error::<Test>::InvalidBehaviorFlagType
+        );
+
+        assert_eq!(crate::BehaviorFlags::<Test>::get(DAVE), None);
+    });
+}
+
+#[test]
+fn one_vote_stages_without_activating() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Oracle::submit_behavior_flag(
+            RuntimeOrigin::signed(ALICE),
+            DAVE,
+            COMPULSIVE
+        ));
+
+        // The vote is recorded...
+        assert_eq!(
+            crate::PendingBehaviorFlags::<Test>::get(DAVE, ALICE),
+            Some(COMPULSIVE)
+        );
+
+        // ...but one operator is not a plurality, so nothing is applied.
+        assert_eq!(crate::BehaviorFlags::<Test>::get(DAVE), None);
+        assert_eq!(crate::BehaviorFlagCooldown::<Test>::get(DAVE), None);
+        assert!(!Oracle::has_active_behavior_flag(&DAVE));
+
+        System::assert_last_event(
+            Event::BehaviorFlagVoteStaged {
+                account: DAVE,
+                oracle: ALICE,
+                flag_type: COMPULSIVE,
+                votes_so_far: 1,
+            }
+            .into(),
+        );
+    });
+}
+
+#[test]
+fn duplicate_vote_from_same_operator_rejected() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Oracle::submit_behavior_flag(
+            RuntimeOrigin::signed(ALICE),
+            DAVE,
+            COMPULSIVE
+        ));
+
+        // An operator gets one vote per account; otherwise it could reach
+        // `MinOracleAgreement` alone.
+        assert_noop!(
+            Oracle::submit_behavior_flag(RuntimeOrigin::signed(ALICE), DAVE, COMPULSIVE),
+            Error::<Test>::AlreadyVotedBehaviorFlag
+        );
+
+        // Still one vote, still inactive.
+        assert_eq!(crate::BehaviorFlags::<Test>::get(DAVE), None);
+    });
+}
+
+#[test]
+fn plurality_activates_flag_and_sets_cooldown() {
+    new_test_ext().execute_with(|| {
+        // Vote one: staged only.
+        assert_ok!(Oracle::submit_behavior_flag(
+            RuntimeOrigin::signed(ALICE),
+            DAVE,
+            REWARD_LOOP
+        ));
+        assert_eq!(crate::BehaviorFlags::<Test>::get(DAVE), None);
+
+        // Vote two agrees; this reaches MinOracleAgreement (2).
+        assert_ok!(Oracle::submit_behavior_flag(
+            RuntimeOrigin::signed(BOB),
+            DAVE,
+            REWARD_LOOP
+        ));
+
+        assert_eq!(crate::BehaviorFlags::<Test>::get(DAVE), Some(REWARD_LOOP));
+
+        // Cooldown runs from the current block for BehaviorCooldownBlocks (50).
+        assert_eq!(crate::BehaviorFlagCooldown::<Test>::get(DAVE), Some(51));
+        assert!(Oracle::has_active_behavior_flag(&DAVE));
+        assert_eq!(Oracle::behavior_cooldown_end(&DAVE), Some(51));
+
+        // Reaching consensus consumes the staged votes.
+        assert_eq!(
+            crate::PendingBehaviorFlags::<Test>::iter_prefix(DAVE).count(),
+            0
+        );
+
+        System::assert_last_event(
+            Event::BehaviorFlagged {
+                account: DAVE,
+                flag_type: REWARD_LOOP,
+                cooldown_until: 51,
+            }
+            .into(),
+        );
+    });
+}
+
+#[test]
+fn votes_for_different_types_do_not_accumulate() {
+    new_test_ext().execute_with(|| {
+        // Two votes, but for different flag types: 1 and 1, never 2.
+        assert_ok!(Oracle::submit_behavior_flag(
+            RuntimeOrigin::signed(ALICE),
+            DAVE,
+            COMPULSIVE
+        ));
+        assert_ok!(Oracle::submit_behavior_flag(
+            RuntimeOrigin::signed(BOB),
+            DAVE,
+            REWARD_LOOP
+        ));
+
+        assert_eq!(crate::BehaviorFlags::<Test>::get(DAVE), None);
+
+        // Both votes are retained, so a second operator agreeing with either
+        // still reaches consensus — the tally is per flag type, not per vote.
+        assert_eq!(
+            crate::PendingBehaviorFlags::<Test>::get(DAVE, ALICE),
+            Some(COMPULSIVE)
+        );
+        assert_eq!(
+            crate::PendingBehaviorFlags::<Test>::get(DAVE, BOB),
+            Some(REWARD_LOOP)
+        );
+    });
+}
+
+#[test]
+fn behavior_flag_cooldown_lapses() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Oracle::submit_behavior_flag(
+            RuntimeOrigin::signed(ALICE),
+            DAVE,
+            COMPULSIVE
+        ));
+        assert_ok!(Oracle::submit_behavior_flag(
+            RuntimeOrigin::signed(BOB),
+            DAVE,
+            COMPULSIVE
+        ));
+        assert!(Oracle::has_active_behavior_flag(&DAVE));
+
+        // Cooldown ends at 51; the flag record stays but stops applying.
+        System::set_block_number(51);
+        assert!(!Oracle::has_active_behavior_flag(&DAVE));
+        assert_eq!(Oracle::behavior_cooldown_end(&DAVE), None);
+
+        // The stored flag is not deleted by lapse — only an explicit clear
+        // removes it, so the record remains available for review.
+        assert_eq!(crate::BehaviorFlags::<Test>::get(DAVE), Some(COMPULSIVE));
+    });
+}
+
+#[test]
+fn clear_behavior_flag_requires_admin() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Oracle::submit_behavior_flag(
+            RuntimeOrigin::signed(ALICE),
+            DAVE,
+            COMPULSIVE
+        ));
+        assert_ok!(Oracle::submit_behavior_flag(
+            RuntimeOrigin::signed(BOB),
+            DAVE,
+            COMPULSIVE
+        ));
+
+        // An oracle operator is not an admin; clearing is OracleAdminOrigin only.
+        assert_noop!(
+            Oracle::clear_behavior_flag(RuntimeOrigin::signed(ALICE), DAVE),
+            sp_runtime::DispatchError::BadOrigin
+        );
+
+        assert_eq!(crate::BehaviorFlags::<Test>::get(DAVE), Some(COMPULSIVE));
+    });
+}
+
+#[test]
+fn clear_behavior_flag_without_active_flag_fails() {
+    new_test_ext().execute_with(|| {
+        assert_noop!(
+            Oracle::clear_behavior_flag(RuntimeOrigin::root(), DAVE),
+            Error::<Test>::NoBehaviorFlagActive
+        );
+    });
+}
+
+#[test]
+fn clear_behavior_flag_removes_flag_cooldown_and_pending() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Oracle::submit_behavior_flag(
+            RuntimeOrigin::signed(ALICE),
+            DAVE,
+            COMPULSIVE
+        ));
+        assert_ok!(Oracle::submit_behavior_flag(
+            RuntimeOrigin::signed(BOB),
+            DAVE,
+            COMPULSIVE
+        ));
+        assert_eq!(crate::BehaviorFlags::<Test>::get(DAVE), Some(COMPULSIVE));
+
+        assert_ok!(Oracle::clear_behavior_flag(RuntimeOrigin::root(), DAVE));
+
+        assert_eq!(crate::BehaviorFlags::<Test>::get(DAVE), None);
+        assert_eq!(crate::BehaviorFlagCooldown::<Test>::get(DAVE), None);
+        assert!(!Oracle::has_active_behavior_flag(&DAVE));
+        assert_eq!(
+            crate::PendingBehaviorFlags::<Test>::iter_prefix(DAVE).count(),
+            0
+        );
+
+        System::assert_last_event(Event::BehaviorFlagCleared { account: DAVE }.into());
     });
 }

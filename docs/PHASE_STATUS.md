@@ -49,6 +49,15 @@ a dated record from 2026-09-03.
 `pallet_contracts` lives at index 13 and is a Substrate-standard pallet; it is
 **not** counted in the 20 custom pallets.
 
+> **"Verified on live testnet" means the pallet is dispatched and reachable, not that
+> anything has been recorded through it.** Re-measured on Chain D 2026-11-10:
+> `belizeModeration.contentFlags` and `flagCounts` hold **0** entries, and
+> `oracle.behaviorFlags` / `pendingBehaviorFlags` hold **0** — the Phase 5A and 5C
+> extrinsics exist in metadata and have never carried a live record on this chain. The
+> original "2-validator testnet (2026-09-03)" wording described Chain C, which the
+> 2026-09-29 re-genesis replaced. Full table:
+> [`plans/ETHICAL_SAFEGUARDS_IMPLEMENTATION_PLAN.md`](plans/ETHICAL_SAFEGUARDS_IMPLEMENTATION_PLAN.md#verification-evidence--re-checked-2026-11-10-against-chain-d).
+
 ---
 
 ## Pre-Mainnet Removal Checklist
@@ -129,6 +138,7 @@ inferred from a planning document.
 | 4 | No custom runtime APIs; `node/src/rpc.rs:117` still returns typed stubs | **Closed** — four runtime APIs implemented and served; see below |
 | 5 | No vesting, account-recovery or scheduler pallet | **Scope decision, not a defect** — see below; the previously-stated provenance was wrong |
 | — | Runtime source claimed spec 122 while holding undeployed changes | **Closed** — spec 123 built, rehearsed, deployed and verified live 2026-10-27 |
+| — | Phase 5A behavior flags had **zero** test coverage | **Closed** — 10 tests added to `pallets/oracle`; all five guards falsified by removing each and watching the matching test fail. Mock `MinOracleAgreement` was 1, which made `agreeing_votes >= threshold` true on the first vote and left `PendingBehaviorFlags` permanently empty — the plurality branch was unreachable, not merely untested |
 | — | `WUSDC/BBZD` oracle guard checked one direction; its rate source was empty | **Closed** — live 124 (2026-10-27), corrected in repo 126. Bilateral guard + 11 tests, both halves falsified. 124's peg fallback **disabled the fail-closed branch**; 126 removes it (see below). Not deployed |
 
 **Oracle guard detail — live in spec 124.** The BEX deviation guard compared

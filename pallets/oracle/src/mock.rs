@@ -81,7 +81,15 @@ parameter_types! {
     pub const MaxOperators: u32 = 10;
     pub const MaxDataStaleness: u64 = 100; // 100 blocks
     pub const MinConsensusOperators: u32 = 1; // Minimum 1 operator for testing (production should be 2+)
-    pub const MinOracleAgreement: u32 = 1;
+    // Must stay above 1. At 1 the first vote satisfies `agreeing_votes >= threshold`
+    // immediately, which makes `PendingBehaviorFlags` always empty and leaves
+    // `AlreadyVotedBehaviorFlag` unreachable — i.e. the quorum = plurality logic
+    // Phase 5A exists for would be untestable. The runtime uses 3; 2 here exercises
+    // the same branches (`<` then `>=`) without adding a third genesis operator,
+    // which two tests oppose (`add_operator_exceeds_max_operators_fails` seeds ids
+    // 3..=12 counting from OperatorCount 0, and `remove_nonexistent_operator_edge_case`
+    // asserts CHARLIE is not an operator).
+    pub const MinOracleAgreement: u32 = 2;
     pub const BehaviorCooldownBlocks: u64 = 50;
     pub const ExpiryDurationBlocks: u64 = 200;
     pub const MaxPriceDeviation: u32 = 500;

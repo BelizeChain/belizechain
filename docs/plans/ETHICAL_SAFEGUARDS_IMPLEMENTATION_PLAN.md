@@ -1,7 +1,10 @@
 # BelizeChain Ethical Safeguards — Full Implementation Plan
 
 **Created:** 2026-03-03  
-**Status:** Planning — Phase 0 not yet started  
+**Status:** All 6 phases complete and integrated into `construct_runtime!`. Read the
+[Progress Tracker](#progress-tracker) at the bottom for current evidence — this header
+said "Planning — Phase 0 not yet started" until 2026-11-10, months after the last phase
+closed, because it was written once and never revisited.  
 **Scope:** All 13 identified ethical safeguard gaps + 4 additional items (addiction loops, wellbeing funding, anti-dehumanization, voting power cap).  
 **Constraint:** Zero breaking changes to existing consensus or state transition logic. Every phase ends with a mandatory verification pass before proceeding.
 
@@ -624,8 +627,36 @@ No single house can ratify a constitutional change alone.
 | Phase 2 — Economic Fairness | ✅ Complete (pallet-belize-economy & supply invariants verified) |
 | Phase 3 — Identity & Trust | ✅ Complete (pallet-belize-identity & oracle multi-consensus verified) |
 | Phase 4 — Justice & Support | ✅ Complete (pallet-belize-justice & whistleblower verified live on-chain) |
-| Phase 5 — Nawal-Integrated Ethical Enforcement | ✅ Complete (pallet-belize-moderation community flagging & Nawal assessment verified live on-chain) |
+| Phase 5 — Nawal-Integrated Ethical Enforcement | ✅ Complete — 5A behavior flags (`oracle` call_index 14/15), 5B wellbeing routing (`economy`), 5C moderation (`belizeModeration`) |
 | Phase 6 — Constitutional Hard Invariants | ✅ Complete (constitutional ratify & parameter locks verified) |
 | Full Regression Sweep | ✅ Complete (all unit, runtime wasm, and live testnet extrinsics verified) |
 
-All 6 ethical safeguard phases have been fully implemented, integrated into `construct_runtime!`, and verified on the live 2-validator testnet (2026-09-03).
+All 6 ethical safeguard phases are implemented and integrated into `construct_runtime!`.
+
+### Verification evidence — re-checked 2026-11-10 against Chain D
+
+The original line here claimed verification "on the live 2-validator testnet
+(2026-09-03)". That chain no longer exists: it was re-genesised on 2026-09-29 after the
+Empty-BABE-Authority stall, and the current chain is single-authority, not 2-validator.
+The claim was therefore true of a different chain and was being read as though it
+described this one. Re-measured on **Chain D "Jade"** (`belizechain_testnet`, genesis
+`0xb2664568…b5ef`, spec 124) through the public `wss://testnet.belizechain.org/ws`:
+
+| Phase | What was checked | Result |
+|---|---|---|
+| 5A | `oracle.submitBehaviorFlag` / `clearBehaviorFlag` in metadata | present |
+| 5A | `oracle.behaviorFlags`, `pendingBehaviorFlags` entries | 0 — callable but never used on this chain |
+| 5B | `economy.publicGoodsRoutingPercent`, `wellbeingFundPercent` | 10, 10 |
+| 5C | `belizeModeration` extrinsics | `flagContent`, `reviewContent`, `addModerator`, `removeModerator`, `submitNawalAssessment` |
+| 5C | `flagThreshold`, `nawalAutoQueueScore` | 5, 50 |
+| 5C | `contentFlags`, `flagCounts` entries | 0 — no content flagged yet |
+| 4A/4B | `belizeJustice`, `belizeWhistleblower` | present |
+
+Two limits worth stating rather than implying:
+
+- **"Present in metadata" is not "exercised."** Phases 5A and 5C have never carried a
+  live record on Chain D. The extrinsics exist and are reachable; nothing has called
+  them. This table says that explicitly instead of counting presence as proof.
+- **Phase 5A had no automated coverage at all** until 2026-11-10. `pallets/oracle`
+  now has 10 tests for both extrinsics, and every guard was falsified by removing it
+  and watching the matching test fail. Detail in `../PHASE_STATUS.md`.
