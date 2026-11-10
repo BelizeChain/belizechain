@@ -412,6 +412,11 @@ class TestRedemptionProcessing:
             f"{getattr(mint_receipt, 'error_message', None)}"
         )
 
+        # The id held *before* Bob redeems is the one his request takes.
+        next_id_query = substrate.query(
+            module='Economy',
+            storage_function='NextRedemptionId',
+        )
         redemption_id = next_id_query.value if next_id_query.value else 1
         
         # Ensure Bob is not sanctioned in dev runtime
