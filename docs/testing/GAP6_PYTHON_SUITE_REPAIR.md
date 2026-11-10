@@ -488,3 +488,59 @@ pallet-behaviour findings in §3 are pinned by tests that state them explicitly.
 **Run time roughly doubled** (1,978 s → 2,605 s) because the rewritten tests
 actually submit the transactions they assert on, where the old ones read
 `ProposalCount` from a chain that never had a proposal.
+
+---
+
+## 4. CI never ran any of this — 2026-11-10
+
+Everything above was measured on a workstation. In CI the job reported red from
+2026-10-27 onward and nobody could tell why, because the step named a file that
+did not exist:
+
+```
+tests/test_probe.py   # named in deploy.yml, never written, never in any commit
+```
+
+pytest exits **4** (`file or directory not found`) before running a single test,
+so a missing path was reported as a suite failure. Fixing the path (`ac45580`)
+let the suite execute for the first time, and it immediately produced:
+
+```
+7 failed, 104 passed, 1 skipped, 3 errors
+```
+
+Three unrelated causes — none of them in pallet code:
+
+| # | Symptom | Cause |
+|---|---|---|
+| 6 | `InsufficientReserves` then `InsufficientBbzdBalance` | The `set_reserves` fixture clamped reserves to `max(desired, supply)`. `mint_bbzd` requires `supply + amount <= reserves`, so on a chain another test had already minted, reserves ended at exactly supply and **every** later mint failed. The pallet was right; the fixture left no headroom. |
+| 1 | `a district can only hold one election` failed | The test asserted a limitation that `fc8aae7` had deliberately removed. Its own message said to update it if it ever failed. |
+| 3 | `ERROR: chain spec is missing` | `testnet-spec.json` is gitignored — it is the live Ceiba boot spec holding real session keys — so a runner has no copy. A guard that cannot execute protects nothing. |
+
+Fixed in `b6547ad` / `54f5042`:
+
+- `set_reserves(desired, headroom=DEFAULT_RESERVE_HEADROOM)` grants headroom
+  above supply. The one test that exists to observe the guard,
+  `test_mint_bbzd_exceeds_reserves_fails`, passes `headroom=0` explicitly —
+  otherwise it would mint successfully and self-skip, reporting green while
+  proving nothing.
+- Six call sites did `set_reserves(x)` then `assert res["success"]`, where `res`
+  held the *previous* authorization reply. The check could not fail. The fixture
+  raises, so the asserts were removed rather than repaired.
+- `TestDistrictElectionLimits` now covers both halves of the current rule: a
+  finished slot reopens, an active one refuses with `ElectionAlreadyActive`.
+- `test_chain_spec_guard.py` skips with an explicit reason instead of erroring.
+  **A green CI is not evidence the live spec is unmodified** — only a run on a
+  host that holds the file proves that.
+- The pytest invocation uses `-ra`, not `-rs`, so the short summary names
+  failing tests. Reading the first honest run took a grep through 3,370 lines.
+
+Result:
+
+```
+112 passed, 4 skipped, 1 deselected in 2620.21s (0:43:40)
+```
+
+The 4 skips are three chain-spec guard tests (no spec on a runner) and one
+pre-existing `declare_emergency` skip. `Build and Validate` is green on
+`54f5042`, run `42736481694`.
