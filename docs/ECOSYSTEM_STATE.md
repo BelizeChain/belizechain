@@ -348,6 +348,41 @@ curl -s -H 'Content-Type: application/json' \
 # 0xd43593c7…da27d  => STILL //Alice, exposure open
 ```
 
+**2026-11-11 — the rotation removed `//Alice`'s privileges but not its money. Now reclaimed.**
+
+Measured before the fix: `//Alice` held **957,513.011358374210 DALLA** (31% of supply) on a
+seed printed in every Substrate tutorial, and its stale BABE/GRANDPA `NextKeys` were still
+registered (it was not in the *authority set* only because the account is not a staking
+validator). Two genesis-funded accounts whose seeds are in neither this repo nor the
+operator's key folder held **1,000,000 DALLA each**; both had `nonce 0` and had never been
+used. The only gate keeping the public key out of consensus was KYC — `joinValidators`
+requires `meets_validator_kyc` (L2) and the account has neither an Identity nor an Oracle
+KYC record.
+
+Fixed with one `session.purgeKeys()` signed by `//Alice` (removes the latent session keys)
+and three root-only `sudo(balances.forceTransfer(…))` calls. `force_transfer` preserves the
+existential deposit, so each source keeps 0.001 DALLA rather than reaching 0:
+
+| Account | Before (DALLA) | After (DALLA) |
+|---|---:|---:|
+| `//Alice` `r1Wm6WgK…` | 957,513.011358374210 | 0.001 |
+| genesis `r1Ues1jmC…` | 1,000,000.000000000000 | 0.001 |
+| genesis `r1TxVCxAx…` | 1,000,000.000000000000 | 0.001 |
+| sudo `r1T7BYVAQ…` | 3,109.988514537667 | 2,960,622.996649908069 |
+
+Blocks: purge **519,515** (`0x71c9c80e…`), `//Alice` sweep **519,532** (`0xeda786fb…`),
+genesis sweeps **519,544** (`0x90221f28…`) and **519,547** (`0xea514f94…`). Issuance moved
+only by the purge fee that was burned — **0.000223003808 DALLA**, from 3,102,266.899107000700
+to **3,102,266.898883996892** — so the sweeps were pure transfers. Post-state at
+block 519,559 / finalized 519,557: lag 2; `Sudo.Key`, `session.validators` and the single
+BABE/GRANDPA authority unchanged; `session.nextKeys(//Alice)` now `none`.
+
+✅ **Residual, deliberate:** **95.4% of supply now sits on the sudo key** — one key on one
+host. That is safer than three public/stray keys, but it is concentration, not distribution.
+Before any external user depends on the token, move operating float to the faucet/treasury and
+hold the rest on a key that cannot call `set_code`. Also still open: the boot spec pins
+`//Alice` (item 1.6), so a re-genesis resurrects the account.
+
 ---
 
 ## 3. Authority order — when documents disagree
