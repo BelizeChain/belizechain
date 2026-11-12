@@ -1197,6 +1197,38 @@ without a date is a bug.
 - ⚠️ org is near its **2,000 monthly Actions minutes**; private-repo CI is billed. Don't
   push speculatively.
 
+**Re-measured 2026-11-11 — the backlog is now 5 code-scanning and 2 Dependabot, all triaged.**
+
+| repo | open CS | open Dependabot |
+|---|---|---|
+| `belizechain` | 1 | 1 |
+| `infra` | 1 | 1 |
+| `pakit-storage` | 2 | 0 |
+| `belizechain.org` | 1 | 0 |
+| all others | 0 | 0 |
+
+Two dependency alerts remain open, and **neither can be closed from this workstation**: the
+`gh` token carries `repo`/`workflow`/`gist`/`admin:repo_hook`/`read:org` but **not
+`security_events`**, so `PATCH …/dependabot/alerts/{n}` is unavailable. Dismiss both in the
+Security tab, or `gh auth refresh -s security_events`.
+
+- **`belizechain` GHSA-5j98-2g5x-46v6 — `hickory-resolver 0.24.4`, high.** Reached only by
+  `libp2p-dns 0.42.0 ← libp2p 0.54.1 ← sc-network`; `litep2p`'s copy is already 0.26.3, past
+  the fix. Fixing the libp2p copy needs `libp2p-dns ≥ 0.45`, and polkadot-sdk pins libp2p
+  0.54.1 in stable2606, stable2609 **and** master, so no rev clears it. The advisory —
+  *`Resolver::lookup()`/`lookup_ip()` obscure DNSSEC validation failures* — is unreachable
+  here: the resolver is engaged only for `/dns/` multiaddrs and `testnet-spec.json` sets
+  `bootNodes: []` with one node and `shouldHavePeers: false`. **Do not add it to
+  `deny.toml`'s `ignore`:** cargo-deny does not report it (it is GHSA-only, absent from
+  RustSec), so the entry would fail as `advisory-not-detected` and mask a future real one.
+  Same rule the file already documents at length.
+- **`infra` GHSA-mrhx-c7xc-m3w5 — `zod 3.25.76`, high.** Transitive through **`hardhat`**,
+  a devDependency: `hardhat → @nomicfoundation/hardhat-zod-utils → zod`. The relayer image
+  runs `npm ci --omit=dev`, so neither hardhat nor zod is in the production image, and no
+  source file imports zod. The relayer is also not deployed — it sits behind the
+  `profiles: ["relayer"]` gate and no container exists. Clearing it needs `hardhat` to move
+  to zod 4 upstream; an `overrides` pin would break the dev toolchain for no runtime gain.
+
 ### 4.3 Runtime upgrade track
 
 - **Rule that must not be broken:** every runtime build passes
