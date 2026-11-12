@@ -201,31 +201,49 @@ curl -s -H 'Content-Type: application/json' -d '{"id":1,"jsonrpc":"2.0","method"
 ⚠️ The runtime-version method is **`state_getRuntimeVersion`** (integer result). There is
 no `runtime_version` method — using it returns nothing and looks like a dead node.
 
-### 2.2 Host — verified 2026-10-22
+### 2.2 Host — re-verified 2026-11-11
 
 | | |
 |---|---|
 | Host | **`ceiba`** — Tailscale `100.119.97.38`, LAN `10.0.0.19` |
 | Access | `ssh wicked@ceiba` (Tailscale). LAN fallback `10.0.0.19` |
-| Containers | **19 running** · 0 exited · 0 failed units · host uptime 15 days |
-| Node image | `belizechain/ceiba-node:01d51bb-spec124-20261027` (rollout 2026-10-27; previous `76dea3f-stable2609-20261019`) |
+| Containers | **21 running** · 0 exited · 0 failed units |
+| Node image | `belizechain/ceiba-node:ac61adc-spec126-20261111` (rollout 2026-11-11; previous `01d51bb-spec124-20261027`) |
 | Public ingress | **Oracle edge proxy** `129.213.95.153` → ceiba over the tailnet |
 
-**Image pins on the host** (`/opt/belizechain/.env`, verified 2026-10-22):
+**Image pins on the host** (`/opt/belizechain/.env`, read from the host 2026-11-11):
 
 | Service | Pinned image | Rollback tag |
 |---|---|---|
-| `ui` | `belizechain/blue-hole-portal:b08cd28-ceiba-20261022` | previous pin, see `.env` backups |
-| `maya` | `belizechain/maya-wallet:b08cd28-ceiba-20261022` | previous pin, see `.env` backups |
-| `nawal` | `belizechain/nawal:b3f1500-mesh-20261022` | `belizechain/nawal:39c4076-auth-20261020` |
+| `ceiba-node` | `belizechain/ceiba-node:ac61adc-spec126-20261111` | `01d51bb-spec124-20261027` (`.env.bak-pre-node-20261111`) |
+| `api-gateway` | `belizechain/api-gateway:f150ac4-20261111` | `70327ddb-20261021` (`.env.bak-pre-services-20261111`) |
+| `indexer` | `belizechain/indexer:f150ac4-20261111` | `c2b70fc-metrics-20261021` (`.env.bak-pre-indexer-20261111`) |
+| `pakit` | `belizechain/pakit-storage:61c7bbe-20261111` | `daece63` (`.env.bak-pre-services-20261111`) |
+| `kinich` | `belizechain/kinich-quantum:e60ae87-20261111` | `b1a048f-clean-20261022` (`.env.bak-pre-services-20261111`) |
+| `ui` | `belizechain/blue-hole-portal:b504258-ceiba-20261109` | previous pin, see `.env` backups |
+| `maya` | `belizechain/maya-wallet:b504258-ceiba-20261109` | previous pin, see `.env` backups |
+| `nawal` | `belizechain/nawal:31015f3` | `belizechain/nawal:39c4076-auth-20261020` |
 | `nawal-mesh` | *(shares `NAWAL_IMAGE`)* | same |
-| `kinich` | `belizechain/kinich-quantum:b1a048f-clean-20261022` | `belizechain/kinich-quantum:5220c8a-pgfix1` |
-| `org` | `belizechain/org-site:698b2be-org-20261021` | — |
+| `org` | `belizechain/org-site:8c4de7e-org-20261109` | — |
+| `explorer` | `jacogr/polkadot-js-apps@sha256:c0cc223b…` | — |
+
+**The 2026-11-11 rollout brought five images to repo HEAD.** Each was built **on Ceiba**
+from an rsynced tree, because the host has no checkout and no CI job builds these images.
+Verified after each rollout by comparing `sha256sum` of the changed files in the running
+container against the repo — `pakit` (`storage_proof_connector.py`, `metadata_store.py`)
+and `kinich` (`circuit_validator.py`, `result_retriever.py`, `blockchain/__init__.py`) are
+**byte-identical**, and the gateway image resolves `qs 6.17.1` / `body-parser 1.20.9`.
+
+The node image was verified **before** the pin moved: `BabeApi_configuration` decoded from
+the running image gives `epoch_length 300` / `slot_duration 6000`, and
+`scripts/check-node-image-parity.sh --remote ceiba` reports
+`✅ Node image is at parity with the client surface`. That check also **failed** against
+the previous pin — the old image predated `node/9baeede`, so the release gate had been red.
 
 ⚠️ **`.env` backups are the rollback mechanism**, not a documented previous-tag list.
-Before any pin change the live file is copied to `backups/.env.pre-<change>-<stamp>`; to
-roll back, restore that file and `up -d <service>`. Images are never pruned, so the old
-tag still exists locally.
+Before any pin change the live file is copied to `.env.bak-pre-<change>-<stamp>`; to roll
+back, restore that file and `up -d <service>`. Images are never pruned, so the old tag
+still exists locally.
 
 ⚠️ **`100.81.45.25` / `10.0.0.222` are the RETIRED host.** Decommissioned 2026-10-07 — it
 runs no containers. Any instruction naming it is stale. The name `ceiba` was reused for
