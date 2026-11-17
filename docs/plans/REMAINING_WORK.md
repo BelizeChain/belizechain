@@ -22,7 +22,7 @@
 |---|---|---|---|
 | 1.1 | ~~**Run `scripts/bootstrap-dex.js` against Ceiba**~~ | ✅ **RESOLVED 2026-11-09** | Ran the production path: reserves → minter authorization → identity → KYC → seat 3 oracle operators → Oracle KYC L2 → mint 200,000 bBZD → liquidity → a swap that settled on both ledgers. `(0,1)` now holds **100,199.52 DALLA / 199,801 bBZD**; `TotalBbzdSupply` **200,000**. Funding required `balances.forceSetBalance` on sudo (1,042 → 102,000) because the pool needs 100,000 and fees need paying: **supply 3,001,009 → 3,102,266 DALLA**. The three oracle keys are new, generated for this and stored 0600 at `/opt/belizechain/keys/oracle-{1,2,3}.json` on Ceiba — no existing oracle set existed to reuse. Re-running converges (verified): every step reports already-done and only the settlement trade executes. |
 | 1.2 | ✅ **RESOLVED 2026-11-07 — re-genesis key precondition** | `chain-specs/genesis-hardened-2026-11-07.json` moves sudo, the sole session key, all three identity issuer lists and the council seats off every published dev key; `scripts/harden-genesis-spec.js` regenerates it and refuses to write while any `//Name` dev key remains. Verified at the **raw genesis** layer: zero dev-key hex in `genesis.raw.top`, new sudo/BABE/GRANDPA present. **`testnet-spec.json` deliberately unchanged** — it is byte-identical to Ceiba's boot spec and editing it would change the genesis hash under the live chain id. See `EMPTY_EPOCH_STALL_AND_REGENESIS` §11 | Remaining: actually boot from the hardened spec when a re-genesis happens |
-| 1.3 | **`BELIECHAIN_CI_TOKEN`** | Needs a fine-grained PAT with `Contents: read` on the six private sibling repos. Without it, `docs-check.yml` fails on every scheduled run by design. | Docs drift stops being detectable in CI. |
+| 1.3 | **`BELIECHAIN_CI_TOKEN` — EXPIRED 2026-11-17** | The 7-day PAT worked from 2026-11-09 until it aged out: `Docs Claims Check` now fails with `HTTP 401 — the secret exists but GitHub rejected it`, on an otherwise-clean tree (the checker itself PASSES locally across all 8 repos). This is the weekly rotation cost of the 7-day policy, not a code failure. Mint a replacement with `Contents: read-only` on `infra`, `kinich-quantum`, `nawal-ai`, `pakit-storage`, `gem`, `belizechain.org`, then `gh secret set BELIECHAIN_CI_TOKEN -R BelizeChain/belizechain`. | Every scheduled docs run stays red until rotated. |
 | 1.4 | ✅ **RESOLVED 2026-11-07 — genesis council seats** | Two compounding defects, both fixed in `pallets/governance`. (a) The genesis build stamped *every* member `BoardRole::Founder` against `max_count() == 1`, so a 3-seat genesis produced 3 Founders; roles are now handed out along a `GENESIS_SEAT_LADDER` (Founder, TechnicalSteward, FSCRepresentative, …) with an assert on over-long input. (b) Genesis never wrote `BoardComposition`, which `add_board_member` reads as the count — so a further Founder could still be appointed while the invariant looked satisfied. Now recomputed from the seats written. 175 governance tests pass; both halves independently falsified (`Founder seated 3 against a cap of 1`, and `BoardComposition disagreed with CouncilMembers`) | Also corrected a test that asserted `board_composition(Founder) == 0`, i.e. it encoded the bug |
 | 1.5 | ~~**Redeploy the faucet with `claim_for`**~~ | ✅ **RESOLVED 2026-11-09** | Redeployed at block 483807 as `r1WxhL7BkS3g6LopMgncAQEzDqLFZmo1UK96mn2MqBwZTfk9g`, code hash `0x3e3db584…86ff`, owned by the rotated sudo key, 10,000 DALLA, drip 100, cooldown 100 blocks. Old instance drained first (its 10,000 DALLA went to sudo, which then funded the new payable constructor — it held only 1,050 before). Proven live with a fresh 0-balance account: `claim()` from it is rejected at the transaction pool (`1010: Inability to pay some fees`), a relayer's `claim_for()` delivers exactly 100 DALLA, an immediate repeat reverts on the recipient's cooldown, and a second fresh account gets its own drip — claimCount 2, totalClaimed 200, faucet 9,800. Repinned in `ui/shared/src/lib/runtime-config.ts`, `gem/.env.testnet`, `belizechain.org/lib/constants.ts` and `gem/deployment-1794226724208.json`; all three frontend images rebuilt, verified to carry the new address and zero references to the old one, deployed and serving. |
 | 1.6 | **The boot spec still pins `//Alice` in genesis** | 🔴 **Needs a decision, cannot be repaired in place** | Measured 2026-11-08: `chain-specs/genesis-live-0xb2664568.json` produces genesis hash `0xb2664568…b5ef`, identical to the live chain's `chain_getBlockHash(0)`. It is this chain's origin, and it carries four publicly-known dev keys in nine privileged slots. Editing it changes that hash and the node refuses its own database — an outage, not a hardening. BelizChain keys in the *boot* spec require a re-genesis, i.e. a new chain with no history and no contracts. |
@@ -47,7 +47,7 @@ print(p.get('sudo')); print(str(p.get('session'))[:120])"
 | # | Item | Measured state | What unblocks it |
 |---|---|---|---|
 | 2.1 | **Pakit `.bz` web hosting** | `bns.totalDomains = 0` — no domain has ever been registered. | Register `.bz` names on the live chain. Hosting resolves nothing while the registry is empty; this is data, not code. |
-| 2.2 | **DALLA/BZD trading** | ✅ **RESOLVED 2026-11-09 for `DALLA/bBZD`** — re-measured after 1.1: pair `[0,1]` holds **100,299 DALLA / 199,403 bBZD**. Still open: `TourismDALLA/bBZD` (`[2,1]`) is **0/0**, and `WUSDC/bBZD` (`[3,1]`) holds only 10/20. | Seed the TourismDALLA pool the same way, or drop the pair. `AssetId` order is `DALLA=0, BBZD=1, TourismDALLA=2, WUSDC=3`. |
+| 2.2 | **DALLA/BZD trading** | ✅ **RESOLVED 2026-11-09 for `DALLA/bBZD`** — re-measured 2026-11-17: pair `[0,1]` holds **100,299.28 DALLA / 199,403.23 bBZD** (LP tokens 141,421.36). Still open: `TourismDALLA/bBZD` (`[2,1]`) is **0/0**, and `WUSDC/bBZD` (`[3,1]`) holds only 10/20. | Seed the TourismDALLA pool the same way, or drop the pair. `AssetId` order is `DALLA=0, BBZD=1, TourismDALLA=2, WUSDC=3`. |
 | 2.3 | **Oracle consensus** | ✅ **RESOLVED 2026-11-09** — `oracle.oracleOperators` now has **3** entries, seated by 1.1 and reused for the bridge-validator KYC quorum. | Nothing; the guards are no longer shipped against an empty operator set. |
 | 2.4 | **Real validator set** | `staking.validators` = 2, `session.validators` = **1**. | Bring up additional nodes; a single authority is a single point of failure and a mainnet blocker (`MAINNET_READINESS` §3.2). |
 
@@ -162,7 +162,7 @@ and the notes were stale.
 |---|---|
 | `relayer` service | **Not a gap.** Already gated behind `profiles: ["relayer"]` with `${RELAYER_IMAGE:-…}`, so a plain `docker compose up -d` cannot fail on the missing image and take the stack with it. The comment block explains why it stays gated: no `BelizeBridgeReceiver` exists on any foreign chain, and `RELAYER_ADAPTER=null` would confirm nothing. Correct as it stands |
 | `docker-compose.validators.yml` | **Resolved.** The four `infra_val-*-data` volumes were wiped 2026-11-07 with owner approval, so there is nothing left to resume. `belizechain/scripts/local-swarm.sh` supersedes the Docker swarm (measured working: 4/4 peers, zero hash mismatches, epoch rotation, 2-of-4 recovering finality in <6 s). The file now says so at the top. `--force-authoring` was already correctly gated on `${FORCE_AUTHORING:+…}` |
-| `.bak` files on Ceiba | **Resolved — none exist.** `sudo find` over `/opt/belizechain`, `/etc/nginx`, `/etc/systemd/system` and `/usr/local/sbin` returns zero `*.bak`/`*.old`/`*.orig`. Nothing to delete |
+| `.bak` files on Ceiba | **Two, re-measured 2026-11-17** — `/opt/belizechain/deploy/backup-nawal.sh.bak-20261107` and `health-check.sh.bak-20261030T001902`. The earlier "none exist" finding was true of `/etc/nginx`, `/etc/systemd/system` and `/usr/local/sbin`; it missed `deploy/`. Both are rollback copies from real rollouts, so deleting them is optional cleanup, not a defect |
 | Third-party backup target | **Still undecided, and genuinely an owner call.** Backups currently land on the same host they protect, so a host loss loses both |
 
 ### 3.5a GitHub hygiene — cleaned 2026-11-07
@@ -271,23 +271,25 @@ re-discovers them as bugs and "fixes" them into regressions.
 | `tests/` in `nawal-ai` runs 4,447 tests in ~5 min | Memory-constrained host; heavy suites have crashed this workstation four times. Run targeted, not wholesale |
 | `ui` Dependabot alert: minimatch ReDoS (`>= 7.0.0, < 11.0.1`) | **Upstream-blocked, not fixable here.** The reachable path is `@typescript-eslint/typescript-estree` → `minimatch ^10.2.2` → 10.2.6. Checked the registry on 2026-11-07: even the newest release (8.72.1) still requires `^10.2.2`, and **no published version requires 11+**, so the advisory cannot be cleared by any update available today. It is a devDependency used by lint tooling, never in the production bundle, and ReDoS needs an attacker-controlled glob pattern — none exists in the lint config. This is also why Dependabot's own run fails with *"the available update path still resolves it to 10.2.6"*. Re-check when `@typescript-eslint` moves to `^11` |
 | `ui` root `minimatch: ^9.0.7` | **Dead dependency.** Declared directly in `ui/package.json` but imported by **zero** files. Safe to delete — but it does *not* clear the alert above, because the transitive 10.2.6 path is the one flagged. Remove it with the next dependency update rather than as a standalone lockfile rewrite |
+| `hickory-proto` advisory cluster (12 advisories, DB refresh 2026-11-17) | **Escalated, deliberately NOT suppressed** (owner decision). The 11 hickory-proto IDs (`0489, 0490, 0491, 0505, 0511, 0512, 0514, 0530, 0531, 0550, 0551`) plus `RUSTSEC-2026-0543` (chrono unmaintained) are all blocked by the polkadot-sdk pin (`libp2p 0.54.1` → `hickory 0.24.x`). See [`SDK_BUMP_ADVISORY_CLUSTER.md`](SDK_BUMP_ADVISORY_CLUSTER.md); CI stays red until the SDK moves |
+| `next@16.4.3` in `ui` + `belizechain.org` | Medium advisory, first patched **16.4.5**. A lockfile bump; re-verify with the rendered-page checks in §3.5c afterwards |
+| `dnspython 2.9.1` in `pakit-storage` | High advisory, first patched **2.9.2**. One-line bump in `pakit_requirements.txt`. The nine `aiohttp` high alerts alongside it are **stale scan state** — the pin is already `3.14.4`, the patched version |
 
 ---
 
 ## 5. Sequence that minimises rework
 
-1. **1.2** (re-genesis spec) before any re-genesis, ever — it is the only item
+1. **1.3** — rotate `BELIECHAIN_CI_TOKEN`. It is a weekly chore under the 7-day policy, and
+   until it is done the docs gate is red for a reason unrelated to the docs.
+2. **1.2** (re-genesis spec) before any re-genesis, ever — it is the only item
    that silently undoes today's work.
-2. **2.3 → 2.1 → 2.2** — seat oracles, then register `.bz` names, then seed DALLA
-   pools. Names and pools are both governance acts and both need operators for
-   their price/attestation gates to mean anything.
-3. ~~**Push the three finished repos**~~ — **done 2026-11-07.** `nawal-ai`,
-   `kinich-quantum`, `gem`, `pakit-storage`, `ui`, `infra`, `belizechain.org` and
-   `belizechain` are all pushed and their trees are clean.
-4. **2.4** — grow the validator set before anything that assumes >1 authority.
-5. **1.1** — DEX bootstrap, once funded deliberately.
-6. **1.5** — redeploy the faucet after the address repin is planned; it is
-   self-contained and unblocks onboarding on its own.
-7. **3.3** — approve kinich's queued dismissals (Security tab, one click each),
-   then **3.6** UI last. `gem` 3.4 and `infra` 3.5 are done; the only infra item
-   left is the third-party backup target, which is an owner decision.
+3. **2.4** — grow the validator set before anything that assumes >1 authority.
+   `session.validators` is still **1** (measured 2026-11-17).
+4. **2.1 → 2.2** — register `.bz` names, then seed the TourismDALLA pool. Names and pools
+   are both governance acts; 2.3 (oracle operators) is already done.
+5. **1.6** — the boot-spec dev-key decision. Needs a re-genesis, so it only becomes
+   actionable alongside item 2.
+6. **3.4 / 3.5 / 3.3 / 3.6** — 3.4 (faucet) and 3.3 (kinich) are done, 3.5 has one
+   owner decision left (third-party backup target), and 3.6 UI is last by design.
+7. **Dependency trio from §4** — `dnspython 2.9.2`, `next 16.4.5`, and the
+   RUSTSEC-2026-0487 suppression. All three are small and independent.

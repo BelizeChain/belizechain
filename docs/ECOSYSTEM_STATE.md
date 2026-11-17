@@ -35,15 +35,15 @@ value inline, so the next agent can see what moved.
 
 ## 2. Live state
 
-### 2.1 Chain — verified 2026-11-09 21:31 UTC
+### 2.1 Chain — verified 2026-11-17 16:40 UTC
 
 | | |
 |---|---|
 | Chain name | **Jade** (Chain D) |
 | Genesis | `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef` |
 | Runtime | **spec_version 126 live** · transaction 4. Deployed 2026-11-10; repo and chain agree |
-| Head (2026-11-10 11:10) | **#500,567**, advancing at ~6 s/block |
-| Epoch | **duration 300 slots** — unchanged across the 117 → 121 → 122 → 123 → 124 → 126 upgrades |
+| Head (2026-11-17 16:40) | **#601,580** (finalized 601,578), advancing at ~6.5 s/block |
+| Epoch | **duration 300 slots**, epoch index **2005** — unchanged across the 117 → 121 → 122 → 123 → 124 → 126 upgrades |
 | Peers | 0 (`shouldHavePeers: false` — single node, expected) |
 | Repo agreement | ✅ repo 126 = chain 126. `transaction_version` moved 3 → 4 with 125, so clients must re-read metadata |
 
@@ -586,7 +586,7 @@ The blob for the previous version was **not** kept as an artifact before this up
 **before** submitting, which is the rollback path. It exists only on one workstation; no
 copy has been placed on Ceiba.
 
-### 4.0a OPEN — genesis stamps every council seat as `Founder`, which contradicts the role's own cap
+### 4.0a ✅ RESOLVED 2026-11-07 — genesis council roles are assigned from a seat ladder
 
 Found 2026-10-27 while reading the new `belizechain_governanceCouncil` RPC on the live chain:
 all 3 seated members report `role: "Founder"`, but `BoardRole::Founder.max_count()`
@@ -611,8 +611,16 @@ Two ways to close it, both governance decisions rather than code-only ones:
 2. Migration — reassign the live 3 seats and bump `CURRENT_RUNTIME_VERSION`. Only
    worth it if the live roster's shape matters before the next re-genesis.
 
-Not fixed in this pass on purpose: both routes change seated-council semantics,
-which is the owner's call, and neither unblocks anything else.
+**Resolved on 2026-11-07** by the genesis route, before the next re-genesis: `GENESIS_SEAT_LADDER`
+(`pallets/governance/src/lib.rs:752`) hands out one role per seat (Founder, TechnicalSteward,
+FSCRepresentative, …) and asserts when the input exceeds the ladder, so a 12-seat roster reads
+as the bicameral structure it is. Genesis now also recomputes `BoardComposition` from the seats
+it writes, closing the second half — `add_board_member` reads that counter, so a further Founder
+could previously be appointed while the invariant looked satisfied.
+
+**Verified live, 2026-11-17**, rather than taken from the commit: `belizechain_governanceCouncil`
+returns **Founder ×1** (`r1UTSEND…`) and **TechnicalSteward ×1** (`r1T2JCTa…`), matching
+`boardComposition` exactly. The old observation — three seats all reporting `Founder` — is gone.
 
 ### 4.1 Honesty sweep (Tier-2 code audit) — IN PROGRESS
 
@@ -1247,6 +1255,31 @@ Security tab, or `gh auth refresh -s security_events`.
   `profiles: ["relayer"]` gate and no container exists. Clearing it needs `hardhat` to move
   to zod 4 upstream; an `overrides` pin would break the dev toolchain for no runtime gain.
 
+**Re-measured 2026-11-17 — two regressions and three fixes landed since the table above.**
+
+- 🔴 **Code Security is disabled again on all six private repos.** `GET /code-scanning/alerts`
+  returns `403 Code Security must be enabled for this repository`, so `infra`,
+  `kinich-quantum`, `nawal-ai`, `pakit-storage`, `gem` and `belizechain.org` are **blind a
+  second time**. This is the exact state §5 warns about: their "0 open" is an absence of
+  data, not absence of findings. It also explains the **CodeQL `configuration error`** in
+  `kinich-quantum` and `nawal-ai` Security Audit runs on 2026-11-16 — the upload is rejected.
+  Re-enabling is a billing/add-on decision, not a code fix.
+- **`belizechain` Security Audit is red for a new advisory, RUSTSEC-2026-0487**
+  (`hickory-proto`, panic on malformed `alpn` while parsing SVCB/HTTPS **text/zone-file**
+  records). Issued 2026-11-11, patched `>=0.26.2`, unaffected `<0.20.1`. The node resolves
+  the 0.24.x line via `hickory-resolver 0.24.4 ← libp2p-dns 0.42.0 ← libp2p 0.54.1`, so it
+  needs the same libp2p-dns ≥0.45 bump that blocks RUSTSEC-2026-0381 — upstream-blocked.
+  Wire-format decoding is **not** affected, and the node's `bootNodes` is empty, so it is
+  not reachable here. **Owner decision 2026-11-17: escalate, do not suppress** — the
+  advisory and the ten siblings found in the same DB refresh stay visible in CI, and a
+  scoped SDK-bump task tracks the only real fix. See
+  [`plans/SDK_BUMP_ADVISORY_CLUSTER.md`](plans/SDK_BUMP_ADVISORY_CLUSTER.md).
+- **`pakit-storage` pins `dnspython 2.9.1`; the fix is `2.9.2`** — a one-line bump.
+  Its nine `aiohttp` high alerts are **stale scan state**: the pin is already `3.14.4`, which
+  is the first patched version. The pending Dependabot re-scan should clear them.
+- **`ui` and `belizechain.org` both resolve `next@16.4.3`; the advisory fixes at `16.4.5`.**
+  A lockfile bump, not a source change.
+
 ### 4.3 Runtime upgrade track
 
 - **Rule that must not be broken:** every runtime build passes
@@ -1260,6 +1293,10 @@ Security tab, or `gh auth refresh -s security_events`.
 - Upgrades are applied as a hot `sudo.sudo(System::set_code)` — **never** a regenerated
   spec (`testnet-spec.json` is gitignored and pins genesis). Rollback blob hashes live in
   `docs/operations/CEIBA_OPERATIONS_RUNBOOK.md`.
+- **Current node image: `belizechain/ceiba-node:ac61adc-spec126-20261111`** — verified at
+  parity with the client surface on 2026-11-17 (`check-node-image-parity.sh --remote
+  ceiba`: contains `node/9baeede`, embedded `runtime/7bf4a70` @ spec 126). The host pin and
+  `scripts/check-node-image-parity.sh` agree, so the spec-124 image below is superseded.
 - **Node image rebuilt 2026-10-27** (`01d51bb-spec124-20261027`) to ship the four
   RPC servers (governance/staking/bridge/oracle) that 123's runtime APIs did not
   expose on their own. Built **on Ceiba** from an rsynced source tree, because the
@@ -1534,12 +1571,11 @@ falsifies it. In-repo scripts that run inside the container default to `ws://cei
   a host migration.
 
 **Blocked — needs a decision:**
-- 🔴 **`ui` and `gem` do not track the agent surface at all.** Both exclude `.github/agents/`,
-  `.github/hooks/`, `.github/instructions/`, `.github/prompts/` in **`.git/info/exclude`** — a
-  per-clone file that is never pushed. The surface in those two repos therefore exists only
-  on this machine, edits to it are invisible to `git status`, and a fresh clone gets nothing.
-  Until that is lifted, "all 8 repos share one profile" is true only locally. (The same file
-  also hides `ui`'s `blue-hole-portal/test-results/`, which is legitimate.)
+- ✅ **`ui` and `gem` DO track the agent surface — verified 2026-11-17.** Both report all
+  seven files under `git ls-files .github/{agents,hooks,instructions,prompts}`. The only
+  entry left in `ui`'s `.git/info/exclude` is `blue-hole-portal/test-results/`, which is
+  legitimate; `gem`'s carries no exclusions at all. This entry said the surface existed
+  only on one machine until 2026-11-17; that had already been fixed.
 - ✅ **`ui/blue-hole-portal/src/app/page.tsx` — the fabricated validator panel is GONE**
   (verified 2026-10-21). It was removed in `ba29bba` ("stop the portal fabricating its
   validator fleet"). The panel now maps over `useStaking()` — i.e. `staking.validators` —
