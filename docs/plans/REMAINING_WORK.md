@@ -46,7 +46,7 @@ print(p.get('sudo')); print(str(p.get('session'))[:120])"
 
 | # | Item | Measured state | What unblocks it |
 |---|---|---|---|
-| 2.1 | **Pakit `.bz` web hosting** | `bns.totalDomains = 0` — no domain has ever been registered. | Register `.bz` names on the live chain. Hosting resolves nothing while the registry is empty; this is data, not code. |
+| 2.1 | **Pakit `.bz` web hosting** | **Four names registered 2026-11-17** — `belizechain.bz`, `pakit.bz`, `maya.bz`, `portal.bz`, Standard tier, 100 DALLA each to the treasury, owned by the sudo account (`r1T7BYVA…`). `bns.totalDomains = 4`. **Hosting is still empty**: no `activate_hosting` call has been made, so `HostedWebsites` is 0 and nothing resolves. | Call `bns.activate_hosting(name, tier, content_hash, auto_renew)` with a real Pakit content hash. This is now two writes, not a registry bootstrap. |
 | 2.2 | **DALLA/BZD trading** | ✅ **RESOLVED 2026-11-09 for `DALLA/bBZD`** — re-measured 2026-11-17: pair `[0,1]` holds **100,299.28 DALLA / 199,403.23 bBZD** (LP tokens 141,421.36). Still open: `TourismDALLA/bBZD` (`[2,1]`) is **0/0**, and `WUSDC/bBZD` (`[3,1]`) holds only 10/20. | Seed the TourismDALLA pool the same way, or drop the pair. `AssetId` order is `DALLA=0, BBZD=1, TourismDALLA=2, WUSDC=3`. |
 | 2.3 | **Oracle consensus** | ✅ **RESOLVED 2026-11-09** — `oracle.oracleOperators` now has **3** entries, seated by 1.1 and reused for the bridge-validator KYC quorum. | Nothing; the guards are no longer shipped against an empty operator set. |
 | 2.4 | **Real validator set** | `staking.validators` = 2, `session.validators` = **1**. | Bring up additional nodes; a single authority is a single point of failure and a mainnet blocker (`MAINNET_READINESS` §3.2). |
