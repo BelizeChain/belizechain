@@ -46,8 +46,8 @@ print(p.get('sudo')); print(str(p.get('session'))[:120])"
 
 | # | Item | Measured state | What unblocks it |
 |---|---|---|---|
-| 2.1 | **Pakit `.bz` web hosting** | **Four names registered 2026-11-17** — `belizechain.bz`, `pakit.bz`, `maya.bz`, `portal.bz`, Standard tier, 100 DALLA each to the treasury, owned by the sudo account (`r1T7BYVA…`). `bns.totalDomains = 4`. **Hosting is still empty**: no `activate_hosting` call has been made, so `HostedWebsites` is 0 and nothing resolves. | Call `bns.activate_hosting(name, tier, content_hash, auto_renew)` with a real Pakit content hash. This is now two writes, not a registry bootstrap. |
-| 2.2 | **DALLA/BZD trading** | ✅ **RESOLVED 2026-11-09 for `DALLA/bBZD`** — re-measured 2026-11-17: pair `[0,1]` holds **100,299.28 DALLA / 199,403.23 bBZD** (LP tokens 141,421.36). Still open: `TourismDALLA/bBZD` (`[2,1]`) is **0/0**, and `WUSDC/bBZD` (`[3,1]`) holds only 10/20. | Seed the TourismDALLA pool the same way, or drop the pair. `AssetId` order is `DALLA=0, BBZD=1, TourismDALLA=2, WUSDC=3`. |
+| 2.1 | **Pakit `.bz` web hosting** | ✅ **WORKING 2026-11-17 for `pakit.bz`.** Four names registered 2026-11-17 (`belizechain.bz`, `pakit.bz`, `maya.bz`, `portal.bz`; Standard tier, 100 DALLA each to treasury, owned by the sudo account). `bns.activateHosting('pakit.bz', 0, 0xbec6162a…, false)` finalized `0x78cc1f45…`; `HostedWebsites` now has 1 entry (Free tier, `expiresAt` 1033993). Pakit serves it at `https://testnet.belizechain.org/api/pakit/sites/pakit.bz` — **200 `text/html`, and the served bytes hash to exactly the committed content address**. Still unhosted: `belizechain.bz`, `maya.bz`, `portal.bz` (each returns an explicit 404 naming the empty `HostedWebsites` record). | Upload a document, then `bns.activateHosting(name, 0, <32-byte content address>, false)` **signed by the domain owner** — this chain's `sudo` dispatches its inner call with Root, so wrapping an `ensure_signed` call in `sudo.sudo` fails `BadOrigin`. |
+| 2.2 | **DALLA/BZD trading** | ✅ **RESOLVED 2026-11-09 for `DALLA/bBZD`** — re-measured 2026-11-17: pair `[0,1]` holds **100,299.28 DALLA / 199,403.23 bBZD** (LP tokens 141,421.36). ✅ **`TourismDALLA/bBZD` (`[2,1]`) seeded 2026-11-17**: 10,000 DALLA + 19,880.82 bBZD, LP 14,099.94, then a 10 DALLA swap settled at **−10.000257 DALLA / +19.813344 bBZD**. Remaining thin pair: `WUSDC/bBZD` (`[3,1]`) holds only 10/20. | Fund `[3,1]` the same way, or drop the pair. `AssetId` order is `DALLA=0, BBZD=1, TourismDALLA=2, WUSDC=3`. Note `TourismDALLA` is a fee/discount flag over the **DALLA ledger**, not a separate asset. |
 | 2.3 | **Oracle consensus** | ✅ **RESOLVED 2026-11-09** — `oracle.oracleOperators` now has **3** entries, seated by 1.1 and reused for the bridge-validator KYC quorum. | Nothing; the guards are no longer shipped against an empty operator set. |
 | 2.4 | **Real validator set** | `staking.validators` = 2, `session.validators` = **1**. | Bring up additional nodes; a single authority is a single point of failure and a mainnet blocker (`MAINNET_READINESS` §3.2). |
 
@@ -58,6 +58,7 @@ node -e '
 const {ApiPromise,WsProvider}=require("@polkadot/api");
 (async()=>{const api=await ApiPromise.create({provider:new WsProvider("wss://testnet.belizechain.org/ws"),noInitWarn:true});
 console.log("bns", (await api.query.bns.totalDomains()).toString());
+console.log("hosted", (await api.query.bns.hostedWebsites.entries()).length);
 for (const [k,v] of await api.query.belizeX.tradingPairs.entries()) console.log(k.args[0].toString(), v.baseReserve.toString(), v.quoteReserve.toString());
 console.log("session", (await api.query.session.validators()).toJSON().length);
 await api.disconnect();})()'
@@ -85,11 +86,15 @@ are marked DONE, and finding 15 was closed on the live host on 2026-11-01:
 | The served model is the **bounded bootstrap checkpoint** (1.7M params, `bounded_run: true`) | Proves the pipeline, not model quality. No doc may claim otherwise |
 | `/model/info` serves absolute workstation paths (`/home/wicked/Projects/...`) to an unauthenticated endpoint | Accepted deliberately; revisit if the endpoint stays public |
 
-### 3.2 `pakit-storage` — blocked on 2.1
+### 3.2 `pakit-storage` — hosting works for one domain
 
-Storage engine, DAG and merkle proofs are independently testable; **web hosting is
-dead by data** (`bns.totalDomains = 0`), and payments are off. Do not tune hosting
-before names exist.
+Storage engine, DAG and merkle proofs are independently testable, and web hosting
+is no longer a dead path: `pakit.bz` is served from the chain record at
+`/api/pakit/sites/pakit.bz` (verified 2026-11-17). Three registered names remain
+unhosted, and payments are off. Two defects had to be fixed first — the on-chain
+content hash was a blake2b digest of the CID *string* (unresolvable), and no route
+read `HostedWebsites` at all. Both are fixed in `pakit@a06f3be`; the live pin is
+`belizechain/pakit-storage:a06f3be-sites-20261117`.
 
 ### 3.3 `kinich-quantum` — 25 alerts, all one rule, proven false positives, **dismissal blocked**
 

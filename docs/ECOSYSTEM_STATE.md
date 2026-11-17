@@ -218,7 +218,7 @@ no `runtime_version` method — using it returns nothing and looks like a dead n
 | `ceiba-node` | `belizechain/ceiba-node:ac61adc-spec126-20261111` | `01d51bb-spec124-20261027` (`.env.bak-pre-node-20261111`) |
 | `api-gateway` | `belizechain/api-gateway:f150ac4-20261111` | `70327ddb-20261021` (`.env.bak-pre-services-20261111`) |
 | `indexer` | `belizechain/indexer:f150ac4-20261111` | `c2b70fc-metrics-20261021` (`.env.bak-pre-indexer-20261111`) |
-| `pakit` | `belizechain/pakit-storage:61c7bbe-20261111` | `daece63` (`.env.bak-pre-services-20261111`) |
+| `pakit` | `belizechain/pakit-storage:a06f3be-sites-20261117` | `61c7bbe-20261111` (`.env.pre-pakit-a06f3be-20261117`) |
 | `kinich` | `belizechain/kinich-quantum:e60ae87-20261111` | `b1a048f-clean-20261022` (`.env.bak-pre-services-20261111`) |
 | `ui` | `belizechain/blue-hole-portal:b504258-ceiba-20261109` | previous pin, see `.env` backups |
 | `maya` | `belizechain/maya-wallet:b504258-ceiba-20261109` | previous pin, see `.env` backups |
@@ -239,6 +239,22 @@ the running image gives `epoch_length 300` / `slot_duration 6000`, and
 `scripts/check-node-image-parity.sh --remote ceiba` reports
 `✅ Node image is at parity with the client surface`. That check also **failed** against
 the previous pin — the old image predated `node/9baeede`, so the release gate had been red.
+
+**2026-11-17 — `pakit` moved to `a06f3be-sites-20261117` for `.bz` hosting.** Two defects
+had to be fixed before a hosted domain could serve anything (both in `pakit@a06f3be`):
+`_content_hash()` blake2b'd the *text* of a content id, so the on-chain value was a digest
+nothing could resolve, and no route read `Bns.HostedWebsites` at all. The new
+`GET|HEAD /sites/{domain}[/{path}]` reads the chain record on every request (bypassing the
+connector's domain cache), fetches the blob from the DAG and serves it with a sandboxed CSP
+— user-uploaded HTML must not run script on the API origin. The global security middleware
+was overwriting CSP *after* the route returned, so the sandbox policy was silently lost; the
+default now applies only when a route has not set one.
+
+Verified live: `https://testnet.belizechain.org/api/pakit/sites/pakit.bz` → **200
+`text/html`, 3855 B**, and the served bytes' `sha256` equals the content address committed
+on chain (`bec6162a…`). `…/index.html` → 200; `…/about` → 404; unhosted `maya.bz` → 404 with
+an explicit reason. nginx needed `-s reload` after the recreate (fixed upstream names are
+resolved once per worker).
 
 ⚠️ **`.env` backups are the rollback mechanism**, not a documented previous-tag list.
 Before any pin change the live file is copied to `.env.bak-pre-<change>-<stamp>`; to roll
