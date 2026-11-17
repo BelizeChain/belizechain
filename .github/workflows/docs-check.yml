@@ -69,26 +69,90 @@ jobs:
     name: 📄 Docs claims vs reality (all repos)
     runs-on: ubuntu-latest
     steps:
-      - name: Check the cross-repo token is present AND still valid
+      # Auth. A GitHub App mints a ~1 h installation token, so there is no
+      # long-lived credential to expire. The fine-grained PAT remains supported as
+      # a fallback during migration — but every PAT has a fixed expiry date and
+      # this one has already lapsed twice (2026-11-09 and 2026-11-17), each time
+      # silently disabling the cross-repo half of this check.
+      - name: Choose the credential
+        id: creds
+        env:
+          # App `belizechain-ci`: numeric App ID 5805299, Client ID
+          # Iv23liW8yapCpVxCaVML. Both are the same App; `BELIECHAIN_APP_ID` holds
+          # the numeric one. The Client ID name is honoured first so either secret
+          # can be set without editing this file.
+          APP_ID: ${{ secrets.BELIECHAIN_APP_CLIENT_ID || secrets.BELIECHAIN_APP_ID }}
+          APP_KEY: ${{ secrets.BELIECHAIN_APP_PRIVATE_KEY }}
+          PAT: ${{ secrets.BELIECHAIN_CI_TOKEN }}
+        run: |
+          if [ -n "$APP_ID" ] && [ -n "$APP_KEY" ]; then
+            echo "mode=app" >> "$GITHUB_OUTPUT"
+          elif [ -n "$PAT" ]; then
+            echo "mode=pat" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=none" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Scoped to the six PRIVATE repos. `belizechain` is this repo (checked out
+      # with the workflow's own token) and `ui` is public, so listing either here
+      # would be wrong: a token scoped to the private set returns 404 for a public
+      # repo, which is the exact trap that broke the `ui` checkout before.
+      - name: Mint a GitHub App installation token
+        id: app
+        if: steps.creds.outputs.mode == 'app'
+        uses: actions/create-github-app-token@v3
+        with:
+          # `app-id` is the documented legacy input and takes the numeric App ID
+          # (5805299), which is what BELIECHAIN_APP_ID holds. The newer `client-id`
+          # input takes the Iv23li… string instead; BELIECHAIN_APP_CLIENT_ID wins if
+          # ever set, so either shape of secret works without editing this file.
+          app-id: ${{ secrets.BELIECHAIN_APP_CLIENT_ID || secrets.BELIECHAIN_APP_ID }}
+          private-key: ${{ secrets.BELIECHAIN_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: >-
+            infra,kinich-quantum,nawal-ai,pakit-storage,gem,belizechain.org
+          # Downscope the minted token to contents:read. Supplying any
+          # `permission-*` input replaces the App's full grant, so a token that
+          # leaked out of this job could still only read — and would still expire
+          # within the hour. The checker makes no GitHub API calls of its own
+          # (verified: no curl/`gh api` anywhere under scripts/doc-claims/), so
+          # read is the whole requirement.
+          permission-contents: read
+
+      - name: Verify the credential is present AND can read the private siblings
         id: token
         env:
-          TOKEN: ${{ secrets.BELIECHAIN_CI_TOKEN }}
+          MODE: ${{ steps.creds.outputs.mode }}
+          APP_TOKEN: ${{ steps.app.outputs.token }}
+          PAT: ${{ secrets.BELIECHAIN_CI_TOKEN }}
         run: |
-          if [ -z "$TOKEN" ]; then
+          if [ "$MODE" = "none" ]; then
             echo "present=false" >> "$GITHUB_OUTPUT"
-            message="BELIECHAIN_CI_TOKEN is not set, so the sibling repos could not"
-            message="$message be checked out. The cross-repo half of this check — the"
-            message="$message half that catches a call to an extrinsic that does not"
-            message="$message exist — is NOT gating this commit."
+            message="Neither BELIECHAIN_APP_ID/BELIECHAIN_APP_PRIVATE_KEY nor"
+            message="$message BELIECHAIN_CI_TOKEN is set, so the sibling repos could"
+            message="$message not be checked out. The cross-repo half of this check —"
+            message="$message the half that catches a call to an extrinsic that does"
+            message="$message not exist — is NOT gating this commit."
             echo "::warning title=Cross-repo checks did not run::$message"
             exit 0
           fi
 
-          # A secret is an opaque stored string: when the PAT expires, GitHub does
-          # not blank it. `present` would stay true and every checkout below would
-          # fail with a bare 404 — which reads as "the repo was deleted" instead of
-          # "rotate the token". Probe the credential so the failure names the cause.
-          # `gem` is private, so HTTP 200 here also proves access to the private set.
+          if [ "$MODE" = "app" ]; then
+            TOKEN="$APP_TOKEN"
+            if [ -z "$TOKEN" ]; then
+              echo "::error title=GitHub App token could not be minted::The App secrets are set but actions/create-github-app-token returned nothing. Check that App belizechain-ci (numeric id 5805299) is installed on the BelizeChain org with exactly the six private repositories selected, and that BELIECHAIN_APP_PRIVATE_KEY holds a key generated after the App was last edited."
+              exit 1
+            fi
+          else
+            TOKEN="$PAT"
+          fi
+
+          # A credential is an opaque stored string: when a PAT expires — or a key
+          # is rotated — GitHub does not blank it. `present` would stay true and
+          # every checkout below would fail with a bare 404, which reads as "the
+          # repo was deleted" instead of "rotate the credential". Probe it so the
+          # failure names the cause. `gem` is private, so HTTP 200 here also proves
+          # access to the private set.
           url="https://api.github.com/repos/${GITHUB_REPOSITORY_OWNER}/gem"
           status=$(curl -sS -o /dev/null -w '%{http_code}' \
             -H "Authorization: Bearer ${TOKEN}" \
@@ -101,15 +165,15 @@ jobs:
               echo "present=true" >> "$GITHUB_OUTPUT"
               ;;
             401)
-              echo "::error title=BELIECHAIN_CI_TOKEN has expired::The secret exists but GitHub rejected it (HTTP 401). Fine-grained PATs expire on a fixed date. Mint a replacement with Contents: read-only on infra, kinich-quantum, nawal-ai, pakit-storage, gem and belizechain.org, then run: gh secret set BELIECHAIN_CI_TOKEN -R ${GITHUB_REPOSITORY}"
+              echo "::error title=The cross-repo credential is invalid (HTTP 401)::In app mode the private key no longer matches BELIECHAIN_APP_PRIVATE_KEY; in pat mode BELIECHAIN_CI_TOKEN has expired. In pat mode, replace it with a GitHub App instead of another PAT — a PAT always lapses again. Run: gh secret set BELIECHAIN_APP_ID -R ${GITHUB_REPOSITORY} and gh secret set BELIECHAIN_APP_PRIVATE_KEY -R ${GITHUB_REPOSITORY}."
               exit 1
               ;;
             404)
-              echo "::error title=BELIECHAIN_CI_TOKEN is valid but cannot read the private siblings::HTTP 404 for ${url}. Two causes, both worth checking: (a) under Repository access the six private repos must be explicitly selected — infra, kinich-quantum, nawal-ai, pakit-storage, gem, belizechain.org; (b) if the org requires approval for fine-grained PATs, the token sits pending until an org owner approves it. Check pending requests at https://github.com/organizations/BelizeChain/settings/personal-access-tokens."
+              echo "::error title=The credential is valid but cannot read the private siblings::HTTP 404 for ${url}. In app mode, install the App on the BelizeChain org and select exactly these six repositories — infra, kinich-quantum, nawal-ai, pakit-storage, gem, belizechain.org. In pat mode, the six must likewise be explicitly selected, and if the org requires approval for fine-grained PATs the token sits pending until an org owner approves it (https://github.com/organizations/BelizeChain/settings/personal-access-tokens)."
               exit 1
               ;;
             *)
-              echo "::error title=Could not verify BELIECHAIN_CI_TOKEN::Unexpected HTTP ${status} from ${url}."
+              echo "::error title=Could not verify the cross-repo credential::Unexpected HTTP ${status} from ${url}."
               exit 1
               ;;
           esac
@@ -140,8 +204,8 @@ jobs:
         if: steps.token.outputs.present == 'true'
         uses: actions/checkout@v7
         with:
-          # No `token:` — `ui` is public, and the PAT is scoped to the private six
-          # only, so passing it here would 404 once the token is correctly scoped.
+          # No `token:` — `ui` is public, and the credential is scoped to the
+          # private six only, so passing it here would 404.
           repository: ${{ github.repository_owner }}/ui
           path: ui
 
@@ -150,7 +214,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: ${{ github.repository_owner }}/infra
-          token: ${{ secrets.BELIECHAIN_CI_TOKEN }}
+          token: ${{ steps.app.outputs.token || secrets.BELIECHAIN_CI_TOKEN }}
           path: infra
 
       - name: Check out kinich-quantum
@@ -158,7 +222,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: ${{ github.repository_owner }}/kinich-quantum
-          token: ${{ secrets.BELIECHAIN_CI_TOKEN }}
+          token: ${{ steps.app.outputs.token || secrets.BELIECHAIN_CI_TOKEN }}
           path: kinich-quantum
 
       - name: Check out nawal-ai
@@ -166,7 +230,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: ${{ github.repository_owner }}/nawal-ai
-          token: ${{ secrets.BELIECHAIN_CI_TOKEN }}
+          token: ${{ steps.app.outputs.token || secrets.BELIECHAIN_CI_TOKEN }}
           path: nawal-ai
 
       - name: Check out pakit-storage
@@ -174,7 +238,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: ${{ github.repository_owner }}/pakit-storage
-          token: ${{ secrets.BELIECHAIN_CI_TOKEN }}
+          token: ${{ steps.app.outputs.token || secrets.BELIECHAIN_CI_TOKEN }}
           path: pakit-storage
 
       - name: Check out gem
@@ -182,7 +246,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: ${{ github.repository_owner }}/gem
-          token: ${{ secrets.BELIECHAIN_CI_TOKEN }}
+          token: ${{ steps.app.outputs.token || secrets.BELIECHAIN_CI_TOKEN }}
           path: gem
 
       - name: Check out belizechain.org
@@ -190,17 +254,17 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: ${{ github.repository_owner }}/belizechain.org
-          token: ${{ secrets.BELIECHAIN_CI_TOKEN }}
+          token: ${{ steps.app.outputs.token || secrets.BELIECHAIN_CI_TOKEN }}
           path: belizechain.org
 
       - name: Run doc-claims checker across the workspace
         run: ./belizechain/scripts/doc-claims/check-doc-claims.sh belizechain
 
-      # Without the token the previous step ran in local-only mode, where six
+      # Without a credential the previous step ran in local-only mode, where six
       # cross-repo checks report SKIP. On the nightly run that is a failure, not
       # a warning: an unmonitored gap is how the last one survived.
       - name: Fail the nightly run when cross-repo checks could not run
         if: steps.token.outputs.present != 'true' && github.event_name == 'schedule'
         run: |
-          echo "::error title=Cross-repo doc-claims never ran::Add a BELIECHAIN_CI_TOKEN secret — a fine-grained PAT with Contents: read on the six private sibling repos (infra, kinich-quantum, nawal-ai, pakit-storage, gem, belizechain.org). Until then run ./belizechain/scripts/doc-claims/check-doc-claims.sh belizechain locally from the workspace root."
+          echo "::error title=Cross-repo doc-claims never ran::No cross-repo credential is configured. Create a GitHub App with Contents: Read-only, install it on the BelizeChain org for these six repositories (infra, kinich-quantum, nawal-ai, pakit-storage, gem, belizechain.org), then set BELIECHAIN_APP_ID and BELIECHAIN_APP_PRIVATE_KEY. Until then run ./belizechain/scripts/doc-claims/check-doc-claims.sh belizechain locally from the workspace root."
           exit 1
