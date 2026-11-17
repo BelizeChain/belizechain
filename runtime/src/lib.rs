@@ -848,7 +848,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     //
     //   No storage, extrinsic index or `transaction_version` change: the guard
     //   logic itself is unchanged, only the input it can no longer be fed.
-    spec_version: 126,
+    spec_version: 127,
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,
     // Adding call indices to a live pallet is additive, but the version
@@ -2268,6 +2268,7 @@ impl pallet_belize_bns::Config for Runtime {
     type Identity = BnsIdentityProvider; // KYC integration
     type GovernanceOrigin = GovernanceCouncilMajority; // Governance for external domain verification
     type MaxContentVersions = ConstU32<50>; // CRIT-1 FIX: Cap content history per domain
+    type MaxExpiriesPerBlock = ConstU32<64>; // Bounds the per-block hosting expiry sweep
 
     #[cfg(feature = "runtime-benchmarks")]
     fn seed_bench_kyc(account: &AccountId, level: u8) {

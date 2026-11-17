@@ -99,6 +99,7 @@ parameter_types! {
     pub const MaxDomainLength: u32 = 64;
     pub const MaxTextRecords: u32 = 20;
     pub const MinDomainLength: u32 = 3;
+    pub const MaxExpiriesPerBlock: u32 = 64;
 }
 
 // Mock Identity Provider
@@ -132,6 +133,7 @@ impl pallet_belize_bns::Config for Test {
     type Identity = MockIdentityProvider;
     type GovernanceOrigin = frame_system::EnsureRoot<u64>;
     type MaxContentVersions = frame_support::traits::ConstU32<50>;
+    type MaxExpiriesPerBlock = MaxExpiriesPerBlock;
 }
 
 // Build genesis storage

@@ -20,6 +20,7 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
+pub mod migrations;
 pub mod types;
 pub mod weights;
 
@@ -61,11 +62,13 @@ pub mod pallet {
     /// whenever this pallet's storage layout changes in a way that needs existing
     /// state transformed.
     ///
-    /// Deliberately still 0: `PrimaryDomain` was added in spec 110, but adding a
-    /// new map is additive — no existing key or value encoding changed, so there is
-    /// nothing to migrate. Bump only when existing entries need rewriting.
+    /// - 0 → 1 (spec 127): `HostingExpiries` added so `on_initialize` can find
+    ///   lapsed hosting subscriptions without scanning `HostedWebsites`.
+    ///   `MigrateV0ToV1` backfills the index; nothing else is rewritten.
+    /// - 0 was deliberate for the earlier `PrimaryDomain` addition in spec 110:
+    ///   a new map is additive, so there was nothing to migrate.
     pub const STORAGE_VERSION: frame_support::traits::StorageVersion =
-        frame_support::traits::StorageVersion::new(0);
+        frame_support::traits::StorageVersion::new(1);
 
     #[pallet::pallet]
     #[pallet::storage_version(STORAGE_VERSION)]
@@ -117,6 +120,14 @@ pub mod pallet {
         /// Maximum content versions to retain per domain (CRIT-1 fix)
         #[pallet::constant]
         type MaxContentVersions: Get<u32>;
+
+        /// Maximum hosting subscriptions whose expiry falls on the same block.
+        ///
+        /// Bounds the work `on_initialize` may do at one height. Reaching it
+        /// would take that many paid subscriptions activated in the same block,
+        /// which the per-block fee cost already makes impractical.
+        #[pallet::constant]
+        type MaxExpiriesPerBlock: Get<u32>;
     }
 
     // ==================== STORAGE ====================
@@ -183,6 +194,26 @@ pub mod pallet {
         Blake2_128Concat,
         BoundedVec<u8, T::MaxDomainLength>,
         HostingInfo<T::AccountId, BlockNumberFor<T>>,
+    >;
+
+    /// Domains whose paid hosting expires at a given block.
+    ///
+    /// `Expires` is in the value, not the key, so finding lapsed subscriptions by
+    /// scanning `HostedWebsites` is the only alternative — and a per-block scan of
+    /// every hosted domain does not fit in a block. This index is what makes the
+    /// sweep bounded.
+    ///
+    /// Entries are hints, never authority: the sweep re-reads the record and
+    /// skips it when the expiry has since moved (a renewal) or the tier is free.
+    /// That is why `renew_hosting` may leave a stale entry behind instead of
+    /// rewriting the old bucket.
+    #[pallet::storage]
+    pub type HostingExpiries<T: Config> = StorageMap<
+        _,
+        Twox64Concat,
+        BlockNumberFor<T>,
+        BoundedVec<BoundedVec<u8, T::MaxDomainLength>, T::MaxExpiriesPerBlock>,
+        ValueQuery,
     >;
 
     /// External domain mapping (.com, .org, .net, etc.)
@@ -309,6 +340,19 @@ pub mod pallet {
         },
         /// Hosting fee collected [payer, amount]
         HostingFeeCollected { payer: T::AccountId, amount: u128 },
+        /// A paid hosting subscription lapsed and was removed [domain, subscriber]
+        ///
+        /// Named `Lapsed` rather than `Expired` because `Error::HostingExpired`
+        /// already exists and means "this call was refused because the
+        /// subscription is over"; this event is the removal itself.
+        ///
+        /// Removal is terminal for that subscription: `renew_hosting` needs the
+        /// record, so recovery is a fresh `activate_hosting` call. Domain
+        /// ownership is untouched — the sweep revokes service, not the name.
+        HostingLapsed {
+            domain: BoundedVec<u8, T::MaxDomainLength>,
+            subscriber: T::AccountId,
+        },
         /// External domain registered [domain, owner, tier: 0=Free, 1=Basic, 2=Pro, 3=Enterprise]
         ExternalDomainRegistered {
             domain: BoundedVec<u8, ConstU32<128>>,
@@ -448,6 +492,56 @@ pub mod pallet {
         MaxTextRecordsReached,
         /// No text record exists under the supplied key
         TextRecordNotFound,
+        /// Too many hosting subscriptions already expire at this block
+        ExpiryQueueFull,
+    }
+
+    // ==================== HOOKS ====================
+
+    #[pallet::hooks]
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        /// Remove paid hosting subscriptions that lapsed at this block.
+        ///
+        /// Before spec 127 `expires_at` was written on every activation and read
+        /// by nobody: the pallet gated only its own mutating calls, so a lapsed
+        /// subscriber kept being served by the read path forever. That made the
+        /// field a claim the chain did not honour.
+        ///
+        /// Free subscriptions are never indexed and never swept — a zero monthly
+        /// fee means there is no payment to miss, so expiring it would revoke
+        /// service for non-payment of nothing.
+        fn on_initialize(now: BlockNumberFor<T>) -> Weight {
+            let indexed = HostingExpiries::<T>::take(now);
+            if indexed.is_empty() {
+                // One read (the bucket) is the whole cost of a quiet block.
+                return T::DbWeight::get().reads(1);
+            }
+
+            let mut expired: u32 = 0;
+            for domain in indexed {
+                let Some(info) = HostedWebsites::<T>::get(&domain) else {
+                    // Removed through `deactivate_hosting` after being indexed.
+                    continue;
+                };
+
+                // The bucket is a hint: a renewal moves `expires_at` forward
+                // without rewriting the old entry, and a free record can never
+                // lapse. Both are skipped here rather than prevented at insert.
+                if info.monthly_fee == 0 || info.expires_at != now {
+                    continue;
+                }
+
+                HostedWebsites::<T>::remove(&domain);
+                Self::deposit_event(Event::HostingLapsed {
+                    domain,
+                    subscriber: info.subscriber,
+                });
+                expired = expired.saturating_add(1);
+            }
+
+            T::DbWeight::get()
+                .reads_writes(u64::from(expired).saturating_add(1), u64::from(expired))
+        }
     }
 
     // ==================== EXTRINSICS ====================
@@ -1048,6 +1142,11 @@ pub mod pallet {
             let current_block = frame_system::Pallet::<T>::block_number();
             let expires_at = current_block.saturating_add(BLOCKS_PER_MONTH.into());
 
+            // Index before writing the record: a subscription the sweep cannot
+            // find would be one the chain silently never expires, which is the
+            // defect this index exists to remove.
+            Self::index_expiry(&domain, expires_at, monthly_fee)?;
+
             let hosting_info = HostingInfo {
                 subscriber: who.clone(),
                 tier: hosting_tier,
@@ -1117,6 +1216,12 @@ pub mod pallet {
 
             hosting_info.expires_at = new_expiry;
             hosting_info.last_payment_at = current_block;
+
+            // Same ordering rule as `activate_hosting`: index first, so a full
+            // bucket refuses the renewal instead of leaving the record
+            // unreachable by the sweep.
+            Self::index_expiry(&domain, new_expiry, hosting_info.monthly_fee)?;
+
             HostedWebsites::<T>::insert(&domain, hosting_info);
 
             Self::deposit_event(Event::HostingRenewed {
@@ -1587,6 +1692,27 @@ pub mod pallet {
     // ==================== HELPER FUNCTIONS ====================
 
     impl<T: Config> Pallet<T> {
+        /// Record a subscription's expiry so `on_initialize` can find it.
+        ///
+        /// A free subscription is not indexed: a zero monthly fee has no payment
+        /// to miss, so it must never be swept. Silently doing nothing here is the
+        /// intended behaviour, not an omission.
+        fn index_expiry(
+            domain: &BoundedVec<u8, T::MaxDomainLength>,
+            at: BlockNumberFor<T>,
+            monthly_fee: u128,
+        ) -> DispatchResult {
+            if monthly_fee == 0 {
+                return Ok(());
+            }
+
+            HostingExpiries::<T>::try_mutate(at, |bucket| -> DispatchResult {
+                bucket
+                    .try_push(domain.clone())
+                    .map_err(|_| Error::<T>::ExpiryQueueFull.into())
+            })
+        }
+
         /// Validate domain name format
         fn validate_domain_name(
             domain: Vec<u8>,

@@ -1348,3 +1348,266 @@ fn set_primary_domain_requires_ownership() {
         );
     });
 }
+
+// ==================== HOSTING EXPIRY SWEEP ====================
+
+/// Activate hosting for `name` on tier `tier` as the domain owner.
+fn activate_hosting_as_owner(name: &[u8], tier: u8) {
+    assert_ok!(Bns::activate_hosting(
+        RuntimeOrigin::signed(1),
+        name.to_vec(),
+        tier,
+        [1u8; 32],
+        false
+    ));
+}
+
+#[test]
+fn free_hosting_is_never_indexed() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Bns::register_domain(
+            RuntimeOrigin::signed(1),
+            b"freesite".to_vec(),
+            0
+        ));
+        activate_hosting_as_owner(b"freesite", 0);
+
+        let expires_at = HostedWebsites::<Test>::get(domain_key(b"freesite"))
+            .expect("hosting record written")
+            .expires_at;
+        assert_eq!(
+            HostingExpiries::<Test>::get(expires_at).len(),
+            0,
+            "a zero monthly fee has no payment to miss, so it must not be indexed"
+        );
+    });
+}
+
+#[test]
+fn paid_hosting_is_indexed_at_its_expiry_block() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Bns::register_domain(
+            RuntimeOrigin::signed(1),
+            b"paidsite".to_vec(),
+            0
+        ));
+        activate_hosting_as_owner(b"paidsite", 1);
+
+        let info =
+            HostedWebsites::<Test>::get(domain_key(b"paidsite")).expect("hosting record written");
+        assert!(info.monthly_fee > 0);
+        assert_eq!(
+            HostingExpiries::<Test>::get(info.expires_at).into_inner(),
+            vec![domain_key(b"paidsite")],
+            "a paid subscription must be reachable by the sweep"
+        );
+    });
+}
+
+#[test]
+fn lapsed_paid_hosting_is_removed_and_announced() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Bns::register_domain(
+            RuntimeOrigin::signed(1),
+            b"lapses".to_vec(),
+            0
+        ));
+        activate_hosting_as_owner(b"lapses", 1);
+
+        let expires_at = HostedWebsites::<Test>::get(domain_key(b"lapses"))
+            .expect("hosting record written")
+            .expires_at;
+
+        // One block before expiry nothing may be removed.
+        System::set_block_number(expires_at - 1);
+        let _ = Bns::on_initialize(expires_at - 1);
+        assert!(HostedWebsites::<Test>::contains_key(domain_key(b"lapses")));
+
+        System::set_block_number(expires_at);
+        System::reset_events();
+        let _ = Bns::on_initialize(expires_at);
+
+        assert!(
+            !HostedWebsites::<Test>::contains_key(domain_key(b"lapses")),
+            "a lapsed paid subscription must stop being served"
+        );
+        assert_eq!(
+            HostingExpiries::<Test>::get(expires_at).len(),
+            0,
+            "the bucket is consumed, not left to be re-swept"
+        );
+        assert!(System::events()
+            .iter()
+            .any(|record| matches!(record.event, RuntimeEvent::Bns(Event::HostingLapsed { .. }))));
+    });
+}
+
+#[test]
+fn free_hosting_survives_its_expiry_block() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Bns::register_domain(
+            RuntimeOrigin::signed(1),
+            b"stays".to_vec(),
+            0
+        ));
+        activate_hosting_as_owner(b"stays", 0);
+
+        let expires_at = HostedWebsites::<Test>::get(domain_key(b"stays"))
+            .expect("hosting record written")
+            .expires_at;
+
+        System::set_block_number(expires_at);
+        let _ = Bns::on_initialize(expires_at);
+
+        assert!(
+            HostedWebsites::<Test>::contains_key(domain_key(b"stays")),
+            "a free subscription must never lapse — nobody failed to pay"
+        );
+    });
+}
+
+#[test]
+fn renewal_moves_the_expiry_and_the_old_entry_is_ignored() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Bns::register_domain(
+            RuntimeOrigin::signed(1),
+            b"renews".to_vec(),
+            0
+        ));
+        activate_hosting_as_owner(b"renews", 1);
+
+        let first_expiry = HostedWebsites::<Test>::get(domain_key(b"renews"))
+            .expect("hosting record written")
+            .expires_at;
+        assert_ok!(Bns::renew_hosting(
+            RuntimeOrigin::signed(1),
+            b"renews".to_vec(),
+            1
+        ));
+        let second_expiry = HostedWebsites::<Test>::get(domain_key(b"renews"))
+            .expect("hosting record written")
+            .expires_at;
+        assert!(second_expiry > first_expiry);
+
+        // The original bucket still lists the domain; the sweep must re-read the
+        // record and see that it is not due.
+        System::set_block_number(first_expiry);
+        let _ = Bns::on_initialize(first_expiry);
+        assert!(
+            HostedWebsites::<Test>::contains_key(domain_key(b"renews")),
+            "a renewal must outlive the expiry it replaced"
+        );
+    });
+}
+
+/// A lapse is terminal for that subscription: `renew_hosting` needs the record,
+/// which the sweep removed. The domain itself stays owned, so recovery is a
+/// single `activate_hosting` call, not a re-registration.
+#[test]
+fn lapsed_subscription_must_be_reactivated_not_renewed() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Bns::register_domain(
+            RuntimeOrigin::signed(1),
+            b"terminal".to_vec(),
+            0
+        ));
+        activate_hosting_as_owner(b"terminal", 1);
+
+        let expires_at = HostedWebsites::<Test>::get(domain_key(b"terminal"))
+            .expect("hosting record written")
+            .expires_at;
+        System::set_block_number(expires_at);
+        let _ = Bns::on_initialize(expires_at);
+
+        assert_noop!(
+            Bns::renew_hosting(RuntimeOrigin::signed(1), b"terminal".to_vec(), 1),
+            Error::<Test>::HostingNotActive
+        );
+        assert!(
+            DomainRegistry::<Test>::contains_key(domain_key(b"terminal")),
+            "the sweep must not revoke domain ownership, only hosting"
+        );
+        assert_ok!(Bns::activate_hosting(
+            RuntimeOrigin::signed(1),
+            b"terminal".to_vec(),
+            1,
+            [3u8; 32],
+            true
+        ));
+    });
+}
+
+#[test]
+fn deactivated_hosting_is_skipped_by_the_sweep() {
+    new_test_ext().execute_with(|| {
+        assert_ok!(Bns::register_domain(
+            RuntimeOrigin::signed(1),
+            b"gone".to_vec(),
+            0
+        ));
+        activate_hosting_as_owner(b"gone", 1);
+
+        let expires_at = HostedWebsites::<Test>::get(domain_key(b"gone"))
+            .expect("hosting record written")
+            .expires_at;
+        assert_ok!(Bns::deactivate_hosting(
+            RuntimeOrigin::signed(1),
+            b"gone".to_vec()
+        ));
+
+        System::set_block_number(expires_at);
+        System::reset_events();
+        let _ = Bns::on_initialize(expires_at);
+
+        assert!(
+            !System::events().iter().any(|record| matches!(
+                record.event,
+                RuntimeEvent::Bns(Event::HostingLapsed { .. })
+            )),
+            "a record removed by the owner must not be announced as lapsed"
+        );
+    });
+}
+
+#[test]
+fn migration_indexes_existing_paid_records_only() {
+    use crate::migrations::{MigrateV0ToV1, TARGET_VERSION};
+    use frame_support::traits::{OnRuntimeUpgrade, StorageVersion};
+
+    new_test_ext().execute_with(|| {
+        // Simulate a pre-127 chain: records exist, the index is empty.
+        StorageVersion::new(0).put::<Bns>();
+        let block = 1_000u64;
+        let expires_at = block + u64::from(BLOCKS_PER_MONTH);
+
+        let paid = HostingInfo::<u64, u64> {
+            subscriber: 1,
+            tier: HostingTier::Basic,
+            content_hash: [2u8; 32],
+            activated_at: block,
+            last_payment_at: block,
+            expires_at,
+            data_size: 1_024,
+            monthly_fee: 10_000_000_000_000,
+            auto_renew: false,
+        };
+        let free = HostingInfo::<u64, u64> {
+            monthly_fee: 0,
+            ..paid.clone()
+        };
+        HostedWebsites::<Test>::insert(domain_key(b"paid"), paid);
+        HostedWebsites::<Test>::insert(domain_key(b"free"), free);
+
+        let _ = MigrateV0ToV1::<Test>::on_runtime_upgrade();
+
+        assert_eq!(
+            StorageVersion::get::<Bns>(),
+            StorageVersion::new(TARGET_VERSION)
+        );
+        assert_eq!(
+            HostingExpiries::<Test>::get(expires_at).into_inner(),
+            vec![domain_key(b"paid")],
+            "only the paid subscription is indexable for expiry"
+        );
+    });
+}

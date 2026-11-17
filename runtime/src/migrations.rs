@@ -27,7 +27,7 @@ use sp_std::prelude::*;
 
 /// Current runtime migration version.
 /// Bump this whenever a new migration is added.
-const CURRENT_RUNTIME_VERSION: u32 = 3;
+const CURRENT_RUNTIME_VERSION: u32 = 4;
 
 /// Migration tracker for coordinated multi-pallet upgrades
 #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug)]
@@ -112,7 +112,8 @@ impl<
         T: frame_system::Config
             + pallet_belize_interoperability::Config
             + pallet_belize_belizex::Config
-            + pallet_belize_mesh::Config,
+            + pallet_belize_mesh::Config
+            + pallet_belize_bns::Config,
     > OnRuntimeUpgrade for CoordinatedUpgrade<T>
 {
     fn on_runtime_upgrade() -> Weight {
@@ -179,6 +180,20 @@ impl<
         total_weight = total_weight.saturating_add(
             pallet_belize_mesh::migrations::MigrateV0ToV1::<T>::on_runtime_upgrade(),
         );
+
+        // ── V3 → V4: hosting expiry index (spec 127) ───────────────────────
+        // `HostedWebsites.expires_at` was written by every activation and read
+        // by nobody, so a lapsed subscription kept being served forever. Spec
+        // 127 adds a per-block index so `on_initialize` can sweep them with
+        // bounded work; this backfills it. Free subscriptions are not indexed
+        // by design — there is no payment to miss.
+        if on_chain < 4 {
+            log::info!("  ↳ Applying migration V3 → V4 (BNS hosting expiry index)");
+            total_weight = total_weight.saturating_add(
+                pallet_belize_bns::migrations::MigrateV0ToV1::<T>::on_runtime_upgrade(),
+            );
+            set_on_chain_version(4);
+        }
 
         // ── Add new version gates above this line ──
         // if on_chain < 3 {
