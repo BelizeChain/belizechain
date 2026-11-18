@@ -126,7 +126,21 @@ in total. That is real chain state, not a simulation.
   stores nothing; it is evidence for off-chain review only.
 * **No bulk tooling.** `--module all` attests every module for one learner. There is no
   "attest this cohort" import yet.
-* **Weights for the gate are derived, not measured.** `complete_education_module`
-  gained one read and one write; `attest_education_completion` is modelled on
-  `attest_participation`. Both are biased low for `ref_time`. Re-benchmark with
-  `./scripts/bench_weights.sh pallet_belize_community` on `ceiba`.
+
+## 7. Weights — measured, 2026-11-18
+
+Both education extrinsics were shipped at first with hand-derived weights, and the
+derivation was wrong in the unsafe direction: it counted **2** reads for
+`attest_education_completion` where there are **3**. Regenerated on `ceiba` with the
+governor and EPP at `performance`, `BENCH_MUL=1.25`:
+
+| function | ref_time | reads | writes |
+|---|---|---|---|
+| `complete_education_module` | 109,255,000 | 9 | 5 |
+| `attest_education_completion` | 26,412,500 | 3 | 1 |
+
+No read or write count dropped anywhere in the regenerated file, and every unrelated
+function moved ≤5%. ⚠️ That benchmark build left
+`target/release/wbuild/…/*.compact.compressed.wasm` **instrumented** (~1.6 MB). The
+production spec 128 blob is preserved at `/data/runtime-spec128.wasm`; never deploy
+from a `runtime-benchmarks` build.
