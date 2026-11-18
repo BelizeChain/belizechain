@@ -1653,7 +1653,10 @@ fn test_completion_without_attestation_is_rejected() {
             !CompletedEducation::<Test>::contains_key(1, 1),
             "a rejected claim must not be recorded as a completion"
         );
-        assert_eq!(EducationModules::<Test>::get(1).unwrap().total_completions, 0);
+        assert_eq!(
+            EducationModules::<Test>::get(1).unwrap().total_completions,
+            0
+        );
     });
 }
 
