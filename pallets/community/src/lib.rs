@@ -368,6 +368,20 @@ pub mod pallet {
         OptionQuery,
     >;
 
+    /// Completion attestations submitted by the configured education attester.
+    ///
+    /// Key: (learner, module_id). Consumed by `complete_education_module`, so one
+    /// attestation buys exactly one reward.
+    #[pallet::storage]
+    #[pallet::getter(fn education_attestations)]
+    pub type EducationAttestations<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        (T::AccountId, u32), // (learner, module_id)
+        bool,
+        ValueQuery,
+    >;
+
     /// Green/sustainability projects
     #[pallet::storage]
     #[pallet::getter(fn green_projects)]
@@ -592,6 +606,14 @@ pub mod pallet {
             amount: u64,
         },
 
+        /// An authorised attester confirmed that `learner` completed `module_id`.
+        /// `complete_education_module` now requires this before it will mint.
+        EducationCompletionAttested {
+            learner: T::AccountId,
+            module_id: u32,
+            attester: T::AccountId,
+        },
+
         /// Contribution made to green project
         GreenContributionMade {
             account: T::AccountId,
@@ -713,7 +735,8 @@ pub mod pallet {
         NotAuthorized,
         /// Minting would exceed maximum token supply (CM-1 / CM-2 FIX)
         SupplyCapExceeded,
-        /// High-value activity requires oracle attestation before self-reporting (Phase 3B).
+        /// A prior attestation is required — for high-value activity self-reporting
+        /// (Phase 3B) or for an education reward (Phase 5).
         AttestationRequired,
         /// No pending attestation found for this (account, activity) pair (Phase 3B).
         NoAttestationPending,
@@ -1421,6 +1444,48 @@ pub mod pallet {
         // Phase 5: Incentive Programs
         // ================================
 
+        /// Attest that `learner` completed `module_id`.
+        ///
+        /// # Arguments
+        /// * `learner`   - Account that sat the assessment.
+        /// * `module_id` - Module the learner completed.
+        ///
+        /// Restricted to the configured attester origin (`Config::OracleAttestationOrigin`),
+        /// which is where the learning provider is seated. The judgement — did this
+        /// account actually pass? — is made off-chain by that provider and recorded
+        /// here before any tokens move; `complete_education_module` refuses to mint
+        /// until it exists.
+        ///
+        /// Idempotent: re-attesting the same (learner, module) is a no-op rather than
+        /// a second claim.
+        #[pallet::call_index(15)]
+        #[pallet::weight(T::WeightInfo::attest_education_completion())]
+        pub fn attest_education_completion(
+            origin: OriginFor<T>,
+            learner: T::AccountId,
+            module_id: u32,
+        ) -> DispatchResult {
+            let attester = T::OracleAttestationOrigin::ensure_origin(origin)?;
+
+            let module = EducationModules::<T>::get(module_id).ok_or(Error::<T>::ModuleNotFound)?;
+            ensure!(module.active, Error::<T>::ModuleInactive);
+
+            let key = (learner.clone(), module_id);
+            if EducationAttestations::<T>::get(&key) {
+                return Ok(());
+            }
+
+            EducationAttestations::<T>::insert(&key, true);
+
+            Self::deposit_event(Event::EducationCompletionAttested {
+                learner,
+                module_id,
+                attester,
+            });
+
+            Ok(())
+        }
+
         /// Complete an education module and earn rewards
         #[pallet::call_index(11)]
         #[pallet::weight(T::WeightInfo::complete_education_module())]
@@ -1453,6 +1518,22 @@ pub mod pallet {
             if let Some(max) = module.max_completions {
                 ensure!(module.total_completions < max, Error::<T>::ModuleCapReached);
             }
+
+            // The proof is caller-supplied bytes; the pallet cannot read it. What
+            // makes the reward real is a prior on-chain attestation from the
+            // authorised attester — the account that actually saw the assessment
+            // result. Without this gate, calling the extrinsic with `vec![0]`
+            // minted 50 DALLA for a module nobody had studied.
+            //
+            // Deliberately checked after the module/duplicate/capacity guards so
+            // those keep reporting their own (more specific) errors.
+            let attestation_key = (who.clone(), module_id);
+            ensure!(
+                EducationAttestations::<T>::get(&attestation_key),
+                Error::<T>::AttestationRequired
+            );
+            // Consume it: one attestation, one payout.
+            EducationAttestations::<T>::remove(&attestation_key);
 
             // Record completion
             let current_block = frame_system::Pallet::<T>::block_number();

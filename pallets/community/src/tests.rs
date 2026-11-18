@@ -1501,6 +1501,29 @@ fn test_unverified_beneficiary_requires_ethics_review() {
 // Phase 5: Incentive Programs Tests
 // ================================
 
+/// Account that stands in for the authorised education attester.
+///
+/// The mock wires `OracleAttestationOrigin` to `EnsureSigned`, so any signer can
+/// attest; the number only has to be stable so the tests read clearly.
+const ATTESTER: u64 = 99;
+
+/// The only path the pallet permits: attest, then complete.
+fn complete_education_attested(
+    learner: u64,
+    module_id: u32,
+) -> frame_support::dispatch::DispatchResult {
+    assert_ok!(Community::attest_education_completion(
+        RuntimeOrigin::signed(ATTESTER),
+        learner,
+        module_id
+    ));
+    Community::complete_education_module(
+        RuntimeOrigin::signed(learner),
+        module_id,
+        b"proof".to_vec().try_into().unwrap(),
+    )
+}
+
 #[test]
 fn test_complete_education_module() {
     new_test_ext().execute_with(|| {
@@ -1520,11 +1543,7 @@ fn test_complete_education_module() {
         let initial_srs = Community::get_srs(&1).map(|s| s.score).unwrap_or(0);
 
         // Complete education module
-        assert_ok!(Community::complete_education_module(
-            RuntimeOrigin::signed(1),
-            1,
-            b"completion_proof".to_vec().try_into().unwrap()
-        ));
+        assert_ok!(complete_education_attested(1, 1));
 
         // Verify completion recorded
         assert!(CompletedEducation::<Test>::contains_key(1, 1));
@@ -1575,11 +1594,7 @@ fn test_education_event_reports_capped_reward() {
 
         let before = Balances::free_balance(2);
 
-        assert_ok!(Community::complete_education_module(
-            RuntimeOrigin::signed(2),
-            7,
-            b"completion_proof".to_vec().try_into().unwrap()
-        ));
+        assert_ok!(complete_education_attested(2, 7));
 
         // The balance is the ground truth: it moved by the cap, not by 1_000.
         assert_eq!(Balances::free_balance(2) - before, cap);
@@ -1603,6 +1618,150 @@ fn test_education_event_reports_capped_reward() {
 }
 
 #[test]
+fn test_completion_without_attestation_is_rejected() {
+    // Regression: `complete_education_module` used to accept any non-empty byte
+    // string as a "proof", so calling it with `vec![0]` minted the full reward
+    // for a module nobody had studied. The proof is caller-supplied and the
+    // pallet cannot read it — the attester's prior on-chain word is the gate.
+    new_test_ext().execute_with(|| {
+        EducationModules::<Test>::insert(
+            1,
+            EducationModule {
+                id: 1,
+                title: b"Gate".to_vec().try_into().unwrap(),
+                description: b"Test".to_vec().try_into().unwrap(),
+                reward_amount: 500,
+                total_completions: 0,
+                max_completions: None,
+                active: true,
+            },
+        );
+
+        let before = Balances::free_balance(1);
+
+        assert_noop!(
+            Community::complete_education_module(
+                RuntimeOrigin::signed(1),
+                1,
+                b"0".to_vec().try_into().unwrap()
+            ),
+            Error::<Test>::AttestationRequired
+        );
+
+        assert_eq!(Balances::free_balance(1), before, "no reward may be minted");
+        assert!(
+            !CompletedEducation::<Test>::contains_key(1, 1),
+            "a rejected claim must not be recorded as a completion"
+        );
+        assert_eq!(EducationModules::<Test>::get(1).unwrap().total_completions, 0);
+    });
+}
+
+#[test]
+fn test_attestation_is_consumed_by_completion() {
+    // One attestation buys one reward. If it survived the claim, a learner could
+    // attest once and then re-complete the module forever.
+    new_test_ext().execute_with(|| {
+        EducationModules::<Test>::insert(
+            1,
+            EducationModule {
+                id: 1,
+                title: b"Once".to_vec().try_into().unwrap(),
+                description: b"Test".to_vec().try_into().unwrap(),
+                reward_amount: 500,
+                total_completions: 0,
+                max_completions: None,
+                active: true,
+            },
+        );
+
+        assert_ok!(complete_education_attested(1, 1));
+        assert!(
+            !EducationAttestations::<Test>::get((1, 1)),
+            "the attestation must be spent by the claim"
+        );
+    });
+}
+
+#[test]
+fn test_attestation_for_unknown_module_is_rejected() {
+    // Attesting a module that does not exist would leave a permanent "verified"
+    // entry that a later module with the same id could inherit.
+    new_test_ext().execute_with(|| {
+        assert_noop!(
+            Community::attest_education_completion(RuntimeOrigin::signed(ATTESTER), 1, 42),
+            Error::<Test>::ModuleNotFound
+        );
+    });
+}
+
+#[test]
+fn test_attestation_is_idempotent() {
+    new_test_ext().execute_with(|| {
+        EducationModules::<Test>::insert(
+            1,
+            EducationModule {
+                id: 1,
+                title: b"Idem".to_vec().try_into().unwrap(),
+                description: b"Test".to_vec().try_into().unwrap(),
+                reward_amount: 500,
+                total_completions: 0,
+                max_completions: None,
+                active: true,
+            },
+        );
+
+        assert_ok!(Community::attest_education_completion(
+            RuntimeOrigin::signed(ATTESTER),
+            1,
+            1
+        ));
+        // A provider re-submitting the same mark is not an error and must not
+        // grant a second payout.
+        assert_ok!(Community::attest_education_completion(
+            RuntimeOrigin::signed(ATTESTER),
+            1,
+            1
+        ));
+
+        assert_ok!(Community::complete_education_module(
+            RuntimeOrigin::signed(1),
+            1,
+            b"proof".to_vec().try_into().unwrap()
+        ));
+        assert_noop!(
+            Community::complete_education_module(
+                RuntimeOrigin::signed(1),
+                1,
+                b"proof".to_vec().try_into().unwrap()
+            ),
+            Error::<Test>::AlreadyCompleted
+        );
+    });
+}
+
+#[test]
+fn test_attestation_requires_a_signed_origin() {
+    new_test_ext().execute_with(|| {
+        EducationModules::<Test>::insert(
+            1,
+            EducationModule {
+                id: 1,
+                title: b"Sig".to_vec().try_into().unwrap(),
+                description: b"Test".to_vec().try_into().unwrap(),
+                reward_amount: 500,
+                total_completions: 0,
+                max_completions: None,
+                active: true,
+            },
+        );
+
+        assert!(Community::attest_education_completion(RuntimeOrigin::none(), 1, 1).is_err());
+        assert!(!EducationAttestations::<Test>::get((1, 1)));
+    });
+}
+
+#[test]
 fn test_cannot_complete_module_twice() {
     new_test_ext().execute_with(|| {
         // Setup education module
@@ -1618,11 +1777,7 @@ fn test_cannot_complete_module_twice() {
         EducationModules::<Test>::insert(1, module);
 
         // Complete once
-        assert_ok!(Community::complete_education_module(
-            RuntimeOrigin::signed(1),
-            1,
-            b"proof".to_vec().try_into().unwrap()
-        ));
+        assert_ok!(complete_education_attested(1, 1));
 
         // Try to complete again - should fail
         assert_noop!(
@@ -1975,22 +2130,14 @@ fn test_education_score_calculation() {
 
         // Complete 4 modules (no bonus yet)
         for i in 1..=4 {
-            assert_ok!(Community::complete_education_module(
-                RuntimeOrigin::signed(1),
-                i,
-                b"proof".to_vec().try_into().unwrap()
-            ));
+            assert_ok!(complete_education_attested(1, i));
         }
 
         let srs_4 = Community::get_srs(&1).unwrap();
         assert_eq!(srs_4.education_score, 400); // 4 * 100
 
         // Complete 5th module (triggers +500 bonus)
-        assert_ok!(Community::complete_education_module(
-            RuntimeOrigin::signed(1),
-            5,
-            b"proof".to_vec().try_into().unwrap()
-        ));
+        assert_ok!(complete_education_attested(1, 5));
 
         let srs_5 = Community::get_srs(&1).unwrap();
         assert_eq!(srs_5.education_score, 1_000); // (5 * 100) + 500 bonus
@@ -2078,11 +2225,7 @@ fn test_integrated_srs_with_all_components() {
         let baseline_srs = Community::get_srs(&1).unwrap().score;
 
         // Complete education module
-        assert_ok!(Community::complete_education_module(
-            RuntimeOrigin::signed(1),
-            1,
-            b"proof".to_vec().try_into().unwrap()
-        ));
+        assert_ok!(complete_education_attested(1, 1));
         let after_education = Community::get_srs(&1).unwrap().score;
         assert!(after_education > baseline_srs);
 
@@ -2336,12 +2479,7 @@ fn test_full_integration_all_traits() {
             active: true,
         };
         EducationModules::<Test>::insert(1, module);
-        Community::complete_education_module(
-            RuntimeOrigin::signed(1),
-            1,
-            b"proof".to_vec().try_into().unwrap(),
-        )
-        .ok();
+        complete_education_attested(1, 1).ok();
 
         // 4. Green project (direct)
         let project = GreenProject {

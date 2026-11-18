@@ -469,6 +469,9 @@ mod benchmarks {
                 active: true,
             },
         );
+        // The call refuses to mint without a prior attestation, so seed one the
+        // same way an attester would.
+        EducationAttestations::<T>::insert((caller.clone(), module_id), true);
 
         #[extrinsic_call]
         complete_education_module(
@@ -478,6 +481,40 @@ mod benchmarks {
         );
 
         assert!(CompletedEducation::<T>::contains_key(&caller, module_id));
+    }
+
+    #[benchmark]
+    fn attest_education_completion() {
+        let caller: T::AccountId = whitelisted_caller();
+        let learner: T::AccountId = account("learner", 0, 0);
+        let module_id: u32 = 0u32;
+
+        // Same constraint as `attest_participation`: the runtime wires
+        // `OracleAttestationOrigin` to a collective-membership check, so the
+        // caller has to be seated and cannot be `RawOrigin::Root`.
+        T::make_council_member(&caller);
+
+        EducationModules::<T>::insert(
+            module_id,
+            EducationModule {
+                id: module_id,
+                title: max_bytes::<ConstU32<128>>(),
+                description: max_bytes::<ConstU32<256>>(),
+                reward_amount: T::EducationRewardAmount::get().saturated_into(),
+                total_completions: 0u32,
+                max_completions: Some(u32::MAX),
+                active: true,
+            },
+        );
+
+        #[extrinsic_call]
+        attest_education_completion(
+            RawOrigin::Signed(caller.clone()),
+            learner.clone(),
+            module_id,
+        );
+
+        assert!(EducationAttestations::<T>::get((learner, module_id)));
     }
 
     #[benchmark]

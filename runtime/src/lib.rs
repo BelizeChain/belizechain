@@ -848,7 +848,31 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     //
     //   No storage, extrinsic index or `transaction_version` change: the guard
     //   logic itself is unchanged, only the input it can no longer be fed.
-    spec_version: 127,
+    //
+    //   128: the learn-to-earn reward is now gated on an attestation.
+    //   `community::complete_education_module` (call index 11) accepted any
+    //   non-empty byte string as a "completion proof" and minted up to
+    //   `EducationRewardAmount` (50 DALLA) for it. The proof is caller-supplied
+    //   and the pallet had no way to read it, so `vec![0]` was worth 50 DALLA per
+    //   module — the quiz in the wallet was the only thing standing between a
+    //   caller and the mint, and a wallet is not a gate.
+    //
+    //   `community::attest_education_completion` (call index 15) is appended:
+    //   the configured `OracleAttestationOrigin` — the seated learning provider —
+    //   records that a learner actually sat and passed a module. Call 11 now
+    //   refuses to mint without that record and consumes it, so one attestation
+    //   buys exactly one payout. Additive: no call index was removed, reordered
+    //   or reinterpreted, and `EducationAttestations` starts empty, so no
+    //   migration is needed. `transaction_version` moves because the extrinsic
+    //   set grew.
+    //
+    //   The same release fixes an event: `EducationModuleCompleted` and
+    //   `EducationRewardClaimed` carried `module.reward_amount` (what the module
+    //   advertises) while only the capped amount was minted. Module 1 is seeded
+    //   with 75 against a 50 cap, so both events announced 75 for a 50 payout and
+    //   no client could detect it — the cap is a runtime constant absent from
+    //   metadata. They now carry the minted amount.
+    spec_version: 128,
     impl_version: 1,
     apis: RUNTIME_API_VERSIONS,
     // Adding call indices to a live pallet is additive, but the version
@@ -869,7 +893,10 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     // `LandLedger::reject_transfer` (11) were appended after the previous
     // maximum (9). Additive, so existing call encoding still decodes; the bump
     // advertises that the extrinsic set changed, per the convention above.
-    transaction_version: 4,
+    //
+    // Bumped to 5 for 128: `Community::attest_education_completion` (15) was
+    // appended after the previous maximum (14).
+    transaction_version: 5,
     system_version: 1,
 };
 
