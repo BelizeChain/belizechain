@@ -1549,6 +1549,60 @@ fn test_complete_education_module() {
 }
 
 #[test]
+fn test_education_event_reports_capped_reward() {
+    // Regression: the events used to carry `module.reward_amount`, i.e. what the
+    // module advertised, while only the capped amount was actually minted. A
+    // module asking 1_000 with an EducationRewardAmount of 100 credited 100 and
+    // announced 1_000, so every indexer and wallet showed the wrong figure and
+    // could not detect it (the cap is a runtime constant, absent from metadata).
+    new_test_ext().execute_with(|| {
+        let module = EducationModule {
+            id: 7,
+            title: b"Over-cap module".to_vec().try_into().unwrap(),
+            description: b"Advertises more than the cap".to_vec().try_into().unwrap(),
+            reward_amount: 1_000,
+            total_completions: 0,
+            max_completions: Some(10),
+            active: true,
+        };
+        EducationModules::<Test>::insert(7, module);
+
+        let cap = <Test as Config>::EducationRewardAmount::get();
+        assert!(
+            1_000 > cap,
+            "test is meaningless unless the module asks for more than the cap"
+        );
+
+        let before = Balances::free_balance(2);
+
+        assert_ok!(Community::complete_education_module(
+            RuntimeOrigin::signed(2),
+            7,
+            b"completion_proof".to_vec().try_into().unwrap()
+        ));
+
+        // The balance is the ground truth: it moved by the cap, not by 1_000.
+        assert_eq!(Balances::free_balance(2) - before, cap);
+
+        // And the events must agree with the balance, not with the module.
+        let claimed = System::events().into_iter().find_map(|record| {
+            if let RuntimeEvent::Community(Event::EducationRewardClaimed { amount, .. }) =
+                record.event
+            {
+                Some(amount)
+            } else {
+                None
+            }
+        });
+        assert_eq!(
+            claimed,
+            Some(cap),
+            "EducationRewardClaimed must report what was minted, not what was advertised"
+        );
+    });
+}
+
+#[test]
 fn test_cannot_complete_module_twice() {
     new_test_ext().execute_with(|| {
         // Setup education module

@@ -1493,16 +1493,27 @@ pub mod pallet {
                 let _ = T::Currency::deposit_creating(&who, capped_reward);
             }
 
+            // Emit what was actually minted, not what the module advertises.
+            // `EducationRewardAmount` caps the mint, so a module asking for 75
+            // DALLA against a 50 DALLA cap credits 50. Emitting
+            // `module.reward_amount` there told every indexer, wallet and block
+            // explorer that 75 had been paid — the client cannot detect the
+            // discrepancy because the cap is a runtime constant, absent from
+            // metadata.
+            // SAFETY(saturated_into): capped_reward is bounded by
+            // EducationRewardAmount, a protocol constant that fits in u64.
+            let minted: u64 = capped_reward.saturated_into();
+
             Self::deposit_event(Event::EducationModuleCompleted {
                 account: who.clone(),
                 module_id,
-                reward_amount: module.reward_amount,
+                reward_amount: minted,
             });
 
             Self::deposit_event(Event::EducationRewardClaimed {
                 account: who,
                 module_id,
-                amount: module.reward_amount,
+                amount: minted,
             });
 
             Ok(())
