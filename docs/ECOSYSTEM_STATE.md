@@ -35,17 +35,17 @@ value inline, so the next agent can see what moved.
 
 ## 2. Live state
 
-### 2.1 Chain — verified 2026-11-17 16:40 UTC
+### 2.1 Chain — verified 2026-11-18 17:25 UTC
 
 | | |
 |---|---|
 | Chain name | **Jade** (Chain D) |
 | Genesis | `0xb2664568b41503c0661d576c08198ef3152b04ea76fee2c8a59216e88830b5ef` |
-| Runtime | **spec_version 126 live** · transaction 4. Deployed 2026-11-10; repo and chain agree |
-| Head (2026-11-17 16:40) | **#601,580** (finalized 601,578), advancing at ~6.5 s/block |
-| Epoch | **duration 300 slots**, epoch index **2005** — unchanged across the 117 → 121 → 122 → 123 → 124 → 126 upgrades |
+| Runtime | **spec_version 128 live** · transaction 5. Deployed 2026-11-18; repo and chain agree |
+| Head (2026-11-18 17:20) | **#616,401**, advancing |
+| Epoch | **duration 300 slots** — unchanged across the 117 → 121 → 122 → 123 → 124 → 126 → 127 → 128 upgrades |
 | Peers | 0 (`shouldHavePeers: false` — single node, expected) |
-| Repo agreement | ✅ repo 126 = chain 126. `transaction_version` moved 3 → 4 with 125, so clients must re-read metadata |
+| Repo agreement | ✅ repo 128 = chain 128. `transaction_version` moved 4 → 5 with 128, so clients must re-read metadata |
 
 **Host outage 2026-11-09 18:06 → 20:47 UTC — the chain was never down.** The Intel
 I226-V NIC fell off the PCIe bus, isolating the host from the network for 2h 41m.
