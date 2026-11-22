@@ -1197,7 +1197,41 @@ which logging library a module imports before "fixing" a format convention.**
 > **Do not read "0 open" as "clean" on a repo whose Code Security is disabled** — that is
 > the state that hid 307 open alerts.
 
-Counts verified 2026-10-22:
+> 🔴 **REGRESSED — verified 2026-11-22. Code Security is `disabled` again on all six
+> private repos.** `gh api repos/BelizeChain/<repo>` reports
+> `security_and_analysis.code_security.status = "disabled"` (and `null` on the two public
+> ones, where scanning is free) for `infra`, `kinich-quantum`, `nawal-ai`, `pakit-storage`,
+> `gem` and `belizechain.org`. The alerts API answers **403** again on all six. Whatever
+> enabled it on 2026-10-14 — a trial, a seat that lapsed, a manual revert — is not
+> recorded anywhere in the repo, so the cause is **not known**; only the state is.
+>
+> **The visible symptom was a red check, and it was lying in both directions.** Every
+> private repo's security workflow was failing at the SARIF *upload* step with
+> `Code Security must be enabled for this repository to use code scanning`, while
+> `pakit-storage`'s red `Security` run on 2026-11-22 was **simultaneously** reporting a
+> pass-through of two real HIGH CVEs in its own artifact — because the job had no
+> findings gate at all, its only failing step was the upload. A red check that never
+> depended on findings is worse than no check: it teaches everyone to skip it.
+>
+> **Fixed 2026-11-22, without a licence:** the three workflows now gate on what Trivy
+> finds (`exit-code: '1'`, `severity: CRITICAL,HIGH`, `ignore-unfixed: true`) and treat
+> the upload as an optional reporting channel — `continue-on-error` plus a step that
+> emits an explicit `::warning::` and, in `pakit-storage`, a run summary. That is not
+> masking: the analysis still runs, the finding still fails the build, and the absence of
+> a Security-tab entry is stated in the log instead of being inferred from a red X.
+> Verified with `rhysd/actionlint` (clean on all three) and by running the exact Trivy
+> flags against purpose-built images.
+>
+> Two follow-ups this created, both recorded rather than assumed:
+> - **`nawal-ai`'s Trivy gate had `exit-code: 0`**, so it could never fail on a finding
+>   either. Now `'1'`. Its Dockerfile already strips pip, so the four known findings
+>   should be gone at the source; that has not been re-measured since.
+> - **MEDIUM and LOW are no longer collected** in `pakit-storage`, because the action's
+>   `severity` input filters the report as well as the exit code. Accepted only because
+>   they previously went into an artifact nobody read, but it is a real reduction.
+
+Counts verified 2026-10-22 (⚠️ all six private-repo figures below are **stale** — read
+them as "last known", not "current", while Code Security is disabled):
 
 > ⚠️ **13 actionable alerts were fixed in the working trees on 2026-10-22 and are
 > uncommitted/unpushed**, so the counts below will not move until those commits land and
