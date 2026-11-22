@@ -1338,10 +1338,32 @@ Security tab, or `gh auth refresh -s security_events`.
   block before any container recreate — including for `kinich`, `pakit`, `nawal`,
   `api-gateway` and `ipfs`, which use the same static-upstream pattern.
 
-  Durable fix, if the manual step keeps being missed (needs a config change and an nginx
-  rollout): give each fixed backend the treatment `$root_backend` already uses — a
-  `resolver 127.0.0.11 valid=30s` plus a variable `proxy_pass`, which resolves per request
-  and cannot go stale.
+  **Durable fix — DONE 2026-11-22 (`infra`).** All seven static upstreams (`rpc`, `ws`,
+  `kinich`, `pakit`, `nawal`, `api_gateway`, `ipfs`) are gone. Each backend is now a
+  literal `http://host:port` in a variable with `resolver 127.0.0.11 valid=30s ipv6=off`
+  declared in both server blocks, which is the treatment `$root_backend` already had.
+
+  Verified with the real `nginx:1.27-alpine` image against fake backends: every route
+  still reaches the right port and still strips its prefix (`/api/pakit/health` →
+  `pakit:8001` `/health`), and after moving a backend from `172.22.0.2` to `172.22.0.5`
+  **with a decoy container holding the old address**, the old config returned 502
+  indefinitely while the new one recovered on its own within the 30 s cache window —
+  no reload.
+
+  Consequences to know:
+  - A recreate now costs at most ~30 s of 502 on that upstream, not "until someone
+    reloads". A 502 that persists longer is a real backend failure.
+  - nginx no longer needs any backend present at startup, so it boots and serves
+    `/health` and the frontends even when a backend is down.
+  - A variable `proxy_pass` does not strip the location prefix, so each API location
+    removes it with an explicit `rewrite ^/api/<svc>/(.*) /$1 break;`.
+  - `infra/deploy/check-nginx-upstreams.sh` fails the build if a named `upstream` or a
+    literal-hostname `proxy_pass` returns to the Ceiba config. It is wired into
+    `deploy/ci-local.sh` and needs no live stack.
+  - The **Oracle edge** (`nginx/oracle-edge.conf`) deliberately keeps its upstream: it
+    points at a fixed tailnet address (`100.119.97.38`), not a container name, so a
+    recreate cannot invalidate it, and it uses `keepalive 32`, which a variable target
+    cannot express.
 
   **Why the stale image went unnoticed for two days (root-caused 2026-10-27).**
   Three things combined, and only the third is a defect:
