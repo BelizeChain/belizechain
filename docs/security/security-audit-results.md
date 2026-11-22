@@ -97,7 +97,7 @@ Each row was checked against the source, not against the checklist.
 | **Fixed 2026-10-24** | P1-08 **matching half** — limit orders now escrow at placement and fill against each other in price-time order (see below) |
 | **Fixed 2026-10-24 (CI fallout)** | The five benchmark smoke-test failures that P1-06/P1-07/conviction-bonding left behind — `governance::cast_vote` (bond underfunded), `oracle::verify_merchant` (origin moved off `Signed`), `mesh::submit_mesh_transaction` (unsigned after P1-07), `belizex::{add_liquidity, execute_trade, remove_liquidity}` (quote leg unfunded). See *The benchmark smoke test* below |
 | **Open — needs a decision** | P1-02 (`Sudo` at index 6, deliberate for testnet bootstrap; owner has said do not remove) |
-| **Mitigated 2026-10-24 — no longer live** | P1-24 — the four-node swarm was running a `chainType: Live` spec with `--force-authoring` on every node since 2026-09-13, and it forked and stalled 38 days. **The swarm is stopped** (volumes preserved for forensics) and the flag is now gated on `${FORCE_AUTHORING:+--force-authoring}`, off by default. See below |
+| **Mitigated 2026-10-24 — no longer live** | P1-24 — the four-node swarm was running a `chainType: Live` spec with `--force-authoring` on every node since 2026-09-13, and it forked and stalled 38 days. **The swarm is stopped and its volumes were wiped 2026-11-07** (the earlier "preserved for forensics" note was stale — see the correction below) and the flag is now gated on `${FORCE_AUTHORING:+--force-authoring}`, off by default. See below |
 | **Not started** | External audit, penetration testing, economic modelling, formal verification |
 
 #### P1-08 is worse than reported, and is a stub rather than a bug
@@ -387,10 +387,24 @@ across all authorities.
 **RESOLVED 2026-10-24 — (a) and (b) both done.**
 
 The swarm was stopped with `docker compose -f docker-compose.validators.yml down`,
-deliberately **without `-v`**: all four `infra_val-*-data` volumes survive, so the
-forked chain data is still on disk for forensics. An evidence snapshot was captured
+deliberately **without `-v`**: all four `infra_val-*-data` volumes survived, so the
+forked chain data was still on disk for forensics. An evidence snapshot was captured
 *before* stopping (`/tmp/swarm-evidence-2026-10-24.txt`) because the fork state is
 only observable while the nodes are up.
+
+> ⚠️ **CORRECTION 2026-11-22 — none of that evidence exists any more, and the forensics
+> were never performed.** The four volumes were **wiped 2026-11-07 with owner approval**
+> (`docs/plans/REMAINING_WORK.md` §3.5), and `/tmp` was cleared by the host's 2026-11-21
+> boot — that path is tmpfs-backed, and the snapshot was never copied anywhere durable.
+> `docker volume ls` on Ceiba now shows no volume matching `val`, and the containers are
+> gone, so their logs went with them. Recording this because the bracket above
+> ("volumes preserved for forensics") presents the fork as an open case that can be
+> picked up later. It cannot. Anything not written down below is unrecoverable.
+>
+> The durable lesson is about where evidence is put, not about BABE: a snapshot written
+> to `/tmp` is a snapshot with a deadline of one reboot. If this is ever worth doing
+> again, write it into a bind-mounted path on `/data` and name the file in the commit
+> that stops the swarm.
 
 The flag is now gated on `${FORCE_AUTHORING:+--force-authoring}`, off by default, on
 all four services — the same shape as Ceiba's `${VALIDATOR:+--force-authoring}`. A

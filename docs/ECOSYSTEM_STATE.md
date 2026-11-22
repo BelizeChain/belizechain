@@ -904,11 +904,25 @@ on `0xbbec…488d`), finality stopped at `#13751`, and the last block timestamp 
 `0.0.0.0`.
 
 **Stopped 2026-10-24.** `docker compose -f docker-compose.validators.yml down`, run
-**without `-v`** so the four `infra_val-*-data` volumes survive for forensics; an evidence
-snapshot was taken before stopping. `--force-authoring` is now gated on
+**without `-v`** so the four `infra_val-*-data` volumes would survive for forensics; an
+evidence snapshot was taken before stopping, at `/tmp/swarm-evidence-2026-10-24.txt` on
+the host. `--force-authoring` is now gated on
 `${FORCE_AUTHORING:+--force-authoring}` (0 occurrences by default, 4 with the opt-in
 set) — a four-authority swarm does not need it. See the P1-24 section in
 `docs/security/security-audit-results.md` for the evidence table.
+
+> ⚠️ **The forensics were never done and can no longer be done — verified 2026-11-22.**
+> This paragraph said the volumes "survive" in the present tense. They do not. All four
+> `infra_val-*-data` volumes were **wiped 2026-11-07 with owner approval** (recorded in
+> `docs/plans/REMAINING_WORK.md` §3.5, which four other documents contradicted), and the
+> `/tmp` snapshot was cleared by the host's 2026-11-21 boot — `/tmp` is tmpfs-backed and
+> nothing had copied it anywhere durable. `docker volume ls` on Ceiba now returns no
+> volume matching `val`, and no container from the swarm remains, so its logs are gone
+> too. **What survives is only what was written down on 2026-10-24**: the 2–2 best-hash
+> split, the finality stop at `#13751`, the last block timestamp, and the `--force-authoring`
+> setting. Any further question about *why* those four diverged has to be answered from a
+> fresh reproduction (`scripts/local-swarm.sh` exists for exactly that) rather than from
+> this incident.
 
 **`pakit-storage` dependencies (2026-10-23).** Nine open Dependabot alerts, all cleared
 on patch-level pins: `aiohttp 3.14.3 -> 3.14.4` (eight alerts: 3 high, 3 medium, 2 low)
