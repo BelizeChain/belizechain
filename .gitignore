@@ -132,3 +132,6 @@ generated_keys/
 
 # Runtime blobs captured for rollback — reproducible from live :code, not source.
 artifacts/*.wasm
+
+# Draft commit-message files (never commit these)
+.msg.txt
