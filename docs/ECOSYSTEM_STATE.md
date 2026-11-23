@@ -1900,3 +1900,12 @@ shipped placeholder always failed. It belongs to the Nawal client, which should 
   `docker exec <c> sha256sum <path>` against the host. `check-host-drift.sh` now has a
   `BIND-MOUNT COHERENCE` section for exactly this; it previously compared repo-vs-disk
   only. **"The file on disk is correct" is not deployment — what the process reads is.**
+- **A trap documented under the wrong heading is not documented.** The bind-mount trap
+  above was already written up in `infra/deploy/ORACLE_EDGE_PROXY.md` — correct symptom,
+  correct fix, correct `stat -c %i` diagnostic — and it still cost a four-minute API
+  outage on 2026-11-23, because the person deploying was working on `resolver` and had no
+  reason to open a file about the edge proxy. Placement is part of the fix: the durable
+  home is the file an agent always loads (`.github/copilot-instructions.md`), and the
+  durable enforcement is a machine check (`check-host-drift.sh`), not prose. When the same
+  mistake survives being written down, the answer is relocation plus automation, not more
+  emphasis.
