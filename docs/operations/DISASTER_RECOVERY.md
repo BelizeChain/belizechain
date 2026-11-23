@@ -47,18 +47,21 @@ anything else in this table. Measured that day: `.env` holds two **12-word signe
 (`NAWAL_KEYPAIR_URI`, `PAKIT_SIGNER_URI`) which exist in no other file on the host and in no
 other backup. Without them the stack starts but two on-chain identities do not exist.
 
-> ⚠️ **Custody requirement — and a live gap as of 2026-11-23.** The passphrase is
-> meant to live at `/etc/belizechain/backup-passphrase` (mode 600, root) so the
-> nightly job can run unattended. **It does not exist yet**, so the secrets step
-> currently exits 1 and the nightly unit reports failed; the four data streams and
-> the chain verification run before it and are unaffected. That is deliberate: a
-> green unit would claim the `.env` is backed up when it is not.
+> ✅ **Live as of 2026-11-23 13:52 UTC.** The passphrase exists at
+> `/etc/belizechain/backup-passphrase` (mode 600, root) and the full unit ran green
+> for the first time: `Result=success`, all six steps in order.
 >
-> A human must type the passphrase and hold the same value off this host — it
-> cannot be generated for you, because anything an agent generates has passed
-> through a transcript. Until it exists, **`.env` and the two signer mnemonics in
-> it are not backed up at all.** If both the host and the passphrase are ever lost
-> after that, every `env_*.env.enc` is noise — and so are the mnemonics inside them.
+> **Proven end to end, not just "the script said OK":** the off-host copy was
+> decrypted with the real passphrase and compared against the live file — 103 lines,
+> **both signer mnemonics present**, byte-identical. A checksum match only says the
+> bytes arrived; that test says the bytes are usable.
+>
+> ⚠️ **Custody is still a human responsibility.** The passphrase on the host is
+> convenience for the nightly job, not custody. If both this host and the
+> password-manager copy are lost, every `env_*.env.enc` on every custodian is noise —
+> and so are the mnemonics inside them. The first run of this stream also found the
+> archive was unreadable by the unprivileged pull (directory and sidecar kept root
+> ownership) and that the pull reported the denial as "nothing found"; both fixed.
 
 Two details that matter and are easy to get wrong:
 
@@ -256,13 +259,18 @@ custodian is undecryptable, and the two signer mnemonics are gone with it.
 | **2026-11-22** | **PostgreSQL restore of the current host's newest dump**, into a throwaway container, via `restore-postgres.sh` | **Passed: 11/11 tables, 463,123 blocks, 385 MB, 8.7 s.** First restore validated against data Ceiba actually holds today |
 | **2026-11-22** | Same, `--target host` — temporary database created **on the live server**, imported, verified, dropped | **Passed: 11/11 tables, identical row counts, 15.2 s.** Temp DB confirmed gone; live DB and chain confirmed unaffected |
 | **2026-11-22** | **pakit + nawal archives**, via `restore-archives.sh` | **Passed.** Both open, match their `.sha256` sidecars, and every archived member is present at its recorded size. pakit's two SQLite files pass `PRAGMA integrity_check` and hold **the same row counts as the live database on all 8 tables** (5 `content_metadata`, 2 `content_roots`, 5 `dedup_references`, 2 `user_metadata`, 1 `storage_stats`, 0 in the three unused ones). nawal's `mesh/ed25519.key` is present at 64 bytes — the file that exists nowhere else |
-| **nightly, continuous** | **Chain archive**, by `verify-chain-backup.sh` as the last step of `belizechain-backup.service` | **Passed every night.** Each archive is extracted to scratch, booted in a throwaway container from the same image the live node runs, and must **author a new block** before the unit succeeds. Last measured run 2026-11-22 04:35 UTC: opened at block **666330** (spec 128), authored **666330 → 666332**, unit `Result=success`. Whole step costs ~17 s |
+| **2026-11-23** | **Encrypted `.env` stream**, first real run — plus recovery from the off-host copy | **Passed.** Unit green (`Result=success`, six steps in order). Off-host `.env.enc` decrypted with the real passphrase: **103 lines, both signer mnemonics present, byte-identical to the live file**. Also found and fixed two defects that would have made this silently useless: the archive directory and `.sha256` kept root ownership so the pull could not read them, and the puller reported that denial as "nothing found" |
+| **nightly, continuous** | **Chain archive**, by `verify-chain-backup.sh` as the last step of `belizechain-backup.service` | **Passed every night.** Each archive is extracted to scratch, booted in a throwaway container from the same image the live node runs, and must **author a new block** before the unit succeeds. Last measured run 2026-11-22 04:35 UTC: opened at block **666330** (spec 128), authored **666330 → 666332**, unit `Result=success`. Whole step costs ~17 s. Re-verified 2026-11-23 13:52 during a full unit run: block 686305 → 686306 |
 | — | Live-restore drill (maintenance window, rollback owner present) | **Never performed** |
 | — | Full host rebuild from the archives plus the encrypted `.env` | **Never performed** |
 
-**All four data streams are now proven to restore.** Postgres was proven on 2026-11-22,
-pakit and nawal on 2026-11-22, and the chain every night since the verifier was added to
-the unit. That is a stronger position than this document claimed: an earlier revision of
+**All five streams are now proven to restore**, including the secrets one, which was
+the only stream holding data that cannot be reconstructed. Postgres was proven on
+2026-11-22, pakit and nawal on 2026-11-22, the chain every night by a boot-and-author
+test, and `.env` on 2026-11-23 by decrypting the off-host copy and comparing it to the
+live file.
+
+That is a stronger position than this document claimed: an earlier revision of
 this table said the chain archive was "only ever extracted into scratch", which was wrong —
 `verify-chain-backup.sh` boots it and requires it to produce a block, and the host's journal
 shows it doing so.
