@@ -189,6 +189,19 @@ Both scripts carry their own restore example in a header comment. Nawal's tree i
 uid 999 under a mode-750 directory, so restore as root and leave ownership intact — a
 restore that silently chowns is a restore that breaks the mesh identity lookup.
 
+To prove a night's archives are actually restorable before you need them:
+
+```bash
+cd infra && ./deploy/restore-archives.sh            # newest of each, into a temp dir
+cd infra && ./deploy/restore-archives.sh --keep     # same, but leaves the tree for inspection
+```
+
+It extracts to a scratch directory it creates and removes, checks sizes and the `.sha256`
+sidecar, runs `PRAGMA integrity_check` on pakit's databases, and confirms nawal's
+`mesh/ed25519.key` is intact (printing a fingerprint, never the key). Run without `root` it
+states plainly that ownership was **not** verified. It is wired into `deploy/ci-local.sh`,
+which runs it whenever `backups/pakit` and `backups/nawal` are present locally.
+
 ---
 
 ## 6. Drills — performed and not performed
@@ -198,13 +211,24 @@ restore that silently chowns is a restore that breaks the mesh identity lookup.
 | 2026-09-17 | Non-destructive: every backup surface exercised, every restore path validated into scratch/disposable targets | Passed. **No live restore, no service restart, no volume replacement, no chain rollback**. Ran against `100.81.45.25`, decommissioned 2026-10-07 — so it validated the *old* host's data |
 | **2026-11-22** | **PostgreSQL restore of the current host's newest dump**, into a throwaway container, via `restore-postgres.sh` | **Passed: 11/11 tables, 463,123 blocks, 385 MB, 8.7 s.** First restore validated against data Ceiba actually holds today |
 | **2026-11-22** | Same, `--target host` — temporary database created **on the live server**, imported, verified, dropped | **Passed: 11/11 tables, identical row counts, 15.2 s.** Temp DB confirmed gone; live DB and chain confirmed unaffected |
-| — | Chain / pakit / nawal archive restore | Only ever extracted into scratch. Never imported and started |
+| **2026-11-22** | **pakit + nawal archives**, via `restore-archives.sh` | **Passed.** Both open, match their `.sha256` sidecars, and every archived member is present at its recorded size. pakit's two SQLite files pass `PRAGMA integrity_check` and hold **the same row counts as the live database on all 8 tables** (5 `content_metadata`, 2 `content_roots`, 5 `dedup_references`, 2 `user_metadata`, 1 `storage_stats`, 0 in the three unused ones). nawal's `mesh/ed25519.key` is present at 64 bytes — the file that exists nowhere else |
+| — | Chain archive restore | Only ever extracted into scratch. Never imported and started (`verify-chain-backup.sh` boots each archive in isolation nightly, but a node start against the restored data needs a maintenance window) |
 | — | Live-restore drill (maintenance window, rollback owner present) | **Never performed** |
 | — | Full host rebuild from the repo and the four archives | **Never performed** |
 
-Three of four backup streams are still only proven to *open*, not to *restore*. The
-postgres one is now proven to restore, locally and on the host. The remaining gap that
-matters is the last row: no one has brought the stack back from nothing.
+Two of four backup streams are now proven to restore: postgres and pakit + nawal (the two
+archive streams). Only the chain archive is still merely proven to *open*. The remaining
+gap that matters is the last row: no one has brought the stack back from nothing.
+
+The pakit archive holds 9 files while the live volume holds 11. The two absent files are
+`pakit_metadata.db-wal` and `pakit_metadata.db-shm` — SQLite write-ahead sidecars, which a
+backup must not copy. That was checked rather than assumed: the restored `.db` carries the
+same row counts as the live database with its WAL applied, so nothing committed was lost.
+
+`restore-archives.sh` fails rather than skips when an archive is missing, truncated, or
+fails its checksum — verified against all three cases. An earlier draft reported
+`RESTORE OK` after verifying nothing, which is the exact failure mode a drill exists to
+prevent.
 
 ---
 
