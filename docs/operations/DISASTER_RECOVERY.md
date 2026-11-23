@@ -31,7 +31,7 @@ here and belongs in a pre-mainnet plan, not in a runbook.
 
 ## 2. Backup inventory — verified on the host 2026-11-22
 
-Ceiba runs `belizechain-backup.timer` daily (~04:36–04:43 UTC). It executes four streams
+Ceiba runs `belizechain-backup.timer` daily (~04:36–04:43 UTC). It executes five streams
 in sequence and then verifies the chain archive:
 
 | Stream | Contents | On-host path | Retention |
@@ -40,6 +40,17 @@ in sequence and then verifies the chain archive:
 | `backup-chain.sh` | `tar.zst` of `/data/chain` **after stopping the node** | `/data/backups/chain` | 7 days |
 | `backup-pakit.sh` | `tar.zst` of pakit storage | `/data/backups/pakit` | 7 days |
 | `backup-nawal.sh` | `tar.zst` of `/data/nawal`, incl. `mesh/ed25519.key` | `/data/backups/nawal` | 7 days |
+| `backup-secrets.sh` | `/opt/belizechain/.env`, **AES-256-CBC + PBKDF2 (600k iters)**, round-trip verified | `/data/backups/secrets` | 7 days |
+
+The secrets stream was added 2026-11-22 and is the one that cannot be reconstructed from
+anything else in this table. Measured that day: `.env` holds two **12-word signer mnemonics**
+(`NAWAL_KEYPAIR_URI`, `PAKIT_SIGNER_URI`) which exist in no other file on the host and in no
+other backup. Without them the stack starts but two on-chain identities do not exist.
+
+> ⚠️ **Custody requirement.** The passphrase lives at `/etc/belizechain/backup-passphrase`
+> (mode 600, root) so the nightly job can run unattended. That is convenience, not custody.
+> A human must hold the same passphrase off this host. If both the host and the passphrase
+> are lost, every `env_*.env.enc` is noise — and so are the mnemonics inside them.
 
 Two details that matter and are easy to get wrong:
 
@@ -72,22 +83,27 @@ archive was 38 days old because the script existed and nothing called it.
 
 ## 3. What is NOT backed up
 
-Measured against the four scripts above — none of them reads these paths:
+Measured against the five scripts above — none of them reads these paths:
 
 | Path | Why it matters | Recoverable? |
 |---|---|---|
-| `/opt/belizechain/.env` | Every service secret: DB password, `AUTH_SESSION_SECRET`, session keys, image pins | Only from the `.env.bak-*` copies sitting on the **same disk** — not a real backup |
 | `/opt/belizechain/nginx/certs/privkey.pem` | TLS private key | Re-issuable, but only after DNS is pointed somewhere that can answer the ACME challenge |
 | `/opt/belizechain/docker-compose.ceiba.yml` | The deployment itself | Yes — it lives in `infra/` in git |
 
-The `.env` gap is the sharp one: everything else can be rebuilt from the repo plus the
-four archives, and the whole thing still will not start without those secrets.
+The `.env` gap that used to head this table is **closed**. It held every service secret —
+DB password, `AUTH_SESSION_SECRET`, image pins, and the two signer mnemonics — and the only
+copies were `.env.bak-*` files on the same disk, which is not a backup. It is now streamed
+nightly, encrypted, and pulled off-host with both custodians.
+
+The remaining two rows are recoverable without a backup, which is why they are not streamed.
+That is a judgement, not an oversight: re-issuing the certificate needs a DNS change nothing
+can automate, and the compose file is the artifact under version control.
 
 ---
 
 ## 4. RTO and RPO — what is known, what is not
 
-**RPO is known**: 24 hours for the four streams, because each runs nightly and is
+**RPO is known**: 24 hours for all five streams, because each runs nightly and is
 verified. Chain data after that window is re-obtainable by re-syncing, at a time cost that
 has not been measured on this hardware.
 
@@ -202,6 +218,26 @@ sidecar, runs `PRAGMA integrity_check` on pakit's databases, and confirms nawal'
 states plainly that ownership was **not** verified. It is wired into `deploy/ci-local.sh`,
 which runs it whenever `backups/pakit` and `backups/nawal` are present locally.
 
+### 5.4 Secrets — `.env`
+
+`infra/deploy/backup-secrets.sh` encrypts the file and proves it decrypts back before the
+artifact is kept; a ciphertext that cannot be read is deleted rather than stored, because a
+backup nobody can open is worse than an honest absence. Restore during a rebuild:
+
+```bash
+cd infra
+./deploy/backup-secrets.sh --decrypt backups/secrets/env_20261122_043500.env.enc \
+                           --to /tmp/restored.env
+```
+
+It refuses to overwrite an existing file, writes the plaintext mode 600, and never prints
+the passphrase. The passphrase comes from `PASSPHRASE_FILE` (default
+`/etc/belizechain/backup-passphrase`).
+
+**The passphrase is not recoverable from this repository, this host, or these backups.**
+It is the one secret a human must hold. If it is lost, every `env_*.env.enc` on every
+custodian is undecryptable, and the two signer mnemonics are gone with it.
+
 ---
 
 ## 6. Drills — performed and not performed
@@ -212,13 +248,20 @@ which runs it whenever `backups/pakit` and `backups/nawal` are present locally.
 | **2026-11-22** | **PostgreSQL restore of the current host's newest dump**, into a throwaway container, via `restore-postgres.sh` | **Passed: 11/11 tables, 463,123 blocks, 385 MB, 8.7 s.** First restore validated against data Ceiba actually holds today |
 | **2026-11-22** | Same, `--target host` — temporary database created **on the live server**, imported, verified, dropped | **Passed: 11/11 tables, identical row counts, 15.2 s.** Temp DB confirmed gone; live DB and chain confirmed unaffected |
 | **2026-11-22** | **pakit + nawal archives**, via `restore-archives.sh` | **Passed.** Both open, match their `.sha256` sidecars, and every archived member is present at its recorded size. pakit's two SQLite files pass `PRAGMA integrity_check` and hold **the same row counts as the live database on all 8 tables** (5 `content_metadata`, 2 `content_roots`, 5 `dedup_references`, 2 `user_metadata`, 1 `storage_stats`, 0 in the three unused ones). nawal's `mesh/ed25519.key` is present at 64 bytes — the file that exists nowhere else |
-| — | Chain archive restore | Only ever extracted into scratch. Never imported and started (`verify-chain-backup.sh` boots each archive in isolation nightly, but a node start against the restored data needs a maintenance window) |
+| **nightly, continuous** | **Chain archive**, by `verify-chain-backup.sh` as the last step of `belizechain-backup.service` | **Passed every night.** Each archive is extracted to scratch, booted in a throwaway container from the same image the live node runs, and must **author a new block** before the unit succeeds. Last measured run 2026-11-22 04:35 UTC: opened at block **666330** (spec 128), authored **666330 → 666332**, unit `Result=success`. Whole step costs ~17 s |
 | — | Live-restore drill (maintenance window, rollback owner present) | **Never performed** |
-| — | Full host rebuild from the repo and the four archives | **Never performed** |
+| — | Full host rebuild from the archives plus the encrypted `.env` | **Never performed** |
 
-Two of four backup streams are now proven to restore: postgres and pakit + nawal (the two
-archive streams). Only the chain archive is still merely proven to *open*. The remaining
-gap that matters is the last row: no one has brought the stack back from nothing.
+**All four data streams are now proven to restore.** Postgres was proven on 2026-11-22,
+pakit and nawal on 2026-11-22, and the chain every night since the verifier was added to
+the unit. That is a stronger position than this document claimed: an earlier revision of
+this table said the chain archive was "only ever extracted into scratch", which was wrong —
+`verify-chain-backup.sh` boots it and requires it to produce a block, and the host's journal
+shows it doing so.
+
+The gap that remains is not any single stream. It is the last row: no one has rebuilt the
+stack from nothing, and no restore has been performed against a *live* target while the old
+one is still running. Each stream is proven in isolation; their combination is not.
 
 The pakit archive holds 9 files while the live volume holds 11. The two absent files are
 `pakit_metadata.db-wal` and `pakit_metadata.db-shm` — SQLite write-ahead sidecars, which a
@@ -255,7 +298,7 @@ What a rebuild actually requires, in order:
    with `docker save | docker load` (13 images, node image first — 24 s measured) or built
    in place. **This step, not data restore, dominates a cold-start RTO, and it has never
    been timed end to end.**
-5. **Data**: restore the four archives per §5.
+5. **Data**: restore the four data archives per §5, and `.env` per §5.4.
 6. **TLS**: `deploy/init-letsencrypt.sh`; DNS must be pointed at the new host first or the
    ACME challenge cannot be answered.
 
