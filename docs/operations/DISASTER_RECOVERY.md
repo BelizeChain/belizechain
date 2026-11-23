@@ -47,10 +47,18 @@ anything else in this table. Measured that day: `.env` holds two **12-word signe
 (`NAWAL_KEYPAIR_URI`, `PAKIT_SIGNER_URI`) which exist in no other file on the host and in no
 other backup. Without them the stack starts but two on-chain identities do not exist.
 
-> ⚠️ **Custody requirement.** The passphrase lives at `/etc/belizechain/backup-passphrase`
-> (mode 600, root) so the nightly job can run unattended. That is convenience, not custody.
-> A human must hold the same passphrase off this host. If both the host and the passphrase
-> are lost, every `env_*.env.enc` is noise — and so are the mnemonics inside them.
+> ⚠️ **Custody requirement — and a live gap as of 2026-11-23.** The passphrase is
+> meant to live at `/etc/belizechain/backup-passphrase` (mode 600, root) so the
+> nightly job can run unattended. **It does not exist yet**, so the secrets step
+> currently exits 1 and the nightly unit reports failed; the four data streams and
+> the chain verification run before it and are unaffected. That is deliberate: a
+> green unit would claim the `.env` is backed up when it is not.
+>
+> A human must type the passphrase and hold the same value off this host — it
+> cannot be generated for you, because anything an agent generates has passed
+> through a transcript. Until it exists, **`.env` and the two signer mnemonics in
+> it are not backed up at all.** If both the host and the passphrase are ever lost
+> after that, every `env_*.env.enc` is noise — and so are the mnemonics inside them.
 
 Two details that matter and are easy to get wrong:
 
