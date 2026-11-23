@@ -125,8 +125,20 @@ tables restored, 385 MB database, 8.7 s.** Row counts — `indexer.blocks` 463,1
 `indexer.transactions` 463,894, `indexer.network_snapshots` 463,123, `indexer.state` 1,
 `public.kyc_verifications` 2; the rest empty.
 
-Three things that measurement taught, all now encoded in the script:
+**Measured again on the live host** (`--target host`, via
+`DOCKER_HOST=ssh://wicked@ceiba`): **11/11 tables, identical row counts, 15.2 s.** The
+temporary database was dropped afterwards and the live one was confirmed unaffected
+(431 MB, 474,893 blocks, chain still authoring). That is the first time a restore of
+current-host data has been exercised **on** the host that holds it.
 
+Four things that measurement taught, all now encoded in the script:
+
+- **There is no `postgres` role on Ceiba.** `psql -U postgres` fails with
+  `FATAL: role "postgres" does not exist`; the only role is `belizechain` (superuser,
+  createdb) and that is what the container's `POSTGRES_USER` names. The throwaway
+  `postgres:15-alpine` container *does* create a `postgres` role, so the local drill
+  passed while the host path was broken — the script now reads `POSTGRES_USER` from the
+  target container instead of assuming.
 - **The data is in the `indexer` schema, not `public`.** Four of the eleven tables
   (`blocks`, `gaps`, `network_snapshots`, `state`) live there, and `transactions` exists in
   **both** schemas with different contents (`indexer.transactions` 463,894 rows,
@@ -185,14 +197,14 @@ restore that silently chowns is a restore that breaks the mesh identity lookup.
 |---|---|---|
 | 2026-09-17 | Non-destructive: every backup surface exercised, every restore path validated into scratch/disposable targets | Passed. **No live restore, no service restart, no volume replacement, no chain rollback**. Ran against `100.81.45.25`, decommissioned 2026-10-07 — so it validated the *old* host's data |
 | **2026-11-22** | **PostgreSQL restore of the current host's newest dump**, into a throwaway container, via `restore-postgres.sh` | **Passed: 11/11 tables, 463,123 blocks, 385 MB, 8.7 s.** First restore validated against data Ceiba actually holds today |
-| — | Same drill with `--target host` (against the live server's own psql) | **Not run.** The script supports it; it was not executed because it writes ~385 MB to the live host for the duration |
+| **2026-11-22** | Same, `--target host` — temporary database created **on the live server**, imported, verified, dropped | **Passed: 11/11 tables, identical row counts, 15.2 s.** Temp DB confirmed gone; live DB and chain confirmed unaffected |
 | — | Chain / pakit / nawal archive restore | Only ever extracted into scratch. Never imported and started |
 | — | Live-restore drill (maintenance window, rollback owner present) | **Never performed** |
 | — | Full host rebuild from the repo and the four archives | **Never performed** |
 
 Three of four backup streams are still only proven to *open*, not to *restore*. The
-postgres one is now proven to restore. The remaining gap that matters is the last row: no
-one has brought the stack back from nothing.
+postgres one is now proven to restore, locally and on the host. The remaining gap that
+matters is the last row: no one has brought the stack back from nothing.
 
 ---
 
