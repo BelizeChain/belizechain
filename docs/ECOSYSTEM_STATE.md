@@ -228,8 +228,7 @@ no `runtime_version` method — using it returns nothing and looks like a dead n
 | `explorer` | `jacogr/polkadot-js-apps@sha256:c0cc223b…` | — |
 
 **The 2026-11-11 rollout brought five images to repo HEAD.** Each was built **on Ceiba**
-from an rsynced tree, because the host has no checkout and no CI job builds these images.
-Verified after each rollout by comparing `sha256sum` of the changed files in the running
+from an rsynced tree, because the host has no checkout and no CI job builds these images.Verified after each rollout by comparing `sha256sum` of the changed files in the running
 container against the repo — `pakit` (`storage_proof_connector.py`, `metadata_store.py`)
 and `kinich` (`circuit_validator.py`, `result_retriever.py`, `blockchain/__init__.py`) are
 **byte-identical**, and the gateway image resolves `qs 6.17.1` / `body-parser 1.20.9`.
@@ -255,6 +254,13 @@ Verified live: `https://testnet.belizechain.org/api/pakit/sites/pakit.bz` → **
 on chain (`bec6162a…`). `…/index.html` → 200; `…/about` → 404; unhosted `maya.bz` → 404 with
 an explicit reason. nginx needed `-s reload` after the recreate (fixed upstream names are
 resolved once per worker).
+
+> ⚠️ **That last sentence stopped being true on 2026-11-23.** The seven static `upstream`
+> blocks were replaced by per-request `resolver` targets and **deployed**, so a recreated
+> backend is now picked up without a reload. Proven rather than claimed: `api-gateway` was
+> forced from `172.20.0.14` to `172.20.0.23` and `/api/gateway/health` stayed 200 with no
+> nginx action. Before that deploy the same requests returned `502 no resolver defined`.
+> See §5 for the bind-mount trap that the deploy itself exposed.
 
 ⚠️ **`.env` backups are the rollback mechanism**, not a documented previous-tag list.
 Before any pin change the live file is copied to `.env.bak-pre-<change>-<stamp>`; to roll
@@ -1876,3 +1882,21 @@ shipped placeholder always failed. It belongs to the Nawal client, which should 
   checker at all (1 workflow of 8 repos). `check_dead_links` now reports a link that
   resolves outside the repo root as `⏭️ SKIP … escapes this checkout` rather than dead —
   a skip, never a pass, so it stays visible. Do not read that skip as "verified".
+- **A green check that reads the repo is not a check on the host.** On 2026-11-23 the
+  `resolver` fix for the nginx 502s had been committed for weeks, `ci-local.sh`'s upstream
+  guard passed, and the host still ran the seven static `upstream` blocks. The guard
+  greps `nginx/nginx.conf` in the checkout, so it could only ever confirm the repo agreed
+  with itself. Same shape as the doc-claims trap above: *which copy does this tool read?*
+  Every check added to this stack must name the copy it inspects.
+- **`install`, `mv` and `sed -i` silently no-op on a single-file Docker bind mount.**
+  `nginx.conf` is mounted `…/nginx.conf:/etc/nginx/nginx.conf:ro`, which is pinned to the
+  inode present at container start; replacing the file creates a new inode and the
+  container keeps the old bytes. Measured: host hash `f5b42ff8…`, container hash
+  `fc764df5…`, inode unchanged on disk. **Both available checks were blind** — the disk
+  hash was correct because the disk *was* correct, and `nginx -t` inside the container
+  passed because it validated the stale file. A *directory* mount (`nginx/snippets/`) does
+  not have this problem, so a deploy can be half-applied: new snippet, old main config.
+  Deploy with `sudo sh -c "cat /tmp/x > /path/x"` then `docker restart`, and compare
+  `docker exec <c> sha256sum <path>` against the host. `check-host-drift.sh` now has a
+  `BIND-MOUNT COHERENCE` section for exactly this; it previously compared repo-vs-disk
+  only. **"The file on disk is correct" is not deployment — what the process reads is.**
