@@ -1249,6 +1249,17 @@ which logging library a module imports before "fixing" a format convention.**
 > - **MEDIUM and LOW are no longer collected** in `pakit-storage`, because the action's
 >   `severity` input filters the report as well as the exit code. Accepted only because
 >   they previously went into an artifact nobody read, but it is a real reduction.
+>
+> **The same upload failure was still colouring a fourth workflow — fixed 2026-11-23.**
+> `kinich-quantum`'s `Container Image Scan` (`docker.yml`) failed the job at the SARIF
+> upload on 2026-11-23 (run 45198342275): the Trivy step had passed and the SARIF was
+> attached as an artifact. It now carries the same `continue-on-error` + explicit
+> `::warning::` treatment, verified green on `4f433ef`. Its **`exit-code` stays `0`,
+> deliberately and for a different reason than `nawal-ai`'s did**: the comment above that
+> setting records that the scan reuses stale Docker layers and reports packages the image
+> does not contain, so gating on it would make a known-untrustworthy result block the
+> build. That nuance is not a licence problem and must be settled before the gate is
+> flipped — do not "fix" it by copying `exit-code: 1` here.
 
 Counts verified 2026-10-22 (⚠️ all six private-repo figures below are **stale** — read
 them as "last known", not "current", while Code Security is disabled):
