@@ -100,19 +100,52 @@ volume replacement. Anything stated as minutes would be invented.
 
 ## 5. Restore procedures
 
-There is **no restore script** in `infra/deploy/`. The steps below are what the archives
-require; they are manual, and none of them has been executed end-to-end against a live
-host.
+### 5.1 PostgreSQL — the one path that is now tested
 
-### 5.1 PostgreSQL
+`infra/deploy/restore-postgres.sh` restores a dump into a **scratch** database and
+verifies it. It never touches the live database: the default target is a throwaway
+`postgres:15-alpine` container, and `--target host` creates a uniquely-named temporary
+database on the real server and drops it afterwards. Restoring over production is not an
+option it offers, on purpose.
 
 ```bash
-# On ceiba, from the newest dump:
-gunzip -c /data/backups/postgres/belizechain_<timestamp>.sql.gz \
-  | docker exec -i ceiba-postgres psql -U <DB_USER> -d <DB_NAME>
+cd infra
+./deploy/restore-postgres.sh                     # newest dump in backups/postgres
+./deploy/restore-postgres.sh --dump <file>       # a specific archive
+./deploy/restore-postgres.sh --keep              # leave it up to inspect by hand
+./deploy/restore-postgres.sh --target host --host-container ceiba-postgres
 ```
-`--clean --if-exists` is already in the dump, so this is destructive to existing objects
-in that database. Take a copy first if the target is anything but a fresh restore.
+
+It refuses a corrupt archive (`gzip -t`, then the `.sha256` sidecar when present), and it
+imports with `psql -v ON_ERROR_STOP=1` — without that, psql exits 0 after a failed
+statement and the drill reports success on a broken restore.
+
+**Measured 2026-11-22** against `belizechain_20261122_043420.sql.gz` (65.6 MB): **11/11
+tables restored, 385 MB database, 8.7 s.** Row counts — `indexer.blocks` 463,123,
+`indexer.transactions` 463,894, `indexer.network_snapshots` 463,123, `indexer.state` 1,
+`public.kyc_verifications` 2; the rest empty.
+
+Three things that measurement taught, all now encoded in the script:
+
+- **The data is in the `indexer` schema, not `public`.** Four of the eleven tables
+  (`blocks`, `gaps`, `network_snapshots`, `state`) live there, and `transactions` exists in
+  **both** schemas with different contents (`indexer.transactions` 463,894 rows,
+  `public.transactions` 0). Any check that assumes one schema, or that reduces to bare
+  table names, will be wrong in both directions — the first version of this script reported
+  4 false failures and miscounted 11 tables as 10.
+- **The dump carries `\restrict`**, a 2025 security backport emitted by `pg_dump` 15.17. An
+  older `psql` rejects it with `invalid command \restrict`, which reads like a corrupt dump
+  but is a client-version problem. Restore with a 15.17-or-later client.
+- **`pg_dump --clean --if-exists` is already in the archive**, so a restore is destructive
+  to existing objects in the target database.
+
+Restoring over the live database, when that day comes, is still a manual operation:
+
+```bash
+# On ceiba — DESTRUCTIVE to existing objects in ${DB_NAME}
+gunzip -c /data/backups/postgres/belizechain_<timestamp>.sql.gz \
+  | docker exec -i ceiba-postgres psql -U <DB_USER> -d <DB_NAME> -v ON_ERROR_STOP=1
+```
 
 ### 5.2 Chain data
 
@@ -150,13 +183,16 @@ restore that silently chowns is a restore that breaks the mesh identity lookup.
 
 | Date | Scope | Result |
 |---|---|---|
-| 2026-09-17 | Non-destructive: every backup surface exercised, every restore path validated into scratch/disposable targets | Passed. **No live restore, no service restart, no volume replacement, no chain rollback** |
+| 2026-09-17 | Non-destructive: every backup surface exercised, every restore path validated into scratch/disposable targets | Passed. **No live restore, no service restart, no volume replacement, no chain rollback**. Ran against `100.81.45.25`, decommissioned 2026-10-07 — so it validated the *old* host's data |
+| **2026-11-22** | **PostgreSQL restore of the current host's newest dump**, into a throwaway container, via `restore-postgres.sh` | **Passed: 11/11 tables, 463,123 blocks, 385 MB, 8.7 s.** First restore validated against data Ceiba actually holds today |
+| — | Same drill with `--target host` (against the live server's own psql) | **Not run.** The script supports it; it was not executed because it writes ~385 MB to the live host for the duration |
+| — | Chain / pakit / nawal archive restore | Only ever extracted into scratch. Never imported and started |
 | — | Live-restore drill (maintenance window, rollback owner present) | **Never performed** |
 | — | Full host rebuild from the repo and the four archives | **Never performed** |
 
-The second row is the gap that matters. A non-destructive drill proves the archives open;
-it does not prove the stack comes back. Until a live restore is done once, treat recovery
-as untested.
+Three of four backup streams are still only proven to *open*, not to *restore*. The
+postgres one is now proven to restore. The remaining gap that matters is the last row: no
+one has brought the stack back from nothing.
 
 ---
 
