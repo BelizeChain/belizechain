@@ -1909,3 +1909,12 @@ shipped placeholder always failed. It belongs to the Nawal client, which should 
   durable enforcement is a machine check (`check-host-drift.sh`), not prose. When the same
   mistake survives being written down, the answer is relocation plus automation, not more
   emphasis.
+- **A config that must be regenerated exists in two files, and the one you edited is not
+  the one that runs.** `/etc/default/grub` declares intent; `/boot/grub/grub.cfg` is what
+  GRUB executes, and only `update-grub` connects them. Editing the first and stopping
+  leaves the next boot identical — a change that looks applied everywhere a human checks.
+  Same shape as the two traps above: *which copy does the process read?* A check must
+  assert the generated artifact, not just the source. `check-host-drift.sh`'s `BOOT
+  CONFIG` section does, and was proven both ways: a host value differing from
+  `infra/deploy/host-grub.conf` fails, **and** so does a host that matches the
+  declaration while `grub.cfg` is stale.
